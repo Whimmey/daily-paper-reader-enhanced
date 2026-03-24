@@ -1,0 +1,429 @@
+Title: Taming Sampling Perturbations with Variance Expansion Loss for Latent Diffusion Models
+
+URL Source: https://arxiv.org/pdf/2603.21085v1
+
+Published Time: Tue, 24 Mar 2026 01:20:29 GMT
+
+Number of Pages: 14
+
+Markdown Content:
+# Taming Sampling Perturbations with Variance Expansion Loss for Latent Diffusion Models 
+
+## Qifan Li Xingyu Zhou Jinhua Zhang Weiyi You Shuhang Gu *
+
+## University of Electronic Science and Technology of China 
+
+## qifanli.lqf@gmail.com shuhanggu@gmail.com 
+
+## Abstract 
+
+Latent diffusion models have emerged as the dominant framework for high-fidelity and efficient image generation, owing to their ability to learn diffusion processes in com-pact latent spaces. However, while previous research has focused primarily on reconstruction accuracy and semantic alignment of the latent space, we observe that another criti-cal factor, robustness to sampling perturbations, also plays a crucial role in determining generation quality. Through empirical and theoretical analyses, we show that the com-monly used β-VAE-based tokenizers in latent diffusion mod-els, tend to produce overly compact latent manifolds that are highly sensitive to stochastic perturbations during dif-fusion sampling, leading to visual degradation. To address this issue, we propose a simple yet effective solution that constructs a latent space robust to sampling perturbations while maintaining strong reconstruction fidelity. This is achieved by introducing a Variance Expansion loss that counteracts variance collapse and leverages the adversar-ial interplay between reconstruction and variance expan-sion to achieve an adaptive balance that preserves recon-struction accuracy while improving robustness to stochas-tic sampling. Extensive experiments demonstrate that our approach consistently enhances generation quality across different latent diffusion architectures, confirming that ro-bustness in latent space is a key missing ingredient for stable and faithful diffusion sampling. Our project page: 
+
+https://github.com/CVL-UESTC/VE-Loss .
+
+## 1. Introduction 
+
+Latent diffusion models (LDMs) have become a cornerstone of modern visual generation. By training diffusion pro-cesses within a learned latent space rather than directly in the pixel domain, they achieve remarkable efficiency while maintaining high generative fidelity. Building on this prin-ciple, recent works such as [17, 19, 20] have achieved state-
+
+> *Corresponding author
+
+of-the-art results in high-resolution image and video syn-thesis, firmly establishing latent diffusion as a foundational paradigm in modern generative modeling. Recent research has revealed that, for the tokenizer in latent diffusion models, achieving high reconstruction ac-curacy does not necessarily lead to better generative perfor-mance; rather, the semantic organization of the latent space also plays an crucial role [29]. Among these studies, VA-VAE [29] align latent spaces with pretrained vision founda-tion models to inject semantic priors, while RAE [33] go a step further by directly adopting such pretrained models as fixed tokenizers. In contrast, works such as MAETok [2] and DC-AE 1.5 [3] leverage self-supervised learning objec-tives inspired by masked autoencoders [8] to enhance latent representations in a data-driven manner. Above approaches facilitate optimization of the diffusion process becomes eas-ier to optimize, often exhibiting lower training losses and improved generative quality [2]. Although prior work has made substantial progress, what constitutes an appropriate latent space for generation remains an open question. In this paper, we find that, apart from reconstruction ac-curacy and semantic alignment, there exists another impor-tant factor influencing generation quality. In particular, we observe that models with near-perfect reconstruction and lower diffusion loss sometimes yield visually inferior gener-ations compared to those with higher reconstruction errors and diffusion loss, suggesting that another property of the latent space may be at play. As illustrated in the toy exam-ple at the top of Figure 1, the model on the left, which uses a vanilla tokenizer widely used in latent diffusion models, achieves higher reconstruction quality and smaller diffusion error compared to the one on the right, but its sampling re-sults are significantly inferior. To investigate this counterin-tuitive behavior, we visualize the latent representations and find that the latent manifold of the left model becomes over-compact (bottom of Figure 1). Such compactness harms the robustness of the latent representation: even small stochas-tic perturbations during diffusion sampling can easily drive latents outside the data manifold, leading to decoding fail-ures and degraded generation quality. These observations 
+
+> arXiv:2603.21085v1 [cs.CV] 22 Mar 2026 Better
+> reconstructions
+
+Vanilla KL loss in VAE. Our VE loss. 
+
+# VS.  
+
+> Lower
+> diffusion loss
+> Inferior
+> generations
+
+# analysize Slightly worse    
+
+> reconstructions
+> Marginally higher
+> diffusion loss
+> Better
+> generations
+> Collapsed
+> latent manifold
+> Distributed
+> latent manifold
+> Out of manifold
+> Sampling
+> perturbations
+> Sampling
+> perturbations
+> Still in manifold
+> diffusion
+> model
+> encoder
+> loss:1.4
+> diffusion
+> model
+> encoder
+> loss:1.5 Figure 1. Toy example on a fractal-like 2D distribution following [12]. In this toy example, we observe a seemingly counterintuitive phenomenon: a tokenizer with better reconstruction and a diffusion model trained in its latent space that achieves lower diffusion loss still produces visually inferior generations (left). To understand this behavior, we visualize the learned latent spaces. The latent space on the left, produced by a commonly used β-VAE tokenizer, collapses into an overly compact region, which allows even small diffusion sampling perturbations to push samples outside the data manifold. In contrast, the latent space on the right, learned with our Variance Expansion loss, remains sufficiently spread out to resist stochastic perturbations during diffusion sampling, leading to much more faithful generations.
+
+suggest that, a latent space that is robust to diffusion sam-pling perturbations is crucial for high-fidelity generation. In this work, we propose a simple yet effective approach to constructing a latent space that is robust to diffusion sampling perturbations, while maintaining high reconstruc-tion fidelity. In particular, following the VAE formulation [10, 14], we model the encoder output as a Gaussian dis-tribution N (μ, σ 2). The reparameterized sampling intro-duces controlled randomness through σ2, which prevents over-compact latent encoding to enhance robustness to dif-fusion sampling perturbations. Building on this formula-tion, we further introduce a Variance Expansion (VE) loss, which explicitly encourages a moderate increase in σ2 and leverages its adversarial relationship with the reconstruction loss to enable the model to learn adaptive variances σ2. In contrast to the commonly used KL regularization which has been shown to significantly impair reconstruction quality [10, 22], our method enables the model to learn adaptive σ2
+
+that are sufficiently large to enhance robustness against dif-fusion sampling perturbations while preserving reconstruc-tion fidelity (as shown in Figure 2). Moreover, our approach preserves the learning of the latent mean μ, ensuring high reconstruction quality, and remains fully compatible with recent efforts to construct discriminative latent spaces. To summarize, our contributions are as follows: 1. We identify that the latent space in existing LDMs lack robustness against diffusion sampling perturbations, which often leads to degraded sampling quality. 2. We propose a simple yet effective loss function that pro-motes a latent space robust to diffusion sampling pertur-bations, while preserving strong reconstruction quality. 3. Extensive experiments conducted under various settings demonstrate that our method consistently improves gen-eration quality, confirming its effectiveness. 
+
+## 2. Related Works 
+
+2.1. Latent Diffusion Models 
+
+Latent diffusion models train diffusion processes not di-rectly in pixel space but in a compressed latent space learned by a pretrained autoencoder [20]. This design sig-nificantly reduces the computational cost of diffusion train-ing while maintaining high perceptual quality, making it the dominant paradigm in modern visual generation models [17, 19, 28, 30]. Recent research has focused on improving the semantic structure of these latent spaces. For example, VAVAE [29] aligns the VAE latent space with pretrained se-mantic encoders to enhance the alignment between latent features and perceptual semantics. MAETok [2] and DC-AE 1.5 [3] incorporates MAE-inspired self-supervised ob-jectives into VAE training. In contrast, RAE [33] directly adopts a fixed vision foundation model as the tokenizer, avoiding retraining but relying entirely on the pretrained representation space. These methods focus on improving the trainability of diffusion models by providing semanti-cally structured latent spaces, thereby accelerating diffu-sion convergence and improving generative quality. Dif-ferent from these efforts, our work investigates a comple-mentary but largely overlooked aspect: the robustness of latent representations against diffusion sampling perturba-tions. We demonstrate that, beyond trainability and seman-tic expressiveness, the robustness of the latent space under diffusion perturbations plays a crucial role in ensuring sta-ble and high-fidelity generation. 
+
+2.2. Robustness against Sampling Perturbations 
+
+The robustness against sampling perturbations of the latent representation strongly influences the overall stability of the generative process. Some recent autoregressive models op-erating in continuous latent spaces have begun to recognize this issue. For instance, GIVT [26] mitigate this issue by strengthening the KL regularization term in the VAE to-kenizer to enlarge the latent variance, while σ-VAE [24] adopts a fixed variance design to inject controlled stochas-ticity into the latent representation. A concurrent latent dif-fusion work, RAE [33], also addresses a similar problem by introducing Gaussian noise into the latent variables (analo-gous to a σ-VAE) to enhance robustness during generation. Our work shares the same insight but provides a more prin-cipled formulation: instead of heuristically adding noise, we introduce a theoretically grounded Variance Expansion Loss that adaptively balances latent robustness and recon-struction fidelity, offering a systematic solution to latent over-compact in diffusion models. 
+
+## 3. Preliminary 
+
+In this section, we introduce the two core components of la-tent diffusion models, the tokenizer and the diffusion model, and describe their respective designs in detail. 
+
+Tokenizer. A common choice of most existing latent dif-fusion works is a β-VAE [10], where an encoder E maps an image X0 to a latent distribution Z0 ∼ N (μ, σ 2). Asample is drawn from this distribution and passed through a decoder D to reconstruct the image: ˆX = D(Z0). The tokenizer is trained with a β-VAE objective, consisting of a reconstruction loss Lrec and a KL divergence term: 
+
+LVAE = Lrec + β KL (N (μ, σ 2) ∥ N (0 , I )) . (1) Due to the significant impact of the KL term on reconstruc-tion quality [10], most latent diffusion works set β to a very small value (e.g., 10 −6) in order to prioritize reconstruction fidelity. As a result, the latent variance σ2 becomes negligi-ble, making the mean μ effectively deterministic. Using μ
+
+or Z0 for diffusion training is therefore almost equivalent. 
+
+Diffusion model. In the diffusion model, the latent repre-sentation μ (or Z0) serves as the input. The forward noising process gradually corrupts these latents into Zt:
+
+Zt = a(t)Z0 + b(t)ϵt, ϵt ∼ N (0, I), (2) where a(t) and b(t) define the noise schedule. The gener-ative model, parameterized by θ, is trained to predict the added noise: 
+
+Ldiff = EZ0,ϵt,t 
+
+∥ϵθ (Zt, t ) − ϵt∥2 . (3) Alternatively, flow-matching models adopt a continuous-time formulation that directly learns the vector field guiding the reverse trajectory: 
+
+Lflow = Et, Zt
+
+h
+
+∥vθ (Zt, t ) − ˙Zt∥2i
+
+, (4) where vθ represents the estimated velocity of the sample evolution, and ˙Zt denotes the ground-truth time derivative of Zt. Both diffusion and flow-matching approaches share the same goal: learning the latent distribution. 
+
+## 4. Methodology 
+
+In this section, we present a detailed analysis and de-scribe our proposed method for improving latent robustness against sampling perturbations in diffusion models. We be-gin by observing a seemingly paradoxical phenomenon: de-spite a tokenizer achieving high reconstruction fidelity and a diffusion model attaining low diffusion loss in its latent space, the sampling outputs are more likely to be invalid (top of Fig. 1). Further analysis reveals that this issue arises from the over-compact and sensitive latent manifolds that are easily perturbed in the diffusion sampling process (bot-tom of Fig. 1). Motivated by this insight, we develop a simple and effective approach to construct a robust latent space, mitigating sampling failures while preserving recon-struction quality. 
+
+4.1. Importance of a Robust Latent Space 
+
+In this section, we use a simple toy example to demonstrate how a robust latent space against diffusion sampling pertur-bations plays a critical role in ensuring stable and faithful diffusion sampling. To better understand this behavior, we construct a two-dimensional toy example following the visualization setup in [12]. Both the encoder and decoder operate in a two-dimensional space, allowing us to directly visualize how la-tent distributions evolve during training. In this setting, we employ the most commonly used tokenizer in latent diffu-sion models, a β-VAE with a very small KL regularization weight, as discussed above. We first train the tokenizer and diffusion model separately until convergence, and then ana-lyze their interaction during sampling. Interestingly, we ob-serve that the latent manifold tends to become overly com-pact, forming a thin, needle-like manifold as shown in the bottom-left of Figure 1. We argue that this phenomenon arises because, when the KL term is too weak, the encoder naturally tends to minimize latent uncertainty in order to achieve precise reconstructions through the reconstruction loss. As a result, the latent distribution collapses into near-deterministic values. We also present some theoretical anal-ysis of this behavior below: 
+
+Analyze 1: Reconstruction-induced variance collapse. 
+
+Let the encoder output follow a Gaussian distribution: 
+
+z ∼ N (μ, σ 2), (5) and let D(z) denote the decoder output. For sufficiently small σ, we approximate the decoder locally via a first-order Taylor expansion around μ:
+
+D(μ + σϵ ) ≈ D (μ) + J(μ) σϵ, (6) where J(μ) = ∂D  
+
+> ∂z z=μ
+
+is the decoder Jacobian, and ϵ ∼N (0 , I ). This linearization isolates the dominant term de-scribing how the reconstruction loss depends on the latent variance. Although D is generally nonlinear, higher-order Taylor terms are at least O(σ2) in the expansion and there-fore contribute O(σ4) or higher to the expected squared er-ror (with no O(σ3) term appearing after expectation due to the symmetry of ϵ ∼ N (0 , I ), which causes all odd-order terms to vanish), and thus do not alter the monotonic trend that drives variance collapse. The expected reconstruction loss (squared error) under the reparameterized sampling be-comes: 
+
+Lrec (μ, σ ) = Eϵ
+
+∥X0 − D (μ + σϵ )∥2
+
+≈ ∥ X0 − D (μ)∥2
+
+| {z }
+
+> deterministic term
+
++ σ2 Eϵ
+
+∥J(μ)ϵ∥2
+
+= ∥X0 − D (μ)∥2 + σ2 Tr  J(μ)J(μ)⊤,
+
+(7) where we define T (μ) := Tr  J(μ)J(μ)⊤ as a local sen-sitivity measure of the decoder. Hence, the reconstruction loss can be simplified as: 
+
+L(μ, σ ) ≈ ∥ X0 − D (μ)∥2 + σ2T (μ). (8) This result shows that the reconstruction loss grows approx-imately linearly with σ2, with slope T (μ). Consequently, minimizing Lrec alone induces a strong gradient toward smaller σ (since ∂Lrec /∂σ ≈ 2σT (μ)), explaining the em-pirical tendency of variance collapse. This distribution collapse makes the latent space highly vulnerable during diffusion sampling, where stochastic per-turbations frequently occur in generative process. As shown in 1, latents with overly narrow manifolds exhibit sharp boundaries, beyond which the decoder cannot reconstruct meaningful content. Even slight deviations from the latent manifolds can easily lead to severe degradation or complete generation failure after decoding. This analysis highlights a fundamental issue in existing latent diffusion pipelines: the learned latent spaces are not robust to sampling perturba-tions. Ensuring robustness in the latent space is therefore crucial for achieving reliable diffusion-based generation. 
+
+4.2. Variance Expansion Loss 
+
+In this section, we aim to build a robust latent space against sampling perturbations while maintaining strong recon-struction performance. When considering a standard VAE, the latent prior plays a central role in shaping the latent space: it explicitly con-strains where encoded representations should lie and pro-vides a statistical reference that regularizes the encoder. However, in a latent diffusion model, this relationship changes fundamentally. Rather than generating data di-rectly from a fixed prior, the model learns a denoising tra-jectory that progressively transforms Gaussian noise into meaningful latent representations. Through this process, the diffusion model itself learns the structure of the latent dis-tribution as part of its generative dynamics. As a result, the KL regularization term is not a necessary component for la-tent diffusion models, since the encoder no longer needs to align its outputs with a predefined Gaussian prior. The dif-fusion process inherently discovers and enforces the prior distribution that is most suitable for generation. In fact, the KL term can even degrade overall performance by severely impairing reconstruction quality, as discussed in [10, 22] and illustrated in our toy example (Fig. 2). We also provide some theoretical analysis in Appendix. Building upon these analyses, we discard the conven-tional KL term and instead take a more principled, goal-driven approach to loss design. Our objective is to construct a loss function that enhances the robustness of the latent space against sampling perturbations. As discussed in Sec-tion 4.1, this can be achieved by preventing the latent vari-ance σ2 from collapsing under the influence of the recon-struction loss. Motivated by this insight, we propose a sim-ple yet effective Variance Expansion loss ( VE loss), which counteracts the collapsing tendency of the reconstruction objective and maintains a healthy latent variance, thereby improving robustness to sampling perturbations. Specifi-cally, we explicitly encourages moderate variance in the la-tent distribution: 
+
+Lvar (σ) = 1
+
+σ2 + δ , (9) where a tiny δ > 0 ensures numerical stability. However, this tends to cause the overall magnitude to increase, so we introduce an empirical regularization term: 
+
+Lreg = e|z|− τ . (10) where τ serves as a threshold parameter determining the ac-tivation range of the exponential penalty. The overall train-ing objective is formulated as: 
+
+L = Lrec + λ1 Lvar + λ2 Lreg , (11) where λ1 controls the trade-off between robustness and reconstruction accuracy, λ2 controls the regularization Latent           
+
+> space:
+> Reconstruction
+> results:
+> Diffusion
+> sampling
+> results:
+> Kl / VE loss
+> weight: 0.001 0.005 0.008 0.01 0.02 0.05 0.001 0.005 0.01
+> Vanilla KL loss in VAE. Our VE loss. Figure 2. Toy example on a fractal-like 2D distribution following [12]. KL regularization severely degrades reconstruction quality (left), whereas our method maintains high reconstruction quality (right).
+
+strength and Lrec is a normal reconstruction loss follow-ing previous works [5, 20]. Compared with the KL regu-larization in standard VAEs, which enforces a fixed, glob-ally uniform Gaussian constraint regardless of the local data geometry, our variance expansion loss provides an adap-tive mechanism. It automatically adjusts the allowable la-tent variance according to the decoder’s sensitivity, enabling the model to maintain stability in regions of high curvature while allowing greater flexibility in smoother regions. We provide some theoretical analysis of this behavior below: 
+
+Analyze 2: Gradient Balancing and Design of the Vari-ance Expansion Term. The reconstruction term in latent diffusion tokenizers induces a gradient on the latent vari-ance σ that drives it toward zero. Specifically, by differen-tiating Eq. 8, we obtain 
+
+∂Lrec 
+
+∂σ ≈ 2σ, T (μ), (12) where T (μ) measures the local sensitivity of the decoder around μ. This gradient naturally pushes σ toward zero, leading to a collapse of the latent variance and thereby reducing the robustness of the latent space to stochastic perturbations during diffusion sampling. To prevent such variance collapse, we introduce a variance expansion term 
+
+Lvar (σ) (see equation9) that applies an opposing gradient. Let g(σ) := ∂σ Lvar denote its gradient; then, the equilib-rium condition for σ can be expressed as 
+
+2σT (μ) + g(σ) = 0 , (13) where g(σ) should exert a strong counteracting force when 
+
+σ is small to resist collapse, while gradually diminishing for larger σ to prevent over-dispersion. We consider three natural candidate forms for Lvar : (i) 
+
+Negative variance: L(1)  
+
+> var
+
+= −ασ 2 with g(σ) = −2ασ . The equilibrium condition reduces to α = T (μ), which does not determine a local σ and fails to provide a self-stabilizing solution across varying T (μ). Moreover, the gradient van-ishes as σ → 0, offering no protection against collapse. (ii) 
+
+Log-entropy: log σ2 with gradient g(σ) ∝ 1/σ . This yields a non-trivial equilibrium σ2 = β/T (μ), providing a locally adaptive variance that inversely scales with decoder sen-sitivity. While theoretically valid, the gradient magnitude in small-σ regions may be insufficient to fully prevent col-lapse. (iii) Inverse variance (our choice): Linv  
+
+> var
+
+= λ/ (σ2 +δ)
+
+with g(σ) = −2λ/σ 3. The equilibrium satisfies 
+
+σ4 = λT (μ) =⇒ σ =
+
+ λT (μ)
+
+1/4
+
+. (14) This design provides a strong, locally adaptive restoring force that increases rapidly as σ → 0, reliably counteract-ing collapse while naturally decaying for larger σ. It thus achieves the desired trade-off between robustness and re-construction fidelity. Combining reconstruction and vari-ance expansion terms, the total objective for a single latent location is: 
+
+L(μ, σ ) ≈ ∥ X0 − D (μ)∥2 + σ2T (μ)
+
+| {z }
+
+> Lrec
+
++ λ 1
+
+σ2 + δ
+
+| {z }
+
+> Lvar
+
+, (15) whose minimization yields a locally adaptive latent variance that matches the geometry of the decoder, enhancing robust-ness to diffusion sampling perturbations while preserving reconstruction fidelity. Overall, through the natural adversarial relationship be-tween the reconstruction loss, which favors smaller vari-ance, and the VE loss, which encourages larger variance, the model learns adaptive variances across the latent mani-fold that are large enough to absorb diffusion perturbations Table 1. Comprehensive comparisons show that the VE loss consistently improves generative performance across architectures while maintaining competitive reconstruction quality. ↓ and ↑ indicate whether lower or higher values are better, respectively. ( LightningDiT-B+ denotes the experiment with training extended to 160 epochs.)                                                   
+
+> Tokenizer Epochs. Spec. Reconstruction Performance Generation Performance (FID-10K) ↓
+> rFID ↓PSNR ↑LPIPS ↓SSIM ↑DiT-B LightningDiT-B LightningDiT-B +
+> LDM 10 f16d16 0.55 26.05 0.141 0.710 31.93 22.25 -LDM+VE loss 10 0.60 25.23 0.147 0.691 29.03 19.70 -VAVAE 16 f16d32
+> 0.35 27.43 0.104 0.77 22.27 19.85 -VAVAE 50 0.28 27.96 0.096 0.79 --15.82 VAVAE+VE loss 16 0.45 26.54 0.118 0.74 19.42 15.50 12.89
+
+while maintaining reconstruction fidelity. The effect can be observed in our toy example shown in Figure 1 and 2. The detailed setting of toy example can be found in Appendix. 
+
+4.3. Discussion 
+
+Previous generative modeling approaches have also em-ployed certain tricks that, to some extent, improve the ro-bustness of the latent space. For instance, methods that strengthen the KL regularization in VAE-based tokenizers, which can reduce the sensitivity of the latent space to sam-pling perturbations [26]. Similarly, other approaches inject fixed noise into the latent representation by defining a con-stant variance and letting the encoder output only the mean [24, 33]. These techniques often bring moderate improve-ments in and sampling robustness, even though they were originally designed for other purposes such as feature dis-entanglement regularization. However, these strategies re-main largely heuristic. A stronger KL term enforces align-ment with a Gaussian prior but unavoidably suppresses the expressive capacity of the latent representation, leading to blurred reconstructions, as discussed in Section 4.2. Con-versely, fixing a large global variance sidesteps this issue but relies on manually tuned, non-adaptive hyperparame-ters, ignoring the fact that different latent regions exhibit different sensitivities to diffusion noise. In contrast, our approach aims to address the problem from a more principled perspective. Rather than relying on global or manually tuned tricks, we explicitly model and op-timize latent robustness in an adaptive manner, allowing the variance to self-adjust according to local decoder sensitiv-ity. This creates a latent space that balances reconstruction fidelity with robustness to diffusion perturbations, forming the foundation of our proposed VE Loss. 
+
+## 5. Experiments 
+
+5.1. Implementation Details 
+
+Tokenizers. All experiments are conducted on the Ima-geNet dataset [4] at a resolution of 256 × 256 . The tok-enizer follows the architecture and training strategy from [5, 20, 29]. We replace the commonly used KL divergence term [5, 20, 29] with our VE loss to encourage latent ro-bustness against diffusion sampling perturbations. All tok-enizers in our experiments downsample the input by a fac-tor of 16, following the setting in [29]. Empirically, we set the variance expansion loss weight λ1, the regulariza-tion loss weight λ2, and the threshold-like parameter τ to 
+
+0.1, 1 × 10 −6, and 1, respectively. Training is performed on eight NVIDIA RTX 4090 GPUs with a global batch size of 64 , determined by the maximum available GPU memory. All models are optimized using the AdamW optimizer [13] with β1 = 0 .5, β2 = 0 .9 and a learning rate of 2.5 × 10 −5,linearly scaled from [29]. We train our tokenizer models for 16 epochs on our ablation studies. For the state-of-art one, due to limited computational resources, we fine-tune VA-VAE [29] for 5 epochs. 
+
+Generative Models. For the generative model, we adopt the flow matching objective with linear interpolation Xt =(1 − t)X + tϵ, where X ∼ p(X) and ϵ ∼ N (0 , I),and train the model to predict the velocity v(Xt, t ) follow-ing standard practice. We use both the vanilla setups from DiT [19] and SiT [17] (hereafter collectively referred to as DiT), as well as LightningDiT [29], a variant of DiT, as our model backbones in ablation studies to validate the gener-ality of our method. For efficiency, all our ablation studies are conducted on the base model (130M). In our ablation studies, all training is performed on eight NVIDIA RTX 4090 GPUs with a global batch size of 1024 following the setting [29]. All models are optimized using the AdamW optimizer [13] with β1 = 0 .95 , β2 = 0 .999 and a learn-ing rate of 2 × 10 −4 following [29]. For the state-of-the-art configuration, we use LightningDiT-XL (675M) [29] as our generative model. It is worth noting that diffusion models trained in the latent space aligned with DINOv2 [18] rep-resentations [29, 33], despite their strong performance, are widely recognized for exhibiting training instability when optimized over long schedules. We encountered this is-sue when training with the commonly used AdamW [13] optimizer over long durations. In contrast, we found that the Muon optimizer [11] effectively mitigates this problem. Therefore, we adopt Muon optimizer for long-term train-Table 2. System-level comparison on ImageNet 256×256 without classifier-free guidance (CFG). ↓ and ↑ indicate whether lower or higher values are better, respectively.                                                                   
+
+> Method σ2Reconstruction Generation rFID ↓PSNR ↑FID-10K ↓
+> +KL β= 10 −610 −80.39 27.12 23.12
+> +KL β= 10 −410 −70.39 27.07 23.03
+> +KL β= 10 −210 −50.44 26.71 22.87
+> +KL β= 10 −110 −30.50 26.23 23.16
+> +KL β= 0 .510 −20.52 26.16 22.99
+> +KL β= 1 0.07 0.61 25.45 23.18
+> +KL β= 2 0.19 0.69 25.08 23.31
+> +KL β= 8 0.94 2.36 22.29 27.54
+> +VE Loss 0.06 0.46 26.31 18.90
+
+ing. We provide a analysis of this part in Appendix. Train-ing is performed on four NVIDIA RTX Pro 6000 GPUs with a global batch size of 768 , determined by the maxi-mum available GPU memory. The model is optimized with a learning rate of 1.8 × 10 −4, log-scaled from [29, 33], us-ing β1 = 0 .95 , β2 = 0 .999 and an EMA update rate of 0.9999. For all experiments, we adopt a patch size of 1 for all models on on ImageNet at 256 × 256 following [29] which results in a sequence length of 256, matching the to-ken length used by DiTs [17, 19] and thus maintaining the same computational cost. 
+
+Evaluations. For tokenizers, we report the reconstruction Fr´ echet Inception Distance (rFID) [9], PSNR , LPIPS [32] and SSIM [27] to assess the reconstruction quality. For generative models, we using the Fr´ echet Inception Distance (FID) [9], computed on 10K samples for ablation studies (denoted as FID-10K) and 50K samples for state-of-the-art models, generated with 250 sampling steps using the Eu-ler sampler. In addition, we evaluate the generative quality using the Inception Score (IS) [21], Precision, and Recall. 
+
+5.2. Ablation Study 
+
+In this section, we conduct ablation studies to evaluate the consistent effectiveness of the proposed VE loss in image generation tasks, following the two observations from Sec-tion 4: (1) modern VAEs are typically trained with a small KL weight, which leads to a latent space that is not robust to diffusion sampling perturbations, and VE can mitigate this issue; (2) tuning the KL regularization coefficient alone cannot fundamentally resolve the problem. Specifically, to investigate Observation (1), we consider two widely used baseline tokenizers: a vanilla VAE tok-enizer [20], and a VA-VAE tokenizer [29] that leverages vision foundation models for latent representation learn-ing. For each tokenizer, we compare two variants: one trained with the standard KL objective and the other trained with the proposed VE loss. In these experiments, we train the tokenizer for 80 epochs following the setup of VA-VAE. To validate Observation (2), we perform additional experiments by sweeping the KL regularization coefficient. For computational efficiency, we adopt a lightweight VAE trained for 5 epochs and a LightningDiT-B model trained for 80 epochs. As shown in Table 1, VE loss consistently improves the quality of generation under both vanilla and foundation-model-aligned tokenizers, confirming our hypothesis that robust latent representations are crucial for diffusion-based generation. To further verify the generality of our obser-vations, we conducted extended experiments by training the VA-VAE + VE loss + LightningDiT configuration for 160 epochs to achieve full convergence. The results are compared with those reported in VA-VAE [29], where the VA-VAE was trained for 50 epochs and LightningDiT for 160 epochs. As shown in Table 1, our method achieves better generative performance with only 16 epochs of to-kenizer training, surpassing the original VA-VAE trained for 50 epochs. These results confirm that the proposed 
+
+VE loss consistently enhances diffusion performance across different tokenizers, architectures, and training schedules. More importantly, the robustness and stability of these gains strongly support our central claim: building a latent space that is resilient to diffusion sampling perturbations is funda-mental for achieving stable and high-fidelity generation in latent diffusion models. Moreover, as shown in Table 2, the results suggest a limitation of the standard KL objective: its global prior constraint imposes a rigid reconstruction– variance trade-off that is difficult to alleviate by tuning the KL weight alone, whereas our VE loss substantially miti-gates this by adaptively modulating latent variance. 
+
+5.3. Main Results 
+
+We perform a system-level comparison between recent state-of-the-art approaches, including several autoregres-sive models [1, 16, 23, 25, 31] and several diffusion models [6, 7, 17, 19, 28, 30, 33, 34]. We use a optimal classifier-free guidance (cfg) scale of 1.70. Following [29, 30], we employ cfg interval sampling [15], which has been shown to im-prove generation quality. We adopt a cfg interval of [0.21, 1]. As shown in Table 4, our method notably reaches a 1.18 FID with only 530 epochs, outperforms the complete state-of-the-art methods, further demonstrating the effectiveness of our approach. As illustrated in Figure 3, our method pro-duces high-quality images for class-conditional generation on ImageNet 256 ×256. Additional qualitative results can be found in Appendix. Table 3 presents the full reconstruction metrics of our fine-tuned autoencoder. Notably, the baseline VA-VAE training pipeline consists of three stages, where the hyper-parameter configuration in Stage 3 is more biased toward re-Figure 3. Visualization Results. Examples of class-conditional generation on ImageNet 256 ×256 Table 3. System-level comparison on ImageNet 256×256 with guidance. All models use classifier-free guidance (CFG) except RAE, which uses auto-guidance. ↓ and ↑ indicate whether lower or higher values are better, respectively.                                                                                                          
+
+> Method Training Epoches #params Generation w/ CFG gFID ↓sFID ↓IS ↑Pre. ↑Rec. ↑
+> LlamaGen [23] 300 3.1B 2.18 5.97 263.3 0.81 0.58 VAR [25] 350 2.0B 1.80 -365.4 0.83 0.57 MVAR [31] -1.0B 2.15 5.62 298.9 0.84 0.56 MAR [16] 800 945M 1.55 -303.7 0.81 0.62 MaskDiT [34] 1600 675M 2.28 5.67 276.6 0.80 0.61 DiT [19] 1400 675M 2.27 4.60 278.2 0.83 0.57 SiT [17] 1400 675M 2.06 4.50 270.3 0.82 0.59 MDT [6] 1300 675M 1.79 4.57 283.0 0.81 0.61 MDTv2 [7] 1080 675M 1.58 4.52 314.7 0.79 0.65 REPA [30] 800 675M 1.42 4.70 305.7 0.80 0.65 VA-VAE [29] 800 675M 1.35 4.15 295.3 0.79 0.65 REG [28] 800 675M 1.36 4.25 299.4 0.77 0.66
+> RAE [33] 800 675M 1.41 -309.4 0.80 0.63
+> Ours 530 675M 1.18 4.29 289.8 0.78 0.66
+
+Table 4. Reconstruction performance of our finetuned model on 
+
+ImageNet 256×256. ↓ and ↑ indicate whether lower or higher val-ues are better, respectively.                 
+
+> Method Training Epoches Reconstruction Performance rFID ↓PSNR ↑LPIPS ↓SSIM ↑
+> VA-VAE [29] 130 0.28 27.71 0.097 0.779
+> +VE Loss +10 0.26 28.31 0.090 0.792
+
+construction quality. Since our hyperparameters are mainly aligned with those used in Stage 3, our model achieves slightly better reconstruction than the baseline. However, this should not be interpreted as VE inherently improving reconstruction. Under a strictly matched training setup (i.e., training from scratch with identical hyperparameters), our method would introduce a slight decrease in reconstruction quality. Nevertheless, the reconstruction performance re-mains competitive, and the overall generation results are im-proved, as shown in Tables 1 and 2. Overall, our method en-hances robustness to diffusion sampling perturbations while largely preserving reconstruction fidelity. This balance be-tween robustness and reconstruction fidelity is crucial, as it ensures that the improved generative performance is not achieved at the cost of severely degraded reconstructions. 
+
+## 6. Conclusion 
+
+In this work, we revisit the design of latent spaces for la-tent diffusion models and reveal that robustness to sam-pling perturbations is a key factor influencing generative quality, beyond reconstruction accuracy and semantic align-ment. Through both theoretical and empirical analysis, we demonstrate that the conventional KL regularization term in VAE-based tokenizers is not only unnecessary but also detrimental for latent diffusion, as it constrains the repre-sentational flexibility of the latent space. To address this issue, we propose a simple yet effective variance expansion loss that counteracts the variance collapse induced by recon-struction objectives. By leveraging the natural adversarial interplay between reconstruction compactness and variance expansion, our method adaptively balances latent dispersion and fidelity, resulting in a latent space that is both expressive and robust to stochastic sampling. Extensive experiments on multiple diffusion baselines validate that the proposed approach consistently improves generation stability and vi-sual quality, while maintaining strong reconstruction perfor-mance. We hope that our findings can provide guidance for designing generative-friendly latent spaces and offer useful insights for future research on improved generative repre-sentation learning. Acknowledgement . This work was supported by National Natural Science Foundation of China (No. 62476051). 
+
+## References 
+
+[1] Huiwen Chang, Han Zhang, Lu Jiang, Ce Liu, and William T. Freeman. Maskgit: Masked generative image transformer. In The IEEE Conference on Computer Vision and Pattern Recognition (CVPR) , 2022. 7 [2] Hao Chen, Yujin Han, Fangyi Chen, Xiang Li, Yidong Wang, Jindong Wang, Ze Wang, Zicheng Liu, Difan Zou, and Bhik-sha Raj. Masked autoencoders are effective tokenizers for diffusion models. In Forty-second International Conference on Machine Learning , 2025. 1, 2 [3] Junyu Chen, Dongyun Zou, Wenkun He, Junsong Chen, Enze Xie, Song Han, and Han Cai. Dc-ae 1.5: Accelerating diffusion model convergence with structured latent space. In 
+
+Proceedings of the IEEE/CVF International Conference on Computer Vision , pages 19628–19637, 2025. 1, 2 [4] Jia Deng, Wei Dong, Richard Socher, Li-Jia Li, Kai Li, and Li Fei-Fei. Imagenet: A large-scale hierarchical image database. In 2009 IEEE conference on computer vision and pattern recognition , pages 248–255. Ieee, 2009. 6 [5] Patrick Esser, Robin Rombach, and Bjorn Ommer. Taming transformers for high-resolution image synthesis. In Pro-ceedings of the IEEE/CVF conference on computer vision and pattern recognition , pages 12873–12883, 2021. 5, 6 [6] Shanghua Gao, Pan Zhou, Ming-Ming Cheng, and Shuicheng Yan. Masked diffusion transformer is a strong image synthesizer, 2023. 7, 8 [7] Shanghua Gao, Pan Zhou, Ming-Ming Cheng, and Shuicheng Yan. Mdtv2: Masked diffusion transformer is a strong image synthesizer. arXiv preprint arXiv:2303.14389 ,2023. 7, 8 [8] Kaiming He, Xinlei Chen, Saining Xie, Yanghao Li, Piotr Doll´ ar, and Ross Girshick. Masked autoencoders are scalable vision learners. In Proceedings of the IEEE/CVF conference on computer vision and pattern recognition , pages 16000– 16009, 2022. 1 [9] Martin Heusel, Hubert Ramsauer, Thomas Unterthiner, Bernhard Nessler, and Sepp Hochreiter. Gans trained by a two time-scale update rule converge to a local nash equilib-rium. Advances in neural information processing systems ,30, 2017. 7 [10] Irina Higgins, Loic Matthey, Arka Pal, Christopher Burgess, Xavier Glorot, Matthew Botvinick, Shakir Mohamed, and Alexander Lerchner. beta-vae: Learning basic visual con-cepts with a constrained variational framework. In Interna-tional conference on learning representations , 2017. 2, 3, 4[11] Keller Jordan, Yuchen Jin, Vlado Boza, Jiacheng You, Franz Cesista, Laker Newhouse, and Jeremy Bernstein. Muon: An optimizer for hidden layers in neural networks, 2024. 6, 1 [12] Tero Karras, Miika Aittala, Tuomas Kynk¨ a¨ anniemi, Jaakko Lehtinen, Timo Aila, and Samuli Laine. Guiding a diffusion model with a bad version of itself. Advances in Neural In-formation Processing Systems , 37:52996–53021, 2024. 2, 3, 5[13] Diederik P Kingma. Adam: A method for stochastic opti-mization. arXiv preprint arXiv:1412.6980 , 2014. 6 [14] Diederik P Kingma and Max Welling. Auto-encoding varia-tional bayes. arXiv preprint arXiv:1312.6114 , 2013. 2 [15] Tuomas Kynk¨ a¨ anniemi, Miika Aittala, Tero Karras, Samuli Laine, Timo Aila, and Jaakko Lehtinen. Applying guidance in a limited interval improves sample and distribution quality in diffusion models. Advances in Neural Information Pro-cessing Systems , 37:122458–122483, 2024. 7 [16] Tianhong Li, Yonglong Tian, He Li, Mingyang Deng, and Kaiming He. Autoregressive image generation without vec-tor quantization. arXiv preprint arXiv:2406.11838 , 2024. 7, 8[17] Nanye Ma, Mark Goldstein, Michael S Albergo, Nicholas M Boffi, Eric Vanden-Eijnden, and Saining Xie. Sit: Explor-ing flow and diffusion-based generative models with scalable interpolant transformers. In European Conference on Com-puter Vision , pages 23–40. Springer, 2024. 1, 2, 6, 7, 8 [18] Maxime Oquab, Timoth´ ee Darcet, Th´ eo Moutakanni, Huy Vo, Marc Szafraniec, Vasil Khalidov, Pierre Fernandez, Daniel Haziza, Francisco Massa, Alaaeldin El-Nouby, et al. Dinov2: Learning robust visual features without supervision. 
+
+arXiv preprint arXiv:2304.07193 , 2023. 6, 1 [19] William Peebles and Saining Xie. Scalable diffusion models with transformers. In Proceedings of the IEEE/CVF inter-national conference on computer vision , pages 4195–4205, 2023. 1, 2, 6, 7, 8 [20] Robin Rombach, Andreas Blattmann, Dominik Lorenz, Patrick Esser, and Bj¨ orn Ommer. High-resolution image synthesis with latent diffusion models. In Proceedings of the IEEE/CVF conference on computer vision and pattern recognition , pages 10684–10695, 2022. 1, 2, 5, 6, 7 [21] Tim Salimans, Ian Goodfellow, Wojciech Zaremba, Vicki Cheung, Alec Radford, and Xi Chen. Improved techniques for training gans. Advances in neural information processing systems , 29, 2016. 7 [22] Ivan Skorokhodov, Sharath Girish, Benran Hu, Willi Mena-pace, Yanyu Li, Rameen Abdal, Sergey Tulyakov, and Aliak-sandr Siarohin. Improving the diffusability of autoencoders. 
+
+arXiv preprint arXiv:2502.14831 , 2025. 2, 4 [23] Peize Sun, Yi Jiang, Shoufa Chen, Shilong Zhang, Bingyue Peng, Ping Luo, and Zehuan Yuan. Autoregressive model beats diffusion: Llama for scalable image generation. arXiv preprint arXiv:2406.06525 , 2024. 7, 8 [24] Yutao Sun, Hangbo Bao, Wenhui Wang, Zhiliang Peng, Li Dong, Shaohan Huang, Jianyong Wang, and Furu Wei. Mul-timodal latent language modeling with next-token diffusion. 
+
+arXiv preprint arXiv:2412.08635 , 2024. 3, 6 [25] Keyu Tian, Yi Jiang, Zehuan Yuan, Bingyue Peng, and Li-wei Wang. Visual autoregressive modeling: Scalable image generation via next-scale prediction. 2024. 7, 8 [26] Michael Tschannen, Cian Eastwood, and Fabian Mentzer. Givt: Generative infinite-vocabulary transformers. In Eu-ropean Conference on Computer Vision , pages 292–309. Springer, 2024. 3, 6 [27] Zhou Wang, Alan C Bovik, Hamid R Sheikh, and Eero P Si-moncelli. Image quality assessment: from error visibility to structural similarity. IEEE transactions on image processing ,13(4):600–612, 2004. 7 [28] Ge Wu, Shen Zhang, Ruijing Shi, Shanghua Gao, Zhenyuan Chen, Lei Wang, Zhaowei Chen, Hongcheng Gao, Yao Tang, Jian Yang, et al. Representation entanglement for genera-tion: Training diffusion transformers is much easier than you think. arXiv preprint arXiv:2507.01467 , 2025. 2, 7, 8 [29] Jingfeng Yao, Bin Yang, and Xinggang Wang. Reconstruc-tion vs. generation: Taming optimization dilemma in latent diffusion models. In Proceedings of the Computer Vision and Pattern Recognition Conference , pages 15703–15712, 2025. 1, 2, 6, 7, 8 [30] Sihyun Yu, Sangkyung Kwak, Huiwon Jang, Jongheon Jeong, Jonathan Huang, Jinwoo Shin, and Saining Xie. Representation alignment for generation: Training diffu-sion transformers is easier than you think. arXiv preprint arXiv:2410.06940 , 2024. 2, 7, 8 [31] Jinhua Zhang, Wei Long, Minghao Han, Weiyi You, and Shuhang Gu. Mvar: Visual autoregressive modeling with scale and spatial markovian conditioning. arXiv preprint arXiv:2505.12742 , 2025. 7, 8 [32] Richard Zhang, Phillip Isola, Alexei A Efros, Eli Shecht-man, and Oliver Wang. The unreasonable effectiveness of deep features as a perceptual metric. In Proceedings of the IEEE conference on computer vision and pattern recogni-tion , pages 586–595, 2018. 7 [33] Boyang Zheng, Nanye Ma, Shengbang Tong, and Saining Xie. Diffusion transformers with representation autoen-coders. arXiv preprint arXiv:2510.11690 , 2025. 1, 2, 3, 6, 7, 8[34] Hongkai Zheng, Weili Nie, Arash Vahdat, and Anima Anandkumar. Fast training of diffusion models with masked transformers. In Transactions on Machine Learning Re-search (TMLR) , 2024. 7, 8 Taming Sampling Perturbations with Variance Expansion Loss for Latent Diffusion Models 
+
+# Supplementary Material 
+
+## A. Analyze: Why Gaussian Priors Are Unnecessary in Latent Diffusion. 
+
+To further understand why an explicit Gaussian prior is not required in latent diffusion models, we begin by revisiting the standard variational autoencoder (VAE) formulation. A variational autoencoder models data likelihood through a latent variable z:
+
+pθ (x) = 
+
+Z
+
+pθ (x | z) p(z) d z, (16) where p(z) is the latent prior, typically chosen as N (0 , I ) for tractability. Since the true posterior pθ (z | x) is intractable, the encoder learns an approximation qϕ(z | x), leading to the evidence lower bound (ELBO): 
+
+log pθ (x) ≥ Eqϕ(z|x)[log pθ (x | z)] − KL( qϕ(z | x) ∥ p(z)) . (17) The Gaussian prior p(z) = N (0 , I ) serves two purposes: (1) it regularizes the latent space, preventing the encoder from overfitting to individual samples, and (2) it allows analytical evaluation of the KL term, enabling stable optimization. Hence, the Gaussian assumption in VAEs is not merely a modeling choice but a mathematical necessity for tractable variational inference. In latent diffusion models, the situation is fundamentally different. The latent variable z0 (obtained from a tokenizer or encoder) is further diffused through a forward noising process: 
+
+q(zt | zt−1) = N (√αtzt−1, (1 − αt)I), (18) and the model learns the reverse transitions pθ (zt−1 | zt). This process defines an implicit prior over z0:
+
+pθ (z0) = 
+
+Z
+
+p(zT )
+
+> T
+
+Y
+
+> t=1
+
+pθ (zt−1 | zt) d z1: T , (19) where p(zT ) = N (0 , I ) is only the noise prior at the terminal step. The marginal distribution pθ (z0) over the encoder’s latent space is therefore learned by the diffusion model itself rather than fixed a priori. Consequently, constraining qϕ(z0 | x) to follow a Gaussian distribution is both unnecessary and potentially harmful, as it restricts the expressiveness and robustness of the latent space learned through diffusion. In summary, the key distinction between VAEs and latent diffusion models lies in where and how the latent prior is defined. While VAEs rely on an explicit, analytically specified Gaussian prior to regularize the latent distribution, latent diffusion models instead learn an implicit prior through the denoising trajectory and its associated score (or velocity) field. As a consequence, enforcing a predefined Gaussian constraint on the encoder’s output is not only unnecessary, but can also distort the intrinsic geometry of the latent manifold, reduce its expressiveness, and ultimately hinder the diffusion model’s ability to learn a faithful, data-driven prior in the latent space. 
+
+## B. More Training Details 
+
+For diffusion models trained in latent spaces aligned with DINOv2 [18] representations [29, 33], it is well known that, despite their strong performance, they tend to suffer from training instabilities under long optimization schedules. In practice, this often manifests as sudden loss spikes in the later stages of training, after which the optimization rarely recovers—a phenomenon that has been widely reported in the community. To mitigate this issue, RAE [33] employs a learning rate schedule that linearly decays from 2.0 × 10 −4 to 2.0 × 10 −5 with a constant warmup of 40 epochs. In our experiments, we observed that using the Muon optimizer [11] substantially alleviates this issue. Therefore, for all long-horizon training runs in this work, we adopt Muon as our default optimizer. C. Details of the 2D toy example 
+
+We largely follow the dataset construction protocol of Karras et al. [12], with one important modification: since our experi-ments do not make use of any class-dependent effects, we restrict the data distribution to a single class. More specifically, we represent the fractal-like structure of the data by a Gaussian mixture Mc =  {ϕi}, {μi}, {Σi},where ϕi, μi, and Σi ∈ R2×2 denote the mixture weight, the mean, and the covariance matrix of component i, respectively. This parameterization admits closed-form expressions for both the density and its score, which enables exact computation and visualization without any further approximations. For a fixed class c, the data density can be written as 
+
+pdata (x | c) = X
+
+> i∈M c
+
+ϕi N (x; μi, Σi), (20) where the two-dimensional Gaussian density is given by 
+
+N (x; μ, Σ) = 12πpdet( Σ) exp 
+
+
+
+− 12 (x − μ)⊤Σ−1(x − μ)
+
+
+
+. (21) Adding isotropic Gaussian noise of standard deviation σ to pdata (x | c) corresponds to convolving it with a Gaussian kernel, which yields a family of smoothed densities p(x | c; σ) parameterized by the noise level: 
+
+p(x | c; σ) = X
+
+> i∈M c
+
+ϕi N (x; μi, Σ∗ 
+
+> i,σ
+
+), with Σ∗ 
+
+> i,σ
+
+= Σi + σ2I. (22) The corresponding score function admits the closed-form expression 
+
+∇x log p(x | c; σ) = 
+
+P 
+
+> i∈M c
+
+ϕi N (x; μi, Σ∗ 
+
+> i,σ
+
+) ( Σ∗ 
+
+> i,σ
+
+)−1(μi − x)
+
+P 
+
+> i∈M c
+
+ϕi N (x; μi, Σ∗ 
+
+> i,σ
+
+) . (23) To obtain a thin, tree-shaped structure, we design Mc by starting from a single main “branch” and recursively splitting it into smaller sub-branches. Each branch segment is represented by 8 anisotropic Gaussian components. The subdivision is repeated 6 times; after each split, we downscale the corresponding mixture weights ϕi and introduce small random perturba-tions to the lengths and orientations of the two child branches. This procedure produces 127 × 8 = 1016 components for the class considered in our experiments. Following the normalization guidelines of Karras et al. [12], we choose the coordinate system so that the mean of pdata (marginalized over c) is zero and the standard deviation along each axis is σdata = 0 .5.
+
+Models and training details. We implement both the tokenizer and the denoiser (vector-field) networks as 8-layer ReLU MLPs (hidden dim 512). To make the latent space directly visualizable, we fix its dimensionality to two. Concretely, the tokenizer encoder maps a two-dimensional input point x ∈ R2 to a two-dimensional latent code z ∈ R2, and the decoder maps it back to the data space: 
+
+z = fenc (x; θenc ) ∈ R2, (24) 
+
+ˆx = fdec (z; θdec ) ∈ R2. (25) The tokenizer is trained using a standard reconstruction objective with KL regularization or VE loss: 
+
+Lrec = Ex∼pdata 
+
+ ∥x − fdec (fenc (x)) ∥. (26) In Figure 1, the baseline uses a KL coefficient of 10 −3, while VE loss uses a coefficient of 10 −2.For the diffusion model, we adopt the flow-matching formulation, which provides a particularly simple and effective way to learn continuous-time generative dynamics. We define a bridging trajectory between a simple base distribution p0 and the data distribution pdata as 
+
+Zt = (1 − t) Z0 + t X, t ∈ [0 , 1] , (27) where Z0 ∼ p0 (we use a standard Gaussian N (0, I)) and X ∼ pdata . The corresponding ground-truth velocity is simply 
+
+˙Zt = dZt
+
+dt = X − Z0. (28) Flow-matching models directly learn the time-dependent vector field vθ that approximates this velocity along the trajectory, using the loss 
+
+Lflow = Et∼U (0 ,1) , Zt
+
+∥vθ (Zt, t ) − ˙Zt∥22
+
+, (29) where vθ denotes the predicted instantaneous velocity and ˙Zt is the ground-truth time derivative of the path defined above. Both the tokenizer and the flow-matching model are trained with Adam for 200k iterations using batch size 4096, learning rate 10 −3 with a schedule following AutoGuidance. At sampling time, we uses an Euler solver with 20 steps: 
+
+dZt
+
+dt = vθ (Zt, t ), (30) starting from Z0 ∼ p0 and evolving from t = 0 to t = 1 using a standard explicit Euler sampler with N = 20 uniform time steps. Denoting tk = k/N and ∆t = 1 /N , the sampler update reads 
+
+Ztk+1 = Ztk + ∆ t v θ (Ztk , t k), k = 0 , . . . , N − 1, (31) and the final sample in data space is obtained by decoding the terminal latent state, 
+
+ˆx = fdec (Zt1 ). (32) This setup keeps the model and training procedure minimal while allowing us to directly inspect both the learned latent representation and the generative trajectories in two dimensions. 
+
+## D. Visual Comparison 
+
+We provide additional visual examples of our method on ImageNet 256 × 256 . Consistent with Figure 3 and Table 4, all samples are generated with a classifier-free guidance (CFG) scale of 1.45 and a CFG interval of [0 .13 , 1] . Representative visual results are shown in Figures 4 and 5.   
+
+> Figure 4. Visualization Results. Examples of class-conditional generation on ImageNet 256 ×256
+
+Figure 5. Visualization Results. Examples of class-conditional generation on ImageNet 256 ×256

@@ -1,0 +1,516 @@
+Title: CTCal: Rethinking Text-to-Image Diffusion Models via Cross-Timestep Self-Calibration
+
+URL Source: https://arxiv.org/pdf/2603.20741v1
+
+Published Time: Tue, 24 Mar 2026 00:46:38 GMT
+
+Number of Pages: 10
+
+Markdown Content:
+# CTC AL : Rethinking Text-to-Image Diffusion Models via Cross-Timestep Self-Calibration 
+
+## Xiefan Guo 1,2,3 Xinzhu Ma 1,2,3 Haiyu Zhang 2,3 Di Huang 1,2 *
+
+> 1
+
+State Key Laboratory of Complex and Critical Software Environment, Beihang University, Beijing 100191, China 
+
+> 2
+
+School of Computer Science and Engineering, Beihang University, Beijing 100191, China 
+
+> 3
+
+Shanghai Artificial Intelligence Laboratory, Shanghai 200232, China 
+
+{xfguo,xinzhuma,zhyzhy,dhuang }@buaa.edu.cn 
+
+## Abstract 
+
+Recent advancements in text-to-image synthesis have been largely propelled by diffusion-based models, yet achiev-ing precise alignment between text prompts and gener-ated images remains a persistent challenge. We find that this difficulty arises primarily from the limitations of con-ventional diffusion loss, which provides only implicit su-pervision for modeling fine-grained text-image correspon-dence. In this paper, we introduce Cross-Timestep Self-Calibration ( CTC AL ), founded on the supporting observa-tion that establishing accurate text-image alignment within diffusion models becomes progressively more difficult as the timestep increases. CTC AL leverages the reliable text-image alignment (i.e., cross-attention maps) formed at smaller timesteps with less noise to calibrate the rep-resentation learning at larger timesteps with more noise, thereby providing explicit supervision during training. We further propose a timestep-aware adaptive weighting to achieve a harmonious integration of CTC AL and diffusion loss. CTC AL is model-agnostic and can be seamlessly in-tegrated into existing text-to-image diffusion models, en-compassing both diffusion-based (e.g., SD 2.1) and flow-based approaches (e.g., SD 3). Extensive experiments on T2I-Compbench++ and GenEval benchmarks demonstrate the effectiveness and generalizability of the proposed CT-CAL . Our code is available at https://github.com/ xiefan-guo/ctcal .
+
+## 1. Introduction 
+
+Text-to-image synthesis aims to generate visually realistic images that accurately reflect input text prompts. Early ad-vances in this field were predominantly driven by Gener-ative Adversarial Networks (GANs) [34, 37, 40, 41, 43] 
+
+> *Corresponding author.
+
+and Autoregressive Models (ARs) [4, 8, 30, 39]. Re-cently, Diffusion Models (DMs) [7, 16] have emerged as the dominant paradigm, demonstrating superior capabilities in generating high-fidelity and semantically coherent images [9, 14, 19, 26, 31–33, 35, 42]. To further enhance the image quality and faithfulness to text prompts, researchers have introduced numerous ar-chitectural innovations, including flow-based mechanisms [1, 22, 24, 25], Diffusion Transformer (DiT) [6, 21, 27], Multi-Modal Diffusion Transformer (MM-DiT) [9, 19], etc. 
+
+Despite these strides, achieving precise and reliable align-ment between text prompts and generated images remains an open challenge, especially for complex text prompts, primarily due to limitations in modeling fine-grained text-image correspondence [5, 15] (see Fig. 1 (a)). Both the cross-attention layer and MM-DiT play the pivotal role in modeling the relationship between text prompts and images, contributing to text-conditioned guid-ance. These components are typically optimized within ex-isting text-to-image diffusion models utilizing the conven-tional diffusion loss. However, this implicit approach for learning the text-image correspondence proves to be inad-equate for capturing complex correspondences, particularly for larger timesteps with more noise, ultimately impairing the fidelity of the synthesized images. Existing inference-time optimization methods [5, 13, 18, 20, 28, 36] typically explore the evolution of text-image cor-respondence ( i.e. , cross-attention maps) during inference, and suffer from limited generalizability and scalability. In this work, we rethink that from the perspective of the train-ing phase: the challenge of learning the text-image corre-spondence within text-to-image diffusion models escalates with the progression of timesteps, transitioning from sim-ple to complex scenarios. Empirically, as shown in Fig. 1 (b), cross-attention maps extracted at smaller timesteps with less noise aligns more accurately with the provided image and corresponds more closely to the semantic distribution in 1                
+
+> arXiv:2603.20741v1 [cs.CV] 21 Mar 2026 (a) Inference stage
+> (more noise) (less noise)
+> Timestep 981 Timestep 701 Timestep 401 Timestep 1
+> Token: “cat”
+> Token: “cat”
+> Token: “horse”
+> Generated image
+> “A cat and
+> a horse”
+> “A cat”
+> (b) Training stage
+> Timestep 981 Timestep 701 Timestep 401 Timestep 1
+> Token: “cat”
+> Token: “cat”
+> Token: “horse”
+> Training image
+> “A cat and
+> a horse”
+> “A cat”
+> (more noise) (less noise)
+
+Figure 1. Investigation on the cross-attention maps. (a) Inference stage. In line with existing inference-time optimization methods [5, 15], we delve into the analysis of cross-attention maps produced during the inference stage of the text-to-image diffusion model. Notably, satisfactory text-image correspondences are established for simple text prompts. Nevertheless, with more intricate text prompts, the prevalent method encounters challenges in precisely mapping the target semantics to the correct spatial position, leading to semantically inconsistent images. (b) Training stage. Given the text-image-noise triplet, we gather cross-attention maps at varied timesteps in training mode. A noteworthy finding emerges: cross-attention maps obtained at smaller timesteps exhibit substantially better alignment with the ground-truth image structure and semantics, while this alignment substantially deteriorates at larger timesteps. This suggests that the conventional diffusion loss, which is ubiquitously employed in current training protocols, is effective primarily at smaller timesteps. Moreover, this inability to establish precise alignments at larger timesteps, i.e. , initial stage of inference process, constitutes a critical bottleneck, fundamentally constraining the overall fidelity and semantic accuracy of text-to-image generation. 
+
+the spatial dimension. This implies the denoising network handles text-image correspondence more effectively under conventional diffusion loss at smaller timesteps. However, this task becomes increasingly difficult at larger timesteps. Drawing from these findings, we introduce Cross-Timestep Self-Calibration (CTC AL ), a fine-tuning method that capitalizes on the robust text-image alignment ( i.e. ,cross-attention maps) established at smaller timesteps to calibrate the learning at larger timesteps, achieving explicit self-supervision. Moreover, we propose a part-of-speech-based cross-attention map selection strategy, prioritizing the attention maps corresponding to the noun tokens that con-tribute most directly to spatial comprehension and eliminat-ing noise interference. We introduce pixel-semantic space joint optimization to augment guidance performance and propose subject response alignment regularization to coun-teract the potential performance degradation due to unequal subject (noun) response. We achieve a harmonious integra-tion of CTC AL and diffusion loss using a timestep-aware adaptive weighting. CTC AL is model-agnostic and can be seamlessly inte-grated into existing text-to-image diffusion models, includ-ing both diffusion-based ( e.g. , SD 2.1) and flow-based ap-proaches ( e.g. , SD 3). Comprehensive evaluations on T2I-Compbench++ [17] and GenEval [11] benchmarks demon-strate the effectiveness and generalizability. 
+
+## 2. Preliminaries 
+
+This section presents a brief review of text-to-image dif-fusion models, cross-attention layer, and multi-modal dif-fusion transformer, the latter two being instrumental in modeling text-image correspondence and actualizing text-conditioned guidance. 
+
+Text-to-image diffusion models. Given an image Ireal , a text prompt y, a Gaussian noise ϵ, and a timestep t, the text-to-image diffusion model ϵθ (·) is optimized with the following diffusion loss: 
+
+Ldiffusion = D (ϵ, ϵ θ (Add Noise (Ireal , ϵ, t ) , y, t )) , (1) where Add Noise (·) denotes the add noise function and 
+
+D(·) is a distance metric, typically implemented as a weighted mean squared error. Although existing text-to-image diffusion models such as SD 2.1 [32], SD 3 [9], and FLUX.1 [19] differ in their specific noise addition and loss formulations, they uniformly adhere to this paradigm. 
+
+Cross-attention layer. The cross-attention layer is em-ployed to establish the text-image correspondence in classic text-to-image diffusion models [29, 32]. Formally, the fea-ture fimage (z) extracted from the noisy image z is projected to the query Q = Q (fimage (z)) , while the text embed-ding ftext (y) encoded with the provided text prompt y =
+
+{y1, y2, · · · , yn} is projected as the key K = K (ftext (y)) 
+
+and the value V = V (ftext (y)) , with Q (·), K (·), and V (·)
+
+denoting the linear projections. The cross-attention map A
+
+is computed as: A = softmax 
+
+ QK T
+
+> √d
+
+
+
+, where d is chan-nel dimension. For ease of representation, we omit the de-noising timestep t. We denote the cross-attention map that corresponds to the i-th text token as Ayi .
+
+Multi-modal diffusion transformer (MM-DiT). Ad-vanced text-to-image diffusion models [9, 19] introduce 2𝑡 !"# Diffusion 𝜖 !
+
+Diffusion 𝜖 !
+
+> Diffusion loss
+> Add noise
+> Add noise
+
+𝑡 "$%      
+
+> Cross -Timestep Self -Calibration
+> car clock
+> car
+> Truncation
+> Noisy image Predicted noise Cross -attention maps
+> clock
+> Noisy image Predicted noise Cross -attention maps “A red car and a yellow clock ”
+
+𝑡 "#$ < 𝑡 %"& Figure 2. Illustration of CTC AL . CTC AL is dedicated to leverage the reliable text-image alignment established at smaller timesteps (ttea ) to calibrate the learning process at larger timesteps ( tstu ). This approach provides explicit supervision for the modeling of text-image correspondence, thereby enhancing the overall performance of text-to-image generation. Notably, the two diffusion models share identical parameters, which is solely for the convenience of presentation. 
+
+the MM-DiT, which diverges from conventional diffu-sion models by concatenating text and image token em-beddings into a unified input sequence. This sequence is then processed by transformer modules that utilize a joint self-attention layer. Formally, MM-DiT is formu-lated as: Q = Concat (Qimage (fimage (z)) , Qtext (ftext (y))) ,
+
+K = Concat (Kimage (fimage (z)) , Ktext (ftext (y))) , and 
+
+V = Concat (Vimage (fimage (z)) , Vtext (ftext (y))) , where 
+
+Qimage (·), Kimage (·), and Vimage (·) denote the linear pro-jections for image embeddings, and Qtext (·), Ktext (·), and 
+
+Vtext (·) denote the linear projections for text embeddings. Concat (·) is sequence-wise concatenation. The joint self-attention map A is computed via: A =
+
+ AII AIT 
+
+ATI ATT 
+
+
+
+=
+
+softmax 
+
+ QK T
+
+> √d
+
+
+
+, where d is channel dimension. For sim-plicity, we omit the denoising timestep t. In this work, we focus on AIT , where we denote the cross-attention map that corresponds to the i-th text token as AIT  
+
+> yi
+
+.
+
+## 3. Approach 
+
+The core innovation of our approach is Cross-Timestep Self-Calibration (CTC AL ), which leverages reliable text-image alignments learned at small timesteps to calibrate the learning at larger timesteps. This section is organized as follows. Sec. 3.1 provides an overview of the training paradigm. Sec. 3.2 details a comprehensive description of the CTC AL method. Sec. 3.3 outlines our training strategy. 
+
+3.1. Overview 
+
+Fig. 2 illustrates our proposed training paradigm, which de-viates from the conventional training approach. Given a real image Ireal , a text prompt y, and a Gaussian noise ϵ,we sample two distinct timesteps, referred to as tstu and ttea ,with ttea < t stu . Besides predicting the corresponding noises 
+
+ϵstu and ϵtea , we also extract and store the cross-attention maps Astu and Atea , computed during the forward process of the denoising network. Notably, both Astu and Atea are extracted from the same diffusion model, which is currently being fine-tuned. Unlike constructing a separate and fixed pre-trained model for extracting Atea , our design allows 
+
+Atea to benefit from the learning on newly introduced high-quality data. The aggregated map Astu / tea ∈ RH×W ×n
+
+consists of n spatial attention maps, each associated with a token of the text prompt. More details on the workflow for processing cross-attention maps are provided in the sup-plementary material. Notably, we restrict the optimization to the denoising network associated with timestep tstu , and truncate the gra-dient of Atea . Furthermore, we leverage the cross-attention maps Atea derived from smaller timestep ttea as a guide for learning the cross-attention maps Astu from larger timestep 
+
+tstu . This approach explicitly transfers knowledge about text-image correspondence, which is more accurately cap-tured at smaller timesteps, to enhance the learning at larger timesteps. The optimization objective is redefined as: 
+
+L = Ldiffusion + LCTC AL 
+
+= D (ϵ, ϵ θ (Add Noise (Ireal , ϵ, t stu ) , y, t stu )) + D (Astu , Atea ).
+
+(2) 
+
+3.2. CTC AL 
+
+This section provide a detailed explanation of Cross-Timestep Self-Calibration (CTC AL ), which consists of the following three carefully designed components. 
+
+Part-of-speech-based cross-attention map selection strategy. Given an aggregated cross-attention map 
+
+Astu / tea ∈ RH×W ×n, consisting of n spatial attention 3articles conjunctions  nouns         
+
+> “A wizard stirs a
+> bubbling
+> cauldron and a
+> cat sits on the
+> table.”
+> Timestep 1Timestep 981 Timestep 501 Timestep 101 Timestep 801
+> Token: “and”
+> Token: “cat”
+> Token: “the”
+> (more noise) (less noise)
+
+Figure 3. Investigation on cross-attention maps categorized by part-of-speech. Cross-ttention maps for noun tokens ( e.g. , “cat”) typically encode clear spatial semantic information, while those for articles ( e.g. , “the”) and conjunctions ( e.g. , “and”) seemingly lack a significant conveyance. 
+
+maps. However, as shown in Fig. 3, not all tokens yield attention maps that encapsulate meaningful spatial seman-tic information. For example, tokens representing articles (e.g. , “the”) and conjunctions ( e.g. , “and”) may not convey meaningful spatial semantics. Overemphasis on them could potentially degrade the performance. To rectify this, we propose a part-of-speech-based cross-attention map selection strategy that only extracts and uti-lizes the attention maps associated with tokens likely to con-vey significant spatial semantics, specifically, nouns (denot-ing objects or entities). We reformulate LCTC AL as follows: 
+
+LCTC AL = 1
+
+Nnoun 
+
+X
+
+> yi∈Y noun
+
+D (Astu ,yi , Atea ,yi ) , (3) where Ynoun denotes the set of noun tokens, and Nnoun is the number of noun tokens. By restricting the selection of attention maps to this subset, CTC AL prioritizes tokens that contribute most directly to spatial understanding. 
+
+Pixel-semantic space joint optimization. To achieve alignment between Astu and Atea , we propose a joint op-timization paradigm that simultaneously considers both pixel-level and semantic-level representations. Empirical evidence substantiates the superior performance of this methodology as against an exclusive emphasis on either of the two constituents. We redefine the LCTC AL as follows: 
+
+LCTC AL = 1
+
+Nnoun 
+
+X
+
+> yi∈Y noun
+
+λ1D (Astu ,yi , Atea ,yi )+ λ2D (fattn (Astu ,yi ) , f attn (Atea ,yi )) ,
+
+(4) where fattn (·) denotes the feature encoder that projects at-tention maps to their respective semantic representations. A notable concern is the potential overfitting of fattn (·) dur-ing training, which may instigate mode collapse, causing 
+
+fattn (·) to project all attention maps to identical encodings. To mitigate this risk, we devise a lightweight autoen-coder, composed of an encoder f enc attn (·) and a decoder 
+
+f dec attn (·). We apply a reconstruction proxy task as a preven-tive measure against overfitting: 
+
+LCTC AL = 1
+
+Nnoun 
+
+X
+
+> yi∈Y noun
+
+λ1D (Astu ,yi , Atea ,yi )+ λ2D (f enc attn (Astu ,yi ) , f enc attn (Atea ,yi )) + λ3D  f dec attn (f enc attn (Atea ,yi )) , Atea ,yi
+
+.
+
+(5) The detailed architecture of the proposed autoencoder is presented in the supplementary material. 
+
+Subject response alignment regularization. CTC AL 
+
+focuses on spatial alignment but may suffer from the imbal-anced cross-attention responses among subjects, i.e. , sub-jects with higher responses may overshadow those with lower responses, resulting in the latter being ineffectively rendered in the generated image. Therefore, we introduce subject response alignment regularization, which aligns the cross-attention responses of all subjects to that of the sub-ject with the highest response: 
+
+Rsubject = 1
+
+Nnoun 
+
+X
+
+> yi∈Y noun
+
+ReLU (Sattn − max ( Astu ,yi ) − τ ) ,
+
+(6) where Sattn = max yi∈Y noun max ( Astu ,yi ). Following [5], we use max ( Astu ,yi ) to characterize the attention response level of subject token yi. τ denotes the threshold, and ReLU (·) ensures that only pairs with differences exceeding 
+
+τ contribute to the loss. This design ensures the comparabil-ity of responses across different subjects, while effectively preventing the attention responses from increasing uncon-strainedly during training. 
+
+CTC AL . In summary, LCTC AL is ultimately represented as: 
+
+LCTC AL = 1
+
+Nnoun 
+
+X
+
+> yi∈Y noun
+
+λ1 D (Astu ,yi , Atea ,yi )
+
+| {z }
+
+> Pixel-level loss
+
++ λ2 D (f enc attn (Astu ,yi ) , f enc attn (Atea ,yi )) 
+
+| {z }
+
+> Semantic-level loss
+
++ λ3 D  f dec attn (Atea ,yi ) , Atea ,yi
+
+| {z }
+
+> Reconstruction proxy task
+
++λ4 Rsubject 
+
+| {z } 
+
+> Regularization
+
+,
+
+(7) where λ1, λ2, λ3, and λ4 are the tradeoff parameters. Fur-ther details on the tradeoff parameters settings are provided in the supplementary material. 
+
+3.3. Training strategy 
+
+Training timestep sampling strategy. For tstu , we strictly adhere to the inherent timestep sampling protocol that has been established by the text-to-image diffusion models dur-ing the training stage. For ttea , we empirically set ttea = 0 
+
+for classical text-to-image diffusion models ( e.g. , Stable Diffusion 2.1). This particular selection corresponds to the regime with minimal noise. 4“a blue bear and a 
+
+> brown boat”
+> “a metallic desk
+> lamp and a
+> leather jacket”
+> “a big sunflower
+> and a small daisy”
+> “a fabric bag and
+> a leather chair”
+> “a horse on the
+> left of a car”
+> “a wooden door
+> and a glass jar”
+> “a green backpack
+> and a blue banana”
+
+SD 2.1 
+
+SD 2.1 + GORS 
+
+SD 2.1 + CTC AL “a brown banana 
+
+> and a green bear”
+> “A traffic light with
+> a smile green light
+> above a red sign”
+> “a car behind a
+> suitcase”
+> “a plastic phone
+> case and a
+> wooden toy”
+> “a rubber eraser
+> and leather gloves”
+> “an airplane in
+> front of a clock”
+> “a white cat and a
+> black whisker”
+
+SD 3 
+
+SD 3 + GORS 
+
+SD 3 + CTC AL Figure 4. Qualitative comparison on SD 2.1 and SD 3. CTC AL demonstrates a marked improvement in the fine-grained alignment of generated images with the corresponding text prompts. Each image is generated with the same prompt and random seed for all methods. 
+
+It is critical to highlight that, in contrast to classical methods that rely on uniform timestep sampling, contempo-rary cutting-edge models ( e.g. , SD 3) have integrated non-uniform timestep samplers, such as the logit-normal sam-pler. Consequently, a reevaluation of timestep priority based on the sampling distribution becomes crucial for identifying 
+
+ttea . Naively setting ttea = 0 may thus degrade performance. Further discussion and implementation details specific to SD 3 are provided in the supplementary material. 
+
+Timestep-aware adaptive weighting. To augment the po-tency of LCTC AL , we introduce a timestep-aware adaptive weighting scheme. Specifically, during the initial stages (i.e. , with less noise) of the diffusion process, the diffusion loss predominantly governs the alignment between textual and visual modalities, rendering a lower contribution from 
+
+LCTC AL . In contrast, at larger timesteps ( i.e. , with more noise), the model relies more heavily on LCTC AL .We formalize this intuition using a simple yet effec-tive linear weighting function that scales the influence of 
+
+LCTC AL according to the current diffusion timestep: 
+
+L = Ldiffusion + λtLCTC AL , where λt = tstu 
+
+Ttrain 
+
+, (8) where tstu is the current timestep and Ttrain is the total num-ber of diffusion steps during training. Thus, λt increases 5Methods Color 
+
+B-VQA 
+
+Shape 
+
+B-VQA 
+
+Texture 
+
+B-VQA 
+
+2D-Spatial 
+
+UniDet 
+
+3D-Spatial 
+
+UniDet 
+
+Numeracy 
+
+UniDet 
+
+Non-Spatial 
+
+Share-CoT 
+
+Complex 
+
+3-in-1 SD 1.4 [32] 0.3765 0.3576 0.4156 0.1246 0.3030 0.4456 0.7487 0.3080 SD 2.1 [32] 0.5065 0.4221 0.4922 0.1342 0.3230 0.4582 0.7567 0.3386 SD 2.1 + CD [23] 0.4063 0.3299 0.3645 0.0800 0.2847 0.4272 0.6927 0.2898 SD 2.1 + SD [10] 0.4990 0.4218 0.4900 0.1386 0.3224 0.4557 0.7560 0.3355 SD 2.1 + AE [5] 0.6400 0.4517 0.5963 0.1455 0.3222 0.4773 0.7593 0.3401 SD 2.1 + GORS 1 0.6603 0.4785 0.6287 0.1815 0.3572 0.4830 0.7637 0.3328 SD 2.1 + GORS 2 0.6426 0.4864 0.6319 0.1775 0.3475 0.4856 0.7621 0.3371 SD 2.1 + CTC AL 0.7233 0.5149 0.6754 0.2142 0.3862 0.5084 0.7723 0.3403 
+
+SD XL [29] 0.5879 0.4687 0.5299 0.2133 0.3566 0.4991 0.7673 0.3237 Pixart-α-ft [6] 0.6690 0.4927 0.6477 0.2064 0.3901 0.5032 0.7747 0.3433 DALL-E 3 [3] 0.7785 0.6205 0.7036 0.2865 0.3744 0.5926 0.7853 0.3773 FLUX-schnell [19] 0.7407 0.5718 0.6922 0.2863 0.3866 0.6185 0.7809 0.3703 SD 3 (2B) [9] 0.8132 0.5885 0.7334 0.3200 0.4084 0.6174 0.7782 0.3771 SD 3 (2B) + CORS 2 0.8236 0.5833 0.7398 0.3232 0.4033 0.6280 0.7708 0.3739 SD 3 (2B) + CTC AL 0.8443 0.5968 0.7581 0.3476 0.4117 0.6292 0.7867 0.3814   
+
+> 1The results are sourced from the original paper [17].
+> 2The results are derived from our reimplementation using the text-image dataset we constructed.
+
+Table 1. Objective evaluation on T2I-CompBench++. Top: conventional text-to-image diffusion models, inference-time optimization approaches, supervised fine-tuning methods, and our method. Bottom: advanced text-to-image diffusion models, supervised fine-tuning methods, and our method. CTC AL exhibits the superior performance in attribute binding, object relationships, counting, and complex compositions, highlighting the advanced capability for compositional generation. 
+
+linearly with tstu , assigning greater emphasis to LCTC AL as the process advances. This adaptive scheme enables the model to balance both objectives throughout training, fa-cilitating stable convergence and improved performance. 
+
+## 4. Experiments 
+
+4.1. Experimental settings 
+
+Implementation details. CTC AL is a model-agnostic training paradigm that can be seamlessly incorporated into prevailing text-to-image diffusion frameworks. To validate the efficacy and generalizability of CTC AL , we integrate it with two highly recognized diffusion models: Stable Dif-fusion 2.1 (SD 2.1) [32] and Stable Diffusion 3 (SD 3) [9]. CTC AL is implemented within the Diffusers code-base, employing Low-Rank Adaptation (LoRA) to fine-tune both the self-attention layers of the text encoder and the attention layers of the denoising network. We use Stanza 
+
+for part-of-speech analysis to extract nouns from the given text prompts. D(·) is implemented as the mean squared er-ror loss function for CTC AL . We conduct a comprehen-sive evaluation of CTC AL utilizing two widely recognized benchmarks: T2I-CompBench++ [17] and GenEval [11]. More parameter setting, training and evaluation details are provided in the supplementary material. 
+
+Datasets. Current mainstream text-to-image generation models [2, 3, 6, 9, 12, 19, 21, 29, 35, 38] are predomi-nantly trained on proprietary datasets, resulting in a paucity of open-source, high-quality text-image pair datasets within the research community. To address this limitation, we adopt the dataset construction method proposed by [17], which utilizes a reward-driven sample selection strategy to curate training dataset. Specifically, we utilize the text prompt dataset from [17], which comprises 700 prompts per category. For each prompt, we generate k images using the target text-to-image diffusion model, thereby forming a set of candidate text-image pairs. Each candidate pair is then evaluated using the scoring metric introduced in [17]. We subsequently select the top-n pairs with the highest scores from each candidate set to fine-tune the diffusion model. In our experiments, for each category in [17], we set k = 100 ,
+
+n = 10 , 000 for SD 2.1, and k = 30 , n = 10 , 000 for SD 3. 
+
+4.2. Qualitative comparison 
+
+Fig. 4 present a comparative analysis of our method against supervised fine-tuning approach ( i.e. , GORS) using identi-cal text prompts and random seeds on Stable Diffusion 2.1 (SD 2.1) and Stable Diffusion 3 (SD 3). GORS leverages synthesized text-image data meticulously selected based on reward functions as detailed in Sec. 4.1, and adopts the stan-dard diffusion loss for model fine-tuning. Building on this, our approach incorporates CTC AL .As illustrated in Fig 4, SD 2.1 struggles with composi-tional text-to-image synthesis. While GORS demonstrates 6Methods Overall Single object Two object Counting Colors Position Color attribution                                 
+
+> SD 2.1 [32] 0.50 0.98 0.51 0.44 0.85 0.07 0.17 SD 3 (2B) [9] 0.62 0.98 0.74 0.63 0.67 0.34 0.36 SD 3 (2B) + CTC AL 0.69 0.99 0.85 0.70 0.79 0.38 0.42
+> Table 2. Objective evaluation on GenEval. CTC AL improves performance across all categories.
+> Methods SD 2.1
+> User study
+> SD 3
+> User study SD 2.1 / SD 3 4.17% 24.17% + GORS 19.17% 21.67% + CTC AL 76.67% 54.17%
+> Table 3. User study.
+
+improvements, it still exhibits limitations in accurately ren-dering uncommon concepts. For instance, GORS enhances the depiction of “blue” but fails to render a “blue banana”. In contrast, our method successfully synthesizes such chal-lenging compositions. Fig. 4 shows that SD 3, benefiting from extensive high-quality datasets and advanced architec-tures, already achieve strong performance on text-guided image generation. Nonetheless, CTC AL further enhances performance beyond this baseline. 
+
+4.3. Quantitative comparison 
+
+Objective evaluation. Table 1 presents quantitative results on T2I-CompBench++ [17]. CTC AL demonstrates sub-stantial improvements over existing text-to-image diffusion models in attribute binding, object relationships, counting, and complex compositions, including diffusion-based (SD 2.1) and flow-based method (SD 3). Furthermore, CT-CAL outperforms inference-time optimization and super-vised fine-tuning methods, confirming the effectiveness and generalizability. Notably, noun-token-based CTC AL still enhances per-formance on the dimensions of action and positional rela-tionship. This is primarily attributed to the supervision of accurate subject rendering, which also improves the ability to understand and learn from training images. Furthermore, rendering the subject at the correct position partially inte-grates positional and action information. The manifestation of both positional and action information depends on the subject, which serves as the foundation. To mitigate potential biases introduced by employing evaluation metrics as rewards during dataset construction, we further report cross-benchmark validation results in Ta-ble 2. Unlike the protocol in [17], which fine-tunes LoRA parameters for specific categories, we aggregate text-image pairs of all categories (80,000 pairs) for joint fine-tuning. As shown in Table 2, evaluation on GenEval [11] indicates that CTC AL consistently improves performance across all categories, further substantiating the robustness. 
+
+User study. A subjective user study is conducted with 12 volunteers, 6 of whom have expertise in image processing. Participants are asked to select the most visually appealing and semantically faithful images, with 10 questions per par-ticipant. We record the voting results and present the statis-tics in Table 3. Our method performs favorably against the other methods.                         
+
+> Methods Color
+> B-VQA
+> 2D-Spatial
+> UniDet SD 2.1 0.5065 0.1342 + GORS (baseline) 0.6426 0.1775 + CTC AL (A)0.6286 (-2.18%) 0.1693 (-4.62%) + CTC AL (B)0.6897 (+7.33%) 0.1972 (+11.10%) + CTC AL (C)0.6992 (+8.81%) 0.2021 (+13.86%) + CTC AL (D)0.7148 (+11.24%) 0.2095 (+18.03%) + CTC AL (E)0.7233 (+12.56% )0.2142 (+20.68% )
+> Table 4. Ablation study on Stable Diffusion 2.1.
+
+4.4. Ablation study 
+
+We perform the ablation study on the Color and 2D-Spatial categories of T2I-CompBench++ to systematically evaluate the effectiveness of our design. We define as follows: ( A)denotes the naive constraint of Atea and Astu , ( B) introduces a part-of-speech-based cross-attention map selection strat-egy based on ( A), ( C) introduces pixel-semantic space joint optimization based on ( B), ( D) introduces subject response alignment regularization based on ( C), and ( E) introduces timestep-aware adaptive weighting based on ( D). ( E) is the final version of CTC AL .As shown in Table 4, ( A) even decreases performance due to considering the attention maps that do not con-tain spatial semantic information. With the priority given to noun tokens by the part-of-speech-based cross-attention map selection strategy, ( B) demonstrates its effectiveness, significantly enhancing performance. The Pixel-semantic space joint optimization, Subject response alignment regu-larization, and Timestep-aware adaptive weighting further optimize the performance of CTC AL .
+
+4.5. More results 
+
+More results on ttea . As mentioned in Sec. 3.2, CTC AL 
+
+requires ttea < t stu . For conventional diffusion models ( e.g. ,SD 2.1), we empirically set ttea to a fixed value of 0. This specific choice corresponds to the scenario with the least noise, representing the most favorable timestep for learning text-image correspondences. To further investigate this, we conducted additional experiments. Instead of setting a fixed 
+
+ttea = 0 , we randomly sample ttea for a given tstu such that 
+
+0 ≤ ttea < t stu . The quantitative evaluation presented in Table 5 shows that while the random sampling approach can still enhance the performance, setting ttea = 0 remains the 7Timestep  601 Timestep  901  Timestep  301         
+
+> “a gold clock
+> and a red train”
+> Token: “ clock ”
+> Timestep 𝑡 tea Timestep 981
+> SD 2.1 + GORS
+> SD 2.1 + CTC AL
+> (more noise) (less noise)
+> SD 2.1 + GORS
+> SD 2.1 + CTC AL
+> Timestep 1
+> (a) Inference stage Prompt: “a gold clock and a red train”, Token: “ clock ”(b) Training stage
+
+Figure 5. Visualization of cross-attention maps extracted from the fine-tuned models.                   
+
+> Methods Color
+> B-VQA SD 2.1 0.5065 + CTC AL (0≤ttea < t stu )0.7028 + CTC AL (Ours) 0.7233 Methods 2D-Spatial
+> UniDet SD 2.1 0.1342 + CTC AL (0≤ttea < t stu )0.2029 + CTC AL (Ours) 0.2142
+
+Table 5. Objective evaluation on ttea .Methods Color 
+
+B-VQA 
+
+Texture 
+
+B-VQA SD 2.1 0.5065 0.4922 + GORS 0.6426 0.6319 + CTC AL 0.7233 0.6754 + CTC AL + adj. token 0.7328 0.6877 
+
+Table 6. Objective evaluation on adj. .
+
+superior choice. 
+
+More results on part-of-speech-based cross-attention map selection strategy. As discussed in Sec. 3.2, cross-attention maps corresponding to noun tokens generally en-capsulate clear spatial-semantic information. Therefore, CTC AL prioritizes the attention maps corresponding to noun tokens. Notably, adjectives, especially those modi-fying nouns, also demonstrate accurate spatial correspon-dence. Accordingly, we further discuss tokens with ad-jectival properties. Table 6 presents additional quantita-tive results on the Color and Texture categories of the T2I-CompBench++ benchmark. These experiments focus on adjective-noun pairs to more rigorously assess attribute ren-dering accuracy. The results indicate that incorporating alignment on adjective tokens leads to measurable improve-ments in performance. 
+
+More results on diversity evaluation. To assess the di-versity of images generated by the proposed method, we conduct a diversity evaluation experiment using the widely adopted Mean LPIPS Distance, where a higher value indi-cates greater diversity. As shown in Table 7, CTC AL im-proves text-image alignment performance without compro-mising the diversity of the generated samples. 
+
+More results on image quality evaluation. We present ad-ditional quantitative experiments on aesthetic score, which is a reward function for measuring image quality that is in-dependent of text alignment. As shown in the Table 7, our method does not compromise the quality of generated im-ages while improving text-image consistency; on the con-trary, it exhibits a moderate improvement in quality. This suggests that the advantage of CTC AL in text-image align-ment is shared with image quality. Improved text-image 
+
+Methods Color 
+
+M-LPIPS 
+
+2D-Spatial 
+
+M-LPIPS 
+
+Color 
+
+Aesthetic 
+
+2D-Spatial 
+
+Aesthetic SD 2.1 0.637 0.618 5.128 5.263 + GORS 0.621 0.626 5.194 5.281 + CTC AL 0.634 0.623 5.288 5.344 
+
+Table 7. More results on diversity and quality evaluation. 
+
+alignment can correct semantic confusion and conflicts in the spatial dimension, which enhances the ability to render the correct object in the accurate location, which in turn leads to improved image quality. 
+
+Visualizations of cross-attention maps. Fig. 5 presents vi-sualizations of cross-attention maps generated by the fine-tuned models, depicted separately for (a) inference and (b) training modes. During inference, our method demonstrates accurate and reasonable attention allocation, leading to se-mantically consistent outputs. Furthermore, compared to GORS, the cross-attention maps derived from CTC AL at later timesteps exhibit greater consistency with those at smaller timesteps. This observation shows the efficacy of CTC AL and provides empirical support for our insights. 
+
+## 5. Conclusion 
+
+This study addresses the persistent challenge of precise text-image alignment in text-to-image diffusion models by introducing Cross-Timestep Self-calibration (CTC AL ). Through a rigorous analysis, we demonstrate that alignment difficulties intensify with increasing diffusion timesteps, underscoring the limitations of conventional diffusion loss. CTC AL mitigates this issue by explicitly calibrating the learning at larger timesteps with more noise using the ro-bust text-image alignment established at smaller timesteps with less noise, supplemented by a timestep-aware adaptive weighting mechanism for seamless integration with stan-dard diffusion losses. CTC AL is model-agnostic and read-ily adaptable to a wide array of diffusion-based and flow-based architectures. Extensive evaluation on established benchmarks substantiates the efficacy and generalizability of CTC AL , marking a significant advancement toward more accurate and reliable text-to-image generation. 8Acknowledgment 
+
+This work is partly supported by the National Key Research and Development Plan (2024YFB3309300), National Nat-ural Science Foundation of China (82441024), the Beijing Natural Science Foundation (L251073), the Research Pro-gram of State Key Laboratory of Complex and Critical Soft-ware Environment, and the Fundamental Research Funds for the Central Universities. 
+
+## References 
+
+[1] Michael S Albergo and Eric Vanden-Eijnden. Building nor-malizing flows with stochastic interpolants. In International Conference on Learning Representations (ICLR) , 2023. 1 [2] Yogesh Balaji, Seungjun Nah, Xun Huang, Arash Vahdat, Jiaming Song, Karsten Kreis, Miika Aittala, Timo Aila, Samuli Laine, Bryan Catanzaro, et al. ediffi: Text-to-image diffusion models with an ensemble of expert denoisers. arXiv preprint arXiv:2211.01324 , 2022. 6 [3] James Betker, Gabriel Goh, Li Jing, Tim Brooks, Jian-feng Wang, Linjie Li, Long Ouyang, Juntang Zhuang, Joyce Lee, Yufei Guo, et al. Improving image generation with better captions. Computer Science. https://cdn.openai.com/papers/dall-e-3.pdf , 2(3):8, 2023. 6 [4] Huiwen Chang, Han Zhang, Jarred Barber, Aaron Maschinot, Jose Lezama, Lu Jiang, Ming-Hsuan Yang, Kevin Patrick Murphy, William T Freeman, Michael Ru-binstein, et al. Muse: Text-to-image generation via masked generative transformers. In International Conference on Ma-chine Learning (ICML) , 2023. 1 [5] Hila Chefer, Yuval Alaluf, Yael Vinker, Lior Wolf, and Daniel Cohen-Or. Attend-and-excite: Attention-based se-mantic guidance for text-to-image diffusion models. ACM Transactions on Graphics (TOG) , 42(4):1–10, 2023. 1, 2, 4, 6[6] Junsong Chen, Jincheng Yu, Chongjian Ge, Lewei Yao, Enze Xie, Zhongdao Wang, James T Kwok, Ping Luo, Huchuan Lu, and Zhenguo Li. Pixart-α: Fast training of diffusion transformer for photorealistic text-to-image synthesis. In In-ternational Conference on Learning Representations (ICLR) ,2024. 1, 6 [7] Prafulla Dhariwal and Alexander Nichol. Diffusion models beat gans on image synthesis. In Annual Conference on Neu-ral Information Processing Systems (NeurIPS) , 2021. 1 [8] Ming Ding, Zhuoyi Yang, Wenyi Hong, Wendi Zheng, Chang Zhou, Da Yin, Junyang Lin, Xu Zou, Zhou Shao, Hongxia Yang, et al. Cogview: Mastering text-to-image gen-eration via transformers. In Annual Conference on Neural Information Processing Systems (NeurIPS) , 2021. 1 [9] Patrick Esser, Sumith Kulal, Andreas Blattmann, Rahim Entezari, Jonas M¨ uller, Harry Saini, Yam Levi, Dominik Lorenz, Axel Sauer, Frederic Boesel, et al. Scaling recti-fied flow transformers for high-resolution image synthesis. In International Conference on Machine Learning (ICML) ,2024. 1, 2, 6, 7 [10] Weixi Feng, Xuehai He, Tsu-Jui Fu, Varun Jampani, Ar-jun Reddy Akula, Pradyumna Narayana, Sugato Basu, Xin Eric Wang, and William Yang Wang. Training-free structured diffusion guidance for compositional text-to-image synthesis. In International Conference on Learning Representations (ICLR) , 2023. 6 [11] Dhruba Ghosh, Hannaneh Hajishirzi, and Ludwig Schmidt. Geneval: An object-focused framework for evaluating text-to-image alignment. In Annual Conference on Neural Infor-mation Processing Systems (NeurIPS) , 2023. 2, 6, 7 [12] Jiatao Gu, Shuangfei Zhai, Yizhe Zhang, Josh Susskind, and Navdeep Jaitly. Matryoshka diffusion models. arXiv preprint arXiv:2310.15111 , 2023. 6 [13] Xiefan Guo, Jinlin Liu, Miaomiao Cui, Jiankai Li, Hongyu Yang, and Di Huang. Initno: Boosting text-to-image diffu-sion models via initial noise optimization. In IEEE Confer-ence on Computer Vision and Pattern Recognition (CVPR) ,2024. 1 [14] Xiefan Guo, Miaomiao Cui, Liefeng Bo, and Di Huang. Shortft: Diffusion model alignment via shortcut-based fine-tuning. In IEEE International Conference on Computer Vi-sion (ICCV) , 2025. 1 [15] Amir Hertz, Ron Mokady, Jay Tenenbaum, Kfir Aberman, Yael Pritch, and Daniel Cohen-or. Prompt-to-prompt image editing with cross-attention control. In International Confer-ence on Learning Representations (ICLR) , 2023. 1, 2 [16] Jonathan Ho, Ajay Jain, and Pieter Abbeel. Denoising diffu-sion probabilistic models. In Annual Conference on Neural Information Processing Systems (NeurIPS) , 2020. 1 [17] Kaiyi Huang, Chengqi Duan, Kaiyue Sun, Enze Xie, Zhen-guo Li, and Xihui Liu. T2i-compbench++: An enhanced and comprehensive benchmark for compositional text-to-image generation. IEEE Transactions on Pattern Analysis and Ma-chine Intelligence (TPAMI) , 2025. 2, 6, 7 [18] Yunji Kim, Jiyoung Lee, Jin-Hwa Kim, Jung-Woo Ha, and Jun-Yan Zhu. Dense text-to-image generation with attention modulation. In IEEE International Conference on Computer Vision (ICCV) , 2023. 1 [19] Black Forest Labs. Flux. https://github.com/ black-forest-labs/flux , 2024. 1, 2, 6 [20] Yumeng Li, Margret Keuper, Dan Zhang, and Anna Khoreva. Divide & bind your attention for improved generative seman-tic nursing. In British Machine Vision Conference (BMVC) ,2023. 1 [21] Zhimin Li, Jianwei Zhang, Qin Lin, Jiangfeng Xiong, Yanxin Long, Xinchi Deng, Yingfang Zhang, Xingchao Liu, Minbin Huang, Zedong Xiao, et al. Hunyuan-dit: A powerful multi-resolution diffusion transformer with fine-grained chi-nese understanding. arXiv preprint arXiv:2405.08748 , 2024. 1, 6 [22] Yaron Lipman, Ricky TQ Chen, Heli Ben-Hamu, Maximil-ian Nickel, and Matthew Le. Flow matching for generative modeling. In International Conference on Learning Repre-sentations (ICLR) , 2023. 1 [23] Nan Liu, Shuang Li, Yilun Du, Antonio Torralba, and Joshua B Tenenbaum. Compositional visual generation with composable diffusion models. In European Conference on Computer Vision (ECCV) , 2022. 6 [24] Xingchao Liu, Chengyue Gong, et al. Flow straight and fast: Learning to generate and transfer data with rectified 
+
+9flow. In International Conference on Learning Representa-tions (ICLR) , 2023. 1 [25] Nanye Ma, Mark Goldstein, Michael S Albergo, Nicholas M Boffi, Eric Vanden-Eijnden, and Saining Xie. Sit: Explor-ing flow and diffusion-based generative models with scalable interpolant transformers. In European Conference on Com-puter Vision (ECCV) , 2024. 1 [26] Alexander Quinn Nichol, Prafulla Dhariwal, Aditya Ramesh, Pranav Shyam, Pamela Mishkin, Bob Mcgrew, Ilya Sutskever, and Mark Chen. Glide: Towards photorealis-tic image generation and editing with text-guided diffusion models. In International Conference on Machine Learning (ICML) , 2022. 1 [27] William Peebles and Saining Xie. Scalable diffusion mod-els with transformers. In IEEE International Conference on Computer Vision (ICCV) , 2023. 1 [28] Quynh Phung, Songwei Ge, and Jia-Bin Huang. Grounded text-to-image synthesis with attention refocusing. In IEEE Conference on Computer Vision and Pattern Recognition (CVPR) , 2024. 1 [29] Dustin Podell, Zion English, Kyle Lacey, Andreas Blattmann, Tim Dockhorn, Jonas M¨ uller, Joe Penna, and Robin Rombach. Sdxl: Improving latent diffusion models for high-resolution image synthesis. In International Con-ference on Learning Representations (ICLR) , 2024. 2, 6 [30] Aditya Ramesh, Mikhail Pavlov, Gabriel Goh, Scott Gray, Chelsea Voss, Alec Radford, Mark Chen, and Ilya Sutskever. Zero-shot text-to-image generation. In International Confer-ence on Machine Learning (ICML) , 2021. 1 [31] Aditya Ramesh, Prafulla Dhariwal, Alex Nichol, Casey Chu, and Mark Chen. Hierarchical text-conditional image gen-eration with clip latents. arXiv preprint arXiv:2204.06125 ,2022. 1 [32] Robin Rombach, Andreas Blattmann, Dominik Lorenz, Patrick Esser, and Bj¨ orn Ommer. High-resolution image syn-thesis with latent diffusion models. In IEEE Conference on Computer Vision and Pattern Recognition (CVPR) , 2022. 2, 6, 7 [33] Chitwan Saharia, William Chan, Saurabh Saxena, Lala Li, Jay Whang, Emily L Denton, Kamyar Ghasemipour, Raphael Gontijo Lopes, Burcu Karagol Ayan, Tim Salimans, et al. Photorealistic text-to-image diffusion models with deep language understanding. In Annual Conference on Neural Information Processing Systems (NeurIPS) , 2022. 1 [34] Ming Tao, Hao Tang, Fei Wu, Xiao-Yuan Jing, Bing-Kun Bao, and Changsheng Xu. Df-gan: A simple and effective baseline for text-to-image synthesis. In IEEE Conference on Computer Vision and Pattern Recognition (CVPR) , 2022. 1 [35] Enze Xie, Junsong Chen, Junyu Chen, Han Cai, Haotian Tang, Yujun Lin, Zhekai Zhang, Muyang Li, Ligeng Zhu, Yao Lu, et al. Sana: Efficient high-resolution image syn-thesis with linear diffusion transformers. In International Conference on Learning Representations (ICLR) , 2025. 1, 6 [36] Jinheng Xie, Yuexiang Li, Yawen Huang, Haozhe Liu, Wen-tian Zhang, Yefeng Zheng, and Mike Zheng Shou. Boxdiff: Text-to-image synthesis with training-free box-constrained diffusion. In IEEE International Conference on Computer Vision (ICCV) , 2023. 1 [37] Tao Xu, Pengchuan Zhang, Qiuyuan Huang, Han Zhang, Zhe Gan, Xiaolei Huang, and Xiaodong He. Attngan: Fine-grained text to image generation with attentional generative adversarial networks. In IEEE Conference on Computer Vi-sion and Pattern Recognition (CVPR) , 2018. 1 [38] Zeyue Xue, Guanglu Song, Qiushan Guo, Boxiao Liu, Zhuo-fan Zong, Yu Liu, and Ping Luo. Raphael: Text-to-image generation via large mixture of diffusion paths. In An-nual Conference on Neural Information Processing Systems (NeurIPS) , 2023. 6 [39] Jiahui Yu, Yuanzhong Xu, Jing Yu Koh, Thang Luong, Gun-jan Baid, Zirui Wang, Vijay Vasudevan, Alexander Ku, Yin-fei Yang, Burcu Karagol Ayan, et al. Scaling autoregressive models for content-rich text-to-image generation. Transac-tions on Machine Learning Research (TMLR) , 2022. 1 [40] Han Zhang, Tao Xu, Hongsheng Li, Shaoting Zhang, Xiao-gang Wang, Xiaolei Huang, and Dimitris N Metaxas. Stack-gan: Text to photo-realistic image synthesis with stacked generative adversarial networks. In IEEE International Con-ference on Computer Vision (ICCV) , 2017. 1 [41] Han Zhang, Jing Yu Koh, Jason Baldridge, Honglak Lee, and Yinfei Yang. Cross-modal contrastive learning for text-to-image generation. In IEEE Conference on Computer Vision and Pattern Recognition (CVPR) , 2021. 1 [42] Jinjin Zhang, Qiuyu Huang, Junjie Liu, Xiefan Guo, and Di Huang. Diffusion-4k: Ultra-high-resolution image synthesis with latent diffusion models. In IEEE Conference on Com-puter Vision and Pattern Recognition (CVPR) , 2025. 1 [43] Minfeng Zhu, Pingbo Pan, Wei Chen, and Yi Yang. Dm-gan: Dynamic memory generative adversarial networks for text-to-image synthesis. In IEEE Conference on Computer Vision and Pattern Recognition (CVPR) , 2019. 1 
+
+10
