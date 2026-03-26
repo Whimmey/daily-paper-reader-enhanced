@@ -1,3 +1,4 @@
+import json
 import os
 import time
 from typing import List, Dict, Tuple, Any, Optional
@@ -133,6 +134,8 @@ class LLMClient:
                 return 'ollama'
             if 'cstcloud' in url or 'uni-api.cstcloud.cn' in url:
                 return 'cstcloud'
+            if 'glm' in url or 'bigmodel' in url or 'zhipu' in url:
+                return 'glm'
         except Exception:
             pass
         return 'llm'
@@ -354,6 +357,18 @@ class OllamaClient(LLMClient):
         super().__init__(api_key=api_key, model=model, base_url=base_url)
 
 
+class GLMClient(LLMClient):
+    """GLM (智谱) 提供商，OpenAI Chat Completions 兼容接口。
+
+    默认基址：https://open.bigmodel.cn/api/paas/v4
+    使用示例：model="glm/glm-4-plus" 或 "glm/glm-4-flash"
+    建议环境变量：GLM_API_KEY
+    """
+    # def __init__(self, api_key: str, model: str, base_url: str = "https://open.bigmodel.cn/api/paas/v4"):
+    def __init__(self, api_key: str, model: str, base_url: str = "https://open.bigmodel.cn/api/paas/v4/chat/completions"):
+        super().__init__(api_key=api_key, model=model, base_url=base_url)
+
+
 class BltClient(LLMClient):
     """BLT（柏拉图）网关，OpenAI Chat Completions 兼容接口。"""
     def __init__(self, api_key: str, model: str, base_url: str = None):
@@ -505,7 +520,9 @@ class ClientFactory:
             return BltClient(api_key=api_key or os.getenv('BLT_API_KEY', ''), model=model, base_url=base_url or os.getenv('BLT_API_BASE', 'https://api.bltcy.ai/v1'))
         if provider in ('cstcloud', 'cst', 'cst-cloud', 'keji', 'keji-yun'):
             return CSTCloudClient(api_key=api_key or os.getenv('CSTCLOUD_API_KEY', ''), model=model, base_url=base_url or 'https://uni-api.cstcloud.cn/v1')
-        raise ValueError(f"不支持的提供商: {provider}，请使用 'deepseek'、'siliconflow'、'blt'、'cstcloud' 或 'ollama'")
+        if provider in ('glm', 'zhipu', 'bigmodel'):
+            return GLMClient(api_key=api_key or os.getenv('GLM_API_KEY', ''), model=model, base_url=base_url or 'https://open.bigmodel.cn/api/paas/v4')
+        raise ValueError(f"不支持的提供商: {provider}，请使用 'deepseek'、'siliconflow'、'blt'、'cstcloud'、'glm' 或 'ollama'")
 
     @staticmethod
     def from_config(_config: dict | None = None):
@@ -513,3 +530,353 @@ class ClientFactory:
         兼容旧调用入口，但不再读取 config 文件，统一从环境变量读取。
         """
         return ClientFactory.from_env()
+
+    @staticmethod
+    def from_config_file(config_path: str | None = None):
+        """
+        从配置文件创建客户端。
+
+        支持两种配置格式：
+        1. 新格式（推荐）：只需要 base_url, model, api_key
+        2. 旧格式：provider + model + api_key (+ optional base_url)
+
+        :param config_path: 配置文件路径，默认为根目录的 llm_config.json
+        """
+        config = load_llm_config(config_path)
+        if config is None:
+            # 回退到环境变量
+            return ClientFactory.from_env()
+
+        llm_config = config.get('llm', {})
+
+        # 新格式：直接使用 base_url, model, api_key
+        base_url = llm_config.get('base_url', '')
+        model = llm_config.get('model', '')
+        api_key = llm_config.get('api_key', '')
+
+        # 旧格式：provider + model
+        provider = llm_config.get('provider', '')
+
+        # 环境变量优先级高于配置文件
+        api_key = os.getenv('LLM_API_KEY', '').strip() or api_key
+        base_url = os.getenv('LLM_BASE_URL', '').strip() or base_url
+
+        # 判断使用哪种格式
+        if base_url and model:
+            # 新格式：从 base_url 推断提供商
+            provider_inferred = CustomClient._infer_provider_from_url(base_url)
+
+            if provider_inferred == 'deepseek':
+                return DeepSeekClient(api_key=api_key, model=model, base_url=base_url)
+            if provider_inferred == 'siliconflow':
+                return SiliconflowClient(api_key=api_key, model=model, base_url=base_url)
+            if provider_inferred == 'ollama':
+                return OllamaClient(api_key=api_key, model=model, base_url=base_url)
+            if provider_inferred == 'blt':
+                return BltClient(api_key=api_key, model=model, base_url=base_url)
+            if provider_inferred == 'cstcloud':
+                return CSTCloudClient(api_key=api_key, model=model, base_url=base_url)
+            if provider_inferred == 'glm':
+                return GLMClient(api_key=api_key, model=model, base_url=base_url)
+
+            # 通用回退：使用 LLMClient
+            return LLMClient(api_key=api_key, model=model, base_url=base_url)
+
+        # 旧格式兼容
+        if provider and model:
+            if provider == 'glm':
+                base_url = base_url or 'https://open.bigmodel.cn/api/paas/v4'
+                return GLMClient(api_key=api_key, model=model, base_url=base_url)
+            if provider == 'deepseek':
+                base_url = base_url or 'https://api.deepseek.com'
+                return DeepSeekClient(api_key=api_key, model=model, base_url=base_url)
+            if provider == 'siliconflow':
+                base_url = base_url or 'https://api.siliconflow.cn/v1'
+                return SiliconflowClient(api_key=api_key, model=model, base_url=base_url)
+            if provider == 'ollama':
+                base_url = base_url or 'http://localhost:11111/v1'
+                return OllamaClient(api_key=api_key, model=model, base_url=base_url)
+            if provider == 'blt':
+                return BltClient(api_key=api_key, model=model, base_url=base_url)
+            if provider == 'cstcloud':
+                base_url = base_url or 'https://uni-api.cstcloud.cn/v1'
+                return CSTCloudClient(api_key=api_key, model=model, base_url=base_url)
+
+        raise ValueError("配置文件缺少必要的字段（需要 base_url + model，或 provider + model）")
+
+
+def get_default_config_path() -> str:
+    """获取默认配置文件路径（项目根目录的 llm_config.json）"""
+    root_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    return os.path.join(root_dir, "llm_config.json")
+
+
+def load_llm_config(config_path: str | None = None) -> dict | None:
+    """
+    加载 LLM 配置文件。
+
+    :param config_path: 配置文件路径，默认为根目录的 llm_config.json
+    :return: 配置字典，如果文件不存在则返回 None
+    """
+    if config_path is None:
+        config_path = get_default_config_path()
+
+    if not os.path.exists(config_path):
+        return None
+
+    try:
+        with open(config_path, 'r', encoding='utf-8') as f:
+            return json.load(f)
+    except Exception as e:
+        print(f"[WARN] 读取配置文件失败: {e}")
+        return None
+
+
+class CustomClient:
+    """
+    从 llm_config.json 配置文件创建的 LLM 客户端封装。
+
+    配置格式（简化版，兼容任何 OpenAI Chat Completions 格式的服务）：
+    {
+      "llm": {
+        "base_url": "https://api.example.com/v1/chat/completions",
+        "model": "model-name",
+        "api_key": "your-api-key"
+      },
+      "rerank": {
+        "enabled": false
+      }
+    }
+
+    使用示例：
+        client = CustomClient()
+        resp = client.chat(messages)
+        if client.has_rerank():
+            results = client.rerank(query, documents)
+    """
+
+    def __init__(self, config_path: str | None = None):
+        """
+        初始化自定义客户端。
+
+        :param config_path: 配置文件路径，默认为根目录的 llm_config.json
+        """
+        self._config = load_llm_config(config_path)
+        if self._config is None:
+            raise FileNotFoundError(
+                f"配置文件不存在: {config_path or get_default_config_path()}\n"
+                f"请从 llm_config.json.template 复制并填写你的配置。"
+            )
+
+        # 创建 LLM 客户端
+        llm_config = self._config.get('llm', {})
+        base_url = llm_config.get('base_url', '')
+        model = llm_config.get('model', '')
+        api_key = llm_config.get('api_key', '')
+
+        # 环境变量优先
+        api_key = os.getenv('LLM_API_KEY', '').strip() or api_key
+        base_url = os.getenv('LLM_BASE_URL', '').strip() or base_url
+
+        if not base_url or not model:
+            raise ValueError("配置文件缺少必要的 base_url 或 model 字段")
+
+        self._llm_base_url = base_url
+        self._llm_model = model
+
+        # 从 base_url 推断提供商类型（用于日志显示和特殊处理）
+        self._llm_provider = self._infer_provider_from_url(base_url)
+
+        # 根据提供商创建对应的客户端（如果有特定需求）
+        # 否则使用通用 LLMClient
+        if self._llm_provider == 'deepseek':
+            self._client = DeepSeekClient(api_key=api_key, model=model, base_url=base_url)
+        elif self._llm_provider == 'siliconflow':
+            self._client = SiliconflowClient(api_key=api_key, model=model, base_url=base_url)
+        elif self._llm_provider == 'ollama':
+            self._client = OllamaClient(api_key=api_key, model=model, base_url=base_url)
+        elif self._llm_provider == 'blt':
+            self._client = BltClient(api_key=api_key, model=model, base_url=base_url)
+        elif self._llm_provider == 'cstcloud':
+            self._client = CSTCloudClient(api_key=api_key, model=model, base_url=base_url)
+        elif self._llm_provider == 'glm':
+            self._client = GLMClient(api_key=api_key, model=model, base_url=base_url)
+        else:
+            # 通用回退：使用 LLMClient
+            self._client = LLMClient(api_key=api_key, model=model, base_url=base_url)
+
+        # Rerank 配置
+        self._rerank_mode: str = 'disabled'
+        rerank_config = self._config.get('rerank', {})
+
+        if rerank_config.get('enabled', False):
+            # 使用 Chat 接口实现 Rerank（复用主客户端）
+            self._rerank_mode = 'chat'
+
+    @staticmethod
+    def _infer_provider_from_url(base_url: str) -> str:
+        """从 base_url 推断提供商类型"""
+        url = str(base_url).lower()
+        if 'deepseek' in url:
+            return 'deepseek'
+        if 'siliconflow' in url or 'siliconflow.cn' in url:
+            return 'siliconflow'
+        if 'gptbest' in url or 'bltcy' in url or 'blt' in url:
+            return 'blt'
+        if 'ollama' in url or 'localhost' in url or '127.0.0.1' in url:
+            return 'ollama'
+        if 'cstcloud' in url or 'uni-api.cstcloud.cn' in url:
+            return 'cstcloud'
+        if 'glm' in url or 'bigmodel' in url or 'zhipu' in url:
+            return 'glm'
+        return 'generic'
+
+    def chat(self, messages: List[Dict[str, str]], response_format: Optional[Dict[str, Any]] = None) -> dict:
+        """
+        Chat Completions 请求。
+
+        :param messages: OpenAI 格式的消息列表
+        :param response_format: 可选，结构化输出配置
+        """
+        return self._client.chat(messages, response_format=response_format)
+
+    def rerank(
+        self,
+        query: str,
+        documents: List[str],
+        top_n: Optional[int] = None,
+        model: Optional[str] = None,
+    ) -> dict:
+        """
+        重排序请求。
+
+        :param query: 查询文本
+        :param documents: 待排序文档列表
+        :param top_n: 返回的 Top N
+        :param model: 重排模型名（仅 blt 模式有效）
+        """
+        if self._rerank_mode == 'disabled':
+            raise NotImplementedError("Rerank 未启用。请在 llm_config.json 中设置 rerank.enabled=true")
+
+        if self._rerank_mode == 'blt' and self._rerank_client:
+            # 使用 BLT 专用 Rerank API
+            return self._rerank_client.rerank(query, documents, top_n=top_n, model=model)
+
+        # 使用 Chat 接口实现 Rerank
+        if self._rerank_mode == 'chat':
+            return self._rerank_by_chat(query, documents, top_n)
+
+        raise NotImplementedError(f"Rerank 模式 '{self._rerank_mode}' 未正确配置")
+
+    def _rerank_by_chat(
+        self,
+        query: str,
+        documents: List[str],
+        top_n: Optional[int] = None,
+    ) -> dict:
+        """
+        使用 Chat 接口实现重排序（让模型对每个文档打分）。
+
+        返回格式与 BLT Rerank API 兼容：
+        {
+            "results": [
+                {"index": 0, "relevance_score": 0.95, "document": "..."},
+                {"index": 2, "relevance_score": 0.87, "document": "..."},
+                ...
+            ]
+        }
+        """
+        if not documents:
+            return {"results": []}
+
+        # 构建评分提示
+        doc_list = "\n\n".join([f"[{i}] {doc[:500]}" for i, doc in enumerate(documents)])
+        prompt = f"""请根据查询对以下文档进行相关性评分。
+
+查询：{query}
+
+文档列表：
+{doc_list}
+
+请以 JSON 格式返回评分结果，格式如下：
+{{
+  "results": [
+    {{"index": 0, "relevance_score": 0.95}},
+    {{"index": 1, "relevance_score": 0.75}}
+  ]
+}}
+
+要求：
+1. relevance_score 为 0-1 之间的分数
+2. 只返回 JSON，不要其他说明"""
+
+        try:
+            response = self._client.chat(
+                messages=[{"role": "user", "content": prompt}],
+                response_format={"type": "json_object"}
+            )
+
+            content = response.get("content", "")
+
+            # 尝试解析 JSON
+            try:
+                result = json.loads(content)
+                results = result.get("results", [])
+
+                # 补充 document 字段
+                for item in results:
+                    idx = item.get("index")
+                    if isinstance(idx, int) and 0 <= idx < len(documents):
+                        item["document"] = documents[idx]
+
+                # 应用 top_n 截断
+                if top_n is not None and top_n > 0:
+                    results = results[:top_n]
+
+                return {"results": results}
+
+            except json.JSONDecodeError:
+                # JSON 解析失败，回退到简单评分
+                print("[WARN] Rerank JSON 解析失败，回退到原始顺序")
+                return {
+                    "results": [
+                        {"index": i, "relevance_score": 1.0 - (i * 0.01), "document": doc}
+                        for i, doc in enumerate(documents)
+                    ][:top_n] if top_n else [
+                        {"index": i, "relevance_score": 1.0 - (i * 0.01), "document": doc}
+                        for i, doc in enumerate(documents)
+                    ]
+                }
+
+        except Exception as e:
+            print(f"[WARN] Chat Rerank 失败: {e}，回退到原始顺序")
+            return {
+                "results": [
+                    {"index": i, "relevance_score": 1.0 - (i * 0.01), "document": doc}
+                    for i, doc in enumerate(documents)
+                ]
+            }
+
+    def has_rerank(self) -> bool:
+        """是否配置了 Rerank 客户端"""
+        return self._rerank_mode != 'disabled'
+
+    @property
+    def rerank_mode(self) -> str:
+        """返回 Rerank 模式：disabled, blt, chat"""
+        return self._rerank_mode
+
+    @property
+    def provider(self) -> str:
+        """当前 LLM 提供商"""
+        return self._llm_provider
+
+    @property
+    def model(self) -> str:
+        """当前 LLM 模型"""
+        return self._llm_model
+
+    @property
+    def tokens(self) -> Dict[str, int]:
+        """获取 token 统计"""
+        return self._client.tokens

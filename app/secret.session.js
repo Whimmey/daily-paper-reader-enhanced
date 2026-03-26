@@ -142,7 +142,7 @@
 
     if (host === 'localhost' || host === '127.0.0.1') {
       repoOwner = login;
-      repoName = 'daily-paper-reader';
+      repoName = 'daily-paper-reader-enhanced';
     } else {
       const githubPagesMatch = currentUrl.match(
         /https?:\/\/([^.]+)\.github\.io\/([^\/]+)/,
@@ -308,6 +308,122 @@
         { name: secretNameRerankKey, value: encRerankKey },
         { name: secretNameRerankUrl, value: encRerankUrl },
         { name: secretNameRerankModel, value: encRerankModel },
+      ];
+
+      for (let i = 0; i < secrets.length; i += 1) {
+        const item = secrets[i];
+        if (typeof progress === 'function') {
+          try {
+            progress(i + 1, secrets.length, item.name);
+          } catch {
+            // 忽略进度回调中的异常
+          }
+        }
+        await putSecret(item.name, item.value);
+      }
+
+      return true;
+    } catch (e) {
+      console.error('[SECRET] 保存 GitHub Secrets 失败：', e);
+      return false;
+    }
+  }
+
+  // 将 LLM 配置写入 GitHub Secrets（支持多提供商）
+  // 可选 progress 回调用于在 UI 中展示上传进度：progress(currentIndex, total, secretName)
+  async function saveLLMSecretsToGithub(
+    token,
+    apiKey,
+    model,
+    progress,
+    baseUrl = null,
+  ) {
+    try {
+      // 等待 libsodium-wrappers 就绪
+      if (!window.sodium || !window.sodium.ready) {
+        if (
+          window.sodium &&
+          typeof window.sodium.ready === 'object' &&
+          typeof window.sodium.ready.then === 'function'
+        ) {
+          await window.sodium.ready;
+        } else {
+          throw new Error(
+            '浏览器未正确加载 libsodium-wrappers，无法写入 GitHub Secrets。',
+          );
+        }
+      }
+      const sodium = window.sodium;
+      if (!sodium) {
+        throw new Error('浏览器缺少 libsodium 支持，无法写入 GitHub Secrets。');
+      }
+
+      const { owner, repo } = await detectGithubRepoFromToken(token);
+
+      // 获取仓库 Public Key
+      const pkRes = await fetch(
+        `https://api.github.com/repos/${owner}/${repo}/actions/secrets/public-key`,
+        {
+          headers: {
+            Authorization: `token ${token}`,
+            Accept: 'application/vnd.github.v3+json',
+          },
+        },
+      );
+      if (!pkRes.ok) {
+        throw new Error(
+          `获取仓库 Public Key 失败（HTTP ${pkRes.status}），请确认 Token 是否具备 repo 权限。`,
+        );
+      }
+      const pkData = await pkRes.json();
+      const publicKey = pkData.key;
+      const keyId = pkData.key_id;
+      if (!publicKey || !keyId) {
+        throw new Error('Public Key 数据不完整，无法写入 Secrets。');
+      }
+
+      const encryptValue = (value) => {
+        const binkey = sodium.from_base64(
+          publicKey,
+          sodium.base64_variants.ORIGINAL,
+        );
+        const binsec = sodium.from_string(value);
+        const encBytes = sodium.crypto_box_seal(binsec, binkey);
+        return sodium.to_base64(encBytes, sodium.base64_variants.ORIGINAL);
+      };
+
+      const putSecret = async (name, encrypted) => {
+        const body = {
+          encrypted_value: encrypted,
+          key_id: keyId,
+        };
+        const res = await fetch(
+          `https://api.github.com/repos/${owner}/${repo}/actions/secrets/${encodeURIComponent(
+            name,
+          )}`,
+          {
+            method: 'PUT',
+            headers: {
+              Authorization: `token ${token}`,
+              Accept: 'application/vnd.github.v3+json',
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify(body),
+          },
+        );
+        if (!res.ok) {
+          const txt = await res.text().catch(() => '');
+          throw new Error(
+            `写入 GitHub Secret ${name} 失败：HTTP ${res.status} ${res.statusText} - ${txt}`,
+          );
+        }
+      };
+
+      // 通用配置：直接写入 LLM_BASE_URL, LLM_MODEL, LLM_API_KEY
+      const secrets = [
+        { name: 'LLM_BASE_URL', value: encryptValue(baseUrl || 'https://open.bigmodel.cn/api/paas/v4/chat/completions') },
+        { name: 'LLM_MODEL', value: encryptValue(model || 'glm-4.7') },
+        { name: 'LLM_API_KEY', value: encryptValue(apiKey) },
       ];
 
       for (let i = 0; i < secrets.length; i += 1) {
@@ -526,6 +642,7 @@
 
   // 初始化模式：已有 secret.private -> 解锁 / 游客；无 secret.private -> 首次配置向导
   function setupOverlay(hasSecretFile) {
+    console.log('[DEBUG] setupOverlay 函数被调用, hasSecretFile:', hasSecretFile);
     const overlay = document.getElementById('secret-gate-overlay');
     const modal = document.getElementById('secret-gate-modal');
     if (!overlay || !modal) {
@@ -646,31 +763,20 @@
       }, 100);
     };
 
-    // 初始化向导：第 2 步（简易 / 进阶配置，目前仅实现简易配置）
+    // 初始化向导：第 2 步（简易配置）
     const renderInitStep2 = (password) => {
       modal.innerHTML = `
         <h2 style="margin-top:0;">🛡️ 新配置指引 · 第二步</h2>
         <p style="font-size:13px; color:#555; margin-bottom:8px;">
-          请选择配置模式，并填写必要的密钥信息。当前版本推荐使用「简易配置」，
-          后续可以在订阅面板中进一步管理详细配置。
+          请填写 LLM 服务配置信息。兼容任何支持 OpenAI Chat Completions 格式的 API。
         </p>
-        <div style="margin-bottom:10px; font-size:13px;">
-          <label style="display:flex; align-items:center; gap:6px; margin-bottom:4px;">
-            <input type="radio" name="secret-setup-mode" value="simple" checked />
-            <span><strong>简易配置（推荐）</strong>：填写 GitHub Token 与柏拉图 API Key，即可启用订阅与论文总结能力。</span>
-          </label>
-          <label style="display:flex; align-items:center; gap:6px; color:#aaa;">
-            <input type="radio" name="secret-setup-mode" value="advanced" disabled />
-            <span>进阶配置（预留）：将来支持更多细粒度选项，当前暂未开放。</span>
-          </label>
-        </div>
         <div style="border-top:1px solid #eee; padding-top:8px; margin-top:4px; font-size:13px;">
           <div style="font-weight:500; margin-bottom:4px;">GitHub Token（必填）</div>
           <input
             id="secret-setup-github-token"
             type="password"
             autocomplete="off"
-            placeholder="用于读写 config.yaml 的 GitHub Personal Access Token"
+            placeholder="用于读写 GitHub Secrets 的 Personal Access Token"
             style="width:100%; box-sizing:border-box; padding:6px 8px; margin-bottom:4px; font-size:13px;"
           />
           <button id="secret-setup-github-verify" type="button" class="secret-gate-btn secondary" style="margin-bottom:4px;">
@@ -680,60 +786,107 @@
             需要具备 <code>repo</code> 和 <code>workflow</code> 权限。
           </div>
 
-          <div style="font-weight:500; margin-bottom:4px;">柏拉图（BLTCY）API Key（必填）</div>
+          <div style="font-weight:500; margin-bottom:4px;">LLM Base URL（必填）</div>
           <input
-            id="secret-setup-plato"
-            type="password"
+            id="secret-setup-llm-base-url"
+            type="text"
             autocomplete="off"
-            placeholder="例如：sk-xxxx"
+            placeholder="例如: https://open.bigmodel.cn/api/paas/v4/chat/completions"
             style="width:100%; box-sizing:border-box; padding:6px 8px; margin-bottom:4px; font-size:13px;"
           />
-          <button id="secret-setup-plato-verify" type="button" class="secret-gate-btn secondary" style="margin-bottom:4px;">
-            验证柏拉图 API Key
-          </button>
-          <div id="secret-setup-plato-status" style="min-height:18px; font-size:12px; color:#999; margin-bottom:8px;">
-            将通过 <code>/v1/token/quota</code> 接口验证可用性。
+          <div style="font-size:12px; color:#666; margin-bottom:8px;">
+            常用示例：<br>
+            • 智谱: https://open.bigmodel.cn/api/paas/v4/chat/completions<br>
+            • DeepSeek: https://api.deepseek.com<br>
+            • 柏拉图: https://api.bltcy.ai/v1/chat/completions<br>
+            • Ollama: http://localhost:11434/v1/chat/completions
           </div>
 
-          <div style="font-weight:500; margin-bottom:4px; display:flex; align-items:center; gap:4px;">
-            用于「总结整篇论文」的大模型（推荐选择 Gemini 3 Flash）
-            <span class="secret-model-tip">!
-              <span class="secret-model-tip-popup">
-                按照 Thinking（思考模式）的高负载场景估算：<br/>
-                <br/>
-                总结：15k 输入 + 4k 输出（含思考）<br/>
-                提问：16.1k 输入 + 2k 输出（含思考）<br/>
-                <br/>
-                模型 · 约价（单次）：<br/>
-                - Gemini 3 Flash：总结 ¥0.0195，提问 ¥0.0141（不到 2 分钱，100 篇论文约 2 元）<br/>
-                - DeepSeek V3：总结 ¥0.0294，提问 ¥0.0267（不到 3 分钱，长输出性价比极高）<br/>
-                - GPT-5：总结 ¥0.0588，提问 ¥0.0401（约 6 分钱）<br/>
-                - Gemini 3 Pro：总结 ¥0.0780，提问 ¥0.0562（约 8 分钱，一篇论文不到 1 毛钱）
-              </span>
-            </span>
+          <div style="font-weight:500; margin-bottom:4px;">LLM Model（必填）</div>
+          <input
+            id="secret-setup-llm-model"
+            type="text"
+            autocomplete="off"
+            placeholder="例如: glm-4.7, deepseek-chat, gpt-4o-mini"
+            style="width:100%; box-sizing:border-box; padding:6px 8px; margin-bottom:4px; font-size:13px;"
+          />
+          <div style="font-size:12px; color:#666; margin-bottom:8px;">
+            模型名称取决于你使用的服务提供商。
           </div>
-          <div style="font-size:13px; margin-bottom:6px;">
-            <label style="display:flex; align-items:center; gap:6px; margin-bottom:2px;">
-              <input type="radio" name="secret-setup-summarize-model" value="gemini-3-flash-preview-thinking-1000" checked />
-              <span>Gemini 3 Flash（思考版，推荐）</span>
-            </label>
-            <label style="display:flex; align-items:center; gap:6px; margin-bottom:2px;">
-              <input type="radio" name="secret-setup-summarize-model" value="deepseek-v3.2" />
-              <span>DeepSeek V3.2 · 深度思考</span>
-            </label>
-            <label style="display:flex; align-items:center; gap:6px; margin-bottom:2px;">
-              <input type="radio" name="secret-setup-summarize-model" value="gpt-5-chat" />
-              <span>GPT-5 Chat · 通用高质量对话</span>
-            </label>
+
+          <div style="font-weight:500; margin-bottom:4px;">LLM API Key（必填）</div>
+          <input
+            id="secret-setup-llm-api-key"
+            type="password"
+            autocomplete="off"
+            placeholder="你的 API Key"
+            style="width:100%; box-sizing:border-box; padding:6px 8px; margin-bottom:4px; font-size:13px;"
+          />
+          <button id="secret-setup-llm-verify" type="button" class="secret-gate-btn secondary" style="margin-bottom:4px;">
+            验证 LLM 配置
+          </button>
+          <div id="secret-setup-llm-status" style="min-height:18px; font-size:12px; color:#999; margin-bottom:8px;">
+            请填写完整配置后点击验证。
+          </div>
+
+          <div style="font-weight:500; margin-bottom:4px; margin-top:8px;">
             <label style="display:flex; align-items:center; gap:6px;">
-              <input type="radio" name="secret-setup-summarize-model" value="gemini-3-pro-preview" />
-              <span>Gemini 3 Pro（更强思考能力）</span>
+              <input type="checkbox" id="secret-setup-rerank-enabled" />
+              <span>启用 Rerank（使用 Chat 接口实现重排序）</span>
             </label>
+          </div>
+          <div style="font-size:12px; color:#666; margin-bottom:8px;">
+            启用后将消耗额外 token 来提高检索精度。
+          </div>
+
+          <!-- Rerank 模型选项（仅在启用 Rerank 时显示） -->
+          <div id="secret-setup-rerank-options" style="display:none; margin-top:8px; padding:8px; background:#f5f5f5; border-radius:4px; font-size:12px;">
+            <div style="margin-bottom:6px; font-weight:500;">Rerank 模型配置：</div>
+            <label style="display:flex; align-items:center; gap:6px; margin-bottom:4px;">
+              <input type="radio" name="secret-setup-rerank-model-mode" value="same" checked />
+              <span>使用与 LLM 相同的模型</span>
+            </label>
+            <label style="display:flex; align-items:center; gap:6px; margin-bottom:4px;">
+              <input type="radio" name="secret-setup-rerank-model-mode" value="custom" />
+              <span>使用其他模型</span>
+            </label>
+            <div id="secret-setup-rerank-custom-model-group" style="display:none; margin-top:6px;">
+              <input
+                type="text"
+                id="secret-setup-rerank-model"
+                placeholder="rerank 模型名称（默认与 LLM 相同）"
+                style="width:100%; box-sizing:border-box; padding:6px 8px; font-size:13px;"
+              />
+              <div style="color:#666; margin-top:2px;">
+                留空则使用与 LLM 相同的模型
+              </div>
+            </div>
+          </div>
+
+          <!-- 论文爬取时间配置 -->
+          <div style="font-weight:500; margin-bottom:4px; margin-top:12px;">
+            <label style="display:flex; align-items:center; gap:6px;">
+              <span>📅 论文爬取时间（北京时间）</span>
+            </label>
+          </div>
+          <div style="font-size:12px; color:#666; margin-bottom:6px;">
+            设置每天自动爬取 Arxiv 新论文的时间，建议设在 Arxiv 发布时间之后（凌晨 2:30）。
+          </div>
+          <div style="display:flex; align-items:center; gap:8px;">
+            <input
+              type="time"
+              id="secret-setup-fetch-time"
+              value="02:30"
+              style="box-sizing:border-box; padding:6px 8px; font-size:13px; border:1px solid #ddd; border-radius:4px;"
+            />
+            <span style="font-size:12px; color:#666;">
+              对应 UTC: <span id="secret-setup-utc-time">18:30</span> (前一日)
+            </span>
           </div>
         </div>
 
         <div id="secret-setup-error" style="min-height:18px; font-size:12px; color:#999; margin-top:4px; margin-bottom:8px;">
-          所有密钥信息将加密写入 GitHub Secrets（用于 GitHub Actions），并同步生成本地 <code>secret.private</code> 备份，原文不会直接存入仓库。
+          所有密钥信息将加密写入 GitHub Secrets（用于 GitHub Actions），并同步生成本地 <code>secret.private</code> 备份。
         </div>
         <div class="secret-gate-actions">
           <button id="secret-setup-back" type="button" class="secret-gate-btn secondary">
@@ -749,26 +902,33 @@
       `;
 
       const githubInput = document.getElementById('secret-setup-github-token');
-      const githubVerifyBtn = document.getElementById(
-        'secret-setup-github-verify',
-      );
-      const githubStatusEl = document.getElementById(
-        'secret-setup-github-status',
-      );
-      const platoInput = document.getElementById('secret-setup-plato');
-      const platoVerifyBtn = document.getElementById(
-        'secret-setup-plato-verify',
-      );
-      const platoStatusEl = document.getElementById('secret-setup-plato-status');
+      const githubVerifyBtn = document.getElementById('secret-setup-github-verify');
+      const githubStatusEl = document.getElementById('secret-setup-github-status');
+
+      const llmBaseUrlInput = document.getElementById('secret-setup-llm-base-url');
+      const llmModelInput = document.getElementById('secret-setup-llm-model');
+      const llmApiKeyInput = document.getElementById('secret-setup-llm-api-key');
+      const llmVerifyBtn = document.getElementById('secret-setup-llm-verify');
+      const llmStatusEl = document.getElementById('secret-setup-llm-status');
+      const rerankEnabledCheckbox = document.getElementById('secret-setup-rerank-enabled');
+      const fetchTimeInput = document.getElementById('secret-setup-fetch-time');
+      const utcTimeDisplay = document.getElementById('secret-setup-utc-time');
+
+      // Rerank 相关元素（可能不存在，取决于 HTML 结构）
+      const rerankOptionsDiv = document.getElementById('secret-setup-rerank-options');
+      const rerankModelInput = document.getElementById('secret-setup-rerank-model');
+      const rerankCustomModelGroup = document.getElementById('secret-setup-rerank-custom-model-group');
+
       const errorEl = document.getElementById('secret-setup-error');
       const backBtn = document.getElementById('secret-setup-back');
       const closeBtn = document.getElementById('secret-setup-close');
       const genBtn = document.getElementById('secret-setup-generate');
 
-      if (!githubInput || !githubVerifyBtn || !platoInput || !platoVerifyBtn || !backBtn || !closeBtn || !genBtn) return;
+      if (!githubInput || !githubVerifyBtn || !llmBaseUrlInput || !llmModelInput ||
+        !llmApiKeyInput || !llmVerifyBtn || !backBtn || !closeBtn || !genBtn) return;
 
       let githubOk = false;
-      let platoOk = false;
+      let llmOk = false;
 
       backBtn.addEventListener('click', () => {
         // 返回第 1 步，重新设置密码
@@ -830,228 +990,297 @@
         }
       });
 
-      platoVerifyBtn.addEventListener('click', async () => {
-        const key = platoInput.value.trim();
-        if (!key) {
-          platoStatusEl.textContent = '请先输入柏拉图 API Key。';
-          platoStatusEl.style.color = '#c00';
-          platoOk = false;
+      // LLM 配置验证（通用方式）
+      llmVerifyBtn.addEventListener('click', async () => {
+        const baseUrl = llmBaseUrlInput.value.trim();
+        const model = llmModelInput.value.trim();
+        const apiKey = llmApiKeyInput.value.trim();
+
+        if (!baseUrl || !model || !apiKey) {
+          llmStatusEl.textContent = '请先填写完整的 LLM 配置（Base URL、Model、API Key）';
+          llmStatusEl.style.color = '#c00';
+          llmOk = false;
           return;
         }
-        platoVerifyBtn.disabled = true;
-        platoStatusEl.textContent = '正在验证柏拉图 API Key...';
-        platoStatusEl.style.color = '#666';
+
+        llmVerifyBtn.disabled = true;
+        llmStatusEl.textContent = '正在验证 LLM 配置...';
+        llmStatusEl.style.color = '#666';
+
         try {
-          const resp = await fetch(
-            'https://api.bltcy.ai/v1/token/quota',
-            {
-              method: 'GET',
-              headers: {
-                Authorization: `Bearer ${key}`,
-              },
+          // 通用验证：发送一个简单的聊天请求
+          const resp = await fetch(baseUrl, {
+            method: 'POST',
+            headers: {
+              'Authorization': `Bearer ${apiKey}`,
+              'Content-Type': 'application/json',
             },
-          );
+            body: JSON.stringify({
+              model: model,
+              messages: [{ role: 'user', content: 'Hi' }],
+              max_tokens: 10,
+            }),
+          });
+
           if (!resp.ok) {
-            throw new Error(`HTTP ${resp.status}`);
+            const errData = await resp.json().catch(() => ({}));
+            const errorMsg = errData.error?.message || errData.message || `HTTP ${resp.status}`;
+            throw new Error(errorMsg);
           }
-          const data = await resp.json().catch(() => null);
-          const quota =
-            data && typeof data.quota === 'number' ? data.quota : 0;
-          const used = -quota;
-          platoStatusEl.textContent = `✅ 验证成功：已用额度约 ${used.toFixed(
-            2,
-          )}`;
-          platoStatusEl.style.color = '#28a745';
-          platoOk = true;
+
+          const data = await resp.json();
+          if (data.choices && data.choices.length > 0) {
+            llmStatusEl.innerHTML = `✅ 验证成功：LLM 配置有效<br><small>模型: ${model}</small>`;
+            llmStatusEl.style.color = '#28a745';
+            llmOk = true;
+          } else {
+            throw new Error('响应格式异常');
+          }
         } catch (e) {
-          platoStatusEl.textContent = `❌ 验证失败：${e.message || e}`;
-          platoStatusEl.style.color = '#c00';
-          platoOk = false;
+          llmStatusEl.textContent = `❌ 验证失败：${e.message}`;
+          llmStatusEl.style.color = '#c00';
+          llmOk = false;
         } finally {
-          platoVerifyBtn.disabled = false;
+          llmVerifyBtn.disabled = false;
         }
       });
 
-      genBtn.addEventListener('click', async () => {
-        const githubToken = githubInput.value.trim();
-        const platoKey = platoInput.value.trim();
-        const modeInputs = document.querySelectorAll(
-          'input[name="secret-setup-mode"]',
-        );
-        let mode = 'simple';
-        modeInputs.forEach((el) => {
-          if (el.checked) mode = el.value;
+      // Rerank 选项交互（如果元素存在）
+      const rerankModelRadios = document.querySelectorAll('input[name="secret-setup-rerank-model-mode"]');
+      if (rerankEnabledCheckbox && rerankOptionsDiv) {
+        // 显示/隐藏 Rerank 选项
+        rerankEnabledCheckbox.addEventListener('change', () => {
+          if (rerankEnabledCheckbox.checked) {
+            rerankOptionsDiv.style.display = 'block';
+          } else {
+            rerankOptionsDiv.style.display = 'none';
+          }
         });
-        if (mode !== 'simple') {
-          if (errorEl) {
-            errorEl.textContent = '当前仅支持简易配置，请选择简易配置继续。';
-            errorEl.style.color = '#c00';
-          }
-          return;
-        }
-        if (!githubToken || !githubOk) {
-          if (errorEl) {
-            errorEl.textContent = '请先填写并通过验证 GitHub Token。';
-            errorEl.style.color = '#c00';
-          }
-          return;
-        }
-        if (!platoKey || !platoOk) {
-          if (errorEl) {
-            errorEl.textContent = '请先填写并通过验证柏拉图 API Key。';
-            errorEl.style.color = '#c00';
-          }
-          return;
-        }
-        const modelInputs = document.querySelectorAll(
-          'input[name="secret-setup-summarize-model"]',
-        );
-        let model = '';
-        modelInputs.forEach((el) => {
-          if (el.checked) model = el.value;
-        });
-        if (!model) {
-          if (errorEl) {
-            errorEl.textContent = '请选择用于总结论文的大模型。';
-            errorEl.style.color = '#c00';
-          }
-          return;
+
+        // 切换 Rerank 模型模式
+        if (rerankCustomModelGroup && rerankModelInput) {
+          rerankModelRadios.forEach(radio => {
+            radio.addEventListener('change', () => {
+              if (radio.value === 'custom') {
+                rerankCustomModelGroup.style.display = 'block';
+                // 默认填充与 LLM 相同的模型
+                if (!rerankModelInput.value) {
+                  rerankModelInput.value = llmModelInput.value;
+                }
+              } else {
+                rerankCustomModelGroup.style.display = 'none';
+              }
+            });
+          });
         }
 
-        const createdAt = new Date().toISOString();
-        const summarizedBaseUrl = 'https://api.bltcy.ai/v1/chat/completions';
-        const rerankerBaseUrl = 'https://api.bltcy.ai/v1/rerank';
-        const rerankerModel = 'qwen3-reranker-4b';
+        // 爬取时间转换逻辑（北京时间 -> UTC）
+        function updateUTCDisplay() {
+          if (!fetchTimeInput || !utcTimeDisplay) return;
+          const beijingTime = fetchTimeInput.value;  // 格式: "HH:MM"
+          if (!beijingTime) return;
 
-        const plainConfig = {
-          createdAt,
-          github: {
-            token: githubToken,
-          },
-          summarizedLLM: {
-            apiKey: platoKey,
-            baseUrl: summarizedBaseUrl,
-            model,
-          },
-          rerankerLLM: {
-            apiKey: platoKey,
-            baseUrl: rerankerBaseUrl,
-            model: rerankerModel,
-          },
-          chatLLMs: [
-            {
-              apiKey: platoKey,
-              baseUrl: summarizedBaseUrl,
-              models: [
-                'gemini-3-flash-preview-thinking-1000',
-                'deepseek-v3.2',
-                'gpt-5-chat',
-                'gemini-3-pro-preview-thinking-1000',
-              ],
-            },
-          ],
-        };
+          const [hours, minutes] = beijingTime.split(':').map(Number);
+          // 北京时间 UTC+8，减去 8 小时得到 UTC
+          let utcHours = hours - 8;
+          let utcMinutes = minutes;
 
-        try {
-          if (errorEl) {
-            errorEl.textContent = '正在准备写入 GitHub Secrets...';
-            errorEl.style.color = '#666';
+          // 处理跨日
+          if (utcHours < 0) {
+            utcHours += 24;
           }
-          genBtn.disabled = true;
 
-          // 1) 将总结大模型相关配置写入 GitHub Secrets（失败则中止后续流程）
-          const secretsOk = await saveSummarizeSecretsToGithub(
-            githubToken,
-            platoKey,
-            model,
-            (current, total, secretName) => {
-              if (!errorEl) return;
-              errorEl.textContent = `(${current}/${total}) 正在上传 GitHub Secret：${secretName}...`;
-              errorEl.style.color = '#666';
-            },
-          );
-          if (!secretsOk && errorEl) {
-            errorEl.textContent =
-              '❌ 写入 GitHub Secrets 失败，请检查网络、Token 权限（需 repo + workflow）或稍后重试。';
-            errorEl.style.color = '#c00';
+          const utcTimeStr = `${String(utcHours).padStart(2, '0')}:${String(utcMinutes).padStart(2, '0')}`;
+          utcTimeDisplay.textContent = utcTimeStr;
+        }
+
+        // 初始化显示
+        updateUTCDisplay();
+
+        // 监听时间变化
+        if (fetchTimeInput) {
+          fetchTimeInput.addEventListener('change', updateUTCDisplay);
+          fetchTimeInput.addEventListener('input', updateUTCDisplay);
+        }
+
+        genBtn.addEventListener('click', async () => {
+          const githubToken = githubInput.value.trim();
+          const llmBaseUrl = llmBaseUrlInput.value.trim();
+          const llmModel = llmModelInput.value.trim();
+          const llmApiKey = llmApiKeyInput.value.trim();
+          const rerankEnabled = rerankEnabledCheckbox ? rerankEnabledCheckbox.checked : false;
+
+          // 获取 Rerank 模型配置
+          let rerankModel = llmModel;  // 默认使用与 LLM 相同的模型
+          if (rerankEnabled) {
+            const rerankMode = document.querySelector('input[name="secret-setup-rerank-model-mode"]:checked')?.value;
+            if (rerankMode === 'custom') {
+              const customModel = rerankModelInput?.value?.trim();
+              if (customModel) {
+                rerankModel = customModel;
+              }
+            }
+          }
+
+          // 获取爬取时间配置
+          const fetchTime = fetchTimeInput?.value || '02:30';
+
+          if (!githubToken || !githubOk) {
+            if (errorEl) {
+              errorEl.textContent = '请先填写并通过验证 GitHub Token。';
+              errorEl.style.color = '#c00';
+            }
+            return;
+          }
+          if (!llmBaseUrl || !llmModel || !llmApiKey) {
+            if (errorEl) {
+              errorEl.textContent = '请先填写并通过验证 LLM 配置（Base URL、Model、API Key）。';
+              errorEl.style.color = '#c00';
+            }
             return;
           }
 
-          // 2) 生成本地 secret.private 备份
-          if (errorEl) {
-            errorEl.textContent = 'GitHub Secrets 上传完成，正在生成加密配置 secret.private...';
-            errorEl.style.color = '#666';
-          }
-          const payload = await createEncryptedSecret(password, plainConfig);
-          window.decoded_secret_private = plainConfig;
-          setMode('full');
+          const createdAt = new Date().toISOString();
 
-          const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
-          const url = URL.createObjectURL(blob);
-          const a = document.createElement('a');
-          a.href = url;
-          a.download = 'secret.private';
-          document.body.appendChild(a);
-          a.click();
-          setTimeout(() => {
-            document.body.removeChild(a);
-            URL.revokeObjectURL(url);
-          }, 0);
+          // 通用配置格式
+          const plainConfig = {
+            createdAt,
+            llm: {
+              baseUrl: llmBaseUrl,
+              model: llmModel,
+              apiKey: llmApiKey,
+            },
+            github: {
+              token: githubToken,
+            },
+            summarizedLLM: {
+              apiKey: llmApiKey,
+              baseUrl: llmBaseUrl,
+              model: llmModel,
+            },
+            rerankerLLM: rerankEnabled ? {
+              enabled: true,
+              apiKey: llmApiKey,
+              baseUrl: llmBaseUrl,
+              model: rerankModel,
+            } : {
+              enabled: false,
+            },
+            chatLLMs: [
+              {
+                apiKey: llmApiKey,
+                baseUrl: llmBaseUrl,
+                models: [llmModel],
+              },
+            ],
+            schedule: {
+              fetchTime: fetchTime,  // 北京时间
+            },
+          };
 
-          // 3) 将 secret.private 提交到 GitHub 仓库根目录（最好由向导自动推送一份）
-          if (errorEl) {
-            errorEl.textContent = '正在将 secret.private 推送到 GitHub 仓库根目录...';
-            errorEl.style.color = '#666';
-          }
-          const commitOk = await saveSecretPrivateToGithubRepo(
-            githubToken,
-            payload,
-          );
-          if (!commitOk && errorEl) {
-            errorEl.textContent =
-              '⚠️ 已生成本地 secret.private，但自动推送到 GitHub 仓库失败，请稍后手动提交或检查 Token/网络。';
-            errorEl.style.color = '#c00';
-          }
-
-          hide();
-
-          // 第三步：自动打开后台订阅面板，帮助用户完成 GitHub 订阅配置
           try {
-            if (window.SubscriptionsManager && window.SubscriptionsManager.openOverlay) {
-              window.SubscriptionsManager.openOverlay();
-            } else {
-              // 回退：使用与左下角 📚 按钮相同的事件机制唤起订阅面板
-              var ensureEvent = new CustomEvent('ensure-arxiv-ui');
-              document.dispatchEvent(ensureEvent);
-              setTimeout(function () {
-                var loadEvent = new CustomEvent('load-arxiv-subscriptions');
-                document.dispatchEvent(loadEvent);
-                var overlay = document.getElementById('arxiv-search-overlay');
-                if (overlay) {
-                  overlay.style.display = 'flex';
-                  requestAnimationFrame(function () {
-                    requestAnimationFrame(function () {
-                      overlay.classList.add('show');
-                    });
-                  });
-                }
-              }, 120);
+            if (errorEl) {
+              errorEl.textContent = '正在准备写入 GitHub Secrets...';
+              errorEl.style.color = '#666';
             }
-          } catch {
-            // 若后台订阅面板唤起失败，则静默忽略，不影响主流程
+            genBtn.disabled = true;
+
+            // 1) 将 LLM 配置写入 GitHub Secrets
+            const secretsOk = await saveLLMSecretsToGithub(
+              githubToken,
+              llmApiKey,
+              llmModel,
+              (current, total, secretName) => {
+                if (!errorEl) return;
+                errorEl.textContent = `(${current}/${total}) 正在上传 GitHub Secret：${secretName}...`;
+                errorEl.style.color = '#666';
+              },
+              llmBaseUrl,
+            );
+            if (!secretsOk && errorEl) {
+              errorEl.textContent =
+                '❌ 写入 GitHub Secrets 失败，请检查网络、Token 权限（需 repo + workflow）或稍后重试。';
+              errorEl.style.color = '#c00';
+              return;
+            }
+
+            // 2) 生成本地 secret.private 备份
+            if (errorEl) {
+              errorEl.textContent = 'GitHub Secrets 上传完成，正在生成加密配置 secret.private...';
+              errorEl.style.color = '#666';
+            }
+            const payload = await createEncryptedSecret(password, plainConfig);
+            window.decoded_secret_private = plainConfig;
+            setMode('full');
+
+            const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = 'secret.private';
+            document.body.appendChild(a);
+            a.click();
+            setTimeout(() => {
+              document.body.removeChild(a);
+              URL.revokeObjectURL(url);
+            }, 0);
+
+            // 3) 将 secret.private 提交到 GitHub 仓库根目录（最好由向导自动推送一份）
+            if (errorEl) {
+              errorEl.textContent = '正在将 secret.private 推送到 GitHub 仓库根目录...';
+              errorEl.style.color = '#666';
+            }
+            const commitOk = await saveSecretPrivateToGithubRepo(
+              githubToken,
+              payload,
+            );
+            if (!commitOk && errorEl) {
+              errorEl.textContent =
+                '⚠️ 已生成本地 secret.private，但自动推送到 GitHub 仓库失败，请稍后手动提交或检查 Token/网络。';
+              errorEl.style.color = '#c00';
+            }
+
+            hide();
+
+
+            // 第三步：自动打开后台订阅面板，帮助用户完成 GitHub 订阅配置
+            try {
+              if (window.SubscriptionsManager && window.SubscriptionsManager.openOverlay) {
+                window.SubscriptionsManager.openOverlay();
+              } else {
+                // 回退：使用与左下角 📚 按钮相同的事件机制唤起订阅面板
+                var ensureEvent = new CustomEvent('ensure-arxiv-ui');
+                document.dispatchEvent(ensureEvent);
+                setTimeout(function () {
+                  var loadEvent = new CustomEvent('load-arxiv-subscriptions');
+                  document.dispatchEvent(loadEvent);
+                  var overlay = document.getElementById('arxiv-search-overlay');
+                  if (overlay) {
+                    overlay.style.display = 'flex';
+                    requestAnimationFrame(function () {
+                      requestAnimationFrame(function () {
+                        overlay.classList.add('show');
+                      });
+                    });
+                  }
+                }, 120);
+              }
+            } catch {
+              // 若后台订阅面板唤起失败，则静默忽略，不影响主流程
+            }
+          } catch (e) {
+            console.error(e);
+            if (errorEl) {
+              errorEl.textContent =
+                '生成 secret.private 失败，请稍后重试或检查浏览器兼容性。';
+              errorEl.style.color = '#c00';
+            }
+          } finally {
+            genBtn.disabled = false;
           }
-        } catch (e) {
-          console.error(e);
-          if (errorEl) {
-            errorEl.textContent =
-              '生成 secret.private 失败，请稍后重试或检查浏览器兼容性。';
-            errorEl.style.color = '#c00';
-          }
-        } finally {
-          genBtn.disabled = false;
-        }
-      });
-    };
+        });
+      };
+    }
 
     // 初始化向导：第 1 步（设置密码）
     const renderInitStep1 = () => {
@@ -1124,6 +1353,8 @@
           return;
         }
 
+        // 保存密码到浏览器本地存储，以便下次自动解锁
+        savePassword(pwd);
         // 正式进入第 2 步
         renderInitStep2(pwd);
       });
@@ -1137,26 +1368,26 @@
       }, 100);
     };
 
-    // 统一渲染两种模式的 UI（仅使用新的两步初始化向导 / 解锁界面）
-    // 同时在此处挂钩后台管理面板的“密钥配置”按钮入口，利用当前闭包中的 renderInitStep1/renderInitStep2
+    // 注册 DPRSecretSetup，确保"密钥配置"按钮可用
+    // 必须在 renderInitStep1/2 定义之后才能注册
     try {
       window.DPRSecretSetup = window.DPRSecretSetup || {};
-      window.DPRSecretSetup.openStep2 = function () {
-        const savedPwd = loadSavedPassword();
-        openSecretOverlay(overlay);
-        // 确保浮层可见
-        if (!savedPwd) {
-          // 没有保存密码：从第 1 步开始完整向导
-          renderInitStep1();
-        } else {
-          // 已保存密码：直接进入第 2 步配置向导
-          renderInitStep2(savedPwd);
-        }
-      };
-    } catch {
-      // 忽略挂钩失败，后台按钮会走自身的降级提示
+      if (!window.DPRSecretSetup.openStep2) {
+        window.DPRSecretSetup.openStep2 = function () {
+          const savedPwd = loadSavedPassword();
+          openSecretOverlay(overlay);
+          if (!savedPwd) {
+            renderInitStep1();
+          } else {
+            renderInitStep2(savedPwd);
+          }
+        };
+      }
+    } catch (e) {
+      console.error('[SECRET] 注册 DPRSecretSetup 失败：', e);
     }
 
+    // 根据是否有 secret.private 决定渲染哪个界面
     if (hasSecretFile) {
       // 已有 secret.private：展示“解锁 / 游客”界面
       renderUnlockUI();
