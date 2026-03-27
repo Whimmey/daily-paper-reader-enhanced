@@ -10,9 +10,13 @@ on:
         required: false
         default: "false"
       fetch_days:
-        description: "回溯抓取天数（例如 30）；留空则使用默认配置"
+        description: "arXiv 抓取回溯天数（例如 30）；留空则使用默认配置"
         required: false
         default: "10"
+      days_window:
+        description: "召回/回溯窗口天数（控制 Embedding/BM25 召回范围和 carryover）；留空则使用 config.yaml 中的值"
+        required: false
+        default: "1"
       fetch_mode:
         description: "抓取模式：auto/standard/skims（auto 按 fetch-days 阈值决定，standard/ skims 强制）"
         required: false
@@ -143,7 +147,24 @@ jobs:
           echo "Running main script..."
           RUN_ENRICH="${{ github.event.inputs.run_enrich }}"
           FETCH_DAYS="${{ github.event.inputs.fetch_days }}"
+          DAYS_WINDOW="${{ github.event.inputs.days_window }}"
           FETCH_MODE="${{ github.event.inputs.fetch_mode }}"
+
+          # 动态修改 config.yaml 中的 days_window（如果提供了参数）
+          ORIGINAL_DAYS_WINDOW=""
+          if [ -n "$DAYS_WINDOW" ]; then
+            echo "Overriding config.yaml days_window with: $DAYS_WINDOW"
+            # 备份原始值
+            ORIGINAL_DAYS_WINDOW=$(grep -oP "days_window: \K\d+" config.yaml || echo "")
+            # 修改配置
+            if command -v yq &> /dev/null; then
+              yq eval ".arxiv_paper_setting.days_window = $DAYS_WINDOW" -i config.yaml
+            else
+              # fallback: 使用 sed
+              sed -i "s/days_window: [0-9]*/days_window: $DAYS_WINDOW/" config.yaml
+            fi
+          fi
+
           ARGS=""
           if [ "$RUN_ENRICH" = "true" ]; then
             ARGS="--run-enrich"
@@ -155,6 +176,16 @@ jobs:
             ARGS="$ARGS --fetch-mode $FETCH_MODE"
           fi
           python src/main.py $ARGS --embedding-device cpu --embedding-batch-size 8
+
+          # 恢复原始的 days_window 值（避免覆盖用户配置）
+          if [ -n "$ORIGINAL_DAYS_WINDOW" ]; then
+            echo "Restoring original config.yaml days_window: $ORIGINAL_DAYS_WINDOW"
+            if command -v yq &> /dev/null; then
+              yq eval ".arxiv_paper_setting.days_window = $ORIGINAL_DAYS_WINDOW" -i config.yaml
+            else
+              sed -i "s/days_window: [0-9]*/days_window: $ORIGINAL_DAYS_WINDOW/" config.yaml
+            fi
+          fi
 
           # 让前端可以在不配置 GitHub Token 的情况下直接读取配置（只读快照）
           cp -f config.yaml docs/config.yaml
