@@ -659,22 +659,29 @@ window.SubscriptionsSmartQuery = (function () {
       const expandEndpoint = (base) => {
         const src = normalizeText(base).replace(/\/+$/, '');
         if (!src) return;
-        if (src.includes('/chat/completions')) {
-          pushUnique(src);
-          pushUnique(src.replace(/\/chat\/completions$/, '/v1/chat/completions'));
-          return;
-        }
-        if (/\/v\d+$/i.test(src)) {
-          pushUnique(`${src}/chat/completions`);
-          pushUnique(`${src}/v1/chat/completions`);
-          return;
-        }
-        pushUnique(`${src}/v1/chat/completions`);
-        pushUnique(`${src}/chat/completions`);
-      };
 
-      expandEndpoint('https://hk-api.gptbest.vip');
-      expandEndpoint('https://api.bltcy.ai');
+        // 移除末尾可能存在的 /chat/completions 或 /v\d+/chat/completions 后缀
+        let clean = src;
+        clean = clean.replace(/\/chat\/completions\/?$/, '');
+        clean = clean.replace(/\/v\d+\/chat\/completions\/?$/, '');
+        clean = clean.replace(/\/v\d+\/?$/, '');
+
+        // 检查是否已经有完整的路径
+        const hasChatEndpoint = src.includes('/chat/completions');
+        const hasVersionPath = /\/v\d+\/chat/.test(src);
+
+        if (hasChatEndpoint) {
+          pushUnique(src);
+          // 如果是 /v4/chat/completions 格式，尝试去掉版本号
+          if (/\/v\d+\/chat\/completions/.test(src)) {
+            pushUnique(src.replace(/\/v\d+\/chat\/completions$/, '/chat/completions'));
+          }
+          return;
+        }
+
+        // 添加标准的端点路径
+        pushUnique(`${clean}/chat/completions`);
+      };
 
       const raw = normalizeText(llm.baseUrl);
       if (!raw) {
