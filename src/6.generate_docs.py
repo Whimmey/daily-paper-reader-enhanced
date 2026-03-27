@@ -17,7 +17,7 @@ from typing import Any, Dict, List, Tuple
 
 import fitz  # PyMuPDF
 import requests
-from llm import BltClient
+from llm import LLMClient
 
 SCRIPT_DIR = os.path.dirname(__file__)
 ROOT_DIR = os.path.abspath(os.path.join(SCRIPT_DIR, ".."))
@@ -25,18 +25,19 @@ CONFIG_FILE = os.path.join(ROOT_DIR, "config.yaml")
 TODAY_STR = str(os.getenv("DPR_RUN_DATE") or "").strip() or datetime.now(timezone.utc).strftime("%Y%m%d")
 RANGE_DATE_RE = re.compile(r"^(\d{8})-(\d{8})$")
 
-# LLM 配置（使用 llm.py 内的 BLT 客户端）
-BLT_API_KEY = os.getenv("BLT_API_KEY")
-BLT_MODEL = os.getenv("BLT_SUMMARY_MODEL", "gemini-3-flash-preview")
+# LLM 配置（使用通用 LLM 客户端）
+LLM_API_KEY = os.getenv("LLM_API_KEY") or os.getenv("BLT_API_KEY")
+LLM_BASE_URL = os.getenv("LLM_BASE_URL") or os.getenv("BLT_BASE_URL")
+LLM_MODEL = os.getenv("LLM_MODEL") or os.getenv("BLT_SUMMARY_MODEL") or "glm-4-flash"
 LLM_CLIENT = None
-if BLT_API_KEY:
-    LLM_CLIENT = BltClient(api_key=BLT_API_KEY, model=BLT_MODEL)
+if LLM_API_KEY and LLM_BASE_URL:
+    LLM_CLIENT = LLMClient(api_key=LLM_API_KEY, model=LLM_MODEL, base_url=LLM_BASE_URL)
 
 DEFAULT_DOCS_CONCURRENCY = 4
 
 
 def call_blt_text(
-    client: BltClient,
+    client: LLMClient,
     messages: List[Dict[str, str]],
     temperature: float,
     max_tokens: int,

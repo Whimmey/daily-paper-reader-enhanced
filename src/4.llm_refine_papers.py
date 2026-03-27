@@ -10,7 +10,7 @@ import time
 from datetime import datetime, timezone
 from typing import Any, Callable, Dict, List
 
-from llm import BltClient
+from llm import LLMClient
 from subscription_plan import build_pipeline_inputs
 
 SCRIPT_DIR = os.path.dirname(__file__)
@@ -20,7 +20,7 @@ ARCHIVE_DIR = os.path.join(ROOT_DIR, "archive", TODAY_STR)
 RANKED_DIR = os.path.join(ARCHIVE_DIR, "rank")
 CONFIG_FILE = os.path.join(ROOT_DIR, "config.yaml")
 
-DEFAULT_FILTER_MODEL = os.getenv("BLT_FILTER_MODEL") or "gemini-3-flash-preview-nothinking"
+DEFAULT_FILTER_MODEL = os.getenv("LLM_MODEL") or os.getenv("BLT_FILTER_MODEL") or "glm-4-flash"
 DEFAULT_FILTER_CONCURRENCY = 4
 MAX_FILTER_RETRIES = 3
 
@@ -309,7 +309,7 @@ def build_repeated_user_prompt(query: str) -> str:
 
 
 def call_filter(
-    client: BltClient,
+    client: LLMClient,
     all_requirements: List[Dict[str, str]],
     docs: List[Dict[str, str]],
     debug_dir: str,
@@ -688,14 +688,14 @@ def recover_filter_results(
     )
 
 
-def _make_filter_client(api_key: str, model: str, max_output_tokens: int) -> BltClient:
-    client = BltClient(api_key=api_key, model=model)
+def _make_filter_client(api_key: str, model: str, base_url: str, max_output_tokens: int) -> LLMClient:
+    client = LLMClient(api_key=api_key, model=model, base_url=base_url)
     client.kwargs.update({"temperature": 0.1, "max_tokens": max_output_tokens})
     return client
 
 
 def _make_filter_runner(
-    client: BltClient,
+    client: LLMClient,
     all_requirements: List[Dict[str, str]],
     debug_dir: str,
     base_tag: str,
@@ -767,12 +767,13 @@ def _filter_batch(
     batch_idx: int,
     batch: List[Dict[str, str]],
     api_key: str,
+    base_url: str,
     all_requirements: List[Dict[str, str]],
     filter_model: str,
     max_output_tokens: int,
     debug_dir: str,
 ) -> tuple[int, List[Dict[str, str]], List[Dict[str, Any]]]:
-    client = _make_filter_client(api_key, filter_model, max_output_tokens)
+    client = _make_filter_client(api_key, filter_model, base_url, max_output_tokens)
     runner = _make_filter_runner(
         client,
         all_requirements=all_requirements,
@@ -821,9 +822,18 @@ def process_file(
         return
     paper_map = build_paper_map(papers)
 
-    api_key = os.getenv("BLT_API_KEY")
+    # 从环境变量读取 LLM 配置
+    api_key = os.getenv("LLM_API_KEY") or os.getenv("BLT_API_KEY")
+    base_url = os.getenv("LLM_BASE_URL") or os.getenv("BLT_BASE_URL")
+    model = os.getenv("LLM_MODEL") or DEFAULT_FILTER_MODEL
+
     if not api_key:
-        raise RuntimeError("missing BLT_API_KEY")
+        raise RuntimeError("missing LLM_API_KEY environment variable")
+
+    if not base_url:
+        raise RuntimeError("missing LLM_BASE_URL environment variable")
+
+    log(f"[INFO] 使用 LLM 配置：model={model}, base_url={base_url}")
 
     group_start(f"Step 4 - llm refine {os.path.basename(input_path)}")
     log(
@@ -887,6 +897,7 @@ def process_file(
                 idx,
                 batch,
                 api_key,
+                base_url,
                 user_requirements,
                 filter_model,
                 max_output_tokens,
@@ -912,7 +923,7 @@ def process_file(
             if _norm_text(doc.get("id"))
         }
         recovery_docs = list(recovery_map.values())
-        recovery_client = _make_filter_client(api_key, filter_model, max_output_tokens)
+        recovery_client = _make_filter_client(api_key, filter_model, base_url, max_output_tokens)
         log(
             f"[WARN] start missing-doc recovery: failed_batches_docs={len(failed_docs)} "
             f"| missing_after_merge={len(missing_docs)} | recover_docs={len(recovery_docs)}"
