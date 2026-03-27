@@ -66,12 +66,25 @@ class LLMClient:
         :param model: 模型名称
         :param base_url: API 的基础 URL（会自动移除末尾的 /chat/completions）
         """
+        import re
+
         # 自动移除 base_url 末尾的 /chat/completions 避免重复
         clean_base_url = base_url
         # 移除 /chat/completions 或 /v1/chat/completions 等后缀
-        import re
         clean_base_url = re.sub(r'/chat/completions/?$', '', clean_base_url)
         clean_base_url = re.sub(r'/v\d+/chat/completions/?$', '', clean_base_url)
+
+        # URL 预检查：检测是否仍有路径重复异常
+        if clean_base_url.count('/chat/completions') > 0:
+            raise ValueError(
+                f"API 端点路径异常：'{base_url}'\n"
+                "base_url 不应包含 /chat/completions 后缀。\n"
+                "正确格式示例：\n"
+                "  OpenAI: https://api.openai.com/v1\n"
+                "  智谱 GLM: https://open.bigmodel.cn/api/paas/v4\n"
+                "  DeepSeek: https://api.deepseek.com\n"
+                "  Ollama: http://localhost:11434/v1"
+            )
 
         self.api_key = api_key
         self.model = model
@@ -213,6 +226,16 @@ class LLMClient:
                 request_url = f"{clean_base}/chat/completions"
             try:
                 response = requests.post(request_url, headers=headers, json=payload, timeout=120)
+
+                # 特殊处理：404 错误通常是配置错误，立即报错不重试
+                if response.status_code == 404:
+                    raise requests.exceptions.HTTPError(
+                        f"API 端点不存在（404）：{request_url}\n"
+                        f"请检查 base_url 配置是否正确。\n"
+                        f"当前 base_url: {self.base_url}\n"
+                        f"当前 model: {self.model}"
+                    )
+
                 response.raise_for_status()
                 try:
                     response_data = response.json()
@@ -307,6 +330,12 @@ class LLMClient:
                 }
 
             except Exception as e:
+                # 404 错误通常是配置错误（URL 不存在），不应该重试
+                if isinstance(e, requests.exceptions.HTTPError):
+                    if hasattr(e, "response") and e.response is not None and e.response.status_code == 404:
+                        # 404 错误立即抛出，不继续重试
+                        raise
+
                 last_error = e
                 if attempt_idx < len(request_bases):
                     next_base = request_bases[attempt_idx] if attempt_idx < len(request_bases) else ''
