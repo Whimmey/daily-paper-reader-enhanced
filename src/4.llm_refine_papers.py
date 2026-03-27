@@ -21,10 +21,11 @@ RANKED_DIR = os.path.join(ARCHIVE_DIR, "rank")
 CONFIG_FILE = os.path.join(ROOT_DIR, "config.yaml")
 
 DEFAULT_FILTER_MODEL = os.getenv("LLM_MODEL") or os.getenv("BLT_FILTER_MODEL") or "glm-4-flash"
-DEFAULT_FILTER_CONCURRENCY = 2  # 降低并发数避免触发速率限制
+DEFAULT_FILTER_CONCURRENCY = 2  # 限制并发数避免触发速率限制
 MAX_FILTER_RETRIES = 3
-# API 速率限制配置：批次之间添加延迟避免触发 QPS 限制
-REQUEST_DELAY_SECONDS = 1  # 每个请求之间延迟 1 秒
+# API 速率限制配置：严格控制在 QPS 限制内
+REQUEST_DELAY_SECONDS = 3  # 每个请求之间延迟 3 秒
+RETRY_DELAY_SECONDS = 5  # 重试之前延迟 5 秒
 
 
 def log(message: str) -> None:
@@ -562,6 +563,8 @@ def call_filter(
     results = payload.get("results", [])
     if not isinstance(results, list):
         return []
+    # API 调用后添加延迟，避免触发速率限制
+    time.sleep(REQUEST_DELAY_SECONDS)
     return results
 
 
@@ -665,6 +668,10 @@ def recover_filter_results(
 
     last_error: Exception | None = None
     for attempt in range(1, max(1, max_attempts) + 1):
+        # 重试之前添加延迟，避免连续请求触发速率限制
+        if attempt > 1:
+            log(f"[INFO] 重试前等待 {RETRY_DELAY_SECONDS} 秒...")
+            time.sleep(RETRY_DELAY_SECONDS)
         retry_note = build_filter_retry_note(batch_docs, attempt, last_error) if last_error else ""
         try:
             raw_results = runner(batch_docs, attempt, retry_note)
@@ -683,17 +690,22 @@ def recover_filter_results(
         f"[WARN] filter {debug_tag} split recovery: "
         f"{len(left_docs)} + {len(right_docs)} docs"
     )
-    return recover_filter_results(
+    # split recovery 时添加延迟
+    time.sleep(RETRY_DELAY_SECONDS)
+    left_results = recover_filter_results(
         left_docs,
         runner,
         max_attempts=max_attempts,
         debug_tag=f"{debug_tag}_left",
-    ) + recover_filter_results(
+    )
+    time.sleep(RETRY_DELAY_SECONDS)
+    right_results = recover_filter_results(
         right_docs,
         runner,
         max_attempts=max_attempts,
         debug_tag=f"{debug_tag}_right",
     )
+    return left_results + right_results
 
 
 def _make_filter_client(api_key: str, model: str, base_url: str, max_output_tokens: int) -> LLMClient:
