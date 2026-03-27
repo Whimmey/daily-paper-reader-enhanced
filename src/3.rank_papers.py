@@ -21,6 +21,10 @@ MAX_CHARS_PER_DOC = 850
 BATCH_SIZE = 100
 TOKEN_SAFETY = 29000
 RRF_K = 60
+
+# API 速率限制配置：批次之间添加延迟避免触发 QPS 限制
+BATCH_DELAY_SECONDS = 2  # 每批次之间延迟 2 秒
+QUERY_DELAY_SECONDS = 5  # 不同查询之间延迟 5 秒
 LANE_TOP_K_BASE = 30
 LANE_TOP_K_STEP = 10
 LANE_TOP_K_MAX = 120
@@ -454,6 +458,12 @@ def process_file(
           top_n=len(batch_docs),
         )
         results = response.get("results", [])
+
+        # 批次之间添加延迟，避免触发速率限制
+        if batch_idx < len(batches):
+          import time
+          log(f"[INFO] 等待 {BATCH_DELAY_SECONDS} 秒后处理下一批次...")
+          time.sleep(BATCH_DELAY_SECONDS)
 
         ranked = sorted(
           results or [],
