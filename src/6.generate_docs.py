@@ -33,7 +33,9 @@ LLM_CLIENT = None
 if LLM_API_KEY and LLM_BASE_URL:
     LLM_CLIENT = LLMClient(api_key=LLM_API_KEY, model=LLM_MODEL, base_url=LLM_BASE_URL)
 
-DEFAULT_DOCS_CONCURRENCY = 4
+DEFAULT_DOCS_CONCURRENCY = 2  # 降低并发数避免触发速率限制
+# API 速率限制配置：请求之间添加延迟避免触发 QPS 限制
+DOCS_REQUEST_DELAY_SECONDS = 2  # 每次请求之间延迟 2 秒
 
 
 def call_blt_text(
@@ -50,7 +52,10 @@ def call_blt_text(
         }
     )
     resp = client.chat(messages=messages, response_format=response_format)
-    return (resp.get("content") or "").strip()
+    content = (resp.get("content") or "").strip()
+    # API 调用后添加延迟，避免触发速率限制
+    time.sleep(DOCS_REQUEST_DELAY_SECONDS)
+    return content
 
 
 def strip_json_wrappers(text: str) -> str:
@@ -350,7 +355,10 @@ def translate_title_and_abstract_to_zh(title: str, abstract: str) -> Tuple[str, 
             "required": ["title_zh", "abstract_zh"],
             "additionalProperties": False,
         }
-        use_json_object = "gemini" in (getattr(LLM_CLIENT, "model", "") or "").lower()
+        use_json_object = (
+            "gemini" in (getattr(LLM_CLIENT, "model", "") or "").lower() or
+            "glm" in (getattr(LLM_CLIENT, "model", "") or "").lower()
+        )
         if use_json_object:
             response_format = {"type": "json_object"}
         else:
