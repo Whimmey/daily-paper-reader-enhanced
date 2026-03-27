@@ -1,0 +1,1642 @@
+Title: Dual Path Attribution: Efficient Attribution for SwiGLU-Transformers through Layer-Wise Target Propagation
+
+URL Source: https://arxiv.org/pdf/2603.19742v1
+
+Published Time: Mon, 23 Mar 2026 00:39:05 GMT
+
+Number of Pages: 28
+
+Markdown Content:
+# Dual Path Attribution: Efficient Attribution for SwiGLU-Transformers through Layer-Wise Target Propagation 
+
+Lasse Jantsch * Dong-Jae Koh * Seonghyeon Lee † Young-Kyoon Suh †
+
+School of Computer Science and Engineering, Kyungpook National University, South Korea 
+
+{lassejantsch, djkoh, sh0416, yksuh}@knu.ac.kr 
+
+Abstract 
+
+Understanding the internal mechanisms of transformer-based large language models (LLMs) is crucial for their reliable deployment and effective operation. While recent efforts have yielded a plethora of attribution methods attempting to balance faithfulness and compu-tational efficiency, dense component attribution remains prohibitively expensive. In this work, we introduce Dual Path Attribution (DPA), a novel framework that faithfully traces infor-mation flow on the frozen transformer in one forward and one backward pass without requir-ing counterfactual examples. DPA analytically decomposes and linearizes the computational structure of the SwiGLU Transformers into dis-tinct pathways along which it propagates a tar-geted unembedding vector to receive the ef-fective representation at each residual position. This target-centric propagation achieves O(1) 
+
+time complexity with respect to the number of model components, scaling to long input se-quences and dense component attribution. Ex-tensive experiments on standard interpretabil-ity benchmarks demonstrate that DPA achieves state-of-the-art faithfulness and unprecedented efficiency compared to existing baselines 1.
+
+1 Introduction 
+
+Transformer-based large language models (LLMs) are the dominant model paradigm for general-purpose AI; however, the internal mechanisms driv-ing this performance remain poorly understood. A central challenge is attribution, identifying which inputs or internal components are responsible for a model’s predictions. While a plethora of attribution approaches were applied to LLMs (Ferrando et al., 2024), they are of-ten computationally expensive (Sundararajan et al., 2017; Conmy et al., 2023), ignore important model   
+
+> *Equal Contributions
+> †Corresponding author
+> 1github.com/lab-paper-code/dual_path_attribution
+
+components (Hong et al., 2025), or suffer from approximation errors or noise (Shrikumar et al., 2019; Balduzzi et al., 2018). One promising direc-tion is decomposition based approaches attempting to fully linearize the computational graph of the transformers. We propose Dual Path Attribution (DPA), a decomposition-based framework for efficient in-put and component attribution. By propagating the unembedding vector of the target token through the frozen transformer, DPA approximates an effective target for each residual position in one forward and one backward pass. While DPA can be applied to all transformer architectures, this paper focuses on the SwiGLU transformer, as it allows for the decomposition of its bilinear interactions into dis-tinct pathways: a content pathway that propagates representations through the value and up projec-tions, and a control pathway that governs their rout-ing and transformation through attention and gate scores. Experiments on standard interpretability benchmarks demonstrate the faithfulness of DPA for both input and component attribution. Figure 1 shows a high-level overview of our approach. Our contributions are summarized as follows: • We introduce Dual Path Attribution (DPA), a novel decomposition based framework, effi-ciently attributing logit scores in one forward and one backward pass without the need for counterfactual examples. • By leveraging the bilinear structure of the SwiGLU Transformers, we show that the com-putational graph is decomposable in distinct control and content pathways. • Through extensive experiments on standard in-terpretability benchmarks, we demonstrate that DPA achieves superior faithfulness and effi-ciency compared to state-of-the-art baselines, effectively identifying causal mechanisms. 1     
+
+> arXiv:2603.19742v1 [cs.LG] 20 Mar 2026 Figure 1: Overview of the Dual Path Attribution (DPA) framework for efficient input and component attribution.
+> DPA operates in two stages: (1) One-pass forward execution , in which the model processes the input once while caching activations required for the back propagation; and (2) top-down target propagation , where the unembedding vector of the targeted token is recursively propagated backward through Transformer modules to identify an effective target at each residual position.
+
+2 Related Work 
+
+Attribution research for Transformer-based lan-guage models broadly aims to localize the sources of model behavior, either by attributing predictions to input tokens or by identifying responsible inter-nal components (Ferrando et al., 2024). 
+
+Input attribution. Gradient-based input attri-bution approaches use the first order Taylor-Expansion as importance signal approximating pre-diction sensitivity (Simonyan et al., 2013; Denil et al., 2014; Li et al., 2015). Input x Gradient (Denil et al., 2015) calculates the dot product between the embedding vector and the gradient, including input magnitude. While gradient based approaches suffer from gradient saturation and shattering (Shrikumar et al., 2019; Balduzzi et al., 2018), approaches like 
+
+Integrated Gradients (Sundararajan et al., 2017) or 
+
+SmoothGrad (Smilkov et al., 2017) were shown effective to denoising the gradients. Layer-wise Relevance Propagation (LRP) (Bach et al., 2015) conserves the importance signal by applying lo-cal propagation rules (Voita et al., 2021; Ali et al., 2022; Achtibat et al., 2024). Another line of previous work analyzes the flow of contextual information. Early approaches interpreted raw attention weights, which were later shown to be unreliable indicators of im-portance (Jain and Wallace, 2019). Subse-quent methods incorporated value-vector norms (Kobayashi et al., 2020, 2021) or propagated at-tention across layers using rollout techniques (Ab-nar and Zuidema, 2020a; Ferrando et al., 2022; Modarressi et al., 2022). More recent work favors decomposition-based approaches that explicitly ex-pand the model’s linear structure, yielding more faithful attribution of attention-mediated effects (Modarressi et al., 2023; Kobayashi et al., 2024; Hong et al., 2025). 
+
+Component-level attribution. Beyond input to-kens, recent studies have focused on attributing internal components to the model output. Direct Logit Attribution (DLA) (Elhage et al., 2021; nos-talgebraist, 2020) exploits the additive structure through the residual connection to measure a com-ponent’s direct contribution to output logits, and has been applied to both attention heads (Ferrando et al., 2023) and individual neurons (Geva et al., 2022). DLA, however, does not capture indirect effects of downstream layers, leading to decreased interpretability in early layers. Causal intervention methods (i.e., activation patching) resolve this limitation by measuring di-rect and indirect effects via counterfactual forward passes (Vig et al., 2020; Meng et al., 2022; Wang et al., 2022; Zhang and Nanda, 2023). While highly faithful, activation patching is computationally ex-pensive for dense attribution as it requires separate forward passes for each component or interaction. Recently, automated circuit discovery – the de-tection of component subsets responsible for model behavior – has seen causal intervention (Conmy 2et al., 2023), gradient (Nanda, 2023; Syed et al., 2023, 2024), LRP (Jafari et al., 2025), and con-textual mixing (Ferrando and Voita, 2024) based approaches. 
+
+3 Transformer Architecture 
+
+This section reviews the Transformer components relevant to our method and establishes the no-tation used throughout the paper. We focus on the Swish-Gated Linear Unit (SwiGLU) (Shazeer, 2020) architecture, as it is the current state-of-the art for dense Transformers. A general overview of decoder-only Transformers is provided in Ap-pendix A. We formalize our exposition based on the Llama2-style architecture (Touvron et al., 2023; Grattafiori et al., 2024), though our approach di-rectly generalizes to other SwiGLU-based Trans-formers with minimal adjustment. 
+
+3.1 Multi-Head Self-Attention 
+
+The multi-head self-attention (MHSA) module dif-fers from the original Transformer (Radford et al., 2019) by employing Root Mean Square Normal-ization (RMSNorm) (Zhang and Sennrich, 2019) and Rotary Positional Embeddings (RoPE) (Su et al., 2021). Given an input sequence represen-tation X ∈ RT ×d, MHSA computes attention over queries Q, keys K, and values V across H
+
+independent heads. The output of MHSA is formed by concatenating head-wise outputs and projecting them back to the residual stream via an output matrix WO ∈ Rd×d:MHSA (X) = α  ˜XW V
+
+WO,
+
+where ˜X denotes the RMS-normalized input, 
+
+WV ∈ Rd×H×dh is the value projection, and dh is the head dimension. The attention weights α are computed as: 
+
+α = softmax RQ( ˜XW Q) RK ( ˜XW K )⊤
+
+√dh
+
+!
+
+,
+
+where WQ, WK ∈ Rd×H×dh are the query and key projections, and R(·) denotes the application of RoPE. 
+
+3.2 Gated Linear Units 
+
+The feed-forward network in LLaMA-style models adopts the SwiGLU formulation, which separates computation into a gating and a value pathway. Given an input X, the GLU transformation is de-fined as: GLU (X) = 
+
+
+
+σ( ˜XW G) ⊙ ( ˜XW U )
+
+
+
+WD,
+
+where σ(·) denotes the SiLU (Swish) activation, ⊙
+
+is element-wise multiplication, and WG, WU ∈
+
+Rd×dffn and WD ∈ Rdffn ×d are the gate, up, and down projection matrices, respectively. 
+
+3.3 Component-wise Decomposition of Transformer Modules 
+
+A key property exploited by DPA is the linear sepa-rability of the transformer blocks (Modarressi et al., 2023; Kobayashi et al., 2021), allowing for decom-position into independent model component con-tributions; attention heads and neurons for MHSA and GLU respectively. For MHSA, the output can be expressed as the sum of head-wise contributions: MHSA (X) = 
+
+> H
+
+X
+
+> h=1
+
+α(h)  ˜XW (h)
+
+> V
+
+W(h) 
+
+> O
+
+,
+
+where W(h) 
+
+> V
+
+and W(h) 
+
+> O
+
+denote the value and output projections of head h.Similarly, the GLU output can be decomposed into contributions from individual neurons: GLU (X) = 
+
+> dffn
+
+X
+
+> i=1
+
+
+
+σ( ˜Xw (i) 
+
+> G
+
+) ⊙ ( ˜Xw (i) 
+
+> U
+
+)
+
+
+
+w(i) 
+
+> D
+
+,
+
+where w(i) 
+
+> G
+
+and w(i) 
+
+> U
+
+denote the i-th columns of 
+
+WG and WU , and w(i) 
+
+> D
+
+denotes the i-th row of 
+
+WD. Each term corresponds to the contribution of a single GLU neuron to the residual stream. 
+
+4 Problem Statement 
+
+Our objective is to quantify how much a given model component x contributes to a target model output t. Formally, we seek to assign an attribution score St(x) that measures the relevance of x to a target token prediction t. Let x(0)  
+
+> i
+
+∈ Rd denote the embedding vector at token position i, and let 
+
+tj ∈ Rd be the j-th row of the unembedding matrix 
+
+WU E , corresponding to the direction in latent space that increases the logit logit (j) 
+
+> i
+
+of token t(j) ∈ V 
+
+at position i. Owing to the additive structure of the residual stream, x(0)  
+
+> i
+
+contributes directly to the output logit, yielding the direct attribution score: 
+
+St, direct (x(0)  
+
+> i
+
+) = ( x(0)  
+
+> i
+
+)⊤tj .
+
+3However, this direct contribution does not ex-ist for embeddings at position i′ < i and fur-ther—particularly for early-layer components such as embeddings—accounts for only a small fraction of their true influence, as most effects are medi-ated through downstream transformations (Belrose et al., 2023). The full attribution can be formalized as: 
+
+St(X(0) ) = f (x(0)  
+
+> i
+
+)⊤tj ,
+
+where f (·) denotes the downstream processing of 
+
+x(0)  
+
+> i
+
+with an otherwise frozen network. While faith-ful (Hong et al., 2025), this approach requires a separate forward pass per component to evaluate 
+
+f (x(0)  
+
+> i
+
+), making dense attribution prohibitively ex-pensive. To overcome this limitation, we invert the attri-bution perspective: rather than passing each compo-nent forwards, we propagate the target backwards. Specifically, we reformulate the attribution score as: 
+
+St(x(0)  
+
+> i
+
+) = ( x(0)  
+
+> i
+
+)⊤f −1(tj ) = ( x(0)  
+
+> i
+
+)⊤t(0)  
+
+> j
+
+,
+
+where t(0)  
+
+> j
+
+denotes the effective target at layer 0.This effective target is computed recursively via: 
+
+t(l) 
+
+> mid
+
+= t(l+1) + g(l)
+
+> GLU
+
+ t(l+1) ,
+
+t(l) 
+
+> j
+
+= t(l) 
+
+> mid
+
++ g(l)
+
+> MHSA
+
+ t(l)
+
+> mid
+
+,
+
+where g(l)
+
+> GLU
+
+(·) and g(l)
+
+> MHSA
+
+(·) denote linearized in-verse transformations of the GLU (l) and MHSA (l)
+
+blocks, respectively. Under this formulation, attribution requires only a single forward pass to cache activations and a single backward pass to propagate the effective tar-get. In the following we describe the inversion and linearization process. In Appendix B, we present theoretical and empirical complexity analyses of the proposed method, comparing it with several baseline methods. 
+
+5 Dual Path Attribution 
+
+Dual Path Attribution (DPA) linearizes and inverts MHSA and GLU by separately inverting the differ-ent pathways through the otherwise frozen module. To prevent the explosion of the target norm and sustain completeness 2, each inversion is further 
+
+> 2While DPA generally supports completeness, our choice of softmax linearization breaks it for the sake of a robust gradient.
+
+regularized by a weighting parameter μ. Formal derivations of these transformations are provided in Appendix D. 
+
+5.1 Neuron Target Propagation 
+
+Consider a GLU neuron n with activation α(n). To propagate the effective target backward through the GLU, we approximate the inverse transformation 
+
+g(n)
+
+> GLU
+
+(·) as a weighted combination of the up- and gate-projection paths, assuming frozen activations: 
+
+g(n)
+
+> GLU
+
+(t) = μup · g(n) 
+
+> up
+
+(t) + μgate · g(n)
+
+> gate
+
+(t),
+
+where μup + μgate = 1 .
+
+Up-projection. With frozen activations, the up-projection-pathway is linear and corresponds to the composition of the up- and down-projection weights, W(n) 
+
+> U D
+
+= w(n) 
+
+> U
+
+w(n) 
+
+> D
+
+. The propagated target is given by: 
+
+g(n) 
+
+> up
+
+(t) = w(n) 
+
+> U
+
+⊙ γ
+
+σ| {z } 
+
+> effective weight ˜w(n)
+> U
+
+·α(n) ·  (w(n) 
+
+> D
+
+)⊤t| {z } 
+
+> gradient scalar λGLU
+
+,
+
+where γ and σ denote the RMSNorm parameters. For clarity, we refer to such normalized weights as 
+
+effective weights ˜w.
+
+Gate-projection. Due to the non-linearity, the gate-projection-pathway requires linearization to be inverted. We approximate the local gradient using the ratio α(n)/s (n), where s(n) denotes the pre-activation value: 
+
+g(n)
+
+> gate
+
+(t) = ˜ w(n) 
+
+> G
+
+· α(n)
+
+s(n) · λGLU .
+
+5.2 Attention Head Target Propagation 
+
+For an attention head h, target propagation is more involved due to token mixing softmax activation. We decompose the inverse MHSA transformation into contributions from the query, key, and value paths, and combine them via weighted aggregation: 
+
+g(h)
+
+> head
+
+(t) = μQ·g(h) 
+
+> Q
+
+(t)+ μK ·g(h) 
+
+> K
+
+(t)+ μV ·g(h) 
+
+> V
+
+(t),
+
+where μQ + μK + μV = 1 .
+
+Value path. The value path is linear, given fixed attention weights, and is defined as: 
+
+g(h) 
+
+> V
+
+(t) = ˜W(h) 
+
+> V
+
+· (W(h) 
+
+> O
+
+)⊤t
+
+| {z } 
+
+> grad. vec. λMHSA
+
+· α(h).
+
+4Query and key paths. Propagating targets through the query and key paths requires trac-ing gradients through the softmax operation. Un-like GLU activations, softmax outputs depend jointly on all attention scores and remain non-zero even for zero inputs, making naive lineariza-tion unstable. Following Achtibat et al. (2024), we adopt a Taylor-based decomposition of the softmax, which provides a stable—though non-conservative—approximation: 
+
+g(h)
+
+> Q,i
+
+(t) = ˜W(h)
+
+> Q
+
+X
+
+> j≤i
+
+δij · R−1
+
+> Q,i
+
+RK,j (˜ xj W(h) 
+
+> K
+
+)
+
+√dh
+
+!⊤
+
+,
+
+g(h) 
+
+> K,j
+
+(t) = ˜W(h)
+
+> K
+
+X
+
+> i≥j
+
+δij · R−1
+
+> K,j
+
+ RQ,i (˜ xiW(h) 
+
+> Q
+
+)
+
+√dh
+
+
+
+> ⊤
+
+,
+
+where the scalar interaction term δij captures the sensitivity of the softmax output: 
+
+δij = αij 
+
+ ˜xj W(h) 
+
+> V
+
+− μ(h)
+
+> i
+
+ • λMHSA .
+
+Here, μ(h) 
+
+> i
+
+denotes the expected intermediate acti-vation vector of head h at token position i.
+
+6 Experiments 
+
+We now evaluate the proposed DPA approach through experiments assessing attribution faithful-ness and sensitivity to the weighting parameters μ.
+
+6.1 Attribution Faithfulness 
+
+RQ 1: Does DPA attribute input features (tokens) and internal component importance faithfully? 
+
+The attribution faithfulness experiments quan-tify how well DPA identifies components that are causally relevant to a model’s prediction. Following prior work (DeYoung et al., 2020), we evaluate faithfulness using two complemen-tary metrics: comprehensiveness (disruption) and 
+
+sufficiency (recovery) . Both metrics are computed by ablating or retaining the top-K important com-ponents and measuring the relative change in the probability of the correct next-token: 
+
+1 − ∆p(K) = 1 − p(y | x) − p(y | x(K))
+
+p(y | x) ,
+
+where x(K) denotes the input or internal state after ablating the top-K components. 
+
+Input Attribution. For token-level attribution, we compute effective targets t(0)  
+
+> i
+
+by propagating the unembedding vector of the correct answer token backward to the input layer. Token importance is then obtained via the dot product between t(0)  
+
+> i
+
+and the corresponding embedding vectors. 
+
+Datasets and Models. We evaluate our ap-proach on Llama-3.1-8B-Instruct (Grattafiori et al., 2024), Llama-2-7B-Chat (Touvron et al., 2023), Qwen3-4B-Instruct (Yang et al., 2025), Mistral-7B-Instruct (Jiang et al., 2023), and Qwen2.5-32B-Instruct (Yang et al., 2024). Experiments are conducted on three representative datasets span-ning different attribution scenarios: (1) Known 1000 (Meng et al., 2022) for factual sequence completion, (2) SQuAD v2.0 (Rajpurkar et al., 2018) for context-supported question answering, and (3) IMDb (Maas et al., 2011) for sentiment analysis. See Appendix E for additional informa-tion on the datasets and preprocessing. 
+
+Baselines. We compare DPA against abroad range of attribution baselines, includ-ing gradient-based methods ( Gradient at input, 
+
+Input ×Gradient (Denil et al., 2014), and Integrated Gradients (Sundararajan et al., 2017)), attention-based methods ( Last-Layer Attention and Mean Attention on the last token, as well as Attention Rollout (Abnar and Zuidema, 2020b)), context-mixing method Information Flow Routs (Ferrando and Voita, 2024), and the decomposition-based method DePass (Hong et al., 2025). 
+
+Evaluation Setup. For the Known 1000 dataset, we assess faithfulness by ablating individual input tokens, excluding special tokens. For SQuAD v2.0 and IMDb dataset, we employ a context- or review-level ablation strategy, in which tokens within the supporting paragraph or review are ablated while the remaining prompt remains intact. This setup mitigates artifacts caused by truncating incomplete sentences immediately preceding the target token, yielding a cleaner faithfulness signal. Additional setup information for reproducibility are located in Appendix F. 
+
+Results. As shown in Table 1 and Figure 2, DPA consistently outperforms all baselines on total faith-fulness. While DPA is outperformed by simple at-tention based metrics for Known 1000 (Last Layer Attention - 5.26) and SQuAD v2.0 (Mean Attention - 17.06), attribution to the more complex notion of 5Methods Known 1000 SQuAD v2.0 IMDb                                                                                                             
+
+> dis. ↓rec. ↑total ↑dis. ↓rec. ↑total ↑dis. ↓rec. ↑total ↑
+> Reference
+> Random 14.22 22.78 8.56 50.64 52.39 1.75 84.44 85.93 1.49
+> Attention-based
+> Last layer 5.26 24.83 †19.57 †21.96 82.04 60.08 79.68 †91.57 11.89 †
+> Mean 6.57 25.78 19.21 17.06 89.46 †72.40 †79.89 91.42 11.53 Rollout 13.26 15.72 2.46 40.58 69.43 28.85 85.33 92.47 7.14
+> Gradient-based
+> Gradient 12.14 22.94 10.80 49.95 46.68 -3.27 84.52 84.58 0.06 Input X Gradient 12.58 21.27 8.69 34.07 63.22 29.15 82.65 84.34 1.69 Integrated Gradients 9.92 24.49 14.57 17.92 79.53 61.61 81.29 92.41 †11.12
+> Decomposition-based
+> DePass 9.17 25.45 16.28 19.29 78.45 59.16 85.49 69.65 -15.84
+> Contextual Mixing-based
+> IFR 16.15 11.88 -4.27 50.16 62.51 12.35 91.63 91.12 -0.51
+> Proposed Method
+> Dual Path Attribution (DPA) 5.79 †33.88 28.09 17.73 †92.51 74.78 69.34 99.51 30.17
+
+Table 1: Faithfulness evaluation of crucial token attribution on Llama-3.1-8B-Instruct across Known 1000 (factual knowledge), SQuAD v2.0 (reading comprehension), and IMDb (sentiment analysis). Lower disruption ( dis. ) and higher recovery ( rec. ) indicate more faithful token localization; total denotes their aggregate AUC score. Bold 
+
+indicates the best result, and † the second best. DPA consistently achieves the highest faithfulness across datasets. 
+
+Figure 2: Performance comparison with baseline attribution methods on Llama-3.1-8B-Instruct under different top input token masking strategies. Our approach shows lower Top-k disruption and higher Top-k recovery, indicating more accurate identification of important components. 
+
+sentiment shows the limitation of those approaches. Figure 4 shows a qualitative comparison of a sub-set of the baseline methods on the IMDB dataset. Results for Llama2, Qwen3, Qwen2.5, and Mistral are located in Appendix G. 
+
+Module Component Attribution. We further as-sess attribution faithfulness at the level of internal model components, focusing on individual atten-tion heads and MLP neurons. 
+
+Datasets and Models. Experiments are con-ducted on the Indirect Object Identification (IOI) 6Methods Known 1000 IOI                                                            
+
+> dis. ↓rec. ↑total ↑dis. ↓rec. ↑total ↑
+> Reference
+> Random 19.77 27.55 7.78 21.85 27.54 5.69
+> Baselines
+> Attn-only 0.66 93.43 †92.77 †0.15 93.07 92.92
+> MLP-only 0.37 27.58 27.21 0.87 27.53 26.66 Norm-only 0.06 †67.25 67.19 0.01 †65.02 65.01
+> Gradient-based
+> Gradient 0.28 27.62 27.34 0.00 30.95 30.95 AtP 0.00 81.39 81.39 0.00 84.39 84.39
+> Contextual Mixing-based
+> IFR 0.32 34.72 34.40 0.02 29.15 29.13
+> Proposed Method
+> Dual Path Attribution (DPA) 0.00 123.50 123.50 0.00 86.87 †86.87 †
+
+Table 2: Component-level attribution performance on Llama-3.1-8B-Instruct across Known 1000 (factual knowl-edge) and IOI (Indirect Object Identification) benchmarks. Lower disruption ( dis. ) and higher recovery ( rec. )indicate more faithful localization of causally relevant components; the total score aggregates both effects. Bold 
+
+denotes the best result, and † indicates the second best. Our DPA consistently achieves the most faithful component localization across benchmarks. 
+
+Figure 3: Performance comparison with baseline attribution methods on Llama-3.1-8B-Instruct under different top model component masking strategies. Our approach shows lower disruption and higher recovery, indicating more accurate identification of important components. 
+
+task (Wang et al., 2022), a widely used benchmark for circuit discovery, as well as the Known 1000 dataset. We evaluate on the same models as in the input attribution tasks. 
+
+Baselines. We compare DPA against simple component-level baselines that rank internal units by their activations: Attn-only , which scores at-tention heads by head activation magnitude; MLP-only , which ranks neurons by activation strength; and Norm , which uses the L2-norm decomposed head or neuron contributions. We further evaluate on gradient-based methods ( Gradient at compo-
+
+7Figure 4: Qualitative attribution examples. Red highlights denote tokens that positively contribute to the target, while blue denotes tokens that hinder it. As shown on the IMDb dataset (left), DPA more precisely distinguishes between helpful and harmful context compared to baseline methods. The right panel illustrates DPA’s attribution across different configurations ( μ).                           
+
+> Sensitivity μqμkμvμgate μup
+> Control-Content 1−p
+> 21−p
+> 2p1−pp
+> Attention 1−p
+> 21−p
+> 2p0.50.5
+> Query-Key p
+> 21−p
+> 20.50.50.5
+> MLP 0.25 0.25 0.51−pp
+
+Table 3: Hyperparameter configuration for the sensitiv-ity analysis. p ∈ [0 , 1] is the sensitivity variable in our experiment. 
+
+nent , and AtP (Nanda, 2023) as well as Information Flow Routes (IFR) (Ferrando and Voita, 2024). 
+
+Evaluation Setup. All attention heads and MLP neurons are ranked according to their attribution scores. We progressively ablate or recover the top-ranked components and measure the resulting change in the model’s prediction confidence. Ad-ditional setup information for reproducibility are located in Appendix F. 
+
+Results. As shown in Table 2 and Figure 3, DPA outperforms baselines in isolating relevant compo-nents, achieving zero disruption and high recovery on the IOI and Known 1000 benchmarks. Although the Attn-only baseline yields a slightly higher ag-gregate recovery AUC on the IOI task, DPA’s S-shaped recovery curve reveals it isolates the cir-cuit much earlier (around 0.001%), boosting the correct completion probability to over 140% before dipping as opposing nodes are reintroduced. This dip, which briefly falls below the baseline and low-ers DPA’s overall AUC, likely occurs for two rea-sons: first, DPA attributes logit scores rather than post-softmax probabilities (meaning it tracks target logit increases but misses probability gains from inhibited competing logits, a nuance the target-agnostic Attn-only baseline overcomes); and sec-ond, approximation errors may undervalue compo-nents within IOI’s highly specific circuit. Nonethe-
+
+Figure 5: Sensitivity analysis of Dual Path Attribution (DPA) scaling configurations. We evaluate the impact of varying attribution parameters to prioritize different information pathways. 
+
+less, this sharp early recovery demonstrates DPA’s high precision in identifying key causal mecha-nisms. Results for Llama2, Qwen3, Mistral, and Qwen2.5 are located in Appendix G. 
+
+6.2 Sensitivity Analysis 
+
+RQ 2: Does the selection of balanced hyperparam-eters result in optimal performance? In the sen-sitivity analysis, we evaluate how the attribution performance changes when altering the weighting parameters μ, which balance the contributions of different pathways. Table 3 shows the configura-tion weights. Despite the Query-Key sensitivity analysis, a higher p indicates larger reliance on the content pathways. • Control-Content Balance. Varying emphasis between the content and the control pathways across both modules. By varying p, we shift emphasis from pure content (p ≈ 1) to pure control (p ≈ 0) . This allows us to observe how the interaction between what is being processed and how it is routed affects faithfulness. • Query-Key Balance. Within the attention mechanism’s control path, we examine the in-terplay between queries and keys. We fix the 8value path contribution at 0.5 and redistribute the remaining weight between μq and μk. This reveals whether the model’s sensitivity is more localized in the ’request’ (query) or the ’source’ (key) of information. • Attention Balance. This configuration isolates the attention mechanism by fixing the MLP weights. It tests the sensitivity of the softmax decomposition specifically, helping to deter-mine if the attention-mediated effects are domi-nated by the content being moved (μv) or the routing logic (μq, μ k).• MLP Balance. We focus on the Gated Linear Unit by fixing the attention mechanism to the balanced configuration. This setup is crucial for observing the filtering behavior of the gate inde-pendently from attention-routing variances. By shifting weight between μgate and μup , we can measure the extent to which the gating mecha-nism acts as a selective suppressor of irrelevant features. 
+
+Results. Figures 4 and 5 summarize the qualita-tive and sensitivity results. For input attribution, performance generally peaks in the mid-range (50– 70%), suggesting that capturing macro-level token importance benefits from prioritizing direct content pathways (e.g., value and up projections) over com-plex routing. Conversely, component attribution reaches peak fidelity at much smaller scales (e.g., 
+
+p ≈ 0.2) before declining sharply. This divergence reveals that fine-grained component fidelity heav-ily relies on control/routing pathways (specifically, gates and queries/keys). Assigning higher weight to these routing mechanisms ( 1 − p ≈ 0.8) is es-sential to accurately capture individual functional roles. Considering both abstractions, p = 0 .5 pro-vides the most stable trade-off by mathematically unifying the control and content pathways with equal weighting which we use throughout the ex-periments in this paper. In future work we will assess alternative configurations to a larger extent. 
+
+7 Discussion 
+
+Architecture Generalization. While our empir-ical analysis focuses on the SwiGLU architec-ture, the core methodology of DPA—the top-down target-propagation framework—is fundamentally architecture-agnostic. Adapting DPA to different architectures, such as Mixture-of-Experts (MoE) with discrete routing or State Space Models, re-quires manually deriving new mathematical in-verses for their specific non-linearities. This man-ual derivation is a one-time analytical cost that, once established, unlocks the framework’s scalable efficiency and eliminates the need for computation-ally exhaustive or counterfactual forward passes. 
+
+Approximation Error. The approximation er-ror in DPA fundamentally arises from the struc-tural linearization required to achieve top-down target propagation. By isolating the contributions of individual pathways within bilinear modules and applying first-order approximations to non-linearities, the method inherently drops second-order cross-derivatives and truncates higher-order dynamics. Consequently, this approximation holds reliably in locally linear regimes where first-order effects dominate—specifically when network acti-vations are stable relative to the target prediction or when routing and content pathways operate with-out strong synergistic coupling. Conversely, the approximation breaks down in regions of high cur-vature or when model behavior is driven by highly coupled, non-linear interactions. 
+
+8 Conclusion 
+
+In this paper, we introduced Dual Path Attribution 
+
+(DPA), a novel mechanistic interpretability frame-work that definitively bridges the gap between at-tribution faithfulness and computational efficiency. By analytically decomposing the bilinear transfor-mations of SwiGLU-based Transformers into com-plementary content and control pathways, DPA suc-cessfully captures complex non-linear component interactions often lost in standard linear approxi-mations. Crucially, our target-centric formulation enables exact, single-pass attribution with an O(1) 
+
+time complexity with respect to the number of model components. This allows for the precise iso-lation of causal mechanisms—down to individual attention heads and MLP neurons—without the pro-hibitive overhead of exhaustive activation patching. Extensive empirical evaluations confirm that DPA consistently achieves state-of-the-art faithfulness across diverse benchmarks while maintaining un-precedented computational efficiency. Ultimately, DPA provides a highly robust and practical tool for uncovering the internal reasoning pathways of modern large language models. 99 Limitations 
+
+While Dual Path Attribution (DPA) offers a highly efficient framework for dense component attribu-tion, its methodology introduces several structural and operational limitations: 
+
+Architectural Specificity: The current math-ematical decomposition is explicitly optimized for standard dense SwiGLU Transformers. Ex-tending DPA to architectures involving discrete routing, such as Mixture-of-Experts (MoE), or attention-free paradigms like State Space Models (e.g., Mamba), is not out-of-the-box compatible and requires manually deriving new inverse func-tions for their specific non-linearities. 
+
+Approximation in High-Curvature Regimes: 
+
+To achieve top-down propagation, DPA relies on lo-cal linearization and first-order Taylor expansions. Because it inherently discards second-order cross-derivatives, the method’s attribution faithfulness may degrade when analyzing circuits driven by highly coupled, synergistic, or heavily non-linear component interactions. 
+
+Logit-Level Scope: DPA traces attribution di-rectly to the target logit rather than the final post-softmax probability distribution. Consequently, it cannot easily capture indirect attribution mecha-nisms where a target token’s likelihood is increased due to the active suppression of competing token logits. 
+
+Memory and Compute Overhead: Although DPA drastically reduces the time complexity to 
+
+O(1) with respect to the number of components, caching the dense intermediate activations during the forward pass is memory-intensive. Therefore, despite its comparative efficiency, conducting DPA on exceptionally large models or ultra-long con-text windows still demands a significant memory footprint and computational overhead. 
+
+10 Acknowledgments 
+
+This study was supported by the NRF grant (RS-2018-NR031059) and the BK21 FOUR program (41202420214871), both funded by the Ministry of Education of Korea. Access to the A100 GPU used in the experiments was provided by the Department of Data Convergence Computing at Kyungpook Na-tional University, where Young-Kyoon Suh serves as an adjunct professor. 10 References 
+
+Samira Abnar and Willem Zuidema. 2020a. Quantify-ing attention flow in transformers. In Proceedings of the 58th Annual Meeting of the Association for Computational Linguistics , pages 4190–4197, On-line. Association for Computational Linguistics. Samira Abnar and Willem Zuidema. 2020b. Quantify-ing attention flow in transformers. In Annual Meeting of the Association for Computational Linguistics .Reduan Achtibat, Sayed Mohammad Vakilzadeh Hatefi, Maximilian Dreyer, Aakriti Jain, Thomas Wiegand, Sebastian Lapuschkin, and Wojciech Samek. 2024. Attnlrp: Attention-aware layer-wise relevance propa-gation for transformers. Preprint , arXiv:2402.05602. Ameen Ali, Thomas Schnake, Oliver Eberle, Gré-goire Montavon, Klaus-Robert Müller, and Lior Wolf. 2022. Xai for transformers: Better expla-nations through conservative propagation. ArXiv ,abs/2202.07304. Sebastian Bach, Alexander Binder, Grégoire Montavon, Frederick Klauschen, Klaus-Robert Müller, and Wo-jciech Samek. 2015. On pixel-wise explanations for non-linear classifier decisions by layer-wise rele-vance propagation. PLoS ONE , 10. David Balduzzi, Marcus Frean, Lennox Leary, JP Lewis, Kurt Wan-Duo Ma, and Brian McWilliams. 2018. The shattered gradients problem: If resnets are the answer, then what is the question? Preprint ,arXiv:1702.08591. Nora Belrose, Zach Furman, Logan Smith, Danny Ha-lawi, Igor V. Ostrovsky, Lev McKinney, Stella Bi-derman, and Jacob Steinhardt. 2023. Eliciting latent predictions from transformers with the tuned lens. 
+
+ArXiv , abs/2303.08112. Arthur Conmy, Augustine N. Mavor-Parker, Aengus Lynch, Stefan Heimersheim, and Adrià Garriga-Alonso. 2023. Towards automated circuit dis-covery for mechanistic interpretability. ArXiv ,abs/2304.14997. Misha Denil, Alban Demiraj, and Nando de Freitas. 2014. Extraction of salient sentences from labelled documents. ArXiv , abs/1412.6815. Misha Denil, Alban Demiraj, and Nando de Freitas. 2015. Extraction of salient sentences from labelled documents. Preprint , arXiv:1412.6815. Jay DeYoung, Sarthak Jain, Nazneen Fatema Rajani, Eric Lehman, Caiming Xiong, Richard Socher, and Byron C. Wallace. 2020. ERASER: A benchmark to evaluate rationalized NLP models. In Proceedings of the 58th Annual Meeting of the Association for Computational Linguistics , pages 4443–4458, Online. Association for Computational Linguistics. Nelson Elhage, Neel Nanda, Catherine Olsson, Tom Henighan, Nicholas Joseph, Ben Mann, Amanda Askell, Yuntao Bai, Anna Chen, Tom Conerly, Nova DasSarma, Dawn Drain, Deep Ganguli, Zac Hatfield-Dodds, Danny Hernandez, Andy Jones, Jackson Kernion, Liane Lovitt, Kamal Ndousse, and 6 others. 2021. A mathemati-cal framework for transformer circuits. Trans-former Circuits Thread . Https://transformer-circuits.pub/2021/framework/index.html. Javier Ferrando, Gerard I. Gállego, and Marta R. Costa-jussà. 2022. Measuring the mixing of contextual information in the transformer. In Proceedings of the 2022 Conference on Empirical Methods in Nat-ural Language Processing , pages 8698–8714, Abu Dhabi, United Arab Emirates. Association for Com-putational Linguistics. Javier Ferrando, Gerard I. Gállego, Yiannis (Ioannis) Tsiamas, and Marta Ruiz Costa-jussà. 2023. Explain-ing how transformers use context to build predictions. In Annual Meeting of the Association for Computa-tional Linguistics .Javier Ferrando, Gabriele Sarti, Arianna Bisazza, and Marta Ruiz Costa-jussà. 2024. A primer on the in-ner workings of transformer-based language models. 
+
+ArXiv , abs/2405.00208. Javier Ferrando and Elena Voita. 2024. Information flow routes: Automatically interpreting language models at scale. In Proceedings of the 2024 Conference on Empirical Methods in Natural Language Processing ,pages 17432–17445, Miami, Florida, USA. Associa-tion for Computational Linguistics. Mor Geva, Avi Caciularu, Ke Wang, and Yoav Gold-berg. 2022. Transformer feed-forward layers build predictions by promoting concepts in the vocabulary space. ArXiv , abs/2203.14680. Aaron Grattafiori, Abhimanyu Dubey, Abhinav Jauhri, Abhinav Pandey, Abhishek Kadian, Ahmad Al-Dahle, Aiesha Letman, Akhil Mathur, Alan Schel-ten, Alex Vaughan, Amy Yang, Angela Fan, Anirudh Goyal, Anthony Hartshorn, Aobo Yang, Archi Mi-tra, Archie Sravankumar, Artem Korenev, Arthur Hinsvark, and 542 others. 2024. The llama 3 herd of models. Preprint , arXiv:2407.21783. Xiangyu Hong, Che Jiang, Kai Tian, Biqing Qi, Youbang Sun, Ning Ding, and Bowen Zhou. 2025. Depass: Unified feature attributing by simple decom-posed forward pass. ArXiv , abs/2510.18462. Farnoush Rezaei Jafari, Oliver Eberle, Ashkan Khakzar, and Neel Nanda. 2025. RelP: Faithful and efficient circuit discovery in language models via relevance patching. Preprint , arxiv:2508.21258 [cs]. Sarthak Jain and Byron C. Wallace. 2019. Attention is not explanation. In North American Chapter of the Association for Computational Linguistics .Albert Qiaochu Jiang, Alexandre Sablayrolles, Arthur Mensch, Chris Bamford, Devendra Singh Chap-lot, Diego de Las Casas, Florian Bressand, Gi-anna Lengyel, Guillaume Lample, Lucile Saulnier, 
+
+11 Lélio Renard Lavaud, Marie-Anne Lachaux, Pierre Stock, Teven Le Scao, Thibaut Lavril, Thomas Wang, Timothée Lacroix, and William El Sayed. 2023. Mis-tral 7b. ArXiv , abs/2310.06825. Goro Kobayashi, Tatsuki Kuribayashi, Sho Yokoi, and Kentaro Inui. 2020. Attention is not only a weight: Analyzing transformers with vector norms. In 
+
+Proceedings of the 2020 Conference on Empirical Methods in Natural Language Processing (EMNLP) ,pages 7057–7075, Online. Association for Computa-tional Linguistics. Goro Kobayashi, Tatsuki Kuribayashi, Sho Yokoi, and Kentaro Inui. 2021. Incorporating Residual and Nor-malization Layers into Analysis of Masked Language Models. In Proceedings of the 2021 Conference on Empirical Methods in Natural Language Processing ,pages 4547–4568, Online and Punta Cana, Domini-can Republic. Association for Computational Lin-guistics. Goro Kobayashi, Tatsuki Kuribayashi, Sho Yokoi, and Kentaro Inui. 2024. Analyzing feed-forward blocks in transformers through the lens of attention maps. In The Twelfth International Conference on Learning Representations .Jiwei Li, Xinlei Chen, Eduard H. Hovy, and Dan Ju-rafsky. 2015. Visualizing and understanding neural models in nlp. In North American Chapter of the Association for Computational Linguistics .Andrew L. Maas, Raymond E. Daly, Peter T. Pham, Dan Huang, Andrew Y. Ng, and Christopher Potts. 2011. Learning word vectors for sentiment analysis. In Proceedings of the 49th Annual Meeting of the Association for Computational Linguistics: Human Language Technologies , pages 142–150, Portland, Oregon, USA. Association for Computational Lin-guistics. Kevin Meng, David Bau, Alex Andonian, and Yonatan Belinkov. 2022. Locating and editing factual asso-ciations in gpt. In Neural Information Processing Systems .Ali Modarressi, Mohsen Fayyaz, Ehsan Aghazadeh, Yadollah Yaghoobzadeh, and Mohammad Taher Pile-hvar. 2023. DecompX: Explaining transformers deci-sions by propagating token decomposition. In Pro-ceedings of the 61st Annual Meeting of the Associa-tion for Computational Linguistics (Volume 1: Long Papers) , pages 2649–2664, Toronto, Canada. Associ-ation for Computational Linguistics. Ali Modarressi, Mohsen Fayyaz, Yadollah Yaghoobzadeh, and Mohammad Taher Pile-hvar. 2022. GlobEnc: Quantifying global token attribution by incorporating the whole encoder layer in transformers. In Proceedings of the 2022 Conference of the North American Chapter of the Association for Computational Linguistics: Human Language Technologies , pages 258–271, Seattle, United States. Association for Computational Linguistics. Neel Nanda. 2023. Attribution patching: Activation patching at industrial scale. nostalgebraist. 2020. Interpreting gpt: the logit lens. AI Alignment Forum .Alec Radford, Jeff Wu, Rewon Child, David Luan, Dario Amodei, and Ilya Sutskever. 2019. Language models are unsupervised multitask learners. Pranav Rajpurkar, Robin Jia, and Percy Liang. 2018. Know what you don’t know: Unanswerable questions for squad. ArXiv , abs/1806.03822. Noam Shazeer. 2020. Glu variants improve transformer. 
+
+ArXiv , abs/2002.05202. Avanti Shrikumar, Peyton Greenside, and Anshul Kundaje. 2019. Learning important features through propagating activation differences. Preprint ,arXiv:1704.02685. Karen Simonyan, Andrea Vedaldi, and Andrew Zis-serman. 2013. Deep inside convolutional networks: Visualising image classification models and saliency maps. CoRR , abs/1312.6034. Daniel Smilkov, Nikhil Thorat, Been Kim, Fernanda Viégas, and Martin Wattenberg. 2017. Smooth-grad: removing noise by adding noise. Preprint ,arXiv:1706.03825. Jianlin Su, Yu Lu, Shengfeng Pan, Bo Wen, and Yunfeng Liu. 2021. Roformer: Enhanced transformer with rotary position embedding. ArXiv , abs/2104.09864. Mukund Sundararajan, Ankur Taly, and Qiqi Yan. 2017. Axiomatic attribution for deep networks. In Interna-tional Conference on Machine Learning .Aaquib Syed, Can Rager, and Arthur Conmy. 2023. Attribution patching outperforms automated circuit discovery. ArXiv , abs/2310.10348. Aaquib Syed, Can Rager, and Arthur Conmy. 2024. Attribution patching outperforms automated circuit discovery. In Proceedings of the 7th BlackboxNLP Workshop: Analyzing and Interpreting Neural Net-works for NLP , pages 407–416, Miami, Florida, US. Association for Computational Linguistics. Hugo Touvron, Louis Martin, Kevin Stone, Peter Al-bert, Amjad Almahairi, Yasmine Babaei, Nikolay Bashlykov, Soumya Batra, Prajjwal Bhargava, Shruti Bhosale, Dan Bikel, Lukas Blecher, Cristian Canton Ferrer, Moya Chen, Guillem Cucurull, David Esiobu, Jude Fernandes, Jeremy Fu, Wenyin Fu, and 49 oth-ers. 2023. Llama 2: Open foundation and fine-tuned chat models. Preprint , arXiv:2307.09288. Jesse Vig, Sebastian Gehrmann, Yonatan Belinkov, Sharon Qian, Daniel Nevo, Yaron Singer, and Stu-art M. Shieber. 2020. Investigating gender bias in language models using causal mediation analysis. In 
+
+Neural Information Processing Systems .
+
+12 Elena Voita, Rico Sennrich, and Ivan Titov. 2021. Ana-lyzing the source and target contributions to predic-tions in neural machine translation. In Proceedings of the 59th Annual Meeting of the Association for Computational Linguistics and the 11th International Joint Conference on Natural Language Processing (Volume 1: Long Papers) , pages 1126–1140, Online. Association for Computational Linguistics. Kevin Wang, Alexandre Variengien, Arthur Conmy, Buck Shlegeris, and Jacob Steinhardt. 2022. Inter-pretability in the wild: a circuit for indirect object identification in gpt-2 small. ArXiv , abs/2211.00593. An Yang, Anfeng Li, Baosong Yang, Beichen Zhang, Binyuan Hui, Bo Zheng, Bowen Yu, Chang Gao, Chengen Huang, Chenxu Lv, Chujie Zheng, Day-iheng Liu, Fan Zhou, Fei Huang, Feng Hu, Hao Ge, Haoran Wei, Huan Lin, Jialong Tang, and 41 others. 2025. Qwen3 technical report. Preprint ,arXiv:2505.09388. Qwen An Yang, Baosong Yang, Beichen Zhang, Binyuan Hui, Bo Zheng, Bowen Yu, Chengyuan Li, Dayiheng Liu, Fei Huang, Guanting Dong, Hao-ran Wei, Huan Lin, Jian Yang, Jianhong Tu, Jianwei Zhang, Jianxin Yang, Jiaxin Yang, Jingren Zhou, Jun-yang Lin, and 25 others. 2024. Qwen2.5 technical report. ArXiv , abs/2412.15115. Biao Zhang and Rico Sennrich. 2019. Root mean square layer normalization. ArXiv , abs/1910.07467. Fred Zhang and Neel Nanda. 2023. Towards best prac-tices of activation patching in language models: Met-rics and methods. ArXiv , abs/2309.16042. 
+
+13 A Transformer Architecture 
+
+We consider a decoder-only Transformer com-posed of a stack of L identical layers indexed by 
+
+l ∈ { 1, . . . , L }. Each layer consists of two primary sub-modules: a multi-head self-attention (MHSA) block and a gated feed-forward network (GLU). Given an input token sequence t = ( t1, . . . , t T ),tokens are mapped to vector embeddings X(0) ∈
+
+RT ×d using an embedding matrix WE ∈ R|V|× d,where V denotes the vocabulary. Representa-tions propagate sequentially through the network layers . Under a pre-normalization configuration, the update rule for layer l is given by: 
+
+X(l) 
+
+> mid
+
+= X(l−1) + MHSA 
+
+
+
+LN (X(l−1) )
+
+
+
+,
+
+X(l) = X(l) 
+
+> mid
+
++ GLU 
+
+
+
+LN (X(l)
+
+> mid
+
+)
+
+
+
+,
+
+where LN (·) denotes the normalization applied prior to each sub-module. For notational convenience , we refer to normalized activations as ˜X when needed. The final representation X(L) is projected into the vocabulary space via the unembedding ma-trix WU E ∈ Rd×|V| , yielding the logits used for next-token prediction. A key property enabling attribution analysis is the additive structure induced by residual connec-tions around each sub-module, commonly referred to as the residual stream . This structure allows the final representation to be expressed as: 
+
+X(L) = X(0) +
+
+> L
+
+X
+
+> l=1
+
+
+
+MHSA ( ˜X(l−1) )+ GLU ( ˜X(l)
+
+> mid
+
+)
+
+
+
+.
+
+As a result, the contribution of any module output can be directly interpreted by projecting it into the vocabulary space via the unembedding matrix (El-hage et al., 2021; nostalgebraist, 2020). 
+
+A.1 Root-Mean-Squared Normalization (RMSNorm) 
+
+Root-Mean-Squared Normalization (RMSNorm) normalizes activations by their root-mean-square magnitude and is defined as: RMSNorm (X) = X
+
+pVar[ X] + ϵ ⊙ γ, (1) where ϵ is a small constant for numerical stability and γ denotes learnable scaling parameters. 
+
+A.2 Rotary Positional Embeddings (RoPE) 
+
+Rotary Positional Embeddings (RoPE) encode positional information by applying a rotation to query and key vectors. Given a vector x ∈ Rd at position m, RoPE defines the rotated representation as: 
+
+R(x, m ) = RΘ,m x, (2) where RΘ,m ∈ Rd×d is a block-diagonal rotation matrix composed of d/ 2 independent 2 × 2 rotation blocks: 
+
+RΘ,m =
+
+
+
+M1 0
+
+. . .
+
+0 Md/ 2
+
+ . (3) Each block Mj rotates a pair of dimensions by an angle mθ j :
+
+Mj =
+
+cos( mθ j ) − sin( mθ j )sin( mθ j ) cos( mθ j )
+
+
+
+. (4) The rotation frequencies are defined as a geometric progression: 
+
+θj = 10000 −2( j−1) /d , j ∈ { 1, . . . , d/ 2}. (5) An important property of RoPE is that the inner product between a query at position m and a key at position n depends only on their relative offset: 
+
+(R(q, m )) ⊤R(k, n ) = q⊤RΘ,n −mk. (6) 
+
+B Complexity Analysis 
+
+As large language models are increasingly de-ployed on tasks requiring long context windows, the computational and memory scalability of attri-bution methods becomes a critical bottleneck. In this section, we analyze the complexity of Dual Path Attribution (DPA) and compare it against two established baselines: Activation Patching (AP) and DePass (Hong et al., 2025). We evaluate these methods both theoretically and empirically, demon-strating that DPA uniquely decoupling attribution cost from the number of components, thereby en-abling highly efficient dense attribution even over long sequences. 
+
+B.1 Theoretical Complexity Analysis 
+
+As summarized in Table 4, we evaluate the compu-tational complexity of Dual Path Attribution (DPA) against Activation Patching (AP) and DePass with respect to the number of attributed components M .14 Methods Complexity Fwd passes                
+
+> (w.r.t. M)Activation Patching (AP) O(M)M
+> DePass O(M)⌈M/B ⌉
+> Dual Path Attribution (DPA) O(1) 0
+> Table 4: Computational complexity comparison with respect to the number of attributed components M.Activation Patching and DePass require forward passes that scale linearly with M, whereas DPA performs at-tribution with no additional forward passes and a single backward pass.
+
+For a dense attribution task, AP requires M in-dependent forward passes. Because each pass in-curs the O(S2) time complexity of the attention mechanism (where S is the sequence length), its 
+
+O(M · S2) scaling becomes computationally pro-hibitive for long-context tasks. To mitigate this, methods like DePass leverage frozen activations through a modified forward pass, but still suffer from an O(M ) complexity bottleneck. DePass ex-plicitly decomposes hidden representations into M
+
+independent contribution vectors. For large models (e.g., Llama-3.1-8B-Instruct with Nmlp ≈ 14 ,000 ), processing these simultaneously is intractable, ne-cessitating sequential batching that yields ⌈M/B ⌉
+
+forward passes (where B is the batch size). In contrast, DPA adopts a target-centric formu-lation that is completely independent of M . By propagating a single effective target vector back-ward from the output, DPA computes the attribution score for any component via a simple dot product with its cached contribution. Consequently, DPA requires 0 additional forward passes and only a single backward pass, achieving a rigorous O(1) 
+
+time complexity with respect to M . This decou-pling effectively eliminates the prohibitive scaling overhead inherent in forward decomposition-based methods. 
+
+B.2 Empirical Measurements Analysis 
+
+We provide comprehensive empirical runtime and peak memory measurements across four distinct SwiGLU-based LLMs (representing the LLaMA, Qwen, and Mistral families) in Table 5. To en-sure a strictly fair comparison, all evaluations were executed under identical hardware configurations, utilizing the same GPU setup and batch size. Fur-thermore, peak memory allocation was explicitly tracked using PyTorch’s native CUDA memory allocator. This approach guarantees the precise measurement of tensor-level VRAM consumption directly managed by the model, effectively isolat-ing the metric from OS-level caching overheads or external system processes. The empirical results demonstrate that our DPA framework significantly outperforms existing base-line methods in computational speed across all sce-narios. Even on short-context datasets like Known 1000, DPA operates consistently faster than Activa-tion Patching (AP) and DePass across all evaluated models. Furthermore, DPA exhibits exceptional scalability and efficiency on longer context lengths, such as the SQuAD v2.0 dataset. For instance, on the Llama-3.1-8B-Instruct model, DPA completed the attribution calculations in just 129.05 seconds. In stark contrast, both AP and DePass required approximately 1.5 hours (5370.65 and 5452.28 sec-onds, respectively) for the same task, representing a massive 40 × speedup for DPA. Crucially, DPA achieves these drastically faster runtimes while maintaining a peak memory foot-print that is highly comparable to the baseline meth-ods across all tested models. This confirms that DPA is a profoundly practical, robust, and resource-efficient solution for real-world tasks involving long context sequences, successfully overcoming the severe computational bottlenecks of traditional intervention-based methods. 
+
+C Algorithm of Dual Path Attribution 
+
+The complete procedure for Dual Path Attribu-tion (DPA) is formalized in Algorithm 1. The framework operates in a two-stage process: a sin-gle forward pass for activation caching followed by a recursive top-down target propagation. By decoupling the attribution cost from the number of attributed components M , DPA achieves O(1) 
+
+complexity, making it highly scalable for dense attribution tasks in large-scale transformers. 
+
+D Derivations of DPA Target Tracing 
+
+In this section, we provide the complete mathe-matical derivations for the target propagation rules underlying Dual Path Attribution (DPA). By prop-agating a single effective target vector backward through the network, DPA analytically computes the gradient of the attribution score with respect to the intermediate representations. Below, we derive these exact target propagation formulas for the two primary computational blocks of the Transformer architecture: the Gated Linear Unit (GLU) and the 15 Methods Known 1000 SQuAD v2.0 Runtime (s) ↓ Peak Memory (MB) ↓ Runtime (s) ↓ Peak Memory (MB) ↓
+
+Llama-3.1-8B-Instruct Activation Patching (AP) 14.88 20983.48 5370.65 15649.38 DePass 14.91 20663.91 5452.28 17210.68 
+
+Dual Path Attribution (DPA) 4.98 21603.86 129.05 17512.21 Llama-2-7B-Chat Activation Patching (AP) 17.58 24642.69 7229.39 13505.32 DePass 15.74 17321.58 6987.46 14976.61 
+
+Dual Path Attribution (DPA) 5.33 19449.77 141.58 15026.57 Qwen3-4B-Instruct-2507 Activation Patching (AP) 10.32 15354.79 7336.73 7863.08 DePass 9.04 13866.60 4905.13 8591.08 
+
+Dual Path Attribution (DPA) 4.00 13985.03 119.43 9571.57 Mistral-7B-Instruct-v0.3 Activation Patching (AP) 17.33 18395.77 9603.84 13973.31 DePass 16.87 19795.21 10808.99 14814.81 
+
+Dual Path Attribution (DPA) 5.55 21182.21 170.92 16191.69 
+
+Table 5: Empirical runtime and peak memory measurements across various SwiGLU-based LLMs (representing the LLaMA, Qwen, and Mistral families) on datasets with different context lengths. Notably, DPA achieves vastly superior computational efficiency, delivering drastically faster runtimes while maintaining a comparable peak memory footprint to the baseline methods. It maintains highly robust performance even on the long-context SQuAD v2.0 dataset, successfully overcoming the severe computational bottlenecks of AP and DePass. 
+
+Multi-Head Self-Attention (MHSA) module. 
+
+D.1 Gated Linear Unit (GLU) Target Propagation Forward Pass Definition. Consider a single neu-ron n within the GLU layer. The contribution of this neuron to the residual stream is defined as: GLU (n)(˜ x) = 
+
+
+
+σ(˜ xw (n) 
+
+> G
+
+) ⊙ (˜ xw (n) 
+
+> U
+
+)
+
+
+
+w(n)
+
+> D
+
+where: • σ(·) is the SiLU (Swish) activation function. • w(n) 
+
+> G
+
+, w(n) 
+
+> U
+
+are the column vectors of the gate and up projection matrices. • w(n) 
+
+> D
+
+is the row vector of the down projection matrix. • ⊙ denotes element-wise multiplication (scalar here for a single neuron). The attribution of this neuron to a global target t is given by: 
+
+S(n) = GLU (n)(˜ x) · t
+
+S(n) = σ(˜ xw (n) 
+
+> G
+
+)
+
+| {z } 
+
+> activation α
+
+· (˜ xw (n) 
+
+> U
+
+)
+
+| {z } 
+
+> content v
+
+· (w(n) 
+
+> D
+
+t)
+
+| {z } 
+
+> scalar λ
+
+D.2 Up-Projection (Value) Pathway 
+
+To identify the contribution of the information-carrying pathway, we linearize the operation by freezing the gate activation α(n). The attribution becomes linear with respect to ˜x:
+
+S(n) 
+
+> up
+
+≈ α(n) · (˜ xw (n) 
+
+> U
+
+) · λ
+
+The gradient of this score with respect to the input 
+
+˜x (which represents the propagated target) is: 
+
+g(n) 
+
+> up
+
+(t) = ∇˜xS(n) 
+
+> up
+
+= α(n)λw(n)
+
+> U
+
+Incorporating the RMSNorm scaling parameters 
+
+γ into the effective weight ˜w, we get the paper’s formulation: 
+
+g(n) 
+
+> up
+
+(t) = ( ˜ w(n) 
+
+> U
+
+) · α(n) · (w(n) 
+
+> D
+
+t)
+
+D.3 Gate-Projection Pathway 
+
+For the gating pathway, we freeze the content term 
+
+v = ˜ xw (n) 
+
+> U
+
+and attribute through the non-linear activation σ(s), where s = ˜ xw (n) 
+
+> G
+
+.
+
+S(n) 
+
+> gate
+
+≈ σ(s) · v · λ
+
+16 Algorithm 1: The algorithm of Dual Path Attribution (DPA). 
+
+Input :Input tokens X, target logit direction t(L), sensitivity parameter p
+
+Output : Attribution scores St for all components 
+
+// Stage 1: Forward Pass and Activation Caching 
+
+Execute a single forward pass through L layers; 
+
+for each layer l = 1 to L do 
+
+Cache attention weights α(h) and normalized inputs ˜x;Cache GLU pre-activations s(n) and gate activations α(n);
+
+// Stage 2: Top-Down Target Propagation 
+
+Initialize effective target t(L) ← W (t) 
+
+> U
+
+;
+
+for each layer l = L to 1 do 
+
+// 1. Propagate through Gated Linear Unit (GLU) 
+
+Compute g(n) 
+
+> up
+
+(t) and g(n)
+
+> gate
+
+(t) using linearized inverse rules; 
+
+t(l) 
+
+> mid
+
+← t(l) + P
+
+> n
+
+(μup · g(n) 
+
+> up
+
+(t(l)) + μgate · g(n)
+
+> gate
+
+(t(l))) ;
+
+// 2. Propagate through Multi-Head Self-Attention (MHSA) 
+
+for each head h do 
+
+Compute value path g(h) 
+
+> V
+
+(t(l)
+
+> mid
+
+) and control paths g(h) 
+
+> Q
+
+, g (h) 
+
+> K
+
+;
+
+g(h) 
+
+> head
+
+← μQg(h) 
+
+> Q
+
++ μK g(h) 
+
+> K
+
++ μV g(h) 
+
+> V
+
+;
+
+t(l−1) ← t(l) 
+
+> mid
+
++ P 
+
+> h
+
+g(h)
+
+> head
+
+;
+
+// Stage 3: Score Calculation // Calculate scores for each hierarchical level 
+
+St(x(0)  
+
+> i
+
+) ← (x(0)  
+
+> i
+
+)⊤t(0)  
+
+> i
+
+; // Input Token Attribution 
+
+St(h(l)) ← Attn (h)(˜ x(l−1) ) · t(l) 
+
+> mid
+
+; // Attention Head Attribution 
+
+St(n(l)) ← GLU (n)(˜ x(l)
+
+> mid
+
+) · t(l) ; // MLP Neuron Attribution 
+
+return St;Using the linear approximation σ(s) ≈ s · σ(s) 
+
+> s
+
+=
+
+s · α(n) 
+
+> s
+
+, we rewrite the score: 
+
+S(n) 
+
+> gate
+
+≈ (˜ xw (n) 
+
+> G
+
+) · α(n)
+
+s · v · λ
+
+Taking the gradient with respect to ˜x:
+
+g(n)
+
+> gate
+
+(t) = ∇˜xS(n) 
+
+> gate
+
+= w(n) 
+
+> G
+
+· α(n)
+
+s · v · λ
+
+Grouping terms yields the final propagation for-mula: 
+
+g(n)
+
+> gate
+
+(t) = ( ˜ w(n) 
+
+> G
+
+) · α(n)
+
+s ·
+
+
+
+v · w(n) 
+
+> D
+
+t
+
+
+
+D.4 Multi-Head Self-Attention (MHSA) Target Propagation Forward Pass Definition. The output of an at-tention head h at query position i is: 
+
+y(h) 
+
+> i
+
+= X
+
+> j≤i
+
+αij (˜ xj W(h) 
+
+> V
+
+)W(h)
+
+> O
+
+where the attention weights αij are computed via Softmax over the scaled dot-product of Rotary Po-sitional Embedding (RoPE) transformed queries and keys: 
+
+αij = Softmax j (sij )
+
+sij = RQ(˜ xiW(h) 
+
+> Q
+
+) · RK (˜ xj W(h) 
+
+> K
+
+)
+
+√dh
+
+The attribution to the target t is S = y(h) 
+
+> i
+
+· t.17 Value Pathway. We assume the attention pattern 
+
+αij is fixed. The operation becomes linear with respect to the input ˜xj via the value matrix WV :
+
+Svalue = X
+
+> j≤i
+
+αij (˜ xj W(h) 
+
+> V
+
+)( W(h) 
+
+> O
+
+t)
+
+The propagated target to token j is derived by tak-ing the gradient w.r.t ˜xj :
+
+g(h) 
+
+> V,j
+
+(t) = ˜W(h)
+
+> V
+
+X
+
+> i≥j
+
+αij (W(h) 
+
+> O
+
+t)
+
+
+
+Query and Key Pathways (Softmax Decomposi-tion). To propagate through the Query and Key paths, we must differentiate the Softmax function. Let the projected target vector be t′ = W(h) 
+
+> O
+
+t and the value vector be vj = ˜ xj W(h) 
+
+> V
+
+. The attribution score is: 
+
+S = X
+
+> k
+
+αik (vk · t′)
+
+We first find the sensitivity of S with respect to the pre-softmax logits sij . Using the derivative of Softmax, ∂α ik  
+
+> ∂s ij
+
+= αij (δjk − αik ):
+
+∂S ∂s ij 
+
+= X
+
+> k
+
+∂α ik 
+
+∂s ij 
+
+(vk · t′)= X
+
+> k
+
+αij (δjk − αik )( vk · t′)= αij vj · t′ − X
+
+> k
+
+αik vk
+
+!
+
+· t′
+
+!
+
+Defining the expected head output as μ(h) 
+
+> i
+
+=P 
+
+> k
+
+αik vk, we obtain the scalar interaction term 
+
+δij :
+
+δij = αij 
+
+ vj − μ(h)
+
+> i
+
+ · (W(h) 
+
+> O
+
+t)
+
+Now we propagate δij through the dot product sij .
+
+Query Path. The gradient of sij with respect to the query input vector qi = ˜ xiWQ is proportional to the key vector kj .
+
+∇˜xi sij = W(h) 
+
+> Q
+
+R−1
+
+> Q,i
+
+RK (˜ xj W(h) 
+
+> K
+
+)
+
+√dh
+
+!
+
+Aggregating over all j, the target for the query input at position i is: 
+
+g(h)
+
+> Q,i
+
+(t) = ˜W(h)
+
+> Q
+
+X
+
+> j≤i
+
+δij · R−1
+
+> Q,i
+
+RK (˜ xj W(h) 
+
+> K
+
+)
+
+√dh
+
+!
+
+Key Path. Similarly, the gradient of sij with re-spect to the key input vector kj = ˜ xj WK is pro-portional to the query vector qi.
+
+∇˜xj sij = W(h) 
+
+> K
+
+R−1
+
+> K,j
+
+ RQ(˜ xiW(h) 
+
+> Q
+
+)
+
+√dh
+
+
+
+Aggregating over all i that attend to j (i.e., i ≥ j
+
+in causal attention), the target for the key input at position j is: 
+
+g(h) 
+
+> K,j
+
+(t) = ˜W(h)
+
+> K
+
+X
+
+> i≥j
+
+δij · R−1
+
+> K,j
+
+ RQ(˜ xiW(h) 
+
+> Q
+
+)
+
+√dh
+
+
+
+E Dataset Configurations 
+
+In this section, we provide detailed information regarding the licenses, usage, and preprocessing steps for the datasets used to evaluate the Dual Path Attribution (DPA) framework. We conduct experiments across four representative tasks: fac-tual knowledge, reading comprehension, sentiment analysis, and circuit discovery. 
+
+E.1 Licenses and Usage 
+
+All datasets utilized in this study are publicly acces-sible and were used in strict accordance with their respective licensing terms for research purposes. • Known 1000. This dataset is distributed under the MIT License. It consists of 1,000 factual statements designed to evaluate how language models represent and utilize factual associa-tions. • SQuAD v2.0. The Stanford Question Answer-ing Dataset is licensed under Creative Com-mons Attribution-ShareAlike 4.0 International (CC BY-SA 4.0). It is a standard benchmark for reading comprehension, requiring the model to identify answer spans within a given context or determine if a question is unanswerable. • IMDb Sentiment. Usage of this dataset fol-lows the IMDb Non-Commercial Licensing terms, which allow for limited personal and non-commercial use. In compliance with these terms, we acknowledge that the information is courtesy of IMDb (https://www.imdb.com) and is used with permission. The data was sourced from official contributor datasets to ensure ad-herence to copyright and conditions of use. It contains movie reviews labeled for binary sen-timent analysis. 18 • Indirect Object Identification (IOI). This dataset is distributed under the MIT License. It serves as a specialized benchmark for component-level circuit discovery. 
+
+E.2 Dataset Preprocessing Details 
+
+To maintain a consistent evaluation signal and man-age computational complexity, we performed sys-tematic preprocessing as follows: • Known 1000. We specifically selected in-stances where the model provided a correct baseline prediction for the target entity to en-sure that the attribution was grounded in ex-isting model knowledge. The data was then formatted as a prefix-completion task, ensur-ing that target entities consisted of short token spans to facilitate precise attribution measure-ment. • SQuAD v2.0. Our processing focused exclu-sively on answerable questions to evaluate the model’s ability to attribute information to the provided context. The preprocessing involved normalizing whitespace and special characters while ensuring all questions concluded with a proper question mark. Furthermore, we uti-lized the answer_start index to establish exact ground-truth tokens and filtered for answers consisting of no more than two words to en-sure the localization signal remained clear and unambiguous. • IMDb Sentiment. We sampled a balanced sub-set of 1,000 reviews, comprising 500 positive and 500 negative samples to prevent sentiment bias. The text was cleaned by removing HTML tags and collapsing redundant spaces to prevent tokenization artifacts. To ensure sufficient con-text for attribution while maintaining computa-tional efficiency, we filtered reviews to maintain a character length between 200 and 500. • Indirect Object Identification (IOI). This dataset was constructed using fixed linguistic templates to isolate the specific circuit respon-sible for identifying indirect objects. Our pre-processing focused on identifying the precise token positions of the subjects and indirect ob-jects within these templates, which allowed us to measure the direct and indirect effects of internal components with high resolution. 
+
+F Experiment Reproducibility 
+
+All experiments, including model inference and the recursive propagation of Dual Path Attribu-tion (DPA) targets, were conducted on a high-performance computing cluster to ensure a con-sistent and high-throughput execution environment. The specific hardware and software configurations used for our empirical evaluations are as follows : • Hardware Resources. We utilized an NVIDIA DGX system equipped with NVIDIA A100-SXM4-40GB GPUs. Each GPU provides 40 GB of HBM2 memory, which is essential for caching the high-dimensional activations re-quired for attribution across large-scale models like Llama-3-8B-Instruct. The high memory bandwidth of the A100 architecture facilitated efficient processing of dense attribution tasks. • Software Environment. The system operated on CUDA Version 12.2 with NVIDIA Driver Version 535.161.08. This environment supports the latest optimization libraries required for ex-ecuting transformer-based models and perform-ing efficient tensor operations during the target propagation stage. • Implementation Details. The DPA frame-work and all comparative baselines, such as Integrated Gradients and DePass, were imple-mented using the PyTorch library. Attribution results across factual knowledge, reading com-prehension, and sentiment analysis tasks were obtained through a single forward pass for acti-vation caching followed by a single top-down backward pass. 
+
+G Extended Results 
+
+In this section, we evaluate the generalizability of Dual Path Attribution (DPA) across different model architectures to ensure our findings are robust and not strictly tied to a single model family. 
+
+G.1 Generalization within the LLaMA Family 
+
+We initially extended our experiments to Llama-2-7B-Chat not only Llama-3.1-8B-Instruct. The empirical results demonstrate that DPA maintains consistent attribution accuracy and computational efficiency within the LLaMA architecture. The input and component attribution results for Llama-2-7B-Chat are shown in Table 6, and 7(with corresponding Figures 6 and 7). 19 G.2 Generalization to Non-LLaMA SwiGLU Architectures 
+
+To address concerns regarding generalization to other model families, we conducted additional ex-periments on the Qwen and Mistral model families, specifically Qwen3-4B-Instruct-2507, Qwen2.5-32B-Instruct, and Mistral-7B-Instruct-v0.3. While these models share a SwiGLU-based Transformer backbone with the LLaMA series, they are fun-damentally distinct. They feature structural vari-ations in the attention mechanism (e.g., Sliding Window Attention in Mistral), utilize different to-kenizers, and undergo entirely different pre- and post-training pipelines. We present quantitative results and visualiza-tions for Qwen3-4B-Instruct-2507 in Tables 8 and 9 (with corresponding Figures 8 and 9). Similarly, results for Qwen2.5-32B-Instruct are detailed in Ta-bles 10 and 11 (Figures 10 and 11), and for Mistral-7B-Instruct-v0.3 in Tables 12 and 13 (Figures 12 and 13). Empirical results demonstrate that DPA exhibits robust superiority over existing baseline methods across these architectural variations. By consis-tently achieving state-of-the-art performance in the majority of evaluations, DPA confirms its broad applicability and the stability of its performance. 20 Methods Known 1000 SQuAD v2.0 IMDb 
+
+dis. ↓ rec. ↑ total ↑ dis. ↓ rec. ↑ total ↑ dis. ↓ rec. ↑ total ↑
+
+Reference 
+
+Random 13.17 20.64 7.47 23.74 25.04 1.30 58.98 57.80 -1.18 
+
+Attention-based 
+
+Last layer 6.53 28.85 † 22.32 † 8.90 31.95 23.05 59.81 60.94 1.13 Mean 5.97 † 25.10 19.13 5.48 † 33.35 † 27.87 † 46.75 78.60 31.85 
+
+Rollout 15.45 16.17 0.72 22.64 27.35 4.71 83.31 55.54 -27.77 
+
+Gradient-based 
+
+Gradient 12.14 18.75 6.61 16.94 15.55 -1.39 55.16 63.90 8.74 Input ×Gradient 11.31 20.31 9.00 14.73 17.16 2.43 69.39 50.85 -18.54 Integrated Gradients 11.58 25.30 13.72 9.87 26.08 16.21 52.30 68.19 15.89 
+
+Decomposition-based 
+
+DePass 7.55 26.29 18.74 12.62 27.49 14.87 68.19 56.13 -12.06 
+
+Contextual mixing-based 
+
+IFR 15.22 12.76 -2.46 12.62 26.29 2.65 91.62 48.67 -42.95 
+
+Proposed Method 
+
+Dual Path Attribution (DPA) 5.60 34.41 28.81 3.73 36.08 32.35 48.21 † 74.53 † 26.32 †
+
+Table 6: Faithfulness evaluation of crucial token attribution on Llama-2-7B-Chat across Known 1000 (factual knowledge), SQuAD v2.0 (reading comprehension), and IMDb (sentiment analysis). Lower disruption ( dis. ) and higher recovery ( rec. ) indicate more faithful token localization; total denotes their aggregate AUC score. Bold 
+
+indicates the best result, and † the second best. Dual Path Attribution consistently achieves the highest faithfulness across datasets. 
+
+Figure 6: Performance comparison with baseline attribution methods on Llama-2-7B-Chat under different top input token masking strategies. Our approach shows lower Top-k disruption and higher Top-k recovery, indicating more accurate identification of important components. 
+
+21 Methods Known 1000 IOI                                                            
+
+> dis. ↓rec. ↑total ↑dis. ↓rec. ↑total ↑
+> Reference
+> Random 22.89 27.65 4.76 24.07 27.67 3.60
+> Baselines
+> Attn-only 2.34 92.58 90.24 0.53 91.39 †90.86 †
+> MLP-only 1.74 29.16 27.42 5.59 27.58 21.99 Norm-only 0.24 64.68 64.44 0.05 66.98 66.93
+> Gradient-based
+> Gradient 0.22 †28.21 27.99 0.01 †30.69 30.68 AtP 0.00 120.80 †120.80 †0.00 76.30 76.30
+> Contextual mixing-based
+> IFR 0.69 30.49 29.80 0.48 28.86 28.38
+> Proposed Method
+> Dual Path Attribution (DPA) 0.00 136.45 136.45 0.00 127.16 127.16
+
+Table 7: Component-level attribution performance on Llama-2-7B-Chat across Known 1000 (factual knowledge) and IOI (Indirect Object Identification) benchmarks. Lower disruption ( dis. ) and higher recovery ( rec. ) indicate more faithful localization of causally relevant components; the total score aggregates both effects. Bold denotes the best result, and † indicates the second best. Dual Path Attribution consistently achieves the most faithful component localization across benchmarks. 
+
+Figure 7: Performance comparison with baseline attribution methods on Llama-2-7B-Chat under different top model component masking strategies. Our approach shows lower Top-k disruption and higher Top-k recovery, indicating more accurate identification of important components. 
+
+22 Methods Known 1000 SQuAD v2.0 
+
+dis. ↓ rec. ↑ total ↑ dis. ↓ rec. ↑ total ↑
+
+Reference 
+
+Random 11.52 19.64 8.12 48.89 50.00 1.11 
+
+Attention-based 
+
+Last layer 8.03 22.82 † 14.79 26.04 72.41 46.37 Mean 9.50 22.35 12.85 11.69 91.55 † 79.86 †
+
+Rollout 15.25 11.79 -3.46 43.81 66.12 22.31 
+
+Gradient-based 
+
+Gradient 10.88 18.07 7.19 57.82 35.49 -22.33 Input ×Gradient 10.54 17.95 7.41 46.23 47.40 1.17 Integrated Gradients 7.55 16.18 8.63 41.39 49.99 8.60 
+
+Decomposition-based 
+
+DePass 6.24 26.74 20.50 13.74 66.19 52.45 
+
+Contextual mixing-based 
+
+IFR 15.80 11.28 -4.52 43.74 66.46 22.72 
+
+Proposed Method 
+
+Dual Path Attribution (DPA) 6.54 † 22.37 15.83 † 11.93 † 93.86 81.93 
+
+Table 8: Faithfulness evaluation of crucial token attribution on Qwen3-4B-Instruct-2507 across Known 1000 
+
+(factual knowledge), and SQuAD v2.0 (reading comprehension). Lower disruption ( dis. ) and higher recovery ( rec. )indicate more faithful token localization; total denotes their aggregate AUC score. Bold indicates the best result, and † the second best. Dual Path Attribution consistently achieves the highest faithfulness across datasets. 
+
+Figure 8: Performance comparison with baseline attribution methods on Qwen3-4B-Instruct-2507 under different top input token masking strategies. Our approach shows lower Top-k disruption and higher Top-k recovery, indicating more accurate identification of important components. 
+
+23 Methods Known 1000 IOI                                                            
+
+> dis. ↓rec. ↑total ↑dis. ↓rec. ↑total ↑
+> Reference
+> Random 19.00 27.53 8.53 22.63 27.55 4.92
+> Baselines
+> Attn-only 2.13 74.12 †71.99 †0.66 83.11 82.45
+> MLP-only 0.01 †28.66 28.65 0.01 †27.56 27.55 Norm-only 0.00 47.64 47.64 0.00 28.68 28.68
+> Gradient-based
+> Gradient 0.03 27.54 27.51 0.00 29.54 29.54 AtP 0.00 41.98 41.98 0.00 32.25 32.25
+> Contextual mixing-based
+> IFR 0.17 38.68 38.51 0.02 28.59 28.57
+> Proposed Method
+> Dual Path Attribution (DPA) 0.00 105.21 104.35 0.00 54.91 †54.91 †
+
+Table 9: Component-level attribution performance on Qwen3-4B-Instruct-2507 across Known 1000 (factual knowledge) and IOI (Indirect Object Identification) benchmarks. Lower disruption ( dis. ) and higher recovery ( rec. )indicate more faithful localization of causally relevant components; the total score aggregates both effects. Bold 
+
+denotes the best result, and † indicates the second best. Dual Path Attribution consistently achieves the most faithful component localization across benchmarks. 
+
+Figure 9: Performance comparison with baseline attribution methods on Qwen3-4B-Instruct-2507 under different top model component masking strategies. Our approach shows lower Top-k disruption and higher Top-k recovery, indicating more accurate identification of important components. 
+
+24 Methods Known 1000                                    
+
+> dis. ↓rec. ↑total ↑
+> Reference
+> Random 20.00 29.79 9.79
+> Attention-based
+> Last layer 10.63 †32.18 21.55 †
+> Mean 12.06 33.07 †21.01 Rollout 19.70 11.37 -8.33
+> Gradient-based
+> Gradient 19.44 26.67 7.23 Input ×Gradient 21.52 26.92 5.40 Integrated Gradients 18.60 27.70 9.10
+> Decomposition-based
+> DePass 12.29 20.53 8.24
+> Contextual mixing-based
+> IFR 18.75 26.61 7.86
+> Proposed Method
+> Dual Path Attribution (DPA) 10.32 41.35 31.03
+
+Table 10: Faithfulness evaluation of crucial token attribution for Qwen2.5-32B-Instruct on Known 1000 (factual knowledge). Lower disruption ( dis. ) and higher recovery ( rec. ) indicate more faithful token localization; total 
+
+denotes their aggregate AUC score. Bold indicates the best result, and † the second best. Dual Path Attribution consistently achieves the highest faithfulness across datasets. 
+
+Figure 10: Performance comparison with baseline attribution methods on Qwen2.5-32B-Instruct under different top input token masking strategies. Our approach shows lower Top-k disruption and higher Top-k recovery, indicating more accurate identification of important components. 
+
+25 Methods Known 1000                              
+
+> dis. ↓rec. ↑total ↑
+> Reference
+> Random 22.59 27.55 4.96
+> Baselines
+> Attn-only 4.25 74.29 70.04 MLP-only 0.01 †47.25 47.24 Norm-only 0.00 67.75 †67.75 †
+> Gradient-based
+> Gradient 0.05 27.56 27.51 AtP 0.00 51.69 51.69
+> Contextual mixing-based
+> IFR 0.38 31.29 30.91
+> Proposed Method
+> Dual Path Attribution (DPA) 0.00 187.56 187.56
+
+Table 11: Component-level attribution performance for Qwen2.5-32B-Instruct on Known 1000 (factual knowledge) benchmark. Lower disruption ( dis. ) and higher recovery ( rec. ) indicate more faithful localization of causally relevant components; the total score aggregates both effects. Bold denotes the best result, and † indicates the second best. Dual Path Attribution consistently achieves the most faithful component localization across benchmarks. 
+
+Figure 11: Performance comparison with baseline attribution methods on Qwen2.5-32B-Instruct under different top model component masking strategies. Our approach shows lower Top-k disruption and higher Top-k recovery, indicating more accurate identification of important components. 
+
+26 Methods Known 1000 SQuAD v2.0 
+
+dis. ↓ rec. ↑ total ↑ dis. ↓ rec. ↑ total ↑
+
+Reference 
+
+Random 19.67 26.38 6.71 34.63 34.68 0.05 
+
+Attention-based 
+
+Last layer 7.80 † 30.41 22.61 9.79 62.84 53.05 Mean 8.61 32.27 23.66 10.78 65.99 † 55.21 †
+
+Rollout 19.79 20.46 0.67 27.94 56.88 28.94 
+
+Gradient-based 
+
+Gradient 17.31 24.66 7.35 31.19 27.56 -3.63 Input ×Gradient 16.31 28.18 11.87 25.65 30.44 4.79 Integrated Gradients 9.72 38.14 † 28.42 † 8.67 55.98 47.31 
+
+Decomposition-based 
+
+DePass 9.64 37.53 27.89 7.92 53.93 46.01 
+
+Contextual mixing-based 
+
+IFR 21.97 16.43 -5.54 32.56 52.78 20.22 
+
+Proposed Method 
+
+Dual Path Attribution (DPA) 7.16 43.23 36.07 8.06 † 70.97 62.91 
+
+Table 12: Faithfulness evaluation of crucial token attribution on Mistral-7B-Instruct-v0.3 across Known 1000 
+
+(factual knowledge), and SQuAD v2.0 (reading comprehension). Lower disruption ( dis. ) and higher recovery ( rec. )indicate more faithful token localization; total denotes their aggregate AUC score. Bold indicates the best result, and † the second best. Dual Path Attribution consistently achieves the highest faithfulness across datasets. 
+
+Figure 12: Performance comparison with baseline attribution methods on Mistral-7B-Instruct-v0.3 under different top input token masking strategies. Our approach shows lower Top-k disruption and higher Top-k recovery, indicating more accurate identification of important components. 
+
+27 Methods Known 1000 IOI                                                            
+
+> dis. ↓rec. ↑total ↑dis. ↓rec. ↑total ↑
+> Reference
+> Random 23.39 27.84 4.45 25.27 27.60 2.33
+> Baselines
+> Attn-only 1.76 92.60 90.84 0.30 94.67 94.37 MLP-only 0.94 28.44 27.50 2.82 27.66 24.84 Norm-only 0.26 57.87 57.61 0.10 54.59 54.49
+> Gradient-based
+> Gradient 0.64 29.94 29.30 0.02 †56.00 55.98 AtP 0.01 †107.73 †107.72 †0.00 104.50 †104.50 †
+> Contextual mixing-based
+> IFR 0.91 32.31 31.40 0.13 29.81 29.68
+> Proposed Method
+> Dual Path Attribution (DPA) 0.00 143.76 143.76 0.00 172.15 172.15
+
+Table 13: Component-level attribution performance on Mistral-7B-Instruct-v0.3 across Known 1000 (factual knowledge) and IOI (Indirect Object Identification) benchmarks. Lower disruption ( dis. ) and higher recovery ( rec. )indicate more faithful localization of causally relevant components; the total score aggregates both effects. Bold 
+
+denotes the best result, and † indicates the second best. Dual Path Attribution consistently achieves the most faithful component localization across benchmarks. 
+
+Figure 13: Performance comparison with baseline attribution methods on Mistral-7B-Instruct-v0.3 under different top model component masking strategies. Our approach shows lower Top-k disruption and higher Top-k recovery, indicating more accurate identification of important components. 
+
+28

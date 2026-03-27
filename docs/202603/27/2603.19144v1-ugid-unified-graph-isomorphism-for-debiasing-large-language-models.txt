@@ -1,0 +1,791 @@
+Title: UGID: Unified Graph Isomorphism for Debiasing Large Language Models
+
+URL Source: https://arxiv.org/pdf/2603.19144v1
+
+Published Time: Fri, 20 Mar 2026 01:31:08 GMT
+
+Number of Pages: 17
+
+Markdown Content:
+# UGID : Unified Graph Isomorphism for Debiasing Large Language Models 
+
+Zikang Ding 1 2 Junchi Yao 1 2 Junhao Li 3 Yi Zhang 3 Wenbo Jiang 1 Hongbo Liu 1 Lijie Hu 2
+
+Abstract 
+
+Large language models (LLMs) exhibit pro-nounced social biases. Output-level or data-optimization–based debiasing methods cannot fully resolve these biases, and many prior works have shown that biases are embedded in inter-nal representations. We propose U nified G raph Isomorphism for D ebiasing large language mod-els ( UGID ), an internal-representation–level debi-asing framework for large language models that models the Transformer as a structured computa-tional graph, where attention mechanisms define the routing edges of the graph and hidden states define the graph nodes. Specifically, debiasing is formulated as enforcing invariance of the graph structure across counterfactual inputs, with differ-ences allowed only on sensitive attributes. UGID 
+
+jointly constrains attention routing and hidden representations in bias-sensitive regions, effec-tively preventing bias migration across architec-tural components. To achieve effective behavioral alignment without degrading general capabilities, we introduce a log-space constraint on sensitive logits and a selective anchor-based objective to preserve definitional semantics. Extensive ex-periments on large language models demonstrate that UGID effectively reduces bias under both in-distribution and out-of-distribution settings, sig-nificantly reduces internal structural discrepan-cies, and preserves model safety and utility. 
+
+1. Introduction 
+
+Large Language Models (LLMs) have become foundational infrastructure for modern artificial intelligence systems, yet they often reflect and amplify social biases latent in the training data (Zhao et al., 2023; Huang & Chang, 2023; Gallegos et al., 2024; Navigli et al., 2023). These biases 
+
+> 1
+
+University of Electronic Science and Technology of China, Chengdu, China 2Mohamed bin Zayed University of Artificial Intelligence, Abu Dhabi, United Arab Emirates 3South China Uni-versity of Technology, Guangzhou, China. Correspondence to: Lijie Hu <lijie.hu@mbzuai.ac.ae >.
+
+Preprint. March 20, 2026. 0 1 2 3 4 5 6 7 8 9 10 11                       
+
+> Head Index
+> 012345678910 11
+> Layer Index
+> Bias Distribution (Before)
+> 012345678910 11
+> Head Index
+> Bias Distribution (After)
+> 012345678910 11
+> Head Index
+> Bias Reduction (Green = Improved)
+> 0.00
+> 0.01
+> 0.02
+> 0.03
+> 0.04
+> 0.05
+> 0.00
+> 0.01
+> 0.02
+> 0.03
+> 0.04
+> 0.05
+> 0.03
+> 0.02
+> 0.01
+> 0.00
+> 0.01
+> 0.02
+
+(a) GPT-2. Bias distribution shifts. 0 2 4 6 8 10 12 14 16 18 20 22 24 26 28 30                               
+
+> Head Index
+> 0246810 12 14 16 18 20 22 24 26 28 30
+> Layer Index
+> Bias Distribution (Before)
+> 0246810 12 14 16 18 20 22 24 26 28 30
+> Head Index
+> Bias Distribution (After)
+> 0246810 12 14 16 18 20 22 24 26 28 30
+> Head Index
+> Bias Reduction (Green = Improved)
+> 0.00
+> 0.01
+> 0.02
+> 0.03
+> 0.04
+> 0.05
+> 0.06
+> 0.07
+> 0.00
+> 0.01
+> 0.02
+> 0.03
+> 0.04
+> 0.05
+> 0.06
+> 0.07
+> -0.01
+> 0.00
+> 0.01
+> 0.02
+> 0.03
+> 0.04
+
+(b) LLaMA-3-8B. Bias distribution shifts. 
+
+Figure 1. Visualization of bias distribution shifts. The vertical layout allows for clear layer-wise comparison between GPT-2 (top) and LLaMA-3 (bottom). 
+
+are not merely surface-level artifacts but are deeply encoded within internal representations and computational processes (Chandna et al., 2025; Cheng et al., 2023). Existing de-biasing work can be divided into (i) model-external meth-ods , which adjust data, inference, or output behavior but do not constrain internal bias representations (Zmigrod et al., 2019; Li et al., 2024; Kiashemshaki et al., 2025; Kim et al., 2025; Gallegos et al., 2025; Chandna et al., 2025); and (ii) 
+
+model-internal methods , which primarily focus on locating or understanding local components like attention heads or FFN vectors (Meng et al., 2022; Geva et al., 2021; Prakash & Roy, 2024; Zhou et al., 2024). However, these existing methods are still difficult to fundamentally weaken the bi-ases present inside the model (Fang et al., 2025; Vijjini et al., 2025). Our investigation reveals the scale-dependence of bias within the internal mechanisms of the model. Through controlled experiments, we observe that when constraints are imposed only on the attention mechanism, bias metrics can be significantly reduced in models with small parameter scales like GPT-2, but this effect is significantly weakened or even fails when the model scale is extended to the billion-parameter level (Figure 1). This indicates that bias is not determined solely by attention; instead, feed-forward net-works (FFNs), serving as primary storage units for semantic and factual knowledge, also encode and amplify bias (Vig 1
+
+> arXiv:2603.19144v1 [cs.CL] 19 Mar 2026 UGID : Unified Graph Isomorphism for Debiasing Large Language Models
+
+et al., 2020a; Meng et al., 2022). Thus, constraining atten-tion routing alone is insufficient to fundamentally weaken the bias embedded within the model. To overcome these limitations, we propose UGID , the first unified distance-invariant debiasing framework that refor-mulates the problem as a computational graph isomorphism challenge. Leveraging the perspective of mechanistic in-terpretability, we model the internal bias migration as a dynamic computational graph G = ( V, E) (Binkowski et al., 2025), where token representations constitute the node set V
+
+(Geva et al., 2021; Meng et al., 2022) and attention mecha-nisms define the weighted dependency edge set E (Cai et al., 2024). Specifically, we develop a dual alignment framework to achieve graph isomorphism: for edges, we employ a com-binatorial Laplacian operator with attention-sink masking to align the spectral characteristics of semantic routing; for nodes, we propose a selective representation alignment strat-egy to prevent FFNs from bias compensation. Additionally, a log-space behavioral guidance is introduced to stabilize the model’s distribution over non-sensitive semantics. Ex-tensive experiments across multiple scales demonstrate that 
+
+UGID achieves state-of-the-art (SOTA) performance in both debiasing effectiveness and structural stability. Mechanis-tic analyses further verify that our framework effectively decouples bias from internal reasoning topology. The contributions of our work are summarized as follows: • We propose UGID , the first framework to achieve debi-asing via Unified Graph Isomorphism. By employing Laplacian Spectral Constraints to precisely align the routing topology (edges) and Selective Anchoring to stabilize semantic memory (nodes), UGID mechanisti-cally severs the migration pathways of bias. • We provide mechanistic interpretability evidence for the debiasing process. Through Spectral Diagnostics, Logit Lens, and Activation Patching, we visualize and verify the elimination of bias at a topological level, offering a physical-level explanation for the internal bias governance in LLMs. • Extensive experiments on public datasets demonstrate that UGID achieves a better trade-off between debias-ing and model performance preservation, consistently outperforming state-of-the-art methods across various model sizes and data scenarios. 
+
+2. Related Work 
+
+Debiasing and Performance. Social bias in large language models (LLMs) is not only reflected in their outputs, but is also embedded in the models’ internal representations and computational processes. These biases are complex and diverse, ranging from explicit stereotypes captured by bench-marks such as BBQ (Parrish et al., 2022) and CrowS-Pairs (Nangia et al., 2020), to more subtle affective disparities observed in datasets like BOLD (Dhamala et al., 2021) and RealToxicityPrompts (Gehman et al., 2020). As a result, balancing effective debiasing with preserving model perfor-mance remains a fundamental challenge. Existing debiasing methods often face a bottleneck: stronger debiasing capa-bility can come at the cost of the model’s original utility (Cheng et al., 2023). For example, data-optimization-driven approaches such as CDA (Zmigrod et al., 2019) may reduce bias while degrading the model’s intrinsic performance (Ki-ashemshaki et al., 2025). In contrast, external methods such as Self-Debias (Gallegos et al., 2025), KLAAD (Kim et al., 2025), and BiasFilter (Cheng et al., 2025) essentially inter-vene at the behavioral level. These approaches also struggle to maintain general reasoning ability and are vulnerable to prompt rephrasing or out-of-distribution (OOD) scenarios, because they do not fundamentally weaken the internal bias structures of the model. 
+
+Mechanistic Analysis and Structural Interventions. 
+
+Mechanistic interpretability offers a clearer lens to investi-gate these internal pathways, identifying bias-carrying at-tention heads via causal mediation (Vig et al., 2020b; Cai et al., 2024) and biased ”Key-Value Memories” in Feed-Forward Networks (FFNs) (Geva et al., 2021; Meng et al., 2022). Crucially, our research reveals that bias is scale-dependent: interventions on attention alone may effectively reduce bias in small-scale models like GPT-2 but fail in billion-parameter models like LLaMA-3-8B due to bias mi-gration into FFN components. This phenomenon suggests that a robust debiasing framework must jointly address atten-tion routing and hidden representations to achieve structural invariance. While recent research has explored graph-structured re-moval (Arduini et al., 2020), specific bias subspaces (Yifei et al., 2023), and causal adjustments (Wu et al., 2025; Zhang et al., 2024a), these methods typically focus on isolated components and fail to arrest the holistic migration of bias across architectural layers. Furthermore, although Liu et al. (2024) advocates for limited interventions to preserve utility, and other studies leverage structured knowledge or inter-nal representations (Ma et al., 2024; Zhang et al., 2024b; Wang et al., 2025), they do not enforce the topological iso-morphism necessary to handle out-of-distribution (OOD) scenarios or complex bias migration pathways. UGID ad-dresses these gaps by reformulating debiasing as a unified structural alignment problem, ensuring that the reasoning topology remains invariant across counterfactual inputs and effectively severing bias migration pathways throughout the computational graph. Overall, existing work provides important insights into bias 2UGID : Unified Graph Isomorphism for Debiasing Large Language Models The engineer said      
+
+> that she she... T1 T2 T3 T4 T5
+> T1
+> Utility & Definition
+> Preservation
+
+G(x)=(V,E,H,A) 
+
+Selective 
+
+Anchoring 
+
+> The engineer said
+> that he he...
+
+Input / Counterfactual Pair  Transformer as Computational Graph 
+
+Unified Graph Isomorphism Constraints 
+
+> attention matrix
+> L = D - A
+> spectral
+> signature alignment
+
+M  
+
+> sink
+> adaptive saliency
+> Align routing topology (edges) ... ... Align hidden
+> representations (nodes)
+> blocked leak
+> prevent bias
+> migration log-space
+> guidance on
+> sensitive
+> logits
+> top-k
+> attention
+> stability to
+> frozen teacher
+> masked KL for
+> non-sensitive
+> tokens
+
+definitional anchors King Queen 
+
+Debiased LLM  
+
+> Invariant routing
+> Invariant representations
+> Presrved utility & safety
+> Before After
+> Bias regions fading
+
+Example Design I Design II Design III Design IV 
+
+Figure 2. Overview of the UGID framework. 
+
+localization and partial structural interventions, but does not offer a unified constraint over the global computation structure under counterfactual perturbations. UGID is moti-vated by this gap and explores debiasing from a structural alignment perspective. 
+
+3. Methodology 
+
+This section introduces UGID , a unified framework for struc-tural bias correction. The overall architecture and workflow of our framework are illustrated in Figure 2. First, we formally define the problem. Then, we present detailed so-lutions based on the following four key questions: (I) How to align the routing (Edges)?, (II) RHow to prevent bias migration (Nodes)?, (III) How to preserve model utility?, and (IV) How to handle definitional bias? 
+
+3.1. Problem Formulation 
+
+We model the Transformer layer l as a dynamic computa-tional graph Gl(x) = ( V, E, Hl, Al), where nodes V rep-resent tokens, node features Hl ∈ RT ×d represent hidden states, and weighted edges Al ∈ RH×T ×T represent atten-tion mechanisms. Given a counterfactual pair (x, x ′) differing only in a sensi-tive attribute (e.g., he vs. she ), our goal is to enforce Unified Graph Isomorphism in bias-sensitive regions. That is, the reasoning topology and semantic representations should remain invariant: 
+
+Gl(x) ∼= Gl(x′) ⇐⇒ Al(x) ≈ Al(x′)
+
+︸ ︷︷ ︸
+
+> Design I
+
+∧ Hl(x) ≈ Hl(x′)
+
+︸ ︷︷ ︸
+
+> Design II
+
+,
+
+(1) 
+
+where Starget denotes the set of target layers at which struc-tural constraints are applied. 
+
+3.2. UGID Design I: How to align the routing (Edges)? 
+
+One of the main challenges in debiasing is routing bias, where attention heads form a fixed bottleneck around sensi-tive tokens. To address this issue, we propose an adaptive spectral-invariant training method. Rather than matching the raw attention weights, we align the spectral features of the attention graphs. For a target layer l, we follow Binkowski et al. (2025) to construct a combined Laplacian matrix L = D − A to capture the topological structure of the attention graph. Meanwhile, we use the normalized in-degree matrix D to account for varying context lengths. Due to the causal nature of autoregressive LLMs, the at-tention matrix A is strictly lower-triangular. we compute the eigenvalues λ directly from the diagonal elements with-out expensive eigendecomposition: λt = dtt − Att . This reduces the complexity to O(T ), making training-time reg-ularization computationally feasible. However, standard spectral matching is compromised by the “Attention Sink” phenomenon. As formally identified by Xiao et al. (2023) and rigorously characterized in recent work by Qiu et al. (2025), this phenomenon is an inherent artifact of the Soft-max normalization, where the initial token absorbs excess attention mass to satisfy probability constraints. To address this, we introduce an Attention Sink Mask( Msink ) to filter out the first token, and an Adaptive Saliency Weight ( ω)derived from the pronoun’s attention to focus on bias hubs. 3UGID : Unified Graph Isomorphism for Debiasing Large Language Models 
+
+The Attention Sink Mask Msink ∈ { 0, 1}T excludes the first token position. Here, p denotes the token index correspond-ing to the sensitive pronoun (e.g., he or she ). The edge loss is defined as: 
+
+Ledge =
+
+∑
+
+> l∈S target
+
+1
+
+H ∑ Msink 
+
+> H
+
+∑
+
+> h=1
+> T
+
+∑
+
+> t=1
+
+Msink  
+
+> t
+
+sg (ωl,h,t )
+
+· (λl,h,t (x) − λl,h,t (x′))2, (2) 
+
+where ωl,h,t = 12 (Al,h,p,t (x) + Al,h,p,t (x′)) , and sg (·) is the stop-gradient operator. This design ensures the reason-ing topology remains invariant to gender perturbations. 
+
+Design II: How to prevent bias migration (Nodes)? 
+
+Under the condition that only attention bias is constrained, bias migrates into the hidden states (FNNs). To address this issue, we must perform node isomorphism. We constrain the hidden representations Hl to remain consistent across counterfactual contexts, thereby effectively preventing bias from being stored in the value vectors. Since hidden states are shared across heads, we aggregate the saliency weights: 
+
+Lnode =
+
+∑
+
+> l∈S target
+
+1
+
+∑ Msink 
+
+> T
+
+∑
+
+> t=1
+
+Msink  
+
+> t
+
+¯ωl,t 
+
+· ∥∥Hl,t (x) − Hl,t (x′)∥∥22 . (3) 
+
+By jointly optimizing Design I and II, we achieve holo-graphic alignment of the computational graph. 
+
+Design III: How to preserve model utility? 
+
+Aggressive structural updates can lead to catastrophic forget-ting. To ensure stability, we introduce a composite stability objective consisting of three terms: 
+
+1. Log-Space Guidance. To prevent gradient vanishing on rare tokens, we penalize log-probability divergence on sensitive attributes: 
+
+Llogit = (log Pθ (vhe |x) − log Pθ (vshe |x′))2 . (4) 
+
+2. Top-K Stability. We anchor the student’s attention patterns to the frozen teacher Pref to preserve syntactic correctness: 
+
+Ltopk =
+
+∑
+
+> l,h
+
+∥∥(Aθ − Aref ) ⊙ Itopk (Aref )∥∥1 . (5) 
+
+3. Semantic Preservation. We apply a symmetric, masked KL divergence to retain general knowledge while allowing changes on sensitive tokens: 
+
+LKL = 12
+
+∑
+
+> x∈{ x,x ′}
+> T
+
+∑
+
+> t=1
+
+(1 − Msens  
+
+> t
+
+)
+
+· DKL (Pθ (· | x<t ) ∥ Pref (· | x<t )) ,
+
+(6) ID Effectiveness 
+
+> OOD Robustness
+> Edge Stability
+> Node Stability
+> Safety
+> Utility Preservation
+> Performance: LLaMA-3-8B
+> Original
+> CDA
+> KLAAD
+> UGID (Ours)
+
+Figure 3. Multi-dimensional Performance Analysis on LLaMA-3-8B. 
+
+where, Msens ∈ { 0, 1}T denotes a binary mask indicating positions corresponding to sensitive attributes. 
+
+Design IV: How to handle definitional bias? 
+
+A critical risk in debiasing is Concept Erasure , where the model loses the ability to distinguish gender in definitional contexts (e.g., “King” vs. “Queen”). To address this, we propose a Selective Alignment Strategy. We construct the dataset D as a mixture of target pairs (stereotypes) and anchor pairs (definitions). 
+
+Dtarget contains stereotypical counterfactual pairs, while 
+
+Danchor consists of definitional anchor pairs. The loss func-tion adapts dynamically: 
+
+Lbatch =
+
+{γeLedge + γnLnode + Laux if x ∈ D target 
+
+λanchor · L anchor KL if x ∈ D anchor 
+
+(7) 
+
+For anchor data, we apply standard unmasked KL diver-gence ( Lanchor KL ) to strictly enforce the preservation of defi-nitional gender semantics. The complete training procedure is summarized in Ap-pendix A. 
+
+4. Experiment 
+
+4.1. Setting Models. We evaluate UGID across three state-of-the-art LLM families: LLaMA-3 (8B, 8B-Instruct), Qwen-2 (3B, 7B, 14B), and Gemma-2 (2B) (Grattafiori et al., 2024; Team et al., 2024b;a). 
+
+Datasets. To evaluate generalization from scarce supervi-sion, we construct a Few-Shot Intervention Dataset with 10 gender-counterfactual occupation pairs for debiasing and 4UGID : Unified Graph Isomorphism for Debiasing Large Language Models 
+
+Method Debiasing Effectiveness (↓ 1.0) Mechanism (↓ 0) Safety Utility ID OOD Edge Node Anchor Anchor-PPL IQ 
+
+Mean Max Mean Max ∆ Spec ∆ Hidden Acc ( ↑) (↓) (Pass) ORIGINAL 7.14x 21.99x 9.00x 15.65x 0.211 5.198 100% 118.07 ✓
+
+CDA 1.16x 1.29x 1.16x 1.29x 0.110 3.813 100% 3.76 ✓
+
+KLAAD-L ORA 1.03x 1.13x 0.98x 1.00x 0.148 3.576 50% 10.66 ✓
+
+UGID (O URS ) 0.94x 0.94x 1.06x 1.21x 0.007 0.058 100% 121.11 ✓
+
+Inference-time baselines (evaluated under the Main Eval protocol) 
+
+SELF -D EBIAS (Ex.) 6.34x 19.42x 12.40x 33.13x 0.211 5.198 100% 118.07 ✓
+
+SELF -D EBIAS (Re.) 25.97x 58.25x 15.47x 29.19x 0.211 5.198 75% 118.07 ✓
+
+Inference-time baselines (evaluated under the Self-Debias Eval protocol) 
+
+Method ID Bias OOD Bias Temp. Mean Temp. Var Dir. Gap Neutral IQ ORIGINAL (SD) 4.42x 11.80x 9.00x 15.65x 4.32 16.91 1.19 1.00 ✓
+
+SELF -D EBIAS (Ex.) 3.47x 7.88x 12.40x 33.13x 5.29 18.81 1.08 1.00 ✓
+
+SELF -D EBIAS (Re.) 13.04x 27.28x 15.47x 29.19x 14.38 184.97 2.32 1.00 ✓    
+
+> Table 1. Detailed Performance on LLaMA-3-8B. Paleblue and underline indicate the best and second-best results within each block (excluding Original baseline).
+
+6 definitional anchor pairs for safety. For evaluation, we employ BBQ (Parrish et al., 2022) and CrowS-Pairs (Nangia et al., 2020) for stereotyping, alongside BOLD (Dhamala et al., 2021), RTP (Gehman et al., 2020), and HolisticBias (Smith et al., 2022) for generative bias analysis. 
+
+Baselines & Metrics. We compare UGID against CDA (Zmigrod et al., 2019), KLAAD (Kim et al., 2025), and Self-Debias (Gallegos et al., 2025). Performance is measured via Accuracy Gap (BBQ), Stereotype Score (CrowS-Pairs), and sentiment/toxicity variance. Utility is monitored via Wikitext-2 Perplexity and BBQ non-ambiguous accuracy. Structural isomorphism is quantified by ∆Spec (spectral di-vergence) and ∆Hidden ( L2 drift). Detailed metric formal-izations and dataset descriptions are provided in Appendix B. 
+
+4.2. Main result Overall Performance. UGID achieves the superior bal-ance between debiasing effectiveness and general utility on LLaMA-3-8B, significantly outperforming state-of-the-art baselines. As shown in Table 1, UGID suppresses the bias score to a near-ideal neutral level ( ≈ 1.06 ×) in In-Distribution (ID) scenarios. More importantly, UGID demonstrates remarkable robustness in the more challenging Out-of-Distribution (OOD) settings, where its OOD Mean is substantially lower than that of inference-time methods such as S ELF -D EBIAS . This performance gain is primar-ily attributed to our Adaptive Stability (Design III), which ensures that the model maintains consistent debiasing in-tensity across heterogeneous prompt templates, effectively avoiding the dramatic bias fluctuations (e.g., the spike in Max Bias for S ELF -D EBIAS in Table 1) caused by minor linguistic perturbations. Furthermore, UGID successfully overcomes the common ”debiasing-utility trade-off,” preserving both the safety of definitional concepts and general linguistic proficiency. This is visually validated by the radar chart in Figure 3. UGID oc-cupies the largest area on the radar chart, notably maintain-ing 100% accuracy on the Safety axis (Definitional Anchor Accuracy). In contrast, while KLAAD achieves certain de-biasing effects, it suffers from a significant drop in safety for gender-defining terms like King/Queen . This observation highlights the necessity of our Selective Anchoring (Design IV): by identifying and locking the fundamental semantic anchors, our framework ensures that the debiasing operation selectively targets harmful stereotypes without distorting the model’s core knowledge base. 
+
+Generalization to Diverse Bias Domains. UGID ex-hibits strong generalization capabilities across different social categories, effectively mitigating extreme regional and cultural prejudices. As reported in Table 4 (see Ap-pendix C for the results), the original LLaMA-3-8B model suffers from severe skewness in regional contexts, with an Out-of-Distribution (OOD) Max bias reaching an alarming 
+
+1726 .75 ×. UGID successfully stabilizes these scores to near-neutral levels ( ≈ 1.0×), significantly outperforming 5UGID : Unified Graph Isomorphism for Debiasing Large Language Models 
+
+all baseline methods. This consistent performance across diverse cultural anchors validates the universal applicabil-ity of our Graph Isomorphism framework: by treating bias as a structural misalignment in the computational graph rather than a data-specific issue, UGID provides a domain-agnostic solution that transcends specific social categories like gender. 
+
+Scaling and Cross-Model Generalization. The superiority of UGID is scale-invariant, consistently achieving an opti-mal Pareto frontier across multiple model families and sizes. We visualize the trade-off between debiasing effectiveness and structural drift for models ranging from 2.5B to 14B in Figure 9, with the complete numerical comparisons across 12 model variants provided in Table 7 ((see Appendix C and D for the results)). While baseline methods such as CDA ex-hibit increasing representation instability and ”hidden state collapse” as the model size grows, UGID uniquely occupies the ”Optimal Region” (bottom-left) across all evaluated ar-chitectures, including Gemma-2, Qwen-2.5, and LLaMA-3. This suggests that our Edge and Node constraints (Design I & II) effectively regularize the geometric manifold of Transformers regardless of their parameter scale, ensuring that the debiasing operation remains robust and scalable for large-scale model deployment. 
+
+4.3. Mechanistic Verification Aligning Attention Routing Topology. UGID successfully neutralizes biased information flow by enforcing structural isomorphism on the attention routing edges. Figure 4 visual-izes the attention routing differences between counterfactual prompt pairs (e.g., he vs. she). In the original LLaMA-3 model, gendered tokens trigger disparate attention patterns, indicating that the model ”routes” information differently based on social stereotypes. UGID effectively minimizes these topological gaps, forcing the attention heads to main-tain an invariant routing structure regardless of the gender context. This alignment is a direct result of our Laplacian-based Spectral Constraint (Design I), which regularizes the graph edges to ensure that the computational paths remain neutral and isomorphic. 
+
+Blocking the Downstream Propagation of Bias. Our framework effectively interrupts the layer-wise amplifica-tion of bias signals, preventing them from leaking into the final output. We analyze the bias migration process in Fig-ure 5 and Figure 11 in Appendix D. In the original model, bias signals originating from early attention layers tend to propagate and amplify as they move toward the deeper lay-ers of the network. UGID acts as a structural filter that silences these biased pathways at each stage. This obser-vation validates the effectiveness of our Adaptive Stability mechanism (Design III), which dynamically balances the debiasing intensity across the network to ensure that bias is 
+
+(a) Original (b) CDA 
+
+(c) KLAAD (d) UGID  
+
+> Figure 4. Attention routing differences under gender counter-factuals.
+
+suppressed before it reaches the representation-level nodes. 
+
+Preserving Representation Stability. UGID maintains the integrity of the model’s semantic manifold by restricting the drift of hidden states during the debiasing process. Fig-ure 8 in Appendix D quantifies the representation-level drift (∆Hidden ) across critical layers ( r = 13 , 15 , 17 ). While conventional fine-tuning methods like CDA cause signif-icant ”hidden state collapse” (with drift exceeding 3.5), UGID restricts this deviation to a negligible level ( ≈ 0.058 ). This high degree of node stability is achieved through our Node Isomorphism constraint (Design II), which ensures that the debiasing operation only edits the biased compo-nents of the representation without distorting the underlying geometric structure of the model’s knowledge space. 
+
+Causal Evidence via Activation Patching. UGID provides causal-level evidence that the biased information pathways are precisely neutralized rather than merely masked. To further validate this, we perform activation patching experi-ments (detailed in Figure 12 and Figure 13 in Appendix). In the original model, patching the activations of bias-sensitive attention heads significantly shifts the output logit distri-bution toward stereotypical tokens, confirming these heads as the causal origin of bias. UGID drastically reduces this causal influence; as shown in the patching heatmaps, the sensitivity of the final prediction to these specific head ac-tivations is nearly eliminated. This direct intervention ev-idence confirms that our Graph Isomorphism constraints (Design I & II) do not just suppress bias at the output layer, but fundamentally ”decouple” the causal link between stereotypical internal representations and the model’s final 6UGID : Unified Graph Isomorphism for Debiasing Large Language Models 
+
+Variant Description Effectiveness (↓ 1.0) Mechanism (↓ 0) Safety Utility ID Bias Edge Node Anchor Anchor IQ 
+
+Mean Max ∆ Spec ∆ Hidden Acc ( ↑) PPL ( ↓) (Pass) ORIGINAL 7.14x 21.99x 0.2111 5.1979 100% 118.07 ✓
+
+w/o (Edge + Node + Logit) 4.56x 12.22x 0.2173 5.2604 100% 117.41 ✓
+
+w/o (Edge + Node) 1.03x 1.07x 0.2065 5.2240 100% 114.91 ✓
+
+w/o Node 1.04x 1.06x 0.0114 0.6527 100% 120.96 ✓
+
+w/o Edge 1.00x 1.00x 0.0086 0.0633 100% 127.71 ✓
+
+UGID (F ULL ) 0.94x 0.94x 0.0071 0.0584 100% 121.11 ✓      
+
+> Table 2. Ablation Study on LLaMA-3-8B. Paleblue and underline indicate the best and second-best results (excluding Original baseline). The swap of Safety and Utility columns highlights the trade-off between structural alignment and linguistic proficiency. Lower is better
+> Figure 5. Downstream Representation.
+
+decision-making process. 
+
+Granular Insights via Logit Lens and Attention Probing. 
+
+UGID achieves precise bias neutralization by rectifying spe-cific decision-critical layers without distorting the global semantic structure. As illustrated in the Logit Lens analysis (Figure 6), the original model exhibits a premature and bi-ased convergence in its probability distributions during the middle-to-late layers. UGID effectively recalibrates these distributions, shifting the model’s prediction logits back to-ward neutral semantic anchors. This granular correction is further supported by the Attention Map visualizations (Fig-ures 14 and 15 in Appendix D). While the original model displays divergent attention ”sinks” when processing coun-terfactual gender pairs—indicating a topological reliance on stereotypes—UGID enforces a symmetric and isomorphic attention structure. These micro-level observations confirm that our Graph Isomorphism constraints do not merely mask bias at the final output, but fundamentally reshape the in-ternal decision-making manifold of the Transformer at a token-to-token level. 
+
+4.4. Ablation Study The Efficacy of UGID Components. The synergy between structural constraints and anchoring mechanisms is indis-pensable, with a critical trade-off observed between repre-sentation editing and linguistic utility. As detailed in Table 2, we evaluate the contribution of each design component. A comparative analysis of the variants reveals that while con-straining the Attention Routing (Design I) effectively aligns information pathways, regularizing the FFN Hidden States (Design II) yields a more substantial reduction in bias. How-ever, this aggressive representation editing comes at the cost of increased perplexity ( P P L -r), suggesting that the FFN layers are more sensitive to structural perturbations. To mitigate this, we observe that the absence of Selec-tive Anchoring (Design IV) in Variants 3 and 4 leads to a ”safety collapse,” where the model fails to distinguish be-tween harmful stereotypes and definitional gender concepts (e.g., King/Queen ). This highlights that Design IV acts as a vital ”semantic anchor,” allowing Design II to perform deep debiasing within the FFN manifold without triggering catastrophic representation drift or utility loss. These results confirm that the full UGID framework achieves a superior Pareto optimality by strategically balancing the high-impact regularization of FFN layers with the safety-preserving an-chors. 
+
+Robustness to Prompt Perturbations. UGID exhibits su-perior operational stability, ensuring consistent debiasing performance across diverse and adversarial linguistic con-texts. We report the robustness diagnostics in Table 3, focus-ing on Template Variance and Directional Gap. Compared to baselines that are highly sensitive to prompt rephrasing, UGID achieves the lowest variance ( 0.0044 ), maintaining a steady safe even under complex prompt perturbations. This enhanced stability is a direct consequence of our Adaptive Stability mechanism (Design III), which dynamically cali-brates the structural constraints during inference to ensure 7UGID : Unified Graph Isomorphism for Debiasing Large Language Models Method Robustness Diagnostics (↓) Safety (↑)                                   
+
+> Template Template Dir. Neutral Unseen Anchor
+> Mean Var Gap Mass Acc ORIGINAL 8.92 3.41 1.87 0.02 100%
+> CDA 1.21 0.0181 0.150 0.000013 100%
+> KLAAD 1.32 0.287 0.025 0.000004 50% UGID (O URS )0.98 0.0044 0.0625 0.0133 100%
+> Table 3. Robustness and Safety Diagnostics (LLaMA-3-8B). Paleblue and underline indicate the best and second-best results within each block (excluding Original baseline).
+> Figure 6. Layer-wise logit gap across models.
+> Figure 7. Layer-wise logit gap heatmap.
+
+that the model’s debiasing logic remains invariant to minor linguistic variations. 
+
+4.5. Downstream Utility and Operational Efficiency Linguistic Proficiency on External Benchmarks. UGID preserves the model’s fundamental linguistic capabilities and general knowledge, ensuring that debiasing does not compromise downstream utility. As reported in Table 5 in Appendix C), we evaluate the model on BOLD, BBQ, and RealToxicityPrompts. UGID consistently maintains a Perplexity Ratio ( P P L -r) near 1.0, whereas baselines like CDA show noticeable degradation in linguistic fluency. This preservation of utility is further visualized through the Logit Lens analysis (Figure 6) , which reveals that UGID performs precise probability distribution corrections at the critical decision layers without disrupting the early-stage semantic processing. 
+
+Computational Overheads and Resource Efficiency. 
+
+UGID maintains the operational efficiency of the original model while significantly reducing resource requirements during the optimization phase. As detailed in Table 6 in Appendix C), our framework achieves a substantial reduc-tion in memory footprint, lowering the Peak Memory re-quirement from 19.00 GB to 6.92 GB. More importantly, during the inference stage, UGID incurs zero additional overhead, maintaining an identical latency (1.00 ×) com-pared to the backbone model. This efficiency is achieved through a weight-folding mechanism that integrates struc-tural constraints directly into the frozen parameters post-optimization. Consequently, UGID provides a practical solution that delivers competitive debiasing performance without any sacrifice in computational speed or memory efficiency during deployment. 
+
+5. Conclusion 
+
+In this paper, we address two critical challenges in LLM debiasing: the scale-dependence of bias migration and the degradation of general utility. We propose UGID , a unified framework that reformulates debiasing as a graph isomor-phism problem. By enforcing Laplacian spectral invariance on routing edges and selective alignment on representa-tion nodes, UGID mechanistically decouples bias from the reasoning topology. Extensive experiments demonstrate that UGID achieves a superior balance between debiasing effectiveness and structural stability, ensuring robust gen-eralization without compromising model utility. Our work provides a new perspective for the safety, alignment, and mechanistic interpretability of foundation models. We be-lieve this structural viewpoint is broadly applicable beyond social bias, and may inspire future work on internal align-ment and robustness in large-scale neural systems. 
+
+Impact Statement 
+
+This work aims to improve the safety and consistency of large language models by mitigating internal social biases. UGID contributes to the development of more equitable AI systems by mechanistically decoupling stereotypes from in-8UGID : Unified Graph Isomorphism for Debiasing Large Language Models 
+
+ference. This reduces the risk of amplifying discrimination in high-risk applications, thereby enhancing trust in auto-mated decision-making. Furthermore, we acknowledge that distinguishing between “stereotype bias” and “definitive facts” inherently involves normative and culturally depen-dent judgments. Therefore, while UGID provides a power-ful technological intervention, it must be supplemented by continuous socio-technical oversight to ensure equitable out-comes and prevent potential abuse across different cultural contexts. 
+
+References 
+
+Arduini, M., Noci, L., Pirovano, F., Zhang, C., Shrestha, Y. R., and Paudel, B. Adversarial learning for debi-asing knowledge graph embeddings. arXiv preprint arXiv:2006.16309 , 2020. Binkowski, J., Janiak, D., Sawczyn, A., Gabrys, B., and Kajdanowicz, T. J. Hallucination detection in llms using spectral features of attention maps. In Proceedings of the 2025 Conference on Empirical Methods in Natural Language Processing , pp. 24365–24396, 2025. Cai, Y., Cao, D., Guo, R., Wen, Y., Liu, G., and Chen, E. Locating and mitigating gender bias in large language models. In International Conference on Intelligent Com-puting , pp. 471–482. Springer, 2024. Chandna, B., Bashir, Z., and Sen, P. Dissecting bias in llms: A mechanistic interpretability perspective. arXiv preprint arXiv:2506.05166 , 2025. Cheng, M., Durmus, E., and Jurafsky, D. Marked personas: Using natural language prompts to measure stereotypes in language models. arXiv preprint arXiv:2305.18189 ,2023. Cheng, X., Chen, R., Zan, H., Jia, Y., and Peng, M. Biasfil-ter: An inference-time debiasing framework for large lan-guage models. arXiv preprint arXiv:2505.23829 , 2025. Dhamala, J., Sun, T., Kumar, V., Krishna, S., Pruksachatkun, Y., Chang, K.-W., and Gupta, R. Bold: Dataset and metrics for measuring biases in open-ended language generation. In Proceedings of the 2021 ACM conference on fairness, accountability, and transparency , pp. 862– 872, 2021. Fang, X., Li, J., Mulchandani, V., and Kim, J.-E. Trustwor-thy ai: Safety, bias, and privacy–a survey. arXiv preprint arXiv:2502.10450 , 2025. Gallegos, I. O., Rossi, R. A., Barrow, J., Tanjim, M. M., Kim, S., Dernoncourt, F., Yu, T., Zhang, R., and Ahmed, N. K. Bias and fairness in large language models: A survey. Computational Linguistics , 50(3):1097–1179, 2024. Gallegos, I. O., Aponte, R., Rossi, R. A., Barrow, J., Tanjim, M., Yu, T., Deilamsalehy, H., Zhang, R., Kim, S., Der-noncourt, F., et al. Self-debiasing large language models: Zero-shot recognition and reduction of stereotypes. In 
+
+Proceedings of the 2025 Conference of the Nations of the Americas Chapter of the Association for Computational Linguistics: Human Language Technologies (Volume 2: Short Papers) , pp. 873–888, 2025. Gehman, S., Gururangan, S., Sap, M., Choi, Y., and Smith, N. A. Realtoxicityprompts: Evaluating neural toxic degeneration in language models. arXiv preprint arXiv:2009.11462 , 2020. Geva, M., Schuster, R., Berant, J., and Levy, O. Transformer feed-forward layers are key-value memories. In Proceed-ings of the 2021 Conference on Empirical Methods in Natural Language Processing , pp. 5484–5495, 2021. Grattafiori, A., Dubey, A., Jauhri, A., Pandey, A., Kadian, A., Al-Dahle, A., Letman, A., Mathur, A., Schelten, A., Vaughan, A., et al. The llama 3 herd of models. arXiv preprint arXiv:2407.21783 , 2024. Huang, J. and Chang, K. C.-C. Towards reasoning in large language models: A survey. In Findings of the association for computational linguistics: ACL 2023 , pp. 1049–1065, 2023. Kiashemshaki, K., Torkamani, M. J., Mahmoudi, N., and Bilehsavar, M. S. Simulating a bias mitigation scenario in large language models. arXiv preprint arXiv:2509.14438 ,2025. Kim, S., Lee, D., and Lee, J. Klaad: Refining attention mechanisms to reduce societal bias in generative lan-guage models. In Proceedings of the 2025 Conference on Empirical Methods in Natural Language Processing , pp. 15324–15345, 2025. Li, Y., Du, M., Song, R., Wang, X., and Wang, Y. Data-centric explainable debiasing for improving fairness in pre-trained language models. In Findings of the Associa-tion for Computational Linguistics ACL 2024 , pp. 3773– 3786, 2024. Liu, T., Wang, H., Wang, S., Cheng, Y., and Gao, J. Lidao: towards limited interventions for debiasing (large) lan-guage models. arXiv preprint arXiv:2406.00548 , 2024. Ma, C., Zhao, T., and Okumura, M. Debiasing large lan-guage models with structured knowledge. In Findings of the Association for Computational Linguistics: ACL 2024 , pp. 10274–10287, 2024. Meng, K., Bau, D., Andonian, A., and Belinkov, Y. Locating and editing factual associations in gpt. Advances in neural information processing systems , 35:17359–17372, 2022. 9UGID : Unified Graph Isomorphism for Debiasing Large Language Models 
+
+Nangia, N., Vania, C., Bhalerao, R., and Bowman, S. Crows-pairs: A challenge dataset for measuring social biases in masked language models. In Proceedings of the 2020 conference on empirical methods in natural language processing (EMNLP) , pp. 1953–1967, 2020. Navigli, R., Conia, S., and Ross, B. Biases in large language models: origins, inventory, and discussion. ACM Journal of Data and Information Quality , 15(2):1–21, 2023. Parrish, A., Chen, A., Nangia, N., Padmakumar, V., Phang, J., Thompson, J., Htut, P. M., and Bowman, S. Bbq: A hand-built bias benchmark for question answering. In 
+
+Findings of the Association for Computational Linguis-tics: ACL 2022 , pp. 2086–2105, 2022. Prakash, N. and Roy, L. K. W. Interpreting bias in large lan-guage models: a feature-based approach. arXiv preprint arXiv:2406.12347 , 2024. Qiu, Z., Wang, Z., Zheng, B., Huang, Z., Wen, K., Yang, S., Men, R., Yu, L., Huang, F., Huang, S., et al. Gated atten-tion for large language models: Non-linearity, sparsity, and attention-sink-free. arXiv preprint arXiv:2505.06708 ,2025. Smith, E. M., Hall, M., Kambadur, M., Presani, E., and Williams, A. ” i’m sorry to hear that”: Finding new bi-ases in language models with a holistic descriptor dataset. 
+
+arXiv preprint arXiv:2205.09209 , 2022. Team, G., Riviere, M., Pathak, S., Sessa, P. G., Hardin, C., Bhupatiraju, S., Hussenot, L., Mesnard, T., Shahri-ari, B., Ram ´e, A., et al. Gemma 2: Improving open language models at a practical size. arXiv preprint arXiv:2408.00118 , 2024a. Team, Q. et al. Qwen2 technical report. arXiv preprint arXiv:2407.10671 , 2(3), 2024b. Vig, J., Gehrmann, S., Belinkov, Y., Qian, S., Nevo, D., Singer, Y., and Shieber, S. Investigating gender bias in language models using causal mediation analysis. In Larochelle, H., Ranzato, M., Had-sell, R., Balcan, M., and Lin, H. (eds.), Advances in Neural Information Processing Systems , vol-ume 33, pp. 12388–12401. Curran Associates, Inc., 2020a. URL https://proceedings.neurips. cc/paper_files/paper/2020/file/ 92650b2e92217715fe312e6fa7b90d82-Paper. pdf .Vig, J., Gehrmann, S., Belinkov, Y., Qian, S., Nevo, D., Singer, Y., and Shieber, S. Investigating gender bias in language models using causal mediation analysis. Ad-vances in neural information processing systems , 33: 12388–12401, 2020b. Vijjini, A. R., Chowdhury, S. B. R., and Chaturvedi, S. Ex-ploring safety-utility trade-offs in personalized language models. In Proceedings of the 2025 Conference of the Nations of the Americas Chapter of the Association for Computational Linguistics: Human Language Technolo-gies (Volume 1: Long Papers) , pp. 11316–11340, 2025. Wang, H., Wang, P., Li, M., Liu, S., Miao, S., Wang, Z., and Li, P. Graph-kv: Breaking sequence via injecting struc-tural biases into large language models. arXiv preprint arXiv:2506.07334 , 2025. Wu, Z., Huang, H.-Y., and Wu, Y. Beyond spurious sig-nals: Debiasing multimodal large language models via counterfactual inference and adaptive expert routing. In 
+
+Findings of the Association for Computational Linguis-tics: EMNLP 2025 , pp. 3805–3825, 2025. Xiao, G., Tian, Y., Chen, B., Han, S., and Lewis, M. Ef-ficient streaming language models with attention sinks. 
+
+arXiv preprint arXiv:2309.17453 , 2023. Yifei, L., Ungar, L., and Sedoc, J. Conceptor-aided debias-ing of large language models. In Proceedings of the 2023 Conference on Empirical Methods in Natural Language Processing , pp. 10703–10727, 2023. Zhang, C., Zhang, L., and Zhou, D. Causal walk: Debiasing multi-hop fact verification with front-door adjustment. In 
+
+Proceedings of the AAAI Conference on Artificial Intelli-gence , pp. 19533–19541, 2024a. Zhang, Y., Jiang, M., and Zhao, Q. Grace: graph-based contextual debiasing for fair visual question answering. In European Conference on Computer Vision , pp. 176– 194. Springer, 2024b. Zhao, W. X., Zhou, K., Li, J., Tang, T., Wang, X., Hou, Y., Min, Y., Zhang, B., Zhang, J., Dong, Z., et al. A survey of large language models. arXiv preprint arXiv:2303.18223 ,1(2), 2023. Zhou, H., Feng, Z., Zhu, Z., Qian, J., and Mao, K. Unib-ias: Unveiling and mitigating llm bias through internal attention and ffn manipulation. Advances in Neural Infor-mation Processing Systems , 37:102173–102196, 2024. Zmigrod, R., Mielke, S. J., Wallach, H., and Cotterell, R. Counterfactual data augmentation for mitigating gender stereotypes in languages with rich morphology. arXiv preprint arXiv:1906.04571 , 2019. 10 UGID : Unified Graph Isomorphism for Debiasing Large Language Models 
+
+A. Optimization Algorithm 
+
+Optimization Objective. The total loss for target pairs is defined as Ltotal = γeLedge + γnLnode + Laux , where Laux consists of Llogit , Ltopk , and LKL . For anchor pairs, we use Ltotal = λanchor Lanchor KL . To ensure efficiency, we freeze Pref and only update target layers Starget . The procedure is detailed in Algorithm 1. 
+
+Algorithm 1 UGID Procedure 
+
+Require: Pθ , Frozen Pref , Dataset D 
+
+> 1:
+
+Freeze non-target layers of Pθ 
+
+> 2:
+
+for each batch (x, x ′, type ) in D do  
+
+> 3:
+
+if type == Target then  
+
+> 4:
+
+Compute Ltotal ← γeLedge + γnLnode + Laux  
+
+> 5:
+
+else  
+
+> 6:
+
+Compute Ltotal ← λanchor Lanchor KL  
+
+> 7:
+
+end if  
+
+> 8:
+
+Update θ ← θ − η∇L total  
+
+> 9:
+
+end for 
+
+B. Detailed Experimental Settings 
+
+B.1. Dataset and Anchor Selection Criteria Few-Shot Intervention Dataset: Our dataset is designed to evaluate the model’s ability to internalize structural invariance from minimal supervision. We utilize 10 occupation pairs (e.g., doctor/nurse , engineer/teacher ) as the primary intervention set to align the routing topology. 
+
+Definitional Anchors: To prevent the omission of important, common-sense gender information, we introduce six anchor word pairs (e.g., king/queen , father/mother ). The selection of these pairs is based on the principle of definitional invariance, where gender is a core semantic component, not a stereotype. By enforcing the anchor word pairs ( Lanchor ), we ensure that the debiasing process is context-aware and maintains factual accuracy in gender-specific domains. While these six pairs cover primary kinship and social titles, we acknowledge that this sparse anchor set may not fully capture the complexity of all gender-specific semantics. In cases of insufficient coverage, the model could potentially experience subtle semantic drift in niche domains. However, our empirical results (100% Safety and stable PPL) suggest that even a minimal set of definitional anchors provides sufficient structural grounding to prevent catastrophic semantic collapse during few-shot intervention. 
+
+B.2. Evaluation Benchmarks 
+
+We evaluate the robustness and generalization of UGID across the following standardized benchmarks: • BBQ (Parrish et al., 2022): Measures reliance on stereotypes in ambiguous QA contexts across multiple demographic dimensions. • CrowS-Pairs (Nangia et al., 2020): Evaluates preferences for stereotypical over non-stereotypical sentences in masked language modeling. • BOLD (Dhamala et al., 2021): Quantifies sentiment bias in open-ended generation tasks. • RealToxicityPrompts (RTP) (Gehman et al., 2020): Measures the risk of toxic degeneration, where we specifically monitor the Title Gap metric to detect residual bias in gendered titles. • HolisticBias (Smith et al., 2022): Provides fine-grained descriptors to evaluate the intersectionality of bias. 
+
+B.3. Structural Isomorphism Metrics 
+
+To quantify internal model changes beyond behavioral outputs, we introduce two diagnostic metrics: 11 UGID : Unified Graph Isomorphism for Debiasing Large Language Models 
+
+Model Method Debiasing Effectiveness (↓ 1.0) Mechanism (↓ 0) Safety Utility ID Bias OOD Bias Edge Node Anchor Anchor IQ 
+
+Mean Max Mean Max ∆ Spec ∆ Hidden Acc ( ↑) PPL ( ↓) (Pass) LLAMA -3-8B ORIGINAL 433.42x 1726.75x 214.79x 495.81x 0.2414 7.2188 100% 66.26 ✓
+
+UGID (O URS ) 0.97x 0.98x 0.99x 1.00x 0.0112 0.1029 50% 64.84 ✓
+
+Table 4. Generalization Results on Regional Bias. Paleblue indicates the best results. The table demonstrates UGID’s robustness in mitigating regional stereotypes while maintaining structural integrity and linguistic utility on the Llama-3-8B architecture. 
+
+Method BOLD BBQ (Gender) HolisticBias RTP 
+
+Bias PPL-r Ambig. Acc Bias PPL-r Bias PPL-r (↓) (≈ 1) (↓) (↑) (↓) (≈ 1) (↓) (≈ 1)ORIGINAL 11.343 1.000 0.372 0.388 0.382 1.000 0.011 1.000 CDA 1.037 0.281 0.419 0.381 0.246 0.279 0.005 0.281 KLAAD 1.267 0.611 0.472 0.369 0.345 0.617 0.015 0.611 UGID (O URS ) 1.998 1.000 0.342 0.398 0.241 1.006 0.003 1.000 
+
+Table 5. Generalization Results on Four Benchmarks (LLaMA-3-8B). Paleblue and underline indicate the best and second-best results. UGID maintains superior linguistic utility (PPL-r ≈ 1) while consistently achieving competitive debiasing performance. 
+
+1. ∆Spec: Measures the topological divergence of reasoning paths. It is calculated as the L2 difference between the spectra of the Laplacian matrices L derived from counterfactual attention weights: 
+
+∆Spec = ∥Spec (L) − Spec (L′)∥2 (8) where Spec (·) denotes the set of singular values of the Laplacian. 2. ∆Hidden: Quantifies the mean token-wise L2 drift of hidden states in the target layers l ∈ { 13 , 15 , 17 }:
+
+∆Hidden = 1
+
+T
+
+> T
+
+∑
+
+> t=1
+
+∥Hl(x)t − Hl(x′)t∥2 (9) where Hl(x) and Hl(x′) represent the hidden states induced by the counterfactual input pair (x, x ′).
+
+B.4. Hyperparameter Settings. 
+
+We set λa = λv = 20 .0 to provide balanced isomorphic supervision. As shown in Table 2, this effectively reduces structural divergence ( ∆Spec and ∆Hidden). λk and λkl are used to maintain model stability, evidenced by the 100% IQ Pass rate. 
+
+λanchor = 10 .0 is set to preserve definitional semantics (e.g., king/queen ), validated by the 100% Safety score across all trials. 
+
+C. Supplementary Table D. Supplementary Figure 
+
+To further validate the architectural universality of UGID , we provide radar charts for the remaining four model families (Gemma-2-2B, Qwen2.5-3B, 7B, and 14B) in Figure 8. These results consistently confirm that the structural isomorphism achieved by UGID is not scale-dependent and effectively mitigates the bias-utility trade-off across diverse model parameter sizes and training objectives. 12 UGID : Unified Graph Isomorphism for Debiasing Large Language Models Method Training Time (s/it) ↓ Peak Memory (GB) ↓ Inference Latency 
+
+ORIGINAL (Base) 0.2012 19.00 1.00 ×
+
+UGID (O URS ) 0.4159 6.92 1.00 ×
+
+Table 6. Efficiency Benchmarks on LLaMA-3-8B. The evaluation is conducted on a single NVIDIA A100 (80GB). UGID maintains identical inference latency to the base model while significantly reducing memory overhead via PEFT-based structural alignment. 
+
+Model Family Method Debiasing Effectiveness (↓ 1.0) Mechanism (↓ 0) Safety Utility ID OOD Edge Node Anchor Anchor-PPL IQ 
+
+Mean Max Mean Max ∆ Spec ∆ Hidden Acc ( ↑) (↓) (Pass) GEMMA -2-2B ORIGINAL 6.84x 37.45x 4.48x 8.38x 0.1502 73.00 100% 154.79 –CDA 1.13x 1.21x 1.18x 1.21x 0.0499 52.67 100% 5.94 –KLAAD 1.01x 1.06x 1.18x 1.29x 0.1572 54.13 50% 20.36 –UGID (O URS ) 0.95x 1.00x 1.03x 1.13x 0.0067 0.67 100% 165.63 –QWEN 2.5-3B ORIGINAL 7.41x 20.08x 16.06x 37.60x 0.2201 42.04 100% 114.39 ✓
+
+CDA 1.14x 1.29x 1.26x 1.46x 0.2133 38.29 100% 5.24 ✓
+
+KLAAD 0.88x 0.88x 1.04x 1.87x 0.2138 39.21 50% 23.44 ✓
+
+UGID (O URS ) 0.98x 1.00x 1.14x 1.46x 0.0092 0.31 100% 101.25 ✓
+
+QWEN 2.5-7B ORIGINAL 10.20x 27.43x 29.31x 81.74x 0.4646 42.29 100% 173.25 ✓
+
+CDA 1.12x 1.14x 1.14x 1.29x 0.3212 38.92 100% 5.52 ✓
+
+KLAAD 1.08x 1.13x 1.01x 1.29x 0.2951 38.00 0% 21.81 ✓
+
+UGID (O URS ) 1.15x 2.24x 2.14x 1.42x 0.0926 12.60 100% 188.86 ✓
+
+QWEN 2.5-14B ORIGINAL 8.71x 33.13x 13.50x 37.52x 0.3624 67.96 100% 170.31 ✓
+
+CDA 1.14x 1.29x 1.16x 1.29x 0.2475 56.67 50% 6.60 ✓
+
+KLAAD 0.98x 1.13x 1.61x 3.96x 0.3197 65.67 100% 23.83 ✓
+
+UGID (O URS ) 0.94x 1.00x 1.01x 1.07x 0.0075 0.83 100% 153.71 ✓
+
+Table 7. Results on Diverse Model Families. Paleblue and underline indicate the best and second-best results within each model family (excluding Original baseline). 
+
+13 UGID : Unified Graph Isomorphism for Debiasing Large Language Models ID Effectiveness 
+
+OOD Robustness 
+
+Edge Stability 
+
+Node Stability 
+
+Safety 
+
+Utility Preservation 
+
+Performance: Gemma-2-2B 
+
+> Original
+> CDA
+> KLAAD
+> UGID (Ours)
+
+(a) Gemma-2-2B ID Effectiveness 
+
+OOD Robustness 
+
+Edge Stability 
+
+Node Stability 
+
+Safety 
+
+Utility Preservation 
+
+Performance: Qwen2.5-3B  
+
+> Original
+> CDA
+> KLAAD
+> UGID (Ours)
+
+(b) Qwen2.5-3B ID Effectiveness 
+
+OOD Robustness 
+
+Edge Stability 
+
+Node Stability 
+
+Safety 
+
+Utility Preservation 
+
+Performance: Qwen2.5-7B 
+
+> Original
+> CDA
+> KLAAD
+> UGID (Ours)
+
+(c) Qwen2.5-7B ID Effectiveness 
+
+OOD Robustness 
+
+Edge Stability 
+
+Node Stability 
+
+Safety 
+
+Utility Preservation 
+
+Performance: Qwen2.5-14B  
+
+> Original
+> CDA
+> KLAAD
+> UGID (Ours)
+
+(d) Qwen2.5-14B 
+
+Figure 8. Performance Profiles across Diverse Architectures and Scales. Across all evaluated families, UGID consistently exhibits superior coverage (the largest blue area) compared to baselines, especially in preserving internal structural stability and safety. 
+
+14 UGID : Unified Graph Isomorphism for Debiasing Large Language Models 0 20 40 60 80 
+
+Debiasing Effectiveness (OOD Max Bias )
+
+10 1
+
+10 0
+
+10 1
+
+10 2
+
+> Structural Integrity  ( Hidden Drift  )
+
+Optimal Region 
+
+## Figure 4: Pareto Frontier of Effectiveness vs. Stability 
+
+Method & Model Family 
+
+> Original
+> CDA
+> KLAAD
+> UGID
+> Gemma-2-2B
+> Qwen2.5-3B
+> Qwen2.5-7B
+> Qwen2.5-14B
+
+Figure 9. Pareto Frontier of Debiasing Effectiveness vs. Structural Integrity. 
+
+15 UGID : Unified Graph Isomorphism for Debiasing Large Language Models 
+
+Figure 10. Layer-wise Hidden-State Drift under Counterfactual Pronoun Swaps. 
+
+Figure 11. Layer-wise bias migration. 
+
+16 UGID : Unified Graph Isomorphism for Debiasing Large Language Models 
+
+Figure 12. Activation patching / causal tracing results (He to She). 
+
+Figure 13. Activation patching / causal tracing results (She to He). The 
+
+> engineer
+> said
+> that
+> he
+> 0.00
+> 0.01
+> 0.02
+> 0.03
+> |sl(x) sl(x′)|  mean = 7.481e-03
+
+Spectral Signature Difference (layer=15) ORIGINAL The  
+
+> engineer
+> said
+> that
+> he
+> 0
+> 2
+> 4
+> 6
+> |sl(x) sl(x′)|
+> 1e 3
+> mean = 1.900e-03
+
+Spectral Signature Difference (layer=15) CDA 
+
+Figure 14. Spectral Signature Difference (layer=15). Token-wise |sl(x) − sl(x′)| for he/she counterfactuals (Original and CDA). The  
+
+> engineer
+> said
+> that
+> he
+> 0
+> 1
+> 2
+> 3
+> 4
+> |sl(x) sl(x′)|
+> 1e 3
+> mean = 1.845e-03
+
+Spectral Signature Difference (layer=15) KLAAD The  
+
+> engineer
+> said
+> that
+> he
+> 0.0
+> 0.5
+> 1.0
+> 1.5
+> |sl(x) sl(x′)|
+> 1e 4
+> mean = 4.252e-05
+
+Spectral Signature Difference (layer=15) UGID 
+
+Figure 15. Spectral Signature Difference (layer=15). Token-wise |sl(x) − sl(x′)| for he/she counterfactuals (KLAAD and UGID). 
+
+17

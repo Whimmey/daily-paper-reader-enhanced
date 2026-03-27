@@ -1,0 +1,239 @@
+Title: Functional Component Ablation Reveals Specialization Patterns in Hybrid Language Model Architectures
+
+URL Source: https://arxiv.org/pdf/2603.22473v1
+
+Published Time: Wed, 25 Mar 2026 00:09:24 GMT
+
+Number of Pages: 22
+
+Markdown Content:
+# Functional Component Ablation Reveals Specialization Patterns in Hybrid Language Model Architectures 
+
+Hector Borobia a,1 , Elies Seguí-Mas b, Guillermina Tormo-Carbó c
+
+> aVRAIN – Valencian Research Institute for Artificial Intelligence, Universitat Politècnica de València, Valencia, Spain
+> bDepartment of Economics and Social Sciences, Universitat Politècnica de València, Valencia, Spain
+> cDepartment of Business Organisation, Universitat Politècnica de València, Valencia, Spain
+
+Abstract 
+
+Hybrid language models that combine attention mechanisms with alterna-tive sequence-processing components—such as state space models (SSMs) or linear attention—have achieved competitive performance while offering im-proved efficiency at inference time. However, it remains unclear whether these alternative components are genuinely utilized by the trained models or effectively bypassed in favor of the attention pathway. We present a systematic functional component ablation framework applied to two archi-tecturally distinct sub-1B hybrid models: Qwen3.5-0.8B , which interleaves Gated DeltaNet linear attention and full softmax attention layers sequen-tially, and Falcon-H1-0.5B , which processes both Mamba-2 SSM and at-tention pathways in parallel within each block, with a pure Transformer control ( Qwen2.5-0.5B ). Through exhaustive group ablations, layer-wise sweeps across 36 layers (Falcon) and 24 layers (Qwen), positional ablations, matched random controls, perplexity analysis, and hidden-state contribution metrics, we establish four main findings: (1) both component types are essen-tial and neither is bypassed; (2) the alternative component (linear attention in Qwen, SSM in Falcon) serves as the primary language modeling backbone ,causing catastrophic perplexity degradation ( >35,000 ×) when removed ver-     
+
+> Email addresses: hecboar@doctor.upv.es (Hector Borobia),
+> eseguim@upvnet.upv.es (Elies Seguí-Mas), gtormo@omp.upv.es (Guillermina Tormo-Carbó)
+> 1Corresponding author.
+> arXiv:2603.22473v1 [cs.CL] 23 Mar 2026
+
+sus moderate degradation ( ∼82 ×) for attention; (3) component importance follows a strong positional gradient, with early layers being disproportion-ately critical; and (4) hybrid architectures exhibit built-in resilience to layer removal that pure Transformers lack, with the Transformer control being 20– 119 × more sensitive to random layer removal. These findings hold consis-tently across five benchmarks (MMLU, GSM8K, ARC-Challenge, HellaSwag, TruthfulQA) and are validated through bootstrap confidence intervals and random-control baselines. Our results provide actionable insights for hybrid model compression, distillation, fault-tolerant deployment, and architecture design. 
+
+Keywords: hybrid language models, component ablation, state space models, linear attention, model interpretability, architecture analysis 
+
+1. Introduction 
+
+The Transformer architecture [1] has been the dominant paradigm for large language models (LLMs), with softmax self-attention serving as its core sequence-mixing mechanism. However, the quadratic computational complexity of attention with respect to sequence length has motivated the development of alternative approaches. State space models (SSMs) [2], par-ticularly their selective variants such as Mamba [3] and Mamba-2 [4], offer linear-time alternatives with competitive performance. Similarly, linear at-tention mechanisms based on gated recurrences [5] provide efficient alterna-tives to softmax attention while maintaining expressiveness through data-dependent gating. Rather than choosing between attention and these alternatives, recent work has converged on hybrid architectures that combine both. The Falcon-H1 family [6] employs a parallel hybrid design where each block processes its input through both a Mamba-2 SSM and an attention head simultaneously, summing their outputs. Qwen3.5 [7] adopts a sequential hybrid approach, interleaving dedicated linear attention layers (based on Gated DeltaNet) with full softmax attention layers throughout the network depth. A critical question arises: do hybrid models actually use both com-ponents, or does one pathway dominate while the other is effec-tively bypassed? Recent work by Benfeghoul et al. [8] found that in post-training linearization methods, the linear attention component is often inad-vertently bypassed. Wang et al. [9] showed that the choice of hybridization 2ratio significantly affects recall performance, suggesting that the interplay between components is non-trivial. Despite the proliferation of hybrid architectures, systematic empirical studies of how each component contributes to model behavior remain scarce. Most architectural papers report aggregate benchmarks but do not decom-pose performance by component. This leaves practitioners without guidance on which components to preserve during compression, which layers to priori-tize during distillation, or how to design more efficient hybrid configurations. 
+
+Contributions.. We present the first comprehensive functional ablation study comparing two fundamentally different hybrid architecture designs: 1. We introduce a reversible ablation framework that can selectively dis-able individual components (attention, SSM, or linear attention) at the group, layer, and positional level, with matched random controls for statistical rigor. 2. We demonstrate through group ablations and perplexity analysis that 
+
+neither component is bypassed : removing the alternative compo-nent (linear attention in Qwen, SSM in Falcon) causes catastrophic perplexity increases of 35,200 × and 53 × respectively, far exceeding the 82 × and 3.2 × degradation from removing attention alone (Section 4.2). 3. We reveal through layer-wise sweeps that component importance follows a positional gradient : early-layer ablations cause 2–5 × more degradation than late-layer ablations, with implications for structured pruning strategies (Section 4.4). 4. We connect behavioral ablation with internal metrics through hidden-state analysis, revealing architecture-dependent relationships: norm change positively predicts ablation impact in the sequential architec-ture (Qwen) but not in the parallel architecture (Falcon), suggesting fundamentally different component integration strategies (Section 4.6). 
+
+2. Related Work 
+
+Hybrid architectures.. The idea of combining attention with recurrent or state-space mechanisms has gained traction as a solution to the efficiency– expressiveness trade-off. Samba [24] demonstrated that a simple hybrid of Mamba and sliding-window attention achieves strong performance with un-limited context, including ablation studies across model sizes up to 1.7B. 3Taipan [12] combines Mamba-2 with selective attention layers that dynami-cally identify tokens requiring long-range interactions. The systematic anal-ysis by Wang et al. [9] trained 72 models at 340M and 1.3B parameters, evaluating six linear attention variants across five hybridization ratios. They found that superior standalone linear models do not necessarily excel in hybrid configurations, and that a linear-to-full ratio between 3:1 and 6:1 achieves Transformer-level recall efficiently. Kimi Linear [10] extended Gated DeltaNet with a finer-grained gating mechanism, demonstrating that their hybrid can outperform full attention with 75% less KV cache. Ren et al. [11] analyzed the limitations of Mamba in copy and chain-of-thought reasoning tasks, showing that while constant-sized Mamba struggles with certain oper-ations, hybridization with attention can overcome these limitations. 
+
+Component analysis in LLMs.. Mechanistic interpretability has studied how individual components contribute to model behavior. Work on circuit dis-covery [13, 14] has mapped specific attention heads to algorithmic functions. However, these studies focus on Transformer architectures exclusively. For hybrid models, Benfeghoul et al. [8] identified that post-training linearized hybrids inadvertently bypass their linear component, relying almost entirely on sliding-window attention. Our work differs by studying natively trained 
+
+hybrids rather than post-hoc conversions. Haller et al. [15] studied what factors matter in linearizing language models, providing background on why gated delta-rule variants behave differently from additive linearized models. 
+
+Ablation methodology.. Component ablation has a long history in neural net-work analysis [16]. Zeroing out activations, as we do for Falcon’s parallel components, is the standard approach for functional ablation. For Qwen’s sequential architecture, we skip entire layers (setting the output to the in-put), which corresponds to identity residual connections. Both approaches measure functional dependence rather than optimal performance without the component, which would require retraining. 
+
+3. Experimental Setup 
+
+3.1. Models 
+
+We study two architecturally distinct hybrid language models in their base (pre-trained, not instruction-tuned) variants: 4Qwen3.5-0.8B. [7] is a 752M-parameter model with 24 decoder layers in a sequential hybrid pattern. It interleaves linear attention layers based on Gated DeltaNet [5] with full softmax attention layers. Of the 24 layers, 18 use linear attention and 6 use full attention (3:1 ratio). Each layer contains only one mechanism type. The model supports a maximum context of 262,144 tokens. 
+
+Falcon-H1-0.5B. [6] is a 521M-parameter model with 36 decoder blocks in a parallel hybrid design. Each block contains both a Mamba-2 SSM path [4] and an attention path that process the input simultaneously. The outputs of both paths are combined within each block, meaning every layer contains both component types. It supports a context length of 16,384 tokens. The choice of sub-1B models is deliberate: it enables exhaustive layer-wise ablation (84 conditions for Falcon, including individual ablation of each com-ponent in each of 36 layers) while keeping the analysis reproducible on a sin-gle GPU. The architectural contrast—sequential vs. parallel hybridization— is the primary variable of interest. As an additional control, we include 
+
+Qwen2.5-0.5B [25], a pure Transformer (490M parameters, 24 layers, soft-max attention only) from the same model family, to determine whether ob-served patterns are hybrid-specific or general properties of deep networks. 
+
+3.2. Ablation Mechanism 
+
+We implement reversible ablation through two strategies adapted to each architecture: 
+
+Sequential skip (Qwen).. For models with distinct layer types, we replace the layer’s output with its input, effectively converting the layer to an identity function within the residual stream: hl+1 = hl instead of hl+1 = hl + fl(hl).
+
+Parallel zeroing (Falcon).. For models with parallel components within each block, we zero out the output contribution of the targeted component via forward hooks: if the original block computes hl+1 = hl + fattn (hl) + fssm (hl),then ablating SSM yields hl+1 = hl + fattn (hl).Both mechanisms are implemented as context-managed forward hooks that are cleanly reversible, preserving model weights for subsequent condi-tions. 53.3. Evaluation Protocol Benchmarks.. We evaluate on five standard benchmarks covering diverse ca-pabilities: MMLU [17] (5-shot, n=2,000; knowledge), GSM8K [18] (8-shot, 
+
+n=50–100; mathematical reasoning), ARC-Challenge [19] (25-shot, n=299; science reasoning), HellaSwag [20] (10-shot, n=2,000; commonsense), and TruthfulQA-MC [21] (0-shot, n=790; factuality). For GSM8K, baseline and group ablation conditions use n=100, while positional ablations use n=50 due to compute constraints; we verified that the reduced sample size does not affect the direction of findings. 
+
+Ablation conditions.. We evaluate four categories totaling 84+ conditions per model: (i) Group ablations : removing all instances of one component type simultaneously; (ii) Layer-wise ablations : removing a single component in a single layer, sweeping across all layers; (iii) Positional ablations : removing all instances of a component within early, middle, or late thirds of the net-work (Falcon); (iv) Matched random controls : removing the same number of randomly selected layers (3 trials per condition). 
+
+Statistical validation.. For all group ablation comparisons, we compute boot-strap confidence intervals (1,000 resamples) on the score drop relative to base-line. A confidence interval excluding zero indicates statistical significance at the 95% level. 
+
+4. Results 
+
+4.1. Experiment 1: Neither Component Is Bypassed 
+
+Table 1 presents the group ablation results across all five benchmarks for both models. The central finding is unambiguous: removing either component type causes severe performance degradation in both architectures , refuting the hypothesis that one pathway is bypassed. For Qwen, removing all 18 linear attention layers reduces MMLU from .489 to .250 (near chance for a 4-way task) and GSM8K from .350 to .000 (complete collapse of mathematical reasoning). Removing the 6 full attention layers causes comparable MMLU degradation (.214) and identical GSM8K collapse. Notably, removing attention has a smaller effect on HellaSwag (.341 vs. .268), suggesting that linear attention contributes more to commonsense reasoning. 6Table 1: Group ablation results across five benchmarks. Values show absolute score; parentheses show change from baseline ( ∆). Conditions marked with ∗ indicate that the mean score drop across all benchmarks has a bootstrap 95% CI excluding zero. Note that individual benchmarks may vary: TruthfulQA shows non-significant drops under some conditions. 
+
+Model Condition MMLU GSM8K ARC-C HSwag TFQA 
+
+Qwen3.5 0.8B Baseline .489 .350 .742 .516 .285 Linear off ∗ .250 (-.239) .000 (-.350) .261 (-.482) .268 (-.248) .230 (-.054) 
+
+Attention off ∗ .214 (-.274) .000 (-.350) .227 (-.515) .341 (-.175) .267 (-.018) 
+
+Falcon-H1 0.5B Baseline .568 .400 .736 .512 .223 SSM off ∗ .224 (-.344) .030 (-.370) .211 (-.525) .265 (-.247) .263 (+.041) 
+
+Attention off ∗ .228 (-.340) .000 (-.400) .214 (-.522) .369 (-.143) .227 (+.004) 
+
+For Falcon, both SSM-off and attention-off yield nearly identical MMLU (.224 vs. .228) and ARC-C (.211 vs. .214) degradation. The main asymme-try is in HellaSwag, where SSM removal causes greater damage (.265) than attention removal (.369). Figure 1 shows these profiles. 
+
+Figure 1: Radar chart showing benchmark performance under baseline and group ablation conditions. Both models show severe degradation when either component is removed, with distinctive per-benchmark profiles. The near-collapse on GSM8K ( →0) under all conditions is clearly visible, while HellaSwag shows the most asymmetric response. 
+
+74.2. Perplexity Reveals Asymmetric Backbone Roles 
+
+While benchmark accuracy shows similar degradation magnitudes for both components, perplexity analysis reveals a striking asymmetry in their roles for language modeling (Table 2). 
+
+> Table 2: WikiText-2 perplexity under group ablation. The alternative component (linear attention for Qwen, SSM for Falcon) causes far greater perplexity degradation than atten-tion, revealing its role as the language modeling backbone.
+
+Model Condition Loss Perplexity × Baseline 
+
+Qwen3.5 0.8B Baseline 2.03 7.6 1.0 ×
+
+Linear off 12.50 268,337 35,200 ×
+
+Attention off 6.44 625 82 ×
+
+Falcon-H1 0.5B Baseline 1.73 5.6 1.0 ×
+
+SSM off 5.69 295 53 ×
+
+Attention off 2.88 17.7 3.2 ×
+
+For Qwen, removing linear attention increases perplexity from 7.6 to 268,337—a factor of 35,200 ×—while removing attention increases it 82 ×
+
+to 625. For Falcon, removing SSM increases perplexity 53 × (to 295) while removing attention increases it only 3.2 × (to 17.7). Figure 2 visualizes these differences on a logarithmic scale. In both architectures, the alternative component is the primary lan-guage modeling backbone , with attention serving a complementary re-finement role. This asymmetry is consistent with the findings of Wang et al. [9], who showed that recall performance in hybrids improves significantly with even a small proportion of full attention layers, suggesting that atten-tion provides a targeted but high-leverage contribution rather than serving as the dominant computational pathway. 8Figure 2: WikiText-2 perplexity under group ablation (log scale). The order-of-magnitude difference between removing the alternative component vs. attention reveals the asymmet-ric backbone role: linear attention (Qwen) and SSM (Falcon) are the primary language modeling engines. 
+
+4.3. Random Controls Validate Targeted Effects 
+
+To confirm that the observed degradation is specific to component type rather than a generic effect of removing layers, we compare group ablations against matched random controls where the same number of randomly se-lected layers are disrupted (Table 3).      
+
+> Table 3: Comparison of targeted ablation versus matched random controls (mean ±std over 3 trials, averaged across all 5 benchmarks). Random removal of the same number of layers causes comparable accuracy degradation, confirming that benchmark accuracy is primarily sensitive to the number of disrupted layers. The discriminating signal comes from perplexity (Table 2).
+
+Model Condition Targeted Mean Random Ctrl Mean 
+
+Qwen3.5 0.8B Linear off (18 layers) .202 .199 ± .009 Attention off (6 layers) .210 .206 ± .004 Falcon-H1 0.5B SSM off (all blocks) .198 .203 ± .010 
+
+The random controls yield similar mean accuracy to the targeted abla-tions across all conditions. For Qwen, removing 18 random layers produces a mean accuracy of .199 ± .009, nearly identical to the .202 from targeted linear-layer removal. This indicates that benchmark accuracy is primarily 9sensitive to the quantity of disrupted layers rather than their specific func-tional type. Figure 3 illustrates this comparison visually. However, perplexity tells a starkly different story. Table 4 presents the perplexity under matched random controls for Qwen (5 trials each). Cru-cially, removing 18 random layers causes far greater perplexity degradation (mean 1,748,920) than removing the 18 targeted linear layers (268,337)—a 6.5 × difference. Similarly, removing 6 random layers yields a mean per-plexity of 41,154, compared to only 625 for targeted attention removal—a 66 × difference. This demonstrates that both component types possess inter-nal redundancy that exceeds the redundancy of arbitrary layer subsets, but attention is dramatically more redundant (66 ×) than linear attention (6.5 ×), providing strong additional evidence for the backbone characteriza-tion in Section 4.2.      
+
+> Table 4: WikiText-2 perplexity under targeted vs. matched random ablation for Qwen3.5-0.8B (mean ±std over 5 trials). Targeted removal always causes less damage than random removal of the same number of layers, with attention showing 66 ×greater redundancy than linear attention. This rules out layer-count as a confound for the backbone finding.
+
+Condition Targeted PPL Random PPL Redundancy 
+
+Linear off (18 layers) 268,337 1,748,920 ± 766,270 6.5 ×
+
+Attention off (6 layers) 625 41,154 ± 81,609 66 ×
+
+The high variance in the 6-layer random controls is informative: trial 0, which happened to include layer 0 (a critical early linear layer), produced a perplexity of 204,370, while trials excluding layer 0 averaged only 350. This further corroborates the positional importance gradient identified in Section 4.4. 
+
+Transformer baseline.. To determine whether the observed redundancy pat-terns are specific to hybrid architectures or general properties of deep net-works, we repeat the random layer removal experiment on a pure Transformer of comparable size: Qwen2.5-0.5B [25] (490M parameters, 24 layers, softmax attention only). Table 5 presents the results. The pure Transformer is dramatically more fragile: removing 6 random layers degrades it 640,763 × (vs. 5,401 × for the hybrid), a 119-fold difference. This reveals that hybrid architectures possess a form of built-in resilience 
+
+absent in pure Transformers: when arbitrary layers are disrupted, the surviv-ing component type in neighboring layers partially compensates, providing a 10 Table 5: Perplexity under random layer removal: hybrid (Qwen3.5-0.8B) vs. pure Trans-former (Qwen2.5-0.5B). Values are normalized as multiples of each model’s baseline per-plexity to enable cross-architecture comparison. The Transformer is 20–119 × more sen-sitive to random layer removal, demonstrating that hybrid architectures possess built-in resilience from functional redundancy between component types. 
+
+Layers removed Hybrid ( × base) Transformer ( × base) Ratio 
+
+18 of 24 229,517 × 4,700,430 × 20 ×
+
+6 of 24 5,401 × 640,763 × 119 ×
+
+redundancy buffer. This finding has practical implications for fault tolerance and graceful degradation in deployed hybrid models. 
+
+Figure 3: Targeted ablation vs. random layer removal for both models. Baseline perfor-mance (blue) collapses to similar levels under both targeted (red) and random (gray, with error bars) ablation, confirming that the magnitude of accuracy degradation depends pri-marily on the number of removed layers rather than their functional identity. 
+
+4.4. Layer-wise Analysis: Positional Importance Gradient 
+
+Figure 4 presents the accuracy drop from ablating a single component in a single layer, sweeping across all layers of both models. A clear positional gradient emerges: early layers are disproportionately critical for both component types in both architectures .For Qwen, layer 0 (a linear attention layer) shows the largest single-layer drop across both MMLU and ARC-Challenge. The attention layers at posi-tions 3, 7, and 23 (the final attention layer) also show elevated importance, but with smaller magnitude. 11 Figure 4: Mean accuracy drop (across MMLU and ARC-Challenge) when ablating a single layer’s component. Early layers show 2–5 × larger drops than late layers, with the first layer being especially critical. The SSM gradient in Falcon is steeper than the attention gradient. 
+
+For Falcon, the first SSM layer causes the largest degradation, and SSM ablations consistently show higher drops than attention ablations in early layers. In late layers, both components contribute minimally, with single-layer drops approaching zero. The detailed dual heatmap (Figure 5) provides a per-benchmark view of this gradient across both architectures. 
+
+Figure 5: Layer-wise ablation impact ( ∆ accuracy from baseline) for both models, disaggre-gated by benchmark. Warm colors indicate larger degradation. The top-left concentration confirms that early-layer ablations cause the most damage across both architectures and all benchmarks. 
+
+12 4.5. Positional Ablations (Falcon) 
+
+Table 6 presents the positional ablation results for Falcon, where all com-ponents of one type within the early, middle, or late third of layers are simultaneously removed.    
+
+> Table 6: Falcon-H1 positional ablation: removing all components of one type within a positional third. Early-layer ablation causes substantially more damage than late-layer ablation for both SSM and attention.
+
+Component Position MMLU GSM8K ARC-C HSwag TFQA 
+
+Baseline .568 .400 .736 .512 .223 SSM off Early .255 .020 .294 .274 .248 Middle .454 .280 .592 .457 .224 Late .538 .160 .676 .485 .234 Attn off Early .278 .040 .244 .442 .230 Middle .441 .000 .555 .412 .225 Late .553 .260 .659 .492 .235 
+
+The results confirm the layer-sweep findings quantitatively: removing early SSM reduces MMLU from .568 to .255 ( −55%), while removing late SSM only reduces it to .538 ( −5%). The asymmetry is even more dramatic for ARC-Challenge: early SSM off yields .294 ( −60%) versus late SSM off at .676 ( −8%). Attention shows a similar gradient but with a notable exception: middle attention ablation causes GSM8K to collapse to 0.000, suggesting that middle-layer attention is specifically critical for mathematical reasoning chains. 
+
+4.6. Experiment 2: Hidden-State Contribution Metrics 
+
+To complement behavioral ablation with internal analysis, we compute layer-wise hidden-state metrics using a diagnostic corpus (512 tokens from WikiText-2). For each layer, we measure four quantities: norm change = ∥hpost − hpre ∥ / ∥hpre ∥
+
+cosine sim. = cos( hpre , hpost )
+
+output ratio = ∥fc(h)∥ / ∥h∥ for each component c
+
+logit-lens KL = KL( pbaseline ∥pablated )
+
+13 For Qwen, the first linear layer (layer 0) stands out with a norm change of 1.98, far exceeding all other layers. Excluding this outlier, linear and attention layers show similar mean norm change (0.50 vs. 0.59), but the component output norm ratio is higher for linear layers (mean 0.44 vs. 0.36 for attention), indicating that linear layers contribute proportionally more to the residual stream per layer. For Falcon, the SSM path shows dramatically higher logit-lens KL in late layers (layer 30: KL=32.0; layer 33: KL=11.1), indicating that the SSM con-tributes most to next-token prediction in the model’s final processing stages. The attention path shows its highest KL at layer 0 (KL=0.71), suggesting that early attention plays a distinct role in initial token contextualization. Figure 6 examines the relationship between these internal metrics and the behavioral ablation results from Experiment 1. For Qwen, norm change shows a significant positive correlation with accuracy drop ( r=0.35, p=0.006), confirming that layers transforming representations more aggressively are also more critical when ablated. Interestingly, Falcon shows a weak negative 
+
+correlation ( r=−0.27, p=0.025), suggesting that in the parallel architecture, functional importance is more uniformly distributed and not simply predicted by output magnitude. Logit-lens KL divergence does not significantly pre-dict ablation impact in either model ( p > 0.7), indicating that next-token prediction influence and benchmark accuracy capture different aspects of component function. 14 Figure 6: Correlation between Experiment 2 layer-wise metrics ( x-axis: norm change or logit-lens KL divergence) and Experiment 1 accuracy drop ( y-axis). For Qwen, norm change shows a significant positive correlation ( r=0.35, p=0.006), confirming that layers transforming representations more also cause greater degradation when ablated. For Fal-con, the relationship is weaker and inverted ( r=−0.27, p=0.025), suggesting tighter func-tional integration where importance is not predicted by output magnitude alone. Logit-lens KL shows no significant correlation in either model. 
+
+15 4.7. Experiment 3: Task-Dependent Analysis 
+
+We analyze whether specific components are differentially important for specific task types. Figure 7 shows the score drop heatmap across all model-condition-benchmark combinations. Across all conditions, we observe three patterns: 
+
+Mathematical reasoning (GSM8K) is the most fragile capability: it collapses to 0% under nearly all group ablations in both models, indicating it requires the full model to function. 
+
+Commonsense reasoning (HellaSwag) shows the most asymmetric response: removing attention has a substantially smaller effect than removing the alternative component in both models (Qwen: −.175 vs. −.248; Falcon: 
+
+−.143 vs. −.247), suggesting that commonsense knowledge is more dependent on the recurrent/linear pathway. 
+
+Factual discrimination (TruthfulQA) is the most robust to ablation, with drops of <6% in most conditions and even slight improvements in Fal-con under SSM-off (+4.1%), possibly reflecting reduced model confidence in misleading completions.  
+
+> Figure 7: Score drop heatmap (Experiment 3) across all model–condition–benchmark combinations. Warm colors indicate larger degradation. GSM8K consistently shows the largest drops (top row region), while TruthfulQA is the most resilient (near-zero or negative drops). The cross-architecture consistency of these patterns suggests that task-dependent component reliance is a general property of hybrid models.
+
+5. Discussion 
+
+Both components are essential, but play different roles.. Our most impor-tant finding is that in natively trained hybrid models, neither component is 16 bypassed. This contrasts sharply with the findings of Benfeghoul et al. [8] for post-training linearized models, suggesting that the training procedure (native vs. post-hoc) is the key determinant of whether components achieve genuine specialization. 
+
+The alternative component is the backbone.. The extreme perplexity asym-metry (35,200 × vs. 82 × for Qwen; 53 × vs. 3.2 × for Falcon) reveals that the alternative component—linear attention or SSM—serves as the primary language modeling engine, while attention plays a complementary role. This is consistent with the architectural design intent: Qwen uses 18 linear and only 6 attention layers, while Falcon’s SSM processes every token through state-space dynamics in every block. 
+
+Implications for model compression.. The strong positional gradient in com-ponent importance suggests that pruning strategies for hybrid models should be position-aware. Specifically: (i) early-layer components should be pre-served at higher fidelity; (ii) late-layer components (particularly attention in Falcon) can be more aggressively compressed with minimal performance impact; (iii) distillation efforts should prioritize preserving the linear/SSM pathway over attention, given its backbone role. 
+
+Sequential vs. parallel hybridization.. The two architectures show a qualita-tive difference in component interaction. Qwen’s sequential design creates distinct functional roles for each layer type, enabling clean isolation dur-ing ablation. Falcon’s parallel design results in more symmetric benchmark degradation (both components show similar accuracy drops), but the per-plexity analysis reveals that the SSM is still dominant for language modeling. This suggests that parallel hybridization achieves tighter functional integra-tion between components, while sequential hybridization maintains clearer functional separation. 
+
+Benchmark accuracy vs. perplexity as diagnostic tools.. A methodological insight from our study is that standard benchmarks, while useful for measur-ing task performance, can mask important differences between components. Both component types show similar accuracy drops (Table 1), but perplex-ity reveals a dramatic asymmetry (Table 2). We recommend that future component analysis studies include perplexity as a complementary measure alongside task-specific benchmarks. 17 Hybrid resilience vs. Transformer fragility.. The Transformer baseline com-parison (Table 5) reveals an unexpected finding: hybrid models are sub-stantially more resilient to arbitrary layer removal than pure Transformers of comparable size. When 6 random layers are removed, the Transformer degrades 119 × more than the hybrid in normalized perplexity terms. We at-tribute this to functional redundancy between component types: in a hybrid, disrupting a layer still leaves the alternative component in neighboring lay-ers to partially compensate, creating a distributed backup pathway that pure Transformers lack. This property has practical implications for fault toler-ance in deployed models and suggests that hybrid architectures may degrade more gracefully under hardware errors or aggressive pruning. 
+
+6. Limitations and Future Work 
+
+Scale.. We study sub-1B models to enable exhaustive ablation. Whether the observed specialization patterns persist at 3B, 7B, or larger scales remains an open question. The positional gradient and backbone asymmetry may steepen or flatten with depth, which requires validation with larger models. 
+
+Functional ablation vs. retraining.. Our methodology measures functional dependence at inference time. Zeroing component outputs is not equivalent to training without that component from scratch, and the resulting degra-dation may overestimate true redundancy. This is a standard limitation of ablation studies [16] and should be interpreted as an upper bound on com-ponent importance. 
+
+Cross-architecture comparability.. The ablation mechanisms are necessarily architecture-specific: for Qwen, disabling a layer removes both the token mixer and its associated MLP, while for Falcon, zeroing a parallel compo-nent preserves the MLP and the other component. This means the interven-tions are not directly comparable across architectures. We address this by reporting within-architecture contrasts (attention vs. alternative component for each model) rather than cross-architecture comparisons, and by includ-ing matched random controls to calibrate the expected degradation for each architecture independently. 
+
+Benchmark coverage.. Standard benchmarks use relatively short prompts that may not fully expose the benefits of the linear/SSM pathway for long-context processing. Our optional context-length stress test (up to 1,024 18 tokens) shows stable degradation patterns, but testing at 4K–128K tokens would be valuable to characterize long-context component reliance. 
+
+Future directions.. Natural extensions include: (a) scaling validation at 3B– 7B with a reduced set of critical ablation conditions; (b) studying how compo-nent specialization evolves during training by ablating at intermediate check-points; (c) using the ablation framework to guide hybrid architecture search, e.g., optimizing the linear-to-attention ratio; and (d) applying the methodol-ogy to other hybrid families such as RWKV [22], Griffin [23], or Samba [24]. 
+
+Data and Code Availability 
+
+All experimental artifacts—including checkpoints, result CSVs, figures, and LaTeX tables—are publicly available on HuggingFace. 2 The complete ablation notebook, designed for reproducibility on Google Colab Pro with a single GPU, will be released upon publication. 
+
+7. Conclusion 
+
+We have presented a comprehensive functional ablation framework for hybrid language models, applied to two architecturally contrasting sub-1B hybrid models—Qwen3.5-0.8B (sequential hybrid with Gated DeltaNet + softmax attention) and Falcon-H1-0.5B (parallel hybrid with Mamba-2 + attention)—with a pure Transformer control (Qwen2.5-0.5B). Our experi-ments, spanning 84+ ablation conditions per model, five benchmarks, per-plexity analysis, and hidden-state metrics, establish four findings with prac-tical implications: First, both component types are genuinely utilized in natively trained hybrid models—neither is bypassed, contrasting with recent observations in post-training linearized models. Second, the alternative component (linear attention or SSM) serves as the primary language modeling backbone, with attention providing complementary refinement, as evidenced by the perplex-ity degradation ratio between the two removal conditions (Qwen: 35,200 × vs. 82 ×; Falcon: 53 × vs. 3.2 ×). Third, component importance follows a strong early-layer gradient, with the first few layers being disproportionately criti-cal for model function. Fourth, hybrid architectures exhibit built-in resilience 
+
+> 2https://huggingface.co/centroIA/paper2-falcon-results
+
+19 to layer removal that pure Transformers lack—the Transformer control was 20–119 × more sensitive to random layer removal than the hybrid, revealing functional redundancy between component types as an emergent property of hybrid training. These results provide actionable guidance for model compression (pre-serve early layers and backbone components), architecture design (the back-bone component should receive proportionally more parameters), and fault-tolerant deployment of hybrid architectures. 
+
+References 
+
+[1] A. Vaswani, N. Shazeer, N. Parmar, J. Uszkoreit, L. Jones, A.N. Gomez, Ł. Kaiser, I. Polosukhin, Attention is all you need, in: Advances in Neural Information Processing Systems 30, 2017, pp. 5998–6008. [2] A. Gu, K. Goel, C. Ré, Efficiently modeling long sequences with struc-tured state spaces, in: International Conference on Learning Represen-tations, 2022. [3] A. Gu, T. Dao, Mamba: Linear-time sequence modeling with selective state spaces, arXiv preprint arXiv:2312.00752, 2023. [4] T. Dao, A. Gu, Transformers are SSMs: Generalized models and effi-cient algorithms through structured state space duality, in: International Conference on Machine Learning, 2024. [5] S. Yang, B. Wang, Y. Shen, R. Panda, Y. Kim, Gated linear attention transformers with hardware-efficient training, in: International Confer-ence on Machine Learning, 2024. [6] J. Zuo, M. Velikanov, I. Chahed, Y. Belkada, D.E. Rhayem, G. Kunsch, H. Hacid, et al., Falcon-H1: A family of hybrid-head language models redefining efficiency and performance, arXiv preprint arXiv:2507.22448, 2025. [7] Qwen Team, Qwen3 technical report, https://qwenlm.github.io/ blog/qwen3/ , 2025. [8] M. Benfeghoul, T. Delgado, A. Oomerjee, H. Bou Ammar, J. Wang, Z. Fountas, Untangling component imbalance in hybrid linear attention conversion methods, arXiv preprint arXiv:2510.05901, 2025. 20 [9] D. Wang, R.-J. Zhu, S. Abreu, Y. Shan, T. Kergan, Y. Pan, Y. Chou, et al., A systematic analysis of hybrid linear attention, arXiv preprint arXiv:2507.06457, 2025. [10] Kimi Team, Kimi Linear: An expressive, efficient attention architecture, arXiv preprint arXiv:2510.26692, 2025. [11] R. Ren, Z. Li, Y. Liu, Exploring the limitations of Mamba in COPY and CoT reasoning, arXiv preprint arXiv:2410.03810, 2024. [12] C.V. Nguyen, H.H. Nguyen, T.M. Pham, R. Zhang, et al., Taipan: Ef-ficient and expressive state space language models with selective atten-tion, arXiv preprint arXiv:2410.18572, 2024. [13] N. Elhage, N. Nanda, C. Olsson, T. Henighan, et al., A mathematical framework for transformer circuits, Transformer Circuits Thread, An-thropic, 2021. [14] C. Olsson, N. Elhage, N. Nanda, N. Joseph, et al., In-context learning and induction heads, Transformer Circuits Thread, Anthropic, 2022. [15] E. Haller, S. Dohmatob, M. Hauru, J. Luketina, What matters in lin-earizing language models?, arXiv preprint arXiv:2412.06464, 2025. [16] R. Meyes, M. Lu, C.W. de Puiseau, T. Meisen, Ablation studies in artificial neural networks, arXiv preprint arXiv:1901.08644, 2019. [17] D. Hendrycks, C. Burns, S. Basart, A. Zou, M. Mazeika, D. Song, J. Steinhardt, Measuring massive multitask language understanding, in: International Conference on Learning Representations, 2021. [18] K. Cobbe, V. Kosaraju, M. Bavarian, M. Chen, H. Jun, L. Kaiser, M. Plappert, J. Tworek, J. Hilton, R. Nakano, C. Hesse, J. Schul-man, Training verifiers to solve math word problems, arXiv preprint arXiv:2110.14168, 2021. [19] P. Clark, I. Cowhey, O. Etzioni, T. Khot, A. Sabharwal, C. Schoenick, O. Tafjord, Think you have solved question answering? Try ARC, the AI2 reasoning challenge, arXiv preprint arXiv:1803.05457, 2018. [20] R. Zellers, A. Holtzman, Y. Bisk, A. Farhadi, Y. Choi, HellaSwag: Can a machine really finish your sentence?, in: Proc. ACL, 2019. 21 [21] S. Lin, J. Hilton, O. Evans, TruthfulQA: Measuring how models mimic human falsehoods, in: Proc. ACL, 2022. [22] B. Peng, E. Alcaide, Q. Anthony, A. Albalak, et al., RWKV: Reinventing RNNs for the transformer era, in: Findings of EMNLP, 2023. [23] S. De, A. Smith, D. Fernando, A. Botev, et al., Griffin: Mixing gated lin-ear recurrences with local attention for efficient language models, arXiv preprint arXiv:2402.19427, 2024. [24] L. Ren, Y. Liu, Y. Lu, Y. Shen, C. Liang, P. Abbeel, Samba: Sim-ple hybrid state space models for efficient unlimited context language modeling, arXiv preprint arXiv:2406.07522, 2024. [25] Qwen Team, Qwen2.5: A party of foundation models, https://qwenlm. github.io/blog/qwen2.5/ , 2024. 22

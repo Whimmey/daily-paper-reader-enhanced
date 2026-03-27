@@ -1,0 +1,747 @@
+Title: Under One Sun: Multi-Object Generative Perception of Materials and Illumination
+
+URL Source: https://arxiv.org/pdf/2603.19226v1
+
+Published Time: Fri, 20 Mar 2026 01:42:07 GMT
+
+Number of Pages: 24
+
+Markdown Content:
+# Under One Sun: Multi-Object Generative Perception of Materials and Illumination 
+
+Nobuo Yoshii 1 , Xinran Nicole Han 2 , Ryo Kawahara 1 ,Todd Zickler 2 , and Ko Nishino 1 
+
+> 1
+
+Kyoto University 2 Harvard University 
+
+https://vision.ist.i.kyoto-u.ac.jp/ Single Image Shared Illumination 
+
+Reflectance 
+
+> Texture
+
+Multi -Object Generative Perception 
+
+Fig. 1: MultiGP is an ambiguity-aware inverse rendering method that samples the reflectance and texture of each object alongside the global scene illumination from a single image. By leveraging the shared illumination across multiple objects, MultiGP employs a novel end-to-end architecture featuring tailored guidance, axial attention, and ControlNet structures to resolve the otherwise ambiguous radiometric disentanglement. 
+
+Abstract. We introduce Multi-Object Generative Perception (MultiGP), a generative inverse rendering method for stochastic sampling of all radio-metric constituents—reflectance, texture, and illumination—underlying object appearance from a single image. Our key idea to solve this in-herently ambiguous radiometric disentanglement is to leverage the fact that while their texture and reflectance may differ, objects in the same scene are all lit by the same illumination. MultiGP exploits this consen-sus to produce samples of reflectance, texture, and illumination from a single image of known shapes based on four key technical contributions: a cascaded end-to-end architecture that combines image-space and angular-space disentanglement; Coordinated Guidance for diffusion convergence to a single consistent illumination estimate; Axial Attention applied to facilitate “cross-talk” between objects of different reflectance; and a Tex-ture Extraction ControlNet to preserve high-frequency texture details while ensuring decoupling from estimated lighting. Experimental results demonstrate that MultiGP effectively leverages the complementary spatial and frequency characteristics of multiple object appearances to recover individual texture and reflectance as well as the common illumination. 
+
+Keywords: Generative Perception · Inverse Rendering · Radiometric Disentanglement  
+
+> arXiv:2603.19226v1 [cs.CV] 19 Mar 2026 2N. Yoshii et al.
+
+## 1 Introduction 
+
+The appearance of an object reveals far more than its 3D shape and semantic identity. A glance at a cup, for example, also reveals its material properties (e.g ., ceramic, hard, heavy, perhaps with printed text or graphics) and provides informative reflections of the surrounding illumination. Deciphering this rich, entangled information can be essential for interaction. It can allow an embodied agent to plan a grasp based on perceived materials; predict how the object would look from different vantage points; and predict how other objects would look if placed in the same scene. However, this radiometric disentanglement is overwhelmingly ill-posed. Sur-rounding light is reflected with an angular response that is unique to the local geometry and reflectance of each surface point, akin to an angular convolution with a shift-dependent kernel [36]. This deeply entangles object materials with ambient light, and it is inherently lossy because surface reflectance generally attenuates the light’s high angular-frequency details. All of this makes recovering materials and lighting from a single image fundamentally ambiguous [17]. “Generative perception” is a framework for addressing these ambiguities in vision, by using stochastic generative models to sample from the distribution of possible physical explanations. Previous work in this vein has focused on producing samples of material and shape from images [16, 51] or from videos [15, 27], but without producing samples of illumination. In contrast, DRM [10] produces samples of reflectance and illumination from an image of a known shape, but it cannot handle objects with texture. In this paper, we show that stochastic sampling of a richer suite of radiometric constituents—reflectance, texture, and illumination—becomes possible when multiple objects are present in the image. Our key insight is that while objects in a scene differ in their texture and reflectance, they are all lit by the same illumination. We introduce Multi-object Generative Perception (MultiGP), an approach that leverages multi-object consensus to produce samples of reflectance, texture and illumination from a single image of known shapes. MultiGP is built upon four key techninical contributions. First, we propose a cascaded end-to-end architecture that simultaneously disentangles texture in the image domain and reflectance and illumination in the angular (reflectance map) domain. Second, we introduce Coordinated Guidance, which manages the temporal scheduling of the diffusion process to ensure that illumination estimates across different objects converge to one consistent environment map. Third, we employ Axial Attention to facilitate “cross-talk” between objects in the reflectance map domain, allowing objects with different BRDFs to mutually complement each other’s missing angular frequencies. Fourth, we integrate a Texture Extraction ControlNet that preserves high-frequency surface details while ensuring they remain decoupled from the estimated lighting. Our extensive experiments on synthetic and real-world data demonstrate that MultiGP achieves state-of-the-art accuracy in texture, reflectance, and illumination estimation. They also show that MultiGP successfully exploits the complementary information entangled in the object appearance of each object Under One Sun 3
+
+in the spatial and frequency domains. Our results suggest that the radiometric information ingrained in object appearance can be reliably exploited by leveraging the physical constraints naturally occurring in multi-object scenes, providing a path toward robust radiometric scene understanding. 
+
+## 2 Related Works 
+
+There has been considerable recent progress in appearance decomposition using multiple images with changing viewpoint or illumination. Here we focus on single-image methods, where the ambiguity is substantially greater. 
+
+Deterministic prediction: Inverse rendering and regression. Inverse rendering techniques perform gradient descent on a forward rendering operator to recover a set of radiometric constituents that best explain an image, typically using an objective that includes statistical priors or regularization on reflectance and illumination (and sometimes shape when it’s unknown) [6,8,30,34,50]. Instead of using iterative optimization, regression-based methods train deep networks to deterministically map an input image to one or more of texture, reflectance or illumination [5, 13, 14, 32, 33, 38, 47]. There are also hybrid methods that use regression to predict some radiometric constituents and inverse rendering to predict others [46]. Many of these methods only produce smooth, low-frequency lighting due to the intrinsic loss of information in forward rendering. Also, all of them have the disadvantage of producing a single “best” estimate, even when there is fundamental ambiguity, where multiple, diverse explanations are equally valid. In contrast, our method stochastically samples sets of explanatory radiometric constituents, including diverse samples of realistic high-frequency lighting environments that are physically consistent with the observed appearance. 
+
+Stochastic illumination. Recent generative approaches use diffusion models to hallucinate image-consistent, high-frequency illumination as a panoramic en-vironment map [29, 42] or a virtual mirrored sphere within the scene [28, 35]. Although visually plausible, these methods do not explicitly estimate materi-als, and they fundamentally bypass physically-based modeling of reflection. In contrast, our goal is to radiometrically disentangle object appearance to recover the texture, reflectance, and illumination. DPI [31] uses differentiable rendering with a diffusion-based illumination prior. DRM [10] considers the special case of textureless objects and reformulates diffusion to generate samples of reflectance and illumination that are consistent with a reflectance map. Our work extends the DRM paradigm by leveraging the common illumination across multiple objects to enable the prediction of texture in addition to reflectance and illumination. 
+
+Stochastic texture and reflectance. Texture and reflectance estimation has seen significant progress with diffusion-based intrinsic image decomposition [4, 7, 9, 18, 18, 44, 45, 53]. Kocsis et al. [23] finetune Stable Diffusion to generate samples of texture and reflectance, and they use them to recover illumination by inverse rendering. RGB-X [51] and DiffusionRender [27] finetune Stable Diffusion to generate samples of texture, reflectance and shape, but they do not provide 4 N. Yoshii et al. 
+
+illumination. Recent work by Han et al. [15] trains a diffusion model from scratch to generate samples of texture, reflectance, and shape without illumination. In our work, we adapt some components of their U-ViT3D architecture. 
+
+## 3 Multi-Object Generative Perception 
+
+3.1 Problem Formulation 
+
+An object’s appearance can be described by its surface radiance Lr which, ignoring global illumination effects, is determined by the surface normal n, the bidirectional reflectance distribution function (BRDF) fr , and incident illumination Li [22]: 
+
+Lr (x, ω o) = 
+
+Z
+
+> ω
+
+fr (x, ω i, ω o) Li(ωi) ( ωi · n(x)) dω i , (1) where ωi and ωo are the incident and outgoing light directions in the local hemisphere centered at n(x). We adopt the Disney BRDF model [3]: 
+
+fr (x, ω i, ω o; ρd(x), Ψ := {ρs, r, γ }) = (1 −γ) ρd(x)
+
+π
+
+ fdiff (ωi, ω o) + fretro (ωi, ω o; r)
+
++ fspec (ωi, ω o; ρd(x), ρ s, r, γ ) , (2) where ρd(x) is the spatially-varying texture and Ψ is spatially-uniform reflectance consisting of roughness r, metallicness γ, and specular strength ρs. Most daily objects exhibit homogeneous specular reflection ( e.g ., due to a uniform coat-ing over a spatially-varying diffuse reflection). Handling fully spatially-varying specular reflection is left for future work. Inverting Eq. (1) for a single object is fundamentally ambiguous; our key insight is to exploit the complementary radiometric information carried by multiple 
+
+objects to constrain this inversion. Specifically, given an image I containing M
+
+objects with known shapes S={n(x)m}Mm=1 , we seek the joint posterior over per-object textures T={ρd(x)m}Mm=1 , per-object reflectances R={Ψ (m)}Mm=1 ,and shared illumination L:
+
+p(T, R, L | I, S) ∝ p(I | S, T, R, L ) p(T, R, L | S) . (3) Computing this posterior exactly is intractable. We approximate it with a cascaded factorization that separates texture from reflectance and illumination: 
+
+q(T, R, L | I, S) = qϕ(T | I, S) qθ (R, L | I, S, T) . (4) This factorization directly dictates our architecture (Fig. 2): a texture extraction module qϕ (Sec. 3.2), followed by a joint reflectance–illumination module qθ that operates on texture-free, shape-invariant reflectance maps and can therefore focus entirely on material and lighting estimation (Sec. 3.3). The estimates are then refined end-to-end by maximizing the physical likelihood with a ControlNet which examines consistency of the disentanglement and the observation (Sec. 3.4). Under One Sun 5Latent         
+
+> Diffusion 𝑞 !
+> Multi -Object
+> Diffusion 𝑞 "
+> Renderer
+> Denoising ×𝐾
+> Reflectance
+> Maps Illumination
+> Reflectance
+> RGB
+> Denoising ×𝑇 Texture
+> removed
+> Texture
+> Control
+> Net
+> Shape
+
+Fig. 2: Overview of MultiGP. Given a scene with multiple objects, textures are first estimated via a diffusion model qϕ that accounts for global light transport. The resulting texture-free appearances are transformed into reflectance maps, from which a multi-object diffusion model qθ estimates a shared illumination and respective reflectances. Finally, a ControlNet refines the textures for physical consistency with the estimated lighting and reflectance through a renderer. 
+
+3.2 Texture Extraction Prior ( qϕ)
+
+The first stage of our factorization isolates the diffuse texture T from the input image. We employ a latent diffusion model [40] conditioned on the concate-nated latents of the observed appearance and object shapes, denoted as c. The intermediate denoising step t follows standard diffusion dynamics: 
+
+zt = √¯αtz0 + √1 − ¯αtϵ,
+
+with ϵ ∼ N (0, I). The network ϵϕ predicts the added noise to estimate both the texture T and the intermediate texture-free appearance Lr (x; Ψ ). The base loss is defined as 
+
+Lϕ = Ez0,t, ϵ
+
+∥ϵ − ϵϕ(zt, t ; c)∥22
+
+ . (5) 
+
+3.3 Multi-Object Diffusion Reflectance Maps ( qθ )
+
+Conditioned on the extracted texture T, we operate on the texture-free appearance of each object to solve qθ (R, L | I, S, T). Each texture-free appearance L(m) 
+
+> r
+
+(x) is mapped to a shape-invariant raw reflectance map ˜L(m) 
+
+> r
+
+(n), a Gaussian sphere of surface radiance indexed by surface normal n. They are masked due to the visible normal area of the original objects. Then, these raw reflectance maps ˜L(m) 
+
+> r
+
+(n)
+
+are converted to complete reflectance maps L(m) 
+
+> r
+
+(n) via a learned network (a multi-object extension of ObsNet [10]). This network leverages axial attention— analogous to our multi-object axial attention in the diffusion process—to mitigate global light transport effects, such as cast shadows and interreflections. Building on the Diffusion Reflectance Map (DRM) framework [10], which recovers illumination from a single object via learned inverse diffusion on the rendering equation, we extend this approach to a multi-object setting. Since 6 N. Yoshii et al. 
+
+each surface reflects different spatial extents and frequency bands of the same illumination—determined by its unique BRDF and geometry—we coordinate these complementary signals to jointly recover the shared illumination L (repre-sented as a mirror reflectance map L(0)  
+
+> r
+
+(n)) and individual reflectances R.We index each reflectance map by its diffusion step k: L(m,K ) 
+
+> r
+
+(n) is the initial observation and L(m, 0)  
+
+> r
+
+(n) = ˆLi(n) is the target mirror reflectance map. Following DRM, the forward process is not a Markov noise chain, but a deterministic radiometric formation governed by the rendering equation with additive Gaussian noise to account for the inherent ambiguity. Assuming no cross-talk between object reflections, the joint forward process factorizes over the M objects (see the supplementary material for the full derivation): 
+
+q(L(1: M, 1: K) 
+
+> r
+
+| L(0)  
+
+> r
+
+, Ψ (1: M,K )) = 
+
+> M
+
+Y
+
+> m=1
+> K
+
+Y
+
+> k=1
+
+N L(m,k ) 
+
+> r
+
+| Lr (Ψ (m,k ), L (0)  
+
+> r
+
+), σ 2I . (6) The evidence lower bound (ELBO) decomposes into a sum of per-object terms, yielding the illumination loss: 
+
+Li = ELi,Ψ,m,k μ′ 
+
+> θi,θ r
+
+− Lr (Ψ (m,k −1) , L (0)  
+
+> r
+
+) − L(m,k ) 
+
+> r
+> 22
+
+, (7) where θi and θr parameterize the illumination and reflectance estimators, respec-tively. MultiGP minimizes this objective using two key components: Coordinate Scheduling , which guides all object appearances toward a common illumina-tion via reverse diffusion, and Axial Attention , which fuses complementary spatio-spectral information across objects. 
+
+Multi-Object Coordinate Scheduling. Our goal is to convert the M observed reflectance maps L(m,K ) 
+
+> r
+
+, each representing a different material, back to a single mirror reflectance map L(0)  
+
+> r
+
+(n) that reveals the environment illumination ˆLi(n)
+
+(Fig. 3a). To achieve this, we schedule the reflectance of each object to evolve linearly from its estimated material ˆΨ (m,K ) to the known mirror reflectance Ψ0
+
+over K shared steps: 
+
+ˆΨ (m,k ) = kK ˆΨ (m,K ) +  1 − kK
+
+Ψ0 . (8) This ensures that all M objects reach mirror reflectance simultaneously at k=0
+
+while preserving their relative scales, in contrast to DRM [10] which requires infinite steps to converge. The total number of steps K is set proportionally to the average distance of the input materials from mirror reflectance: 
+
+K = Kmax 
+
+M
+
+> M
+
+X
+
+> m=1
+
+ˆΨ (m,K ) − Ψ0
+
+√3
+
+> 2
+
+, (9) where Kmax is the maximum allowed steps and √3 normalizes by the largest possible distance in the 3-D reflectance space ˆΨ = {metallic, roughness, specular }.Under One Sun 7𝑳 𝒓              
+
+> (𝑲 ,𝟑 )
+> 𝑳 𝒓
+> (𝑲 ,𝟐 )
+> 𝑳 𝒓
+> (𝑲 ,𝟏 )
+> 𝑳 𝒓
+> (𝒌 ,𝟐 )
+> 𝑳 𝒓
+> (𝒌 ,𝟑 )
+> 𝑳 𝒓
+> (𝟎 )
+> 𝑳 𝒓
+> (𝒌 ,𝟏 )
+> Inverse step 𝑘 𝑘 =0𝑘 =𝐾
+> (a) Multi-Object Coordinate Scheduling Shared Illumination Reflectance Maps Raw Reflectance Maps
+> Lr
+> (m,K )Lr
+> (0) ^
+> Lr
+> (m)~(b) Multi-Object Axial Attention
+
+Fig. 3: (a) Multi-Object Coordinate Scheduling guides the appearance of diverse objects toward a single shared illumination estimate. At each denoising step, the process is governed by the estimated reflectances of multiple objects alongside a known mirror reflectance. Since the mirror reflectance uniquely corresponds to the illumination, these diverse inputs stochastically converge to a consistent, shared environment map. (b) Multi-Object Axial Attention shares reflectance and spatial information across different reflectance maps. This mechanism enables MultiGP to integrate complementary frequency information—otherwise attenuated by individual reflectances—and aggregate visible lighting directions at every denoising step. 
+
+Equation (9) guarantees that the most distant reflectance Ψ = {0, 1, 0} can reach mirror state Ψ0 = {1, 0, 1} in Kmax steps. The model is trained to predict the reflectance at each step with the loss: 
+
+Lr = ELi,f r ,m,k 
+
+∥ ˆΨ (m,k ) 
+
+> θr
+
+− Ψ (m,k )∥22 + ∥ ˆΨ (m,K ) 
+
+> θr
+
+− Ψ (m,K )∥22
+
+ , (10) with the total loss defined as L = λiLi + λr Lr where λi, λ r are hyperparameters. 
+
+Multi-Object Axial Attention. The texture-free reflectance maps ˜L(m) 
+
+> r
+
+(n)
+
+transformed from each object are spatially sparse -unless the object is a sphere, its geometry does not densely cover the full hemisphere of camera-facing surface normals. More interestingly, different materials act as distinct frequency filters 
+
+on the environment lights [36, 37]: a Lambertian-like surface reflects low-pass filtered illumination in its appearance, while more specular objects retain relatively higher-frequency details through band-pass filtering of the illumination spectrum. Crucially, no single material behaves as a Dirac delta that preserves all frequencies. The multiple object appearances therefore capture complementary spatio-spectral characteristics of the shared illumination, and we wish to fully leverage this complementarity. To this end, we propose a Multi-Object Axial Attention mechanism. Inspired by temporal attention in video diffusion [15], this attention operates across the M reflectance maps at each corresponding spatial location ( i.e ., the same surface normal direction). As illustrated in Figure (Fig. 3b), the axial attention applied over multiple partially-observed reflectance maps allows an object with missing spectral-frequency details or unobserved normal directions to borrow 8 N. Yoshii et al. 
+
+information from the other objects in the scene, effectively unifying the multi-object observations into a coherent, complete estimate of the global illumination. We also apply Local Spatial Attention [15] to avoid information integration with Axial Attention solely along the perfectly aligned normal direction so that MultiGP is made robust to geometry errors. 
+
+3.4 Texture Refinement via ControlNet 
+
+While the cascaded factorization produces diverse samples, some may still violate the physics of image formation. We therefore introduce a final refinement step that injects renderer consistency into the sampling process. Given sampled factors 
+
+(T, R, L ) and known geometry S, we render the objects ˆLr with Mitsuba 3 [21] and compute its residual against the observed image I. We condition qΦ on this residual via a ControlNet [52]-style mechanism, effectively steering diffusion sampling toward solutions that better explain the observation. The ControlNet accepts the residual cf = E(I − ˆLr ) as an additional condition, enforcing tighter physical consistency between texture estimates and global light transport: 
+
+Lϕc = Ez0,t, ϵ
+
+∥ϵ − ϵϕc (zt, t ; c, cf )∥22
+
+ . (11) This refinement acts as likelihood-guided sampling rather than explicit optimiza-tion; it modifies the sampling dynamics using a renderer-based signal to improve physical consistency while preserving generative diversity. 
+
+## 4 Experimental Results 
+
+We evaluate MultiGP against several state-of-the-art methods [10, 15, 27, 31, 35, 50, 51] on synthetic and real datasets, demonstrating its effectiveness in both accuracy and diversity. Crucially, we derive a canonical framework to evaluate the fundamentally ambiguous disentanglement of inverse rendering components, particularly illumination. We believe this represents a significant contribution to inverse rendering and appearance modeling research at large. Through these extensive evaluations, we show that MultiGP successfully integrates complementary spatio-spectral information from diverse object appearances to achieve superior scene recovery. 
+
+4.1 Dataset 
+
+Training. We train MultiGP on synthetic object images and reflectance maps rendered by Mitsuba3 [21]. We create 96 textures for 1100 Adobe 3D Assets [1] and 24 shape-dependent textures for each of the 4000 shapes of Xu [48] with MV-Adapter [20]. In addition we use randomly sampled unique colored textures. Reflectance properties ( i.e ., metallic, roughness, and specular) are randomly sampled, with metallicness restricted to 0 or 1 to avoid unrealistic reflectance under Disney BRDF [3], and roughness set above 0.4 for 50% of objects to prevent trivially easy illumination estimation. Illumination is randomly sampled from the Laval Indoor Dataset [12] and the Poly Haven HDRIs [2] and compirse 2000 unique environment maps in total. Under One Sun 9
+
+Synthetic data. For accuracy evaluation, we use the test split of Adobe 3D Assets with MV-Adapter textures and held-out illumination, forming 36 object triplets. For diversity evaluation, we construct pseudo raw reflectance maps from nLMVS-Synth [49] shapes. 
+
+Real-world data. As no existing dataset contains multiple objects in the same image, we construct multi-object evaluation sets from Stanford-ORB [24] (14 objects across 7 scenes) and nLMVS-Real [49] We select triplets of objects captured at approximately the same position, viewpoint, and illumination. This yields 23 and 27 object triplets from Stanford-ORB and nLMVS-Real, respectively. 
+
+MultiGP dataset. We additionally capture 9 real scenes (3 outdoor, 6 indoor) featuring 3 objects under shared illumination. Each object’s shape was scanned with Artec3D to obtain surface normals and aligned to camera coordinates using MegaPose [25]. 
+
+4.2 Ambiguity-Aware Inverse Rendering Metric 
+
+Standard Metrics. Following [10, 24], we evaluate recovered illumination at 128 ×256 resolution using scale-invariant logRMSE, PSNR, SSIM, and LPIPS. LogRMSE is computed on HDR images, while other metrics use tone-mapped LDR images. Reflectance is evaluated via scale-invariant logRMSE in the non-parametric MERL BRDF representation [8]. We compare against DPI [31] and DRM [10], as methods generating spatially varying BRDFs [15, 27, 51] are incom-patible with our uniform reflectance setting. Texture is evaluated at 512 ×512 using scale-invariant RMSE, PSNR, SSIM, and LPIPS. 
+
+Ambiguity-Aware Metric. Standard metrics often falter in inverse rendering because multiple illuminations can produce identical appearances, especially under low-frequency reflectance. To assess how well the estimated distribution captures the ground truth, we utilize Spherical Harmonics (SH). We compute 1089 SH coefficients (up to degree 32) for each illumination sample. By applying PCA (retaining 99% variance) to the coefficients, we model the sample distribution and report the multivariate normal log-likelihood and Mahalanobis distance of the ground truth within this distribution. 
+
+Evaluation Protocol. For all stochastic methods (except ALP [50]), we sample 10 predictions and report the mean of the top 3 [15]. To evaluate single-object baselines on multi-object scenes, we report results for the object with the sharpest estimated reflectance. DiffusionLight [35] utilizes our reflectance estimate for this selection. 
+
+4.3 Results on Synthetic Dataset 
+
+Accuracy. Tab. 1 shows quantitative results of the illumination and the re-flectance accuracy. For DRM [10], which processes only a single object, we report scores for the object with the sharpest reflectance (closest to a mirror state). MultiGP (single) follows the same protocol. For DiffusionLight [35], we provide 10 N. Yoshii et al. 
+
+Table 1: Quantitative evaluation and ablation study of illumination and reflectance estimates on synthetic test data. For illumination estimation, the sharpest reflectance among multiple objects is shown for both DRM and MultiGP (single). We report the mean of the top 3 out of 10 stochastic predictions. Our full model achieves the highest accuracy and the two novel guidance and attention play crucial roles for this. Illumination Reflectance logRMSE ↓ PSNR ↑ SSIM ↑ LPIPS ↓ logRMSE ↓                                   
+
+> DPI [31] 1.64 11.96 0.37 0.56 2.22 DRM [10] 1.48 12.62 0.34 0.61 1.85 DiffusionLight [35] 1.60 11.37 0.38 0.63 -MultiGP (single) 1.44 12.67 0.38 0.58 2.05
+> MultiGP 1.28 13.54 0.42 0.56 1.81
+> w/o Coordinate Scheduling 1.29 13.50 0.42 0.54 1.87 w/o Axial Attention 1.37 12.97 0.40 0.56 1.82
+
+Table 2: Quantitative evaluation and ablation study of texture estimation on synthetic test data. MultiGP achieves superior accuracy compared to DPI, which similarly assumes known object geometry. RMSE ↓ PSNR ↑ SSIM ↑ LPIPS ↓
+
+RGB ↔X [51] (LDR) 0.11 27.37 0.96 0.053 RGB ↔X [51] (HDR) 0.11 27.59 0.96 0.054 GP Motion [15] 0.13 25.91 0.95 0.071 DiffusionRenderer [27] 0.11 27.37 0.96 0.051 DPI [31] 0.15 24.86 0.92 0.084 
+
+MultiGP 0.081 29.99 0.97 0.031 
+
+w/o Texture Refinement 0.088 29.32 0.97 0.034 
+
+the background consistent with their original assumptions. MultiGP achieves state-of-the-art accuracy across this extensive dataset. Tab. 2 evaluates texture estimates, where MultiGP outperforms DPI [31] among methods assuming known geometry. 
+
+Ablation studies. Tab. 1 and Tab. 2 demonstrate the impact of Coordinate Scheduling, Axial Attention, and Texture Refinement. Our results confirm that Coordinate Scheduling and Axial Attention are critical for estimating high-fidelity illumination and reflectance. Furthermore, Texture Refinement—utilizing the estimated individual reflectances and shared illumination—significantly improves the accuracy of texture extraction. 
+
+Ambiguity-aware accuracy analysis. Fig. 4 illustrates the distribution of MultiGP estimates. We evaluate MultiGP’s frequency and spatial integration ca-pabilities using two scenarios: (a) objects with varying reflectance (heterogeneous reflectances) and (b) objects with identical reflectance but different geometries (heterogeneous masks). Under One Sun 11 Input C Input B Input A 
+
+> Input reflectance maps
+> Spherical Harmonics power spectra of each input
+> SH Dimension
+> Power
+> Input A
+> Input B
+> Input C
+
+(a-1) Hetero-reflectances (inputs) GT Illumination 
+
+> PCA of estimated environment SH coefficients
+> PC 1
+> PC 2
+> Outputs from A
+> Outputs from B
+> Outputs from C
+> Outputs from All
+> GT Illumination
+
+(a-2) Hetero-reflectances (outputs) 6  
+
+> PCA of estimated environment SH coefficients
+> PC 2
+> PC 1
+> Outputs from A
+> Outputs from B
+> Outputs from C
+> Outputs from All
+> GT Illumination
+> GT Illumination
+> Input C Input B Input A
+> Input reflectance maps
+
+(b) Hetero-masks 
+
+Fig. 4: Distribution of illumination samples from MultiGP and MultiGP (single). (a) Heterogeneous reflectances: MultiGP effectively integrates objects with different reflectances. (a-1) shows the complementary Spherical Harmonic (SH) frequency spectra of three input reflectance maps. (a-2) provides a 2D PCA visualization of 100 samples; orange dots represent the joint MultiGP distribution, while other colors represent individual MultiGP (single) estimates. The joint distribution (orange) captures the “ground truth” with the highest density. (b) Heterogneous masks: Using the same reflectance with different masks demonstrates that MultiGP effectively integrates varied object shapes. Here too, the MultiGP distribution (orange) densely encompasses the “ground truth.” 
+
+For objects with distinct frequency characteristics (a), we analyze the Spherical Harmonic (SH) coefficients of the input reflectance maps. As shown in Fig. 4a-1, input appearances exhibit complementary spectral traits; while the shiniest objects often cover a broad spectrum, they do not provide exhaustive information. Thus, multiple objects collectively offer superior visual cues for illumination recovery compared to any single object. Fig. 4a-2 visualizes the illumination estimates from 100 MultiGP samples. We compare single-object estimation against our multi-object framework. To facilitate visualization, we apply PCA to the SH coefficients and plot the first two principal components. The multi-object distribution covers the ground-truth illumination with significantly higher likelihood than isolated estimates. This confirms the advantage of leveraging complementary material frequencies. Furthermore, it validates our proposed metric: because inverse rendering is inherently ambiguous, a probabilistic distribution reflects true accuracy more faithfully than a simple distance to ground truth. Fig. 4b provides a parallel analysis for scenario (b). The results demonstrate that diverse geometries provide complementary spatial coverage of the environ-ment, which MultiGP successfully exploits to produce more accurate and diverse illumination estimates. 12 N. Yoshii et al.                      
+
+> Table 3: Likelihood and Mahalanobis distance from ground-truth illumination in PCA space (99% SH variance), averaged over 50 test scenes with 1000 samples each. (a) Heterogeneous reflectances: Demonstrates MultiGP’s ability to effectively integrate objects with diverse material properties. (b) Heterogeneous masks: Demonstrates MultiGP’s ability to integrate different object shapes and visible areas. Inputs are labeled A, B, and C, corresponding to (a) highest-to-lowest SH frequency or (b) largest-to-smallest unmasked area. In both cases, the MultiGP “All” configuration outperforms the best single-object input (“A”) across all metrics. (a) Heterogeneous reflectances Input Multivariate Normal Log-Likelihood ↑
+> Mahalanobis Distance ↓
+> All 171.9 16.98
+> A169.2 18.42 B-137.6 26.39 C-243.6 28.91 (b) Heterogeneous masks Input Multivariate Normal Log-Likelihood ↑
+> Mahalanobis Distance ↓
+> All 61.5 24.18
+> A-56.8 27.60 B-696.9 38.59 C-5211.2 57.75
+
+We quantitatively evaluate the distribution of estimates for both cases using synthetic test data (Tab. 3). We randomly paired three object reflectances with 50 test illuminations to render input reflectance maps. For case (b), maps were spatially masked according to visible surface normals from randomly sampled object shapes [49]. For both scenarios, we sampled 1000 illumination outputs per input and performed PCA on the 1089 order-32 SH coefficients (maintaining a 99% cumulative eigen-ratio). Inputs were labeled A, B, and C, corresponding to (a) highest to lowest SH frequency or (b) largest to smallest unmasked area. We then computed the multivariate normal log-likelihood and Mahalanobis distance from the ground-truth illumination within the PCA space. The results in Tab. 3 demonstrate that the highest accuracy is achieved when integrating all objects. In scenario (a), the multi-object accuracy surpasses that of the highest-frequency object (A) alone. Similarly, for spatial integration (b), using all objects outperforms the single largest-coverage shape (A). These results confirm that MultiGP successfully leverages complementary frequency characteristics and spatial spans, justifying a multi-object approach for ambiguity-aware inverse rendering. 
+
+4.4 Results on Real-World Datasets 
+
+Stanford-ORB dataset. Fig. 5 shows illumination estimates on the Stanford-ORB dataset. Quantitative evaluations are provided in the supplementary ma-terial. Ground truth for reflectance is unavailable, as it is nearly impossible to measure for real objects without an integrating (Ulbricht) sphere. While the dataset provides pseudo-ground-truth textures, we found them too noisy for reliable use. Note that ALP requires multi-view images to pre-estimate texture and reflectance, making it non-comparable to our single-image recovery frame-work. The results for MultiGP (multiple) demonstrate its ability to effectively Under One Sun 13       
+
+> Inputs ALP [50] DPI [31] DiffusionLight [35] DRM [10] MultiGP GT
+
+Fig. 5: Illumination estimates on the Stanford-ORB dataset. For a fair comparison, we show scaled illumination results closest to the ground truth. For existing methods, we select the result from the object yielding the best logRMSE score. MultiGP faithfully captures the ground truth illumination structure with high-fidelity.       
+
+> Input DPI [31] RGB ↔X [51] DiffusionRenderer [27] GP Motion [15] MultiGP Reference
+
+Fig. 6: Texture estimates on the Stanford-ORB dataset. For fair comparison, scaled albedo that best match the reference within the masked object region are shown. MultiGP estimates highly accurate texture (notice the lack of shading). 
+
+integrate object appearances for high accuracy. Fig. 6 provides qualitative texture evaluations, showing that MultiGP removes lighting reflections more accurately than other methods, including DPI, which also utilizes surface normals as input. 
+
+nLMVS-real dataset. Fig. 7 presents qualitative illumination accuracy on the nLMVS-real dataset. Quantitative results are provided in the supplementary material. All objects in this dataset are textureless, and reflectance ground truth is not available. As before, ALP is shown for reference but is not a competing single-image method, as it requires multi-view images for texture and reflectance pre-estimation. The results demonstrate that MultiGP achieves state-of-the-art accuracy, even for textureless objects, by successfully integrating complementary visual cues of the shared global illumination from surface radiance. 
+
+MultiGP dataset. Fig. 8 shows a qualitative evaluation of illumination accuracy on our newly captured multi-object dataset. Quantitative evaluations are provided in the supplementary material. We captured 9 scenes across both indoor and outdoor settings to evaluate multiple objects in a shared physical environment. The results demonstrate that MultiGP generalizes effectively to real-world scenes, successfully handling complex global light transport effects. 14 N. Yoshii et al.       
+
+> Inputs ALP [50] DPI [31] DiffusionLight [35] DRM [10] MultiGP GT
+
+Fig. 7: Illumination estimates on the nLMVS-real dataset. For all baselines, the result with best logRMSE is shown. MultiGP results capture the “ground truth” light structure most accurately.      
+
+> Input DPI [31] DiffusionLight [35] DRM [10] MultiGP GT
+
+Fig. 8: Illumination estimates on newly captured MultiGP dataset. MultiGP accurately recovers the illumination structure of the actual environment despite the complex global light transport. 
+
+## 5 Conclusion 
+
+In this paper, we introduced Multi-Object Generative Perception (MultiGP), a framework that resolves the fundamental ambiguities of inverse rendering by leveraging multi-object scene constraints. By treating multiple objects as con-current probes of the same environment, our method aggregates complementary spatio-spectral information to estimate texture, reflectance, and illumination from a single image. To rigorously evaluate this stochastic approach, we introduced a novel metric for ambiguity-aware inverse rendering, shifting the focus from traditional point estimates to how effectively sampled distributions encompass the physical ground truth. Our results on synthetic and real-world datasets demonstrate that MultiGP significantly outperforms existing methods, providing a robust path toward physics-aware scene understanding. A primary limitation of our current approach is the requirement for known object geometry, as the radiometric cues are anchored to the 3D surface. Further-more, our model assumes distant environmental illumination (directional lighting). In real-world indoor scenarios, near-field lighting effects—where light source prox-imity causes spatially varying illumination—can introduce significant deviations from our assumptions required to model the illumination on the reflectance map. Future work will focus on relaxing the geometry constraint through joint shape estimation and extending the generative framework to represent near-field lighting for more complex scenes. Under One Sun 15 
+
+## Acknowledgements 
+
+This work was in part supported by JSPS KAKENHI 21H04893, 24H00742, and JST JPMJAP2305. 
+
+## References 
+
+1. Adobe Stock. https://stock.adobe.com/ 
+
+2. HDRIs: poly haven. https://polyhaven.com/hdris 
+
+3. Burley, B., Studios, W.D.A.: Physically-Based Shading at Disney. In: SIGGRAPH. vol. 2012, pp. 1–7 (2012) 4. Careaga, C., Aksoy, Y.: Colorful Diffuse Intrinsic Image Decomposition in the Wild. ACM TOG 43 (6), 1–12 (2024) 5. Chen, W., Ling, H., Gao, J., Smith, E., Lehtinen, J., Jacobson, A., Fidler, S.: Learning to Predict 3D Objects with an Interpolation-based Differentiable Renderer. NeurIPS 32 (2019) 6. Chen, W., Litalien, J., Gao, J., Wang, Z., Fuji Tsang, C., Khamis, S., Litany, O., Fidler, S.: DIB-R++: Learning to Predict Lighting and Material with a Hybrid Differentiable Renderer. NeurIPS 34 , 22834–22848 (2021) 7. Chen, X., Peng, S., Yang, D., Liu, Y., Pan, B., Lv, C., Zhou, X.: IntrinsicAnything: Learning Diffusion Priors for Inverse Rendering Under Unknown Illumination. In: ECCV. pp. 450–467 (2024) 8. Chen, Z., Nobuhara, S., Nishino, K.: Invertible Neural BRDF for Object Inverse Rendering. IEEE TPAMI 44 (12), 9380–9395 (2021) 9. Chen, Z., Xu, T., Ge, W., Wu, L., Yan, D., He, J., Wang, L., Zeng, L., Zhang, S., Chen, Y.C.: Uni-Renderer: Unifying Rendering and Inverse Rendering Via Dual Stream Diffusion. In: CVPR. pp. 26504–26513 (2025) 10. Enyo, Y., Nishino, K.: Diffusion Reflectance Map: Single-Image Stochastic Inverse Rendering of Illumination and Reflectance. In: CVPR (2024) 11. Garcia, G.M., Zeid, K.A., Schmidt, C., De Geus, D., Hermans, A., Leibe, B.: Fine-Tuning Image-Conditional Diffusion Models is Easier than You Think. In: WACV. pp. 753–762 (2025) 12. Gardner, M.A., Sunkavalli, K., Yumer, E., Shen, X., Gambaretto, E., Gagné, C., Lalonde, J.F.: Learning to Predict Indoor Illumination from a Single Image. ACM TOG 9(4) (2017) 13. Georgoulis, S., Rematas, K., Ritschel, T., Fritz, M., Tuytelaars, T., Van Gool, L.: What Is Around The Camera? In: CVPR. pp. 5170–5178 (2017) 14. Georgoulis, S., Rematas, K., Ritschel, T., Fritz, M., Van Gool, L., Tuytelaars, T.: DeLight-Net: Decomposing Reflectance Maps into Specular Materials and Natural Illumination. arXiv preprint arXiv:1603.08240 (2016) 15. Han, X., Nishino, K., Zickler, T.: Generative Perception of Shape and Material from Differential Motion. NeurIPS (2025) 16. Han, X., Zickler, T., Nishino, K.: Multistable Shape from Shading Emerges from Patch Diffusion. NeurIPS (2024) 17. Hartung, B., Kersten, D.: Distinguishing shiny from matte. Journal of Vision 2(7), 551–551 (2002) 18. He, Z., Wang, T., Huang, X., Pan, X., Liu, Z.: Neural Lightrig: Unlocking Accurate Object Normal and Material Estimation with Multi-Light Diffusion. In: CVPR. pp. 26514–26524 (2025) 16 N. Yoshii et al. 19. Ho, J., Jain, A., Abbeel, P.: Denoising Diffusion Probabilistic Models. NeurIPS 33 ,6840–6851 (2020) 20. Huang, Z., Guo, Y.C., Wang, H., Yi, R., Ma, L., Cao, Y.P., Sheng, L.: MV-Adapter: Multi-View Consistent Image Generation Made Easy. In: ICCV. pp. 16377–16387 (2025) 21. Jakob, W., Speierer, S., Roussel, N., Nimier-David, M., Vicini, D., Zeltner, T., Nico-let, B., Crespo, M., Leroy, V., Zhang, Z.: Mitsuba 3 renderer (2022), https://mitsuba-renderer.org 22. Kajiya, J.T.: THE RENDERING EQUATION. In: SIGGRAPH. pp. 143–150 (1986) 23. Kocsis, P., Sitzmann, V., Nießner, M.: Intrinsic Image Diffusion for Indoor Single-view Material Estimation. In: CVPR. pp. 5198–5208 (2024) 24. Kuang, Z., Zhang, Y., Yu, H.X., Agarwala, S., Wu, E., Wu, J., et al.: Stanford-ORB: A Real-World 3D Object Inverse Rendering Benchmark. NeurIPS 36 , 46938–46957 (2023) 25. Labbé, Y., Manuelli, L., Mousavian, A., Tyree, S., Birchfield, S., Tremblay, J., Carpentier, J., Aubry, M., Fox, D., Sivic, J.: MegaPose: 6D Pose Estimation of Novel Objects via Render & Compare. In: CoRL (2022) 26. Li, Z., Shafiei, M., Ramamoorthi, R., Sunkavalli, K., Chandraker, M.: Inverse Rendering for Complex Indoor Scenes: Shape, Spatially-Varying Lighting and SVBRDF from a Single Image. In: CVPR. pp. 2475–2484 (2020) 27. Liang, R., Gojcic, Z., Ling, H., Munkberg, J., Hasselgren, J., Lin, Z.H., Gao, J., Keller, A., Vijaykumar, N., Fidler, S., Wang, Z.: DiffusionRenderer: Neural Inverse and Forward Rendering with Video Diffusion Models. In: CVPR (2025) 28. Liang, R., Gojcic, Z., Nimier-David, M., Acuna, D., Vijaykumar, N., Fidler, S., Wang, Z.: Photorealistic Object Insertion with Diffusion-Guided Inverse Rendering. In: ECCV. pp. 446–465 (2024) 29. Liang, R., He, K., Gojcic, Z., Gilitschenski, I., Fidler, S., Vijaykumar, N., Wang, Z.: LuxDiT: Lighting Estimation with Video Diffusion Transformer (2025) 30. Lombardi, S., Nishino, K.: Reflectance and Natural Illumination from a Single Image. In: ECCV. pp. 582–595 (2012) 31. Lyu, L., Tewari, A., Habermann, M., Saito, S., Zollhöfer, M., Leimküehler, T., Theobalt, C.: Diffusion Posterior Illumination for Ambiguity-aware Inverse Render-ing. ACM TOG 42 (6) (2023) 32. Maximov, M., Leal-Taixé, L., Fritz, M., Ritschel, T.: Deep Appearance Maps. In: ICCV. pp. 8729–8738 (2019) 33. Meka, A., Maximov, M., Zollhoefer, M., Chatterjee, A., Seidel, H.P., Richardt, C., Theobalt, C.: LIME: Live Intrinsic Material Estimation. In: CVPR. pp. 6315–6324 (2018) 34. Nishino, K.: Directional Statistics BRDF Model. In: ICCV. pp. 476–483 (2009) 35. Phongthawee, P., Chinchuthakun, W., Sinsunthithet, N., Jampani, V., Raj, A., Khungurn, P., Suwajanakorn, S.: DiffusionLight: Light Probes for Free by Painting a Chrome Ball. In: CVPR. pp. 98–108 (2024) 36. Ramamoorthi, R., Hanrahan, P.: A Signal-Processing Framework for Inverse Ren-dering. In: SIGGRAPH (2001) 37. Ramamoorthi, R., Hanrahan, P.: An Efficient Representation for Irradiance Envi-ronment Maps. In: SIGGRAPH. pp. 497–500 (2001) 38. Rematas, K., Ritschel, T., Fritz, M., Gavves, E., Tuytelaars, T.: Deep Reflectance Maps. In: CVPR. pp. 4508–4516 (2016) 39. Rissanen, S., Heinonen, M., Solin, A.: Generative Modelling With Inverse Heat Dissipation. In: ICLR (2023) Under One Sun 17 40. Rombach, R., Blattmann, A., Lorenz, D., Esser, P., Ommer, B.: High-Resolution Image Synthesis with Latent Diffusion Models. In: CVPR. pp. 10684–10695 (2022) 41. Shazeer, N.: GLU Variants Improve Transformer. arXiv preprint arXiv:2002.05202 (2020) 42. Shen, S., Bao, Z., Xu, W., Xiao, C.: IllumiDiff: Indoor Illumination Estimation from a Single Image with Diffusion Model. IEEE TVCG (2025) 43. Song, J., Meng, C., Ermon, S.: Denoising Diffusion Implicit Models. arXiv preprint arXiv:2010.02502 (2020) 44. Sun, S., Wang, Y., Zhang, H., Xiong, Y., Ren, Q., Fang, R., Xie, X., You, C.: Ouroboros: Single-step Diffusion Models for Cycle-consistent Forward and Inverse Rendering. In: ICCV. pp. 10386–10397 (2025) 45. Wang, H., Wang, Z., Long, X., Lin, C., Hancke, G., Lau, R.W.: MAGE: Single Image to Material-Aware 3D via the Multi-View G-Buffer Estimation Model. In: CVPR (2025) 46. Wang, L., Tran, D.M., Cui, R., TG, T., Dahl, A.B., Bigdeli, S.A., Frisvad, J.R., Chandraker, M.: Materialist: Physically Based Editing Using Single-Image Inverse Rendering. arXiv preprint arXiv:2501.03717 (2025) 47. Wei, X., Chen, G., Dong, Y., Lin, S., Tong, X.: Object-based Illumination Estimation with Rendering-aware Neural Networks. In: ECCV. pp. 380–396 (2020) 48. Xu, Z., Sunkavalli, K., Hadap, S., Ramamoorthi, R.: Deep Image-Based Relighting from Optimal Sparse Samples. ACM TOG 37 (4), 1–13 (2018) 49. Yamashita, K., Enyo, Y., Nobuhara, S., Nishino, K.: nLMVS-Net: Deep Non-Lambertian Multi-View Stereo. In: WACV. pp. 3037–3046 (2023) 50. Yu, H.X., Agarwala, S., Herrmann, C., Szeliski, R., Snavely, N., Wu, J., Sun, D.: Accidental Light Probes. In: CVPR. pp. 12521–12530 (2023) 51. Zeng, Z., Deschaintre, V., Georgiev, I., Hold-Geoffroy, Y., Hu, Y., Luan, F., Yan, L.Q., Hašan, M.: RGB ↔X: Image decomposition and synthesis using material- and lighting-aware diffusion models. In: SIGGRAPH Conference Papers (2024) 52. Zhang, L., Rao, A., Agrawala, M.: Adding Conditional Control to Text-to-Image Diffusion Models. In: ICCV. pp. 3836–3847 (2023) 53. Zheng, R., Zhang, Q., Long, C., Zheng, W.S.: DNF-Intrinsic: Deterministic Noise-Free Diffusion for Indoor Inverse Rendering. In: ICCV. pp. 10342–10352 (2025) 
+
+## A MultiGP Training Objective 
+
+The illumination loss that is used as part of the overall loss to train the Multi-object Diffusion Reflectance Maps network is 
+
+Li = ELi,Ψ,m,k μ′ 
+
+> θi,θ r
+
+− Lr (Ψ (m,k −1) , L (0)  
+
+> r
+
+) − L(m,k ) 
+
+> r
+> 22
+
+. (12) We show in this section that this formulation follows from the statistical inde-pendence of the diffusion processes for the reflectance maps of the m = 1 . . . M 
+
+observed objects. Because we model the interdependence of multiple object ap-pearances across both frequency and spatial domains via coordinate scheduling, we can assume independence in the diffusion objectives. This allows the MultiGP objective to be expressed as a collection of individual DRM [10] losses. 18 N. Yoshii et al. 
+
+The DRM forward process assumes additive Gaussian noise within the ren-dering equation for increasingly attenuated reflectance [10]: 
+
+q(L(1: K) 
+
+> r
+
+| L(0)  
+
+> r
+
+, Ψ (K)) = 
+
+> K
+
+Y
+
+> k=1
+
+q(L(k) 
+
+> r
+
+| L(0)  
+
+> r
+
+, Ψ (K)) (13) 
+
+=
+
+> K
+
+Y
+
+> k=1
+
+N L(k) 
+
+> r
+
+| Lr (Ψ (k), L (0)  
+
+> r
+
+), σ 2I . (14) The MultiGP forward process extends this to M objects as the product of M
+
+independent DRM processes: 
+
+q(L(1: M, 1: K) 
+
+> r
+
+| L(0)  
+
+> r
+
+, Ψ (1: M,K )) = 
+
+> M
+
+Y
+
+> m=1
+> K
+
+Y
+
+> k=1
+
+N L(m,k ) 
+
+> r
+
+| Lr (Ψ (m,k ), L (0)  
+
+> r
+
+), σ 2I .
+
+(15) Correspondingly, the reverse process for M objects is the product of M inverse DRM processes: 
+
+pθ (L(0: K−1)  
+
+> r
+
+|L(1: M,K ) 
+
+> r
+
+) = 
+
+> M
+
+Y
+
+> m=1
+> K
+
+Y
+
+> k=1
+
+pθi,θ r (L(m,k −1)  
+
+> r
+
+|L(m,k ) 
+
+> r
+
+) (16) 
+
+=
+
+> M
+
+Y
+
+> m=1
+> K
+
+Y
+
+> k=1
+
+N
+
+
+
+L(m,k −1)  
+
+> r
+
+|μθi,θ r
+
+ L(m,k ) 
+
+> r
+
+(Ψ (m,k ), k ), δ 2I
+
+
+
+.
+
+(17) Following standard practice [10,19,39], we train the model by minimizing negative log-likelihood, − log pθ . For a single object, this yields the DRM objective [10]: 
+
+Li = ELi,Ψ,k μ′ 
+
+> θi,θ r
+
+− Lr (Ψ (k−1) , L (0)  
+
+> r
+
+) − L(k) 
+
+> r
+> 22
+
+. (18) Since pθ in MultiGP is a product across M objects (Eq. 17), the total negative log-likelihood simplifies to the sum of M individual DRM objectives. Thus, our objective function Eq. (12) directly corresponds to the summation of Eq. (18) over all m = 1 . . . M objects. 
+
+## B Training Details 
+
+Multi-Object Diffusion Reflectance Maps. The Multi-Object Diffusion Reflectance Maps network architecture follows U-ViT3D [15], modified to use SwiGLU [41] in the transformer blocks. We employ a lighter version of the U-ViT3D encoder for reflectance by omitting the deepest transformer block. At each randomly sampled step k, the illumination network takes M original and current reflectance maps (L(m,K ) 
+
+> r
+
+and L(m,k ) 
+
+> r
+
+) as input and learns the residual to L(m,k −1)  
+
+> r
+
+via Multi-Object Under One Sun 19 
+
+Coordinate Scheduling. Simultaneously, the reflectance network estimates the original reflectance Ψ (m,K ), which is converted to the current reflectance Ψ (m,k )
+
+using Eq. 8 in the main paper. This estimated reflectance Ψ (m,k ) is then integrated into the illumination network as an embedding, similar to a timestep embedding. We set the reflectance map resolution to 128 ×128. Textures are set to a uniform white, due to the pre-extraction of texture and the mirror-reflectance color in the Disney BRDF [3]. Training parameters include maximum steps 
+
+Kmax = 150 , with forward and inverse variances set to σ = 0 .1 and δ = 0 .125 ,respectively. We use loss weights of λi = 10 .0 and λr = 0 .1 with a learning rate of 5.0 × 10 −5.To stabilize illumination estimation, the first 2,000 epochs are trained using ground-truth reflectance, followed by 2,000 epochs using estimated reflectance. Training takes approximately three days on four A100 GPUs using a large-scale dataset of 1.7 million triplets of pre-rendered reflectance maps. For mutual inpaint-ing of raw reflectance maps, we use an architecture similar to the illumination network but with the channel length and number of heads reduced by one-third. Invisible areas are zero-masked, and we utilize v-prediction rather than the noise masking and ϵ-prediction used in ObsNet [10]. The total pipeline—including tex-ture extraction and refinement—takes 28.4 seconds for a single image containing multiple objects on one A100 GPU. 
+
+Texture Extraction and Refinement. The architecture is based on the Latent Diffusion Model (LDM) [40], modified to use v-prediction with a cosine schedule. To optimize computation, attention is applied only at spatial resolutions of 4 × 4,
+
+8 × 8, and 16 × 16 . We fine-tune the pre-trained VQ-VAE (vq-f4) on object images and train the LDM from scratch. Training takes approximately five days on four A100 GPUs. Following the original ControlNet [52], our ControlNet is initialized as a copy of the LDM’s learned encoder. Training requires roughly two days on a single H200 GPU. We set the loss weights to λtexture = 0 .5 and λtexture-free = 0 .5, with a learning rate of 5.0 × 10 −5. During inference, we employ DDIM [43] to reduce sampling steps and apply control to the first half of the LDM’s layers with a decay factor of 0.825. 
+
+## C Quantitative Evaluation using Stanford-ORB and nLMVS-real datasets 
+
+Table 4 presents the quantitative illumination estimates on the Stanford-ORB and nLMVS-real datasets. Note that ALP [50] requires multi-view images to pre-estimate texture and reflectance, whereas our framework performs recovery from a single image. Despite this difference in input requirements, MultiGP achieves state-of-the-art accuracy across both datasets, delivering performance comparable to—and in several metrics exceeding—ALP. 20 N. Yoshii et al. 
+
+Table 4: Quantitative evaluation of illumination estimates from real-world data. Results represent the mean of the top 3 out of 10 samples. ALP is included only for reference, as it requires multi-view images for texture and reflectance pre-estimation and is not a direct single-image competitor. MultiGP achieves state-of-the-art accuracy among single-image methods. Stanford-ORB dataset nLMVS-real dataset logRMSE ↓ PSNR ↑ SSIM ↑ LPIPS ↓ logRMSE ↓ PSNR ↑ SSIM ↑ LPIPS ↓                                                
+
+> ALP [50] 1.02 13.00 0.39 0.72 0.96 13.82 0.32 0.66 DPI [31] 2.79 10.93 0.31 0.68 3.77 12.21 0.29 0.65 DRM [10] 1.62 11.14 0.25 0.68 1.11 13.40 0.25 0.63
+> DiffusionLight [35] 1.49 10.99 0.33 0.63 1.39 11.75 0.28 0.65 MultiGP (single) 1.08 12.82 0.31 0.63 1.09 12.86 0.29 0.65
+> MultiGP 1.03 13.07 0.37 0.62 0.95 14.05 0.33 0.64
+
+## D MultiGP Dataset Capture 
+
+We captured 9 scenes (3 outdoor and 6 indoor), including a courtyard, parking lot, lecture room, and atrium. In each scene, 3 objects were placed in close proximity such that each was at least partially visible from the viewpoint (Fig. 9); a total of 15 unique objects were used. Ground-truth illumination maps and input images were captured using a RICOH THETA Z1 and a Sony α7sIII , respectively. To obtain geometry, each object was scanned with an Artec3D scanner. The resulting surfaces were smoothed to reduce scanning noise, aligned to the captured images using MegaPose [25], and converted to surface normal maps via Mitsuba3 [21] rendering. Finally, the ground-truth illumination maps were aligned to the camera coordinates using keypoint matching with a chrome ball. 
+
+Fig. 9: Examples from the newly captured MultiGP dataset. The top row displays input images featuring three objects placed in close proximity, with each at least partially visible. The bottom row shows the corresponding aligned ground-truth illumination maps. Under One Sun 21 
+
+Table 5: Accuracy of illumination estimates for the newly captured MultiGP dataset. For DRM [10] and MultiGP (single), the object with the sharpest estimated reflectance is selected for evaluation. MultiGP achieves the highest accuracy. logRMSE ↓ PSNR ↑ SSIM ↑ LPIPS ↓
+
+DPI [31] 4.02 9.77 0.26 0.68 DRM [10] 1.55 9.62 0.20 0.70 DiffusionLight [35] 1.63 10.74 0.29 0.64 
+
+IID [23] 1.36 10.00 0.30 0.75 MultiGP (single) 1.22 11.07 0.28 0.66 
+
+MultiGP 1.14 11.34 0.30 0.66 Marigold-E2E-FT [11] + DRM [10] 1.67 9.58 0.19 0.69 Marigold-E2E-FT [11] + MultiGP 1.23 11.03 0.30 0.66 
+
+## E Quantitative Evaluation using the MultiGP dataset 
+
+Table 5 presents the quantitative results for illumination estimation on the MultiGP dataset. The results demonstrate that MultiGP generalizes effectively to real-world scenes and successfully leverages information from multiple objects to improve performance. The table also includes experiments evaluating robustness to erroneous geometry using the off-the-shelf surface normal estimation method [11] discussed in Sec. H. 
+
+## F Diversity of Illumination Samples 
+
+Figures 10 and 11 show our model’s generated illumination samples for given inputs using different noise seeds. Figure 10 demonstrates that illumination samples are more concentrated near the ground truth when the input triplet contains shinier objects. Similarly, Fig. 11 shows that samples become more concentrated when the input contains larger visible regions. Inputs 
+
+GT 
+
+Samples 
+
+Fig. 10: Five illumination samples generated by MultiGP for each input of heterogeneous reflectance. When the input includes shinier objects, the samples are more concentrated near the “ground truth”. 22 N. Yoshii et al. Inputs 
+
+GT 
+
+Samples 
+
+Fig. 11: Five illumination samples generated by MultiGP for each input of heterogeneous reflectance. When the input contains larger visible regions, the output samples are more concentrated near the “ground truth”. 
+
+## G Fewer Objects 
+
+Our model can process fewer than M objects by filling some of the M input channels of our Multi-object DRM network with duplicates of the reflectance maps that are available. Figure 12 illustrates the distribution of illumination samples from MultiGP and MultiGP (single) when only two objects are available, fewer than the M = 3 case on which the model was trained. Specifically, Figs. 12a-1 and 12a-2 show the input and results for two objects with heterogeneous reflectances, while Fig. 12b examines two objects with heterogeneous masks. In both cases, the output of MultiGP is distributed around “ground truth” with higher density than each MultiGP (single) as same as triplet input case in the main paper. Input B Input A 
+
+> Input reflectance maps
+> Spherical Harmonics power spectra of each input
+> SH Dimension
+> Power
+> Input A
+> Input B
+
+(a-1) Hetero-reflectances (inputs) PCA of estimated environment SH coefficients   
+
+> PC 1
+> PC 2
+> GT Illumination Outputs from A
+> Outputs from B
+> Outputs from All
+> GT Illumination
+
+(a-2) Hetero-reflectances (outputs) Input B Input A   
+
+> Input reflectance maps
+> PCA of estimated environment SH coefficients
+> PC 2
+> PC 1
+> GT Illumination
+> Outputs from A
+> Outputs from B
+> Outputs from All
+> GT Illumination
+
+(b) Hetero-masks 
+
+Fig. 12: Distribution of illumination samples from MultiGP and MultiGP (single) when only two input objects are available. (a) and (b) show heterogeneous reflectances and heterogeneous masks, respectively, analogous to Fig. 4 in the main paper. Under One Sun 23 
+
+## H Robustness to Erroneous Geometry 
+
+Table 6 and Fig. 13 present a quantitative evaluation of the effects of noisy surface normal inputs on the quality of illumination estimates. We compare MultiGP with DRM [10] across varying levels of angular noise (AE). Specifically, the noisy normals are generated by adding independent gaussian noise N (0 , σ 2) to each component of the ground-truth normals, and then scaling them back to unit vectors. The results indicate that MultiGP maintains higher stability and accuracy under degradation of surface normals, likely benefiting from the complementary information provided by multiple objects, whereas the single-object performance of DRM declines more significantly as input noise increases. The quantitative results on the real MultiGP dataset (Tab. 5) include DRM and MultiGP evaluations using the off-the-shelf surface normal estimation method [11]. While estimation accuracy decreases with erroneous geometry, MultiGP still achieves state-of-the-art performance compared to other methods, including DiffusionLight, which does not require geometry as input. 
+
+Table 6: Quantitative evaluation of illumination estimates on synthetic test data with noisy surface normal inputs. We report the mean of the top 3 out of 10 stochastic predictions. MultiGP demonstrates robustness to surface normal errors, especially compared to the baseline. 
+
+Method logRMSE ↓ PSNR ↑ SSIM ↑ LPIPS ↓
+
++ Noise Std.( σ) / AE 
+
+MultiGP 1.28 13.53 0.42 0.56 + 0.01 / 0.72 ◦ 1.28 13.51 0.42 0.55 
+
++ 0.05 / 3.59 ◦ 1.28 13.50 0.42 0.56 + 0.10 / 7.18 ◦ 1.32 13.21 0.42 0.57 + 0.15 / 10.77 ◦ 1.34 13.00 0.42 0.57 
+
+DRM [10] 1.48 12.62 0.34 0.61 + 0.01 / 0.72 ◦ 1.54 12.59 0.35 0.61 + 0.05 / 3.59 ◦ 1.51 12.44 0.33 0.62 + 0.10 / 7.18 ◦ 1.60 12.11 0.32 0.63 + 0.15 / 10.77 ◦ 1.62 11.82 0.31 0.64 Input GT Input Angular Error 0° 10.77 °
+
+Fig. 13: Estimated illuminations become smoother as the noise level of input surface normals increases. However, prominent lighting structures are maintained. 24 N. Yoshii et al. 
+
+## I Comparison with Kocsis et al., CVPR 2024 [23] 
+
+We additionally compare our method with Kocsis et al. in Tab. 5. Their Intrinsic Image Diffusion generates texture and reflectance samples, which are then used to optimize illumination. Their lighting is defined by global Spherical Gaussians (SG) [26] for incident light and point light sources with SG emission profiles. This parameterization restricts their illumination to low frequencies, as shown in Fig. 14, though they still achieve the second-best accuracy in the table. To evaluate their results, we followed their implementation to convert the estimated global SGs and point lights into environment maps by computing their summation along each direction.       
+
+> Input DPI [31] DiffusionLight [35] DRM [10] IID [23] MultiGP GT
+
+Fig. 14: Additional qualitative results of illumination estimates on the newly captured MultiGP dataset. MultiGP more accurately recovers the illumination structure of the actual environment compared to prior works, including IID [23].
