@@ -1,0 +1,1169 @@
+Title: A Hybrid Conditional Diffusion-DeepONet Framework for High-Fidelity Stress Prediction in Hyperelastic Materials
+
+URL Source: https://arxiv.org/pdf/2603.18225v1
+
+Published Time: Fri, 20 Mar 2026 00:14:31 GMT
+
+Number of Pages: 23
+
+Markdown Content:
+# A Hybrid Conditional Diffusion-DeepONet Framework for High-Fidelity Stress Prediction in Hyperelastic Materials 
+
+Purna Vindhya Kota a, ∗, Meer Mehran Rashid a, Somdatta Goswami a, Lori Graham-Brady a
+
+> aDepartment of Civil and Systems Engineering, Johns Hopkins University, 3400 N. Charles Street, Baltimore, 21218, MD, USA
+
+Abstract 
+
+Predicting stress fields in hyperelastic materials with complex microstructural features remains chal-lenging for traditional deep learning surrogates, which struggle to simultaneously capture sharp stress con-centrations and the wide dynamic range of stress magnitudes. Convolutional architectures such as UNet tend to oversmooth high-frequency gradients, while neural operators like DeepONet suffer from spectral bias and underpredict localized extremes. Conversely, diffusion models can recover fine-scale structure but often introduce low-frequency amplitude drift, degrading physical scaling. To address these limitations, we propose a hybrid surrogate framework, cDDPM–DeepONet, that decouples stress morphology from stress magnitude. A conditional denoising diffusion probabilistic model (cDDPM), built on a UNet backbone, generates high-fidelity normalized von Mises stress fields conditioned on geometry and loading. In parallel, a modified DeepONet predicts the corresponding global scaling parameters (minimum and maximum von Mises stress), enabling accurate reconstruction of full-resolution physical stress maps. This separation of roles allows the diffusion model to focus on broadband spatial structure while the operator network corrects global amplitude, overcoming spectral and scaling biases present in existing surrogates. We evaluate the framework on two nonlinear hyperelastic datasets involving single and multiple polygonal voids. Across all metrics, the cDDPM-DeepONet hybrid model outperforms UNet, DeepONet, and standalone cDDPM base-lines by one to two orders of magnitude. Spectral analysis further shows that the proposed model achieves close agreement with finite element reference solutions across the full wavenumber spectrum, preserving both low-frequency global behavior and high-frequency stress concentrations. Overall, the cDDPM–DeepONet ar-chitecture offers a robust, generalizable, and physically consistent surrogate for stress prediction in complex hyperelastic media. 
+
+Keywords: DDPM, DeepONet, Hyper-elastic materials, Neural Operators, Diffusion Models 
+
+1. Introduction 
+
+Accurate prediction of stress fields in nonlinear elastic materials is a central problem in computational mechanics, with relevance to the design of heterogeneous microstructures, porous solids, architected ma-terials, and fracture and failure analysis. Traditional finite element analyses (FEA) provide high-fidelity solutions but become prohibitively expensive when large numbers of geometries, load cases, or parameter variations must be evaluated. These constraints have motivated the development of machine-learning sur-rogates capable of approximating stress distributions at a fraction of the cost. Yet, despite rapid progress in scientific machine learning, constructing surrogates that simultaneously capture sharp local stress con-centrations, broad spatial variability, and the large dynamic range characteristic of hyperelastic responses remains challenging.    
+
+> ∗Corresponding author
+> Email address: pkota2@jh.edu (Purna Vindhya Kota)
+> Preprint submitted to Elsevier March 20, 2026
+> arXiv:2603.18225v1 [stat.ML] 18 Mar 2026
+
+Deep learning (DL) models have found important applications in computational mechanics by enabling rapid, high-fidelity synthesis of mechanical response fields from compact descriptions. Once trained, the DL model can infer the full solution field at a speed several orders of magnitude faster than traditional numerical methods [1–3], which is beneficial in situations where many evaluations are needed with changing inputs. This is especially important when dealing with a large design parameter space in generative design and topology optimization [4, 5]. The application of DL has demonstrated tremendous potential in performing efficient micro-scale analysis and has catalyzed transformations in material property prediction [6–15]. Key successes in computational mechanics involve the prediction of homogenized or effective material proper-ties [16–20], the reconstruction and characterization of material microstructures [21–24], and, critically for design and failure analysis, the prediction of local stress and strain fields [25–29]. Convolutional encoder–decoder networks such as UNet [30] have been widely adopted for field-to-field prediction [31]. Their hierarchical, multiresolution design facilitates the extraction of local and global spatial features, enabling accurate reconstruction of smooth stress fields. As a result, UNet-based models have been shown to provide computationally efficient surrogates for finite element simulations across a range of solid mechanics applications [28, 32–38]. However, their inherent spatial smoothing and finite receptive field limit their ability to reconstruct high-frequency stress features, particularly the steep gradients that arise near voids, inclusions, or geometric singularities. Neural operators such as DeepONet and Fourier Neural Operators offer an appealing alternative by learning mappings between function spaces rather than relying solely on local convolutions. These models learn the mapping between function spaces and have been applied to various problems in solid mechanics, including the identification of material properties [39–41] and the prediction of mechanical response of materials [42–44]. While these architectures excel at representing smooth, low-frequency components, they exhibit well-documented spectral bias [45, 46] and tend to under-predict localized peaks, especially in problems where the stress field contains sharp, geometry-dependent variations. Moreover, producing high-resolution images requires evaluation on dense grids, which reduces efficiency when the target is an image-valued field rather than a small set of functionals. Generative models, and diffusion models in particular, have recently emerged as powerful tools for producing high-fidelity spatial fields [47, 48]. Denoising Diffusion Probabilistic Models (DDPMs) [49–51] address these issues by iterative recovery of complex, multimodal data distribution and sampling from it. Their applications are rapidly expanding in computational mechanics, encompassing the modeling of fracture phenomena [52, 53], prediction of mechanical response fields [54–56], and inverse design of microstructures [57–59]. When conditioned on geometric information, diffusion models can reconstruct intricate stress morphologies with far greater fidelity than convolution-based regressors. Conditioning on input parameters focuses the reverse process on the relevant manifold of solutions [60–63], which reduces variance and improves sample quality. However, diffusion networks introduce a complementary limitation: they often drift in high-frequency amplitude, producing normalized stress fields with correct morphology but incorrect global scaling. For mechanics problems where absolute stress magnitude carries physical meaning e.g. , material yielding, failure initiation, or safety-factor evaluation, this amplitude drift leads to unacceptable errors. These limitations highlight a fundamental issue: models that reconstruct fine-scale features tend to distort global scaling, while models that capture global structure struggle with high-frequency stress concentrations. This motivates a decomposition strategy that treats these two aspects of the stress field separately. In this work, we propose a hybrid surrogate framework to learn the von Mises stress maps of materials, by explicitly decoupling the stress morphology from the stress magnitude (see Figure 1 for an overview of the architecture). A conditional DDPM (cDDPM) model, built upon a UNet backbone, is trained to generate high-resolution normalized von Mises stress fields conditioned on geometry and loading. In parallel, a DeepONet predicts the two global scaling parameters: the minimum and maximum von Mises stress associated with each sample. The physical stress field is then reconstructed by rescaling the diffusion-generated normalized field. This separation of roles leverages the strengths of each model: the diffusion model captures complex, spatial structure, while the DeepONet provides an accurate global amplitude prediction free from spectral bias. The UNet backbone preserves spatial resolution without introducing prohibitive memory growth, since the operator head handles global calibration rather than full-field synthesis. The DeepONet component generalizes across parametric variations. The cDDPM focuses on spatial frequency content rather than absolute magnitude, which reduces the number of time steps required to achieve accurate 2Learning the scale 
+
+Learning 
+
+the scaled 
+
+stress 
+
+map 
+
+> 𝜎 !" ,$%&
+> 𝜎 !" ,$'(
+> Geometry Load
+> DeepONet
+> Encoder
+> Reverse Process
+> Conditional DDPM
+> Noise
+> 𝝈 𝒗𝑴
+> Min -Max
+> Normalization
+> Forward Process
+
+Inputs UNet 
+
+> 𝜎 !"  (MPa) Figure 1: Description of the denoising diffusion framework for stress map prediction conditioned by the geometry and loading. The scaled stress maps are learned by the UNet in the conditional DDPM, and the minimum & maximum von Mises stresses are learned by the DeepONet. A CNN-based encoder is used for feature representation and is used to condition the UNet. The learned scaling and stress maps are combined to get the final stress maps.
+
+fields and improves data efficiency compared to unconditional generation. We evaluate the proposed cDDPM–DeepONet framework on two hyperelastic material datasets involv-ing heterogeneous domains with single and multiple polygonal voids subjected to tensile loading. Across both datasets, the hybrid architecture is compared to two baselines, UNet and standalone diffusion model (cDDPM), showing that the hybrid model achieves substantial improvements over these individual archi-tectures. In addition to reductions of one to two orders of magnitude in error metrics, spectral analysis demonstrates that the proposed model accurately reproduces both high- and low-frequency components of the stress field, addressing biases inherent to each constituent model. Furthermore, the framework exhibits strong generalization to unseen geometries and loading scenarios, underscoring its robustness and practical value. Overall, this work demonstrates that combining generative diffusion models with neural operators pro-vides an effective pathway toward high-fidelity, generalizable surrogates for hyperelastic material stress prediction. The decoupling strategy introduced here opens a broader avenue for hybrid physical–generative models capable of capturing multiscale phenomena in solid mechanics and beyond. The manuscript is arranged as follows: Section 2 presents the proposed cDDPM–DeepONet framework, detailing its architecture and training strategy. Section 3 describes the data generation process and hypere-lastic simulation setup. Section 4 evaluates the hybrid surrogate across multiple quantitative and qualitative metrics. Finally, Section 5 concludes with a summary of findings and directions for future work. 
+
+2. Methodology 
+
+This section presents the theoretical foundations of DDPMs and DeepONet and describes the architecture of the proposed hybrid framework. 
+
+2.1. UNet-based denoising diffusion probabilistic model 
+
+Denoising Diffusion Probabilistic Models are latent-variable generative models that learn to recover samples from a target data distribution by iteratively inverting a Markovian noise corruption process [50]. 3They consist of two complementary stages: (1) a forward diffusion process, in which Gaussian noise is progressively added to the data until its structure is nearly destroyed, and (2) a reverse denoising process, implemented by a neural network, which learns to invert the diffusion steps by predicting and removing the injected noise. By learning this reverse Markov chain, the model approximates the underlying data distribution. As a result, new samples can be generated by starting from pure Gaussian noise and iteratively applying the learned denoising steps [51, 64]. This framework provides a stable generative mechanism capable of capturing complex, multimodal data distributions and producing high-fidelity spatial fields. 
+
+2.1.1. Forward diffusion process 
+
+Let x(0)  
+
+> i
+
+∈ Rd denote the i-th training sample of an N × N image drawn from the empirical data distribution q(x(0) ). The forward diffusion process defines a Markov chain indexed by discrete time steps 
+
+t = 1 , . . . , T, in which the data sample x(0)  
+
+> i
+
+is progressively corrupted by the addition of Gaussian noise. The resulting joint distribution over the forward trajectory factorizes as q(x(0: T ) 
+
+> i
+
+) = q(x(0)  
+
+> i
+
+) QTt=1 q(x(t) 
+
+> i
+
+| x(t−1)  
+
+> i
+
+). As t increases, the distribution q(x(t)) approaches a standard normal distribution N (0, I), where 0 ∈ Rd
+
+is the zero vector and I ∈ Rd×d is the identity matrix. Each transition adds Gaussian noise with a time-dependent signal scaling hyperparameter α(t) ∈ (0 , 1): 
+
+q(x(t) 
+
+> i
+
+| x(t−1)  
+
+> i
+
+) = N
+
+
+
+x(t) 
+
+> i
+
+;
+
+p
+
+α(t) x(t−1)  
+
+> i
+
+, (1 − α(t)) I
+
+
+
+. (1) A typical scheduler satisfies 1 > α (1) > α (2) > · · · > α (T ) > 0, ensuring that the data becomes progressively noisy. When α(T ) is sufficiently small, the terminal distribution q(x(T ) 
+
+> i
+
+) becomes numerically indistinguish-able from N (0, I). To ensure smoothness and stability in noise addition during the diffusion process, we employ a cosine noise scheduling mechanism [51], defined by ¯α(t) = f (t)
+
+f (0) , f (t) = cos 2
+
+ t/T + b
+
+1 + b · π
+
+2
+
+
+
+, (2) where b is a small offset preventing rapid noise growth near t = 0. The cumulative product, ¯ α(t) = Qts=1 α(s),represents the total signal preserved after t diffusion steps. Because the forward process is Gaussian and Markovian, we can marginalize Eq. (1) to obtain the closed-form conditional distribution at any time t:
+
+q(x(t) 
+
+> i
+
+| x(0)  
+
+> i
+
+) = N
+
+
+
+x(t) 
+
+> i
+
+;
+
+p
+
+¯α(t) x(0)  
+
+> i
+
+, (1 − ¯α(t)) I
+
+
+
+. (3) Using the reparameterization trick [65], samples can be generated explicitly via 
+
+x(t) 
+
+> i
+
+=
+
+p
+
+¯α(t) x(0)  
+
+> i
+
++
+
+p
+
+1 − ¯α(t) ϵ, ϵ ∼ N (0, I). (4) 
+
+2.1.2. Reverse denoising process 
+
+During inference, the goal is to invert the forward diffusion process and recover samples from the em-pirical data distribution, starting from Gaussian noise. Because the true reverse transitions q(x(t−1)  
+
+> i
+
+| x(t) 
+
+> i
+
+)are intractable, DDPMs approximate them using a parameterized Gaussian model. The original data dis-tribution can be reformulated using a conditional distribution constructed from the transition distribution 
+
+pθ (x(t−1)  
+
+> i
+
+|x(t) 
+
+> i
+
+), parametrized by θ, as 
+
+pθ (x(0: T ) 
+
+> i
+
+) = p(x(T ) 
+
+> i
+
+)
+
+> T
+
+Y
+
+> t=1
+
+pθ (x(t−1)  
+
+> i
+
+| x(t) 
+
+> i
+
+), (5) where p(x(T ) 
+
+> i
+
+) = N (0, I) is the standard Gaussian prior and θ denotes neural-network parameters. The conditionals, pθ (x(t−1)  
+
+> i
+
+| x(t) 
+
+> i
+
+), can be approximated as Gaussians from the Gauss-Markov theory [50]. Hence, each reverse distribution is modeled as 
+
+pθ (x(t−1)  
+
+> i
+
+| x(t) 
+
+> i
+
+) = N
+
+
+
+x(t−1)  
+
+> i
+
+; μθ (x(t) 
+
+> i
+
+, t ), σ 2 
+
+> θ
+
+(t) I
+
+
+
+, (6) 4where μθ (x(t) 
+
+> i
+
+, t ) and σ2 
+
+> θ
+
+(t) are the mean and variance. It is convenient to parameterize the mean in terms of the predicted noise. Let ϵθ (x(t) 
+
+> i
+
+, t ) denote the neural network’s estimate of the forward noise ϵ in Eq. (4). The mean and variance are functions of ϵθ (x(t) 
+
+> i
+
+, t ) as 
+
+μθ (x(t) 
+
+> i
+
+, t ) = 1
+
+√α(t)
+
+
+
+x(t) 
+
+> i
+
+− 1 − α(t)
+
+√1 − ¯α(t) ϵθ (x(t) 
+
+> i
+
+, t )
+
+
+
+, σ2 
+
+> θ
+
+(t) = 1 − ¯α(t−1) 
+
+1 − ¯α(t) (1 − α(t)), (7) In this work, ϵθ is learned using a UNet-based architecture. The model is trained by minimizing a simplified objective equivalent to maximizing the variational lower bound on the data likelihood. To learn the actual data distribution using the above model, the variational lower-bound on the negative log likelihood can be approximated by the loss function, defined as: 
+
+LDDP M (θ) = Ep
+
+h
+
+− log pθ (x(0: T ))
+
+q(x(1: T )|x(0) )
+
+i
+
+. (8) Optimizing the likelihood is akin to estimating the mean in the reverse procedure. With reparame-terization, the loss function is reduced to a simpler form. The resulting DDPM loss after simplification is 
+
+LDDPM (θ) = Ex(0) ∼q Et∼U{ 1,...,T }Eϵ∼N (0,I) ϵ − ϵθ (x(t) 
+
+> i
+
+, t ) 22
+
+, (9) where x(t) 
+
+> i
+
+is constructed from x(0)  
+
+> i
+
+and ϵ using Eq. (4). This loss forces ϵθ to predict the forward-process noise accurately, which is equivalent to learning the mean of the reverse Gaussian transition. A detailed description of the derivation of the loss function is discussed in Appendix A. Further details can be found in [50, 51, 64]. 
+
+2.1.3. Conditional diffusion denoising probabilistic model 
+
+The unconditional DDPM described in Sections 2.1.1 and 2.1.2 generates samples consistent with the overall training distribution, but it does not enforce dependence on problem-specific inputs such as geometry, material parameters, or loading. For stress field prediction, the generated field must be consistent with the physical parameters associated with each data sample. To incorporate this, we adopt a conditional diffusion model [60] in which the reverse denoising process is guided by a feature vector representing the relevant physical information. The physical parameters, y, are mapped to an embedding vector ζemb = g(y) using an embedding network g(·) during training. This embedding remains fixed across all diffusion steps and provides context to the denoising network. The forward (noising) process remains identical to the unconditional formulation because the diffusion corruption is independent of y, with the transition distribution modifying to ˆ q(x(t) 
+
+> i
+
+| x(t−1)  
+
+> i
+
+, ζemb ) := q(x(t) 
+
+> i
+
+| x(t−1)  
+
+> i
+
+). In the conditional reverse process, the neural network receives ( x(t) 
+
+> i
+
+, t, ζemb ) as input and predicts the noise component to be removed. We model the conditional reverse transition distribution as: 
+
+pθ (x(t−1)  
+
+> i
+
+| x(t) 
+
+> i
+
+, ζemb ) = N
+
+
+
+x(t−1)  
+
+> i
+
+; μθ (x(t) 
+
+> i
+
+, ζemb , t ), σ 2 
+
+> θ
+
+(t) I
+
+
+
+, (10) Starting from the final noise sample x(T ) 
+
+> i
+
+, the model iteratively removes noise to gradually restore the original stress field distribution, given by 
+
+x(t−1)  
+
+> i
+
+= 1
+
+√α(t)
+
+
+
+x(t) 
+
+> i
+
+− 1 − α(t)
+
+√ 1 − ¯α(t) ˆϵθ (x(t) 
+
+> i
+
+, ζemb , t )
+
+
+
++ σq (t) ξ, (11) where ξ ∼ N (0, I) is standard Gaussian noise. Here, ˆ ϵθ (·) is the conditional noise-prediction network that replaces its unconditional counterpart, ϵθ , in Section 2.1.2. To learn the conditional distribution, we maximize the variational lower bound on the data likelihood, analogous to the unconditional case. Training proceeds by minimizing the cDDPM objective: 
+
+LcDDPM (θ) = Ex(0) ∼q Et∼U{ 1,...,T }Eϵ∼N (0,I) ϵ − ˆϵθ (x(t), ζemb , t ) 22
+
+, (12) 52.2. DeepONet 
+
+Classical neural networks learn mappings between finite-dimensional input–output pairs. In contrast, many problems in computational mechanics require learning mappings between functions , such as geometry-dependent boundary conditions, spatially varying material parameters, or load fields. Neural operators generalize supervised learning to this setting by approximating maps between infinite-dimensional Banach spaces. Among these, the DeepONet, introduced by Lu et al. [66], provides an efficient architecture for learning nonlinear operators from data. Let U ∈ A denote an input function encoding the geometry and loading configuration of a sample (e.g., discretized geometry indicator fields and load magnitudes). Let ϕ(U ) ∈ Φ denote the corresponding von Mises stress field arising from a nonlinear hyperelastic response. Assuming that each input field U uniquely determines a stress solution ϕ(U ) that satisfies the governing finite-strain hyperelasticity equilibrium equa-tions and boundary conditions, the underlying solution operator is 
+
+G : A → Φ. (13) In this work, DeepONet is not required to reconstruct the full stress field. Instead, we adopt a reduced formulation in which the operator predicts only the sample-specific global scaling parameters —the mini-mum and maximum von Mises stresses associated with the given domain geometry and prescribed loading, boundary conditions. These sample specific extrema are subsequently used to rescale the normalized stress fields produced by the diffusion model. Accordingly, we define the reduced operator 
+
+F : A → 
+
+
+
+min  
+
+> s∈Ω
+
+ϕ(U )( s), max  
+
+> s∈Ω
+
+ϕ(U )( s)
+
+
+
+, (14) which maps each input function U to two scalar quantities representing the global stress range. 
+
+2.3. cDDPM-DeepONet hybrid model 
+
+The proposed hybrid model architecture described in Figure 1 integrates a cDDPM with a DeepONet to predict the full-field von Mises stress maps of hyperelastic materials subject to tensile loading. The conditional diffusion model reconstructs the normalized spatial stress morphology. Its backbone is a UNet equipped with residual blocks and a global attention mechanism to capture both localized concentra-tion phenomena and long-range spatial dependencies. Conditioning on geometry and loading is introduced through an embedding vector ζemb constructed by a CNN encoder acting on a two-channel input, with one channel containing the material geometry and the other channel containing an image representation of the load condition, with a colored row that indicates the magnitude of loading. This embedding is fused with the diffusion timestep embedding through a bilinear transformation, and the resulting context vector is injected at each resolution level of the UNet. In this manner, the reverse denoising process remains anchored to the input configuration throughout all diffusion time steps. The DeepONet consists of two subnetworks: 
+
+• Branch network : encodes the input function U , discretized on a fixed N × X grid. Because U ∈
+
+RN ×N ×2 is high dimensional, the branch network is implemented using a UNet-based encoder to efficiently capture geometric and loading features. 
+
+• Trunk network : encodes output query coordinates s. Since the outputs here are global extrema rather than spatial fields, the trunk network acts as a basis encoder and is implemented as a multilayer perceptron network. Following an inner product operation between the output of the branch net and trunk net, the resulting high-dimensional feature maps are passed to a final projection layer. This layer maps the features to a scalar output in R2, which corresponds to the predicted minimum and maximum values in the domain. The parameters of the operator network are identified by minimizing an L1 loss between the predicted and true extrema. 6Inputs to the network von Mises stress map 
+
+Multiple -void dataset 
+
+Single -void dataset Figure 2: Datasets used for evaluation: The first dataset contains single void and loading values as input to predict the von Mises stress maps. The second dataset comprises geometries with multiple voids, which, along with loading values, are used to estimate the stress. 
+
+During inference, the two components of the hybrid architecture are applied in parallel. For a given geometry–loading pair, the cDDPM generates a normalized stress map, while the DeepONet provides the corresponding global minimum and maximum stresses. The true von Mises field is then obtained by linearly rescaling the normalized outputs using these predicted extrema. Notably, the cDDPM and the DeepONet are trained independently, with the former learning to reconstruct normalized stress maps and the latter learning to predict global stress range parameters. During inference, they are combined, but no further learning or iterative feedback between them is necessary. 
+
+3. Datasets 
+
+To assess the model’s performance on nonlinear material behavior, we generate datasets following the procedure of [55]. All samples are simulated using a Neo-Hookean hyperelastic constitutive model, which introduces geometric and material nonlinearities beyond the linear-elastic regime. This setting provides a more stringent test of the surrogate’s ability to learn complex stress–response relationships. The uniaxial tension problem is solved using the nonlinear finite element solver FEniCS [67–69]. Figure 2 illustrates the mapping from inputs to the resulting von Mises stress fields for the datasets described in Sections 3.1 and 3.2 . 
+
+3.1. Single-void hyperelastic dataset 
+
+The first dataset consists of two-dimensional domains Ω ⊂ R2 containing a single polygonal void. The polygon has n sides, where n ∈ { 3, 4, 5, 6, 7, 8}, and its size, orientation, and location are sampled to ensure geometric variability. The material behavior is modeled by a compressible Neo-Hookean constitutive law [70]. Let F = ∇u
+
+denote the deformation gradient, where u is the displacement field. The strain-energy density is 
+
+W (F) = μ
+
+2
+
+ ∥F∥2 − 3 − 2 ln det F , (15) 7where μ is the shear modulus and ∥F∥ denotes the Frobenius norm. The voids are modeled using a binary mask M to define the material distribution within the square domain. For each sample, the void geometry is sampled randomly, and the mask is defined such that 
+
+M (x) = 1 in the material domain and M (x) = 0 at void locations. This mask is applied to the material properties, such that the effective Young’s modulus is Eef f (x) = M (x)E, representing zero stiffness within the voids. The finite element mesh is generated explicitly for the regions where M (x) = 1. The bottom boundary is subject to a fixed displacement ux(x, y = 0) = uy (x, y = 0) = 0, and the top boundary is subject to a uniform tensile traction τx(x, y max ) = 0 and τy (x, y max ) = L, where the load magnitude L is sampled uniformly from [100 , 700] kN. The vertical boundaries are traction-free, i.e., 
+
+τx(0 , y ) = τy (0 , y ) = τx(xmax , y ) = τy (xmax , y ) = 0. The full stress tensor throughout the domain is computed using FEniCS on a uniform grid, from which the von Mises stress, σvM (x), is evaluated. While we recognize that using a square grid for the finite element (FE) mesh can cause inaccuracies in predicting stresses especially near the edges of the void, the focus of this work is not on optimizing the mesh or the FE method itself. Instead, the goal is to develop a deep learning architecture that can successfully learn to reproduce the specific FE results it is trained on. This scalar field serves as the ground truth output for training and validating the surrogate models. In this work, 19 , 900 samples were generated for training and 3, 317 for testing. This dataset was sampled from [55] and can be accessed here. 
+
+3.2. Multiple-void hyperelastic dataset 
+
+To reflect the microstructural complexity of real heterogeneous materials, we constructed a multiple-void hyperelastic dataset in which the two-dimensional domain discussed in the previous section contains several polygonal voids and is subject to the same boundary conditions as described in Section 3.1, except the magnitudes of the applied tensile load are sampled uniformly from the interval [100 , 400] kN. The void shapes range from triangles to heptagons (3–7 sides) and vary in orientation (0 ◦, 45 ◦, and 90 ◦), size, and spatial location within the domain. The presence of multiple defects in each sample introduces rich mechanical interactions, including inter-void stress coupling, competing stress-concentration zones, and nontrivial load-redistribution pathways. As a result, the resulting stress fields exhibit significantly higher variability than in the single-void setting, providing a challenging benchmark for evaluating the performance of the proposed hybrid model. In this dataset, 20 , 000 samples were generated for training and 3 , 000 for testing. These simulations form the ground truth dataset for training, and testing of the proposed model. Both datasets are available at INSERT LINK To quantify the complexity of the stress distributions, we define two levels of statistical reduction. First, for each individual sample i, we calculate the spatial mean stress μσvM ,i and the maximum stress σvM,max,i 
+
+over the H × W grid. We then evaluate the following ensemble statistics across the entire dataset of N
+
+samples to capture the sample-to-sample variability: 
+
+Mean of Means: 
+
+E[μσvM ] = 1
+
+N
+
+> N
+
+X
+
+> i=1
+
+μσvM ,i 
+
+Mean of Maxima: 
+
+E[σvM,max ] = 1
+
+N
+
+> N
+
+X
+
+> i=1
+
+σvM,max,i 
+
+Std of Means: 
+
+Std( μσvM ) = 
+
+vuut 1
+
+N
+
+> N
+
+X
+
+> i=1
+
+(μσvM ,i − E[μσvM ]) 2
+
+Std of Maxima: 
+
+Std( σvM,max ) = 
+
+vuut 1
+
+N
+
+> N
+
+X
+
+> i=1
+
+(σvM,max,i − E[σvM,max ]) 2
+
+As suggested by the metrics in Table 1, the datasets possess a non-trivial level of complexity. The high values for Std( μσvM ) and Std( σvM,max ) indicate that the model must navigate significant shifts in both global stress intensity and local peak concentrations from one sample to the next. This variability is a primary factor making these datasets a challenging benchmark, as it requires the model to be robust against large fluctuations in both average field intensity and local singular peaks. 8Table 1: Statistical Analysis of von Mises Stress ( σvM ) Distributions. 
+
+Dataset E[μσvM ] Std( μσvM ) E[σvM,max ] Std( σvM,max )Single-void 404.335 180.43 3364.41 2842.95 Multiple-void 394.56 162.32 3047.62 1795.37 
+
+4. Results and discussion 
+
+To critically assess the performance of the proposed hybrid model, its predictions are systematically compared against those obtained from a baseline UNet model [28] and the standalone cDDPM architecture described in Section 2.1. All surrogates are trained using an L1 loss; however, to rigorously evaluate performance, we employ a comprehensive suite of error and structural similarity metrics, summarized in Table 2. These evaluations span multiple complementary criteria that quantify point-wise accuracy, dynamic-range preservation, and fidelity of local physical structure. The root mean squared error (RMSE) measure absolute and large-magnitude deviations between predicted and true von Mises stress fields, whereas the relative mean absolute error (RelMAE) normalizes MAE by the stress range to account for scale variability across the dataset. The peak absolute error (PAE) assesses the accuracy of global extrema, while the peak-to-valley (PV) error quantifies the accuracy of the predicted global stress range. Finally, the localized stress gradient (LSG) quantifies discrepancies in stress gradients near void boundaries, where physical accuracy is most critical. Because the von Mises stresses in the datasets span several orders of magnitude, accurate recovery of both global scaling and localized concentration zones are essential. 
+
+Metric Definition 
+
+Mean absolute error 1
+
+> N
+
+P 
+
+> x,y
+
+|σvM − ˆσvM |
+
+Root mean square error 
+
+q 1
+
+> N
+
+P 
+
+> x,y
+
+(σvM − ˆσvM )2
+
+Relative mean absolute error MAE max σvM −min σvM 
+
+Peak absolute error | max Ω σvM − max Ω ˆσvM |
+
+Localized stress gradient 1
+
+> N
+
+P 
+
+> x,y
+
+|∇ σvM − ∇ ˆσvM |
+
+Peak-to-valley error |∆( σvM ) − ∆( ˆσvM )|                     
+
+> Table 2: Mathematical definitions of quantitative metrics used to evaluate prediction accuracy and spatial fidelity of surrogates. Here, σvM := σvM (x, y ) and ˆσvM := ˆσvM (x, y ) denote the ground truth and predicted stress fields, and N=|Ω|is the total number of spatial points. The magnitude of gradient is defined as ∇σ=p(∂σ/∂x )2+ ( ∂σ/∂y )2, and ∆( σvM ) =
+> |max ΩσvM −min ΩσvM |denotes the peak-to-valley range.
+
+The quantitative results reported in Table 3, evaluated using the definitions in Table 2, demonstrate that the proposed cDDPM–DeepONet hybrid model consistently outperforms the UNet and cDDPM baselines across all error measures and for both datasets. For the single-void dataset, the cDDPM–DeepONet model reduces MAE by 99.29% relative to the UNet and by 84.59% relative to the cDDPM, while for the multiple-void dataset the corresponding MAE reductions are 86.77% and 46.84%, respectively. Similar reductions are observed in the RMSE, where the squared error term indicates that the hybrid model not only improves average pointwise accuracy but also significantly reduces large local deviations that baselines fail to capture. Consequently, the RelMAE values remain below 1% for the hybrid model in both datasets, confirming that pointwise errors are negligible relative to the sample-wise stress range. Given that the mean maximum target von Mises stresses are 2313 .34 MPa in the single-void dataset and 2087 .67 MPa for the multiple-void dataset, the cDDPM-DeepONet hybrid model reconstructs these maximum stress values with 2 .07% and 0 .28% error for each dataset, respectively, demonstrating substantial improvements in PAE and accurately capturing the dynamic range. Peak-based errors exhibit a consistent reduction pattern, with the hybrid model decreasing Peak Abso-lute Error by 97.36% relative to the UNet and 82.24% relative to the cDDPM in the single-void dataset, 9and by 99.30% and 98.28%, respectively, in the multiple-void dataset, ensuring accurate recovery of the dynamic range across varying geometric complexities. The PV error reveals a similar pattern in the single-void dataset, where the hybrid model more closely recovers the global stress range than either baseline. Finally, gradient-based accuracy, quantified by LSG, distinguishes the models most clearly: the UNet ex-hibits the largest gradient errors consistent with spatial smoothing, the cDDPM provides partial mitigation, and the hybrid model achieves the lowest gradient discrepancies, corresponding to an order-of-magnitude improvement relative to the UNet and several-fold improvement relative to the cDDPM. Overall, the combination of diffusion-based field reconstruction with operator-based amplitude prediction yields a surrogate that accurately recovers both the global stress magnitude and localized features. The performance gains exceed two orders of magnitude in most metrics. 
+
+Dataset Model MAE RMSE RelMAE PAE LSG PV Single-void 
+
+UNet [28] 194.85 350.65 0.0147 1809.21 41.95 1398.73 cDDPM 28.36 84.32 0.0282 269.07 11.30 338.45 
+
+cDDPM-DeepONet 4.12 5.91 0.0017 47.79 0.73 47.78 Multiple-void 
+
+UNet [28] 166.99 235.25 0.1086 838.51 39.04 826.24 cDDPM 41.56 74.03 0.0169 338.50 13.07 266.92 
+
+cDDPM-DeepONet 23.52 45.16 0.0021 5.83 3.67 38.19  
+
+> Table 3: Quantitative comparison of error metrics for the UNet, cDDPM, and cDDPM-DeepONet hybrid models on the single-void and multiple-void datasets. The hybrid framework yields the lowest error values across all reported metrics, including point-wise accuracy (MAE, RMSE, RelMAE), global extrema prediction (PAE, PV), and gradient fidelity (LSG).
+
+4.1. Predicted stress fields 
+
+While aggregate metrics shown in Table 3 provide a sense of the overall performance of each model, it is also important to visualize the predictions of the spatially varying stress maps, the stress distribu-tion fidelity, and the robustness of the performance across complex test cases. Figure 3 presents a direct qualitative comparison of the ground-truth FEM stress field with predictions from the UNet, cDDPM, and hybrid models for a representative test sample of the single-void and multiple-void hyperelastic datasets. The UNet struggles to capture the local pattern of the stress distribution and exhibits smoothing artifacts, failing to resolve the stresses at the boundaries of the voids. The cDDPM captures sharper features better but overshoots the stress magnitudes and high-frequency artifacts around the void, distorting physical stress ranges. In contrast, the cDDPM-DeepONet hybrid model preserves both the amplitude and localization of stress concentrations near void boundaries, aligning closely with the FEM ground truth. These differences underscore the hybrid model’s superior capability to capture sharp transitions and spatial detail, comple-menting the quantitative improvements reported earlier. Similar trends are observed in the multiple-void case, where the hybrid model consistently resolves interacting stress fields while maintaining correct mag-nitude and spatial coherence. Figures 4 and 5 further examine the representative stress field predictions from the cDDPM-DeepONet hybrid model, for representative samples from the single-void and multiple-void datasets, respectively. The absolute error plots indicate that the localized errors are 0 .16% and 0 .88% of the peak stress magnitude in Figures 4 and 5, respectively. The one-dimensional cross sections of the stress distribution show the strong agreement between the hybrid model predictions and the ground truth, even when the section crosses an interface, as in Figure 5. Although these figures illustrate individual samples, comparable agreement is observed across the full dataset, indicating consistent generalization across test geometries. While spatial stress maps provide insight into individual predictions, they are less effective for assessing consistency across a large number of test samples. To assess prediction consistency across the full test dataset, Figure 6 shows the empirical distribution of mean von Mises stresses across all test samples of 10 Ground truth UNet cDDPM cDDPM-DeepONet 
+
+> 0
+> 50
+> 100
+> 150
+> 200
+> 250
+> 300
+> 350
+> 250
+> 0
+> 250
+> 500
+> 750
+> 1000
+> 1250
+> 1500
+> 1750
+> 50
+> 100
+> 150
+> 200
+> 250
+> 300
+> 350
+> 0
+> 50
+> 100
+> 150
+> 200
+> 250
+> 300
+> 350
+> vM  (MPa) (a) Single-void dataset
+
+Ground truth UNet cDDPM cDDPM-DeepONet 
+
+> 0
+> 100
+> 200
+> 300
+> 400
+> 500
+> 600
+> 0
+> 500
+> 1000
+> 1500
+> 2000
+> 2500
+> 0
+> 100
+> 200
+> 300
+> 400
+> 500
+> 600
+> 700
+> 0
+> 100
+> 200
+> 300
+> 400
+> 500
+> 600
+> vM  (MPa)
+> (b) Multiple-void dataset
+> Figure 3: Comparison of ground truth FEM stress maps, UNet, cDDPM and cDDPM-DeepONet predictions for single-void (3a) and multiple-void (3b) hyperelastic datasets.
+
+both datasets. The hybrid model’s histogram aligns closely with the FEM reference in both datasets, accurately recovering both the modal mean stress values and the long high-stress tails. This indicates that the model captures both average-case and extreme stress scenarios. The UNet predictions exhibit a narrower distribution with attenuated tails, reflecting systematic underestimation of the sample-to-sample variability in the mean stress. The cDDPM baseline displays wider support than UNet but deviates from the true distribution’s central peak, suggesting some amplitude distortion. These differences highlight distinct inductive biases across architectures and reflect the hybrid model’s superior distributional fidelity. 
+
+4.2. Spectral characterization 
+
+To assess the spectral fidelity of predicted stress fields, we conduct a spectral analysis using 1D isotropic energy spectra and 2D Fourier magnitude maps. These diagnostics probe not only how well models capture spatial variability but also how they represent energy across physically relevant wavenumber bands. This is particularly important for applications such as fatigue prediction, crack initiation, and multiscale simulation pipelines where errors in local gradients or high-frequency content can propagate downstream. For a discretized von Mises stress field σvM (xi, y j ) : i, j = 1 , . . . , N , the 2D spectrum is obtained by applying the discrete Fourier transform, bσvM (kx,m , k y,n ) = F[σvM (xi, y j )]. Here, kx,m and ky,n denote the discrete wavenumbers in the x and y directions, respectively, and m, n = 1 , . . . , N , where N is the number of wavenumbers in each direction. The maximum resolvable wavenumber in each direction is determined by the Nyquist frequency, which for a spatial discretization with grid spacing ∆ x is given by kx,M = π 
+
+> ∆x
+
+. We compute the magnitude spectrum as 
+
+S2D (kx,m , k y,n ) = log (1 + |bσvM,c (kx,m , k y,n )|) . (16) where, bσvM,c (kx,m , k y,n ) = bσvM 
+
+ (kx,m + N 
+
+> 2
+
+) mod N, (ky,n + N 
+
+> 2
+
+) mod N . This centering improves visual interpretability by placing low-frequency components at the center of the plot. The logarithmic transfor-mation in Eq. 16 is applied to enhance contrast between low- and high-magnitude modes and to ensure numerical stability, particularly when spectral magnitudes span several orders of magnitude. 11 Figure 4: Randomly selected sample from the single-void dataset: Comparison of cDDPM-DeepONet predictions and FEM stress maps. The stress maps in the upper row compare the hybrid model’s predictions with the ground-truth FEM results, showing excellent visual correlation and very low absolute error. The line plots illustrate the accurate pixel-wise matching of model outputs and FE along specific horizontal and vertical cross-sections. 
+
+Figure 5: Randomly selected sample from the multiple-void dataset: Comparison of predicted and FEM stress maps. The FEM ground truth and cDDPM-DeepONet hybrid predicted stress maps show strong visual agreement, especially in the regions of high stress concentration induced by the inclusions. The absolute error map confirms this accuracy, showing consistently low error values across the domain. The horizontal and vertical mid-section plots provide quantitative validation, showing that the hybrid model’s predicted stress profile closely matches the ground truth across the respective cross-sections. 
+
+12 200 400 600 800 1000 1200             
+
+> Mean vM (MPa )
+> 0.000
+> 0.002
+> 0.004
+> 0.006
+> 0.008
+> 0.010
+> 0.012
+> 0.014
+> Probability density
+> Ground truth
+> UNet
+> cDDPM
+> cDDPM-DeepONet (a) Single-void dataset 0200 400 600 800 1000 1200 1400 1600
+> Mean vM (MPa )
+> 0.000
+> 0.002
+> 0.004
+> 0.006
+> 0.008
+> 0.010
+> 0.012
+> Probability density
+> Ground truth
+> UNet
+> cDDPM
+> cDDPM-DeepONet (b) Multiple-void dataset
+> Figure 6: Probability density of the mean von Mises stress across test samples for two datasets, comparing predicted stress fields from different models against ground truth data.
+
+Full 2D log-spectrum maps, computed using Eq. 16 and averaged over all the test samples, are provided in Figures 7a and 8a for the single- and multiple-void datasets, adding a different way to visualize the relative strengths and weaknesses of the models presented here. The bright central region corresponds to low-frequency, smoothly varying components of the stress field, whereas increased intensity away from the center reflects higher-frequency content associated with sharp stress gradients and fine geometric features near the voids. The presence of directional streaks in these maps indicates anisotropic spectral contributions introduced by void shapes, applied loading configurations and their magnitudes. The ground truth FEM spectra exhibit a relatively broad spectral footprint, reflecting the rich spectral density of the underlying stress response. While the hybrid model closely mirrors this texture, including faint peripheral structure and balanced energy spread, the UNet collapses much of the energy into a central low frequency core, suggesting excessive smoothing and low-pass filtering behavior. The cDDPM model partially restores high-frequency detail but lacks consistent amplitude normalization, resulting in overall spectral mismatch. This supports the design of the hybrid model; it leverages the denoising diffusion process to recover fine texture in greater detail while anchoring amplitude via DeepONet scaling. These observations are reinforced by the corresponding spectral error maps in Figures 7b and 8b, which plot the absolute difference between the 2D log-spectrum maps of the predictions of the surrogates with that of the ground truth. The UNet exhibits large, structured errors at mid- and high-frequency regions, particularly along principal axes, indicating a failure to recover anisotropic fine-scale features. The cDDPM substantially reduces these errors but retains directionally aligned residuals, consistent with imperfect amplitude calibration across frequency bands. In contrast, the cDDPM-DeepONet hybrid model yields uniformly low spectral error across the frequency plane in both the single- and multiple-void datasets. To help visualize fine differences between the models, the 1D isotropic spectrum is calculated by aggre-gating the 2D spectral data into radial wavenumber bins. The energy density at a given radial wavenumber 
+
+kr is defined as 
+
+E(kr ) = 
+
+D
+
+|bσvM,c (kx,m , k y,n )|2 E  
+
+> kr<
+
+√k2   
+
+> x,m +k2
+> y,n ≤kr+∆ kr
+
+, (17) where ⟨ · ⟩ denotes averaging over all spectral coefficients within an annular band of width ∆ kr . The radial wavenumber range spans from 0 up to the isotropic Nyquist limit, kr,max = √2π, given a spatial discretization of ∆ x = ∆ y = 1. Figures 9a and 10a plot the mean of E(kr ) over the test samples of the single- and multiple-void datasets, respectively. Figures 9b and 10b plot the corollary relative error between the predicted and the ground truth relative energy densities. The cDDPM–DeepONet hybrid model achieves the closest agreement with the FEM spectrum across all kr in both datasets. In particular, the hybrid model avoids the low-frequency amplitude mismatch observed in the UNet and maintains energy density in the high-frequency tail, where the UNet spectrum notably decays due to smoothing. While the standalone cDDPM recovers these high-13 Ground truth UNet 
+
+cDDPM cDDPM-DeepONet   
+
+> 7
+> 8
+> 9
+> 10
+> 11
+> 12
+> 13
+> 14
+> S2D(a) Mean 2D log-magnitude spectrum UNet cDDPM cDDPM DeepONet
+> 0.0
+> 0.5
+> 1.0
+> |S model 2D S ground truth 2D |
+> (b) Mean spectral error relative to FEM
+
+Figure 7: Single-void dataset. (a) Mean 2D log-magnitude Fourier spectrum of the von Mises stress fields, averaged over all test samples. The bright central region corresponds to dominant low-frequency components associated with smooth variations in the stress field, while increased intensity away from the center indicates higher-frequency content generated by sharp gradients near the void boundary. This visualization provides a frequency-domain reference for assessing how surrogate models reproduce the spatial features present in the FEM solutions. (b) Mean spectral error relative to the FEM solution, highlighting frequency-dependent discrepancies in surrogate model predictions. 
+
+frequency modes better than the UNet, it exhibits a persistent amplitude offset across all wavenumbers, indicated by the elevated flat error profile in the relative error plots. However, like the UNet, it lacks consistent amplitude normalization, leading to a mismatch at lower wavenumbers. The above conclusions are quantitatively supported by the log–linear area metric ( Ac) in Table 4, which compares the area between the isotropic spectra of the surrogates and ground truth: 
+
+Ac =
+
+Z
+
+log 10 Epred (kr ) − log 10 Etrue (kr ) dk r . (18) As reported in Table 4, the hybrid model attains the lowest spectral discrepancy scores, with Ac =4.4189 for the single-void dataset and Ac = 4 .43 for the multiple-void dataset. In comparison, the UNet yields considerably higher values, exceeding 5 .2 in both cases. The standalone cDDPM shows intermediate performance with Ac values of approximately 4 .54, quantifying the cost of its amplitude drift. Notably, the hybrid model’s spectral error remains stable ( Ac ≈ 4.4) across both datasets despite the increased geometric complexity of the multiple-void case, demonstrating robust generalization in the frequency domain. The spectral tools discussed here (1D E(kr ), relative E(kr ) error, and 2D FFT magnitude) are useful diagnostics to distinguish between model behaviors. In contrast to scalar metrics that aggregate performance into a single value, these spectral diagnostics isolate specific failure modes, revealing whether a model 14 Ground truth UNet 
+
+cDDPM cDDPM-DeepONet 
+
+> 8
+> 9
+> 10
+> 11
+> 12
+> 13
+> 14
+> S2D(a) Mean 2D log-magnitude spectrum
+
+UNet cDDPM cDDPM DeepONet 
+
+> 0.0
+> 0.2
+> 0.4
+> 0.6
+> 0.8
+> |S model 2D S ground truth 2D |
+> (b) Mean spectral error relative to FEM
+
+Figure 8: Multiple-void dataset. (a) Mean 2D log-magnitude Fourier spectrum of the von Mises stress fields, averaged over all test samples. The central peak reflects the dominant low-frequency components of the stress response, while the broader spread of intensity away from the center indicates the presence of additional high-frequency features caused by interactions among multiple-voids. This frequency-domain representation highlights the increased geometric complexity of the dataset and provides a reference for evaluating surrogate model performance. (b) Mean spectral error relative to the FEM solution, highlighting frequency-dependent discrepancies in surrogate model predictions. 
+
+suffers from low-frequency global bias, excessive smoothing of sharp gradients, or the loss of fine-scale stress features. As such, these spectral analyses are not merely diagnostic but guide architectural choices and training strategies for surrogate modeling of stress and other spatially varying behaviors. 
+
+Dataset Model Area Between Curves (log–linear scale) Single-void 
+
+UNet [28] 5.2572 cDDPM 4.5372 
+
+cDDPM-DeepONet 4.4198 Multiple-void 
+
+UNet [28] 5.3313 cDDPM 4.5451 
+
+cDDPM-DeepONet 4.4166 
+
+Table 4: Area between the log–log energy spectra of the predicted and ground-truth stress fields, computed as described in Eq. 18 Lower values indicate better spectral agreement across all wavenumber scales for both single-void and multiple-void hyperelastic datasets. 
+
+15 0.5 1.0 1.5 2.0 2.5 3.0 3.5 4.0 
+
+kr          
+
+> 10 16
+> 10 12
+> 10 8
+> 10 4
+> 10 0
+> 10 4
+> 10 8
+> E(kr)
+> Ground truth
+> UNet
+> cDDPM
+> cDDPM DeepONet 123
+> 10 7
+> 10 8
+> High-frequency detail (a) Ensemble-averaged 1D isotropic energy spectrum for FEM and surrogate models. 01234
+
+kr     
+
+> 10 1
+> 10 2
+> 10 5
+> 10 8
+> 10 11
+> 10 14
+> 10 17
+> |Emodel (kr) Eground truth (kr)
+> Eground truth (kr) | UNet
+> cDDPM
+> cDDPM DeepONet
+> (b) Relative spectral error across wavenumbers.
+> Figure 9: Single-void dataset: Comparison of spectral characteristics. 9a shows the ensemble-averaged 1D isotropic energy spectra, demonstrating how accurately each surrogate reproduces the multiscale frequency content of the FEM reference. 9b presents the corresponding relative spectral error across wavenumbers, highlighting scale-dependent deviations in the predicted stress fields. Together, these plots quantify the models’ ability to recover both low- and high-frequency components of the stress response.
+
+4.3. Training and optimization 
+
+In setting the training data size and key model hyperparameters, we performed a series of parametric studies to ensure convergence and accuracy. One important hyperparameter is the number of time steps T used in the cDDPM (both in the standalone cDDPM and the hybrid cDDPM-DeepONet model). Figure 11 reports the sensitivity of error metrics with respect to T for the single-void dataset. The performance of all these metrics echo each other. Increasing 
+
+T improves accuracy by enabling a smoother progression from the Gaussian prior N (0, I) to the data distribution p(x). However, improvements diminish beyond T = 100, reflecting the diffusion behavior, in which low-frequency modes are recovered early, and high-frequency details converge gradually [71]. Similar trends have been observed in prior stress-field diffusion models [55]. To evaluate the data efficiency of our models, we perform ablation experiments by systematically varying the fraction of training data used for both datasets. For the single-void dataset, we use 33%, 40%, 50%, 66%, and 100% of the available 19 , 900 training data points; for the multiple-void dataset, we use 25%, 50%, 75%, and 100% of the available 20 , 000 training data points. As seen in Figure 12, the RMSE exhibits a sharp decline with increasing dataset size, but the gains saturate beyond a certain threshold. In the single-void dataset, improvement in performance of the model plateaus after using around 66.7% of the training set (13 , 267 samples), beyond which additional data offers marginal improvements. In the multiple-void dataset, we observe a similar trend —training with 50% of the dataset (10 , 000 samples) achieves performance comparable to that of the full dataset, in the interest of the training time. Together, these observations indicate that neither the diffusion process nor the DeepONet operator in the hybrid model exhibits dependence on large T or very large datasets. Instead, the hybrid model demon-strates performance saturation at practical operating points. This highlights the model’s sample efficiency and inference tractability. We attribute this to the encoder-driven conditioning mechanism described in Section 2.3, which narrows the posterior variance in the reverse diffusion process and concentrates samples near deterministic reconstructions. This aligns with recent work on classifier guidance and distillation in diffusion models [60, 72], which demonstrates that accurate generation can be achieved with as few as 100 steps. 
+
+5. Conclusion 
+
+In this work, we introduced a hybrid surrogate modeling framework that combines conditional denois-ing diffusion models with neural operators to predict stress fields in hyperelastic materials with complex 16 0.5 1.0 1.5 2.0 2.5 3.0 3.5 4.0 
+
+kr            
+
+> 10 23
+> 10 19
+> 10 15
+> 10 11
+> 10 7
+> 10 3
+> 10 1
+> E(kr)
+> Ground truth
+> UNet
+> cDDPM
+> cDDPM DeepONet 123
+> 10 0
+> 10 1
+> 10 2
+> High-frequency detail (a) Ensemble-averaged 1D isotropic energy spectrum for FEM and surrogate models 01234
+
+kr   
+
+> 10 2
+> 10 1
+> 10 4
+> 10 7
+> 10 10
+> 10 13
+> 10 16
+> |Emodel (kr) Eground truth (kr)
+> Eground truth (kr) | UNet
+> cDDPM
+> cDDPM DeepONet
+> (b) Relative spectral error across wavenumbers
+> Figure 10: Multiple-void dataset: Spectral comparison of predicted and FEM stress fields. 10a reports the ensemble-averaged isotropic spectra, reflecting how well each surrogate captures the broader range of spatial frequencies introduced by multiple interacting voids. 10b shows the corresponding relative spectral error, indicating the scales at which discrepancies are most pronounced. Together, these results illustrate each model’s ability to reproduce the richer spectral characteristics of the multiple-void dataset.
+
+microstructural features. By decoupling the representation of stress morphology from stress magnitude, the proposed cDDPM–DeepONet architecture addresses fundamental limitations inherent to existing deep-learning surrogates. This decoupling strategy effectively reconciles the trade-offs inherent to standard deep learning surrogates. While standalone diffusion models excel at generating broadband spatial structure, they often suffer from low-frequency amplitude drift. Conversely, neural operators capture global scaling but typ-ically struggle to resolve high-frequency stress concentrations due to spectral bias. Our framework leverages the complementary strengths of both model classes: the cDDPM reconstructs normalized stress distribu-tions with fine-scale accuracy, and DeepONet provides physically consistent global scaling parameters that restore correct stress magnitudes. Extensive numerical experiments on single-void and multi-void hyperelastic datasets demonstrate that the hybrid model delivers substantial accuracy gains over UNet, DeepONet, and standalone diffusion base-lines. The cDDPM-DeepONet hybrid significantly reduces the smoothing artifacts common in convolutional architectures, ensuring the preservation of sharp stress transitions near geometric discontinuities. Fur-thermore, spectral analysis confirms that the model maintains fidelity across the full frequency spectrum, mitigating both the high-frequency attenuation observed in standard regression models and the amplitude instability characteristic of pure generative approaches. The model further generalizes well to unseen geome-tries, underscoring its robustness and potential for deployment in design and simulation workflows requiring large-scale exploration of geometric variations. Beyond the demonstrated benefits for hyperelastic stress prediction, the decoupling strategy proposed here offers a general paradigm for combining generative models with operator-learning architectures in computational mechanics. By assigning complementary components of the solution to distinct network modules, hybrid surrogates can overcome structural biases that persist even in advanced architectures. Future extensions of this work include applications to three-dimensional RVEs, rate-dependent or history-dependent materials, stochastic microstructures, and multiscale constitutive modeling. The integration of physical constraints or differentiable solvers within the diffusion process also presents promising avenues for improving stability and interpretability. Overall, the cDDPM–DeepONet framework provides a flexible and accurate surrogate modeling approach capable of capturing the rich multiscale behavior of nonlinear elastic solids. Its ability to combine generative fidelity with operator-based physical scaling signals a broader opportunity for hybrid architectures to advance data-driven modeling in solid mechanics and beyond. 17 10 1
+
+> 10 2
+> 10 3
+> 1.5 × 10 3
+
+Number of time steps 
+
+10 3
+
+10 2
+
+10 1
+
+10 0
+
+> Error metric
+
+MAE 
+
+RMSE 
+
+RelMAE 
+
+PAE 
+
+LSG 
+
+PV Figure 11: Single-void dataset: Variation of error metrics with number of diffusion time steps ( T ). on the single-void dataset. MSE, MAE, LSG, and PAE all improve rapidly up to T = 100, with diminishing returns beyond. The contrast illustrates that while global stress ranges are recovered quickly, finer structural accuracy continues to benefit from additional time steps. 33.3 40.0 50.0 66.7 100.0 
+
+Percentage of total dataset used for training    
+
+> 27.5
+> 30.0
+> 32.5
+> 35.0
+> 37.5
+> 40.0
+> 42.5
+> 45.0
+> 47.5
+> RMSE
+> (a) Single-void dataset 25.0 33.3 50.0 100.0
+
+Percentage of total dataset used for training  
+
+> 45
+> 50
+> 55
+> 60
+> 65
+> RMSE (b) Multiple-void dataset
+
+Figure 12: RMSE vs. percentage of available training data used for the cDDPM–DeepONet framework. Performance saturates near 66.7% for the single-void and 50% for the multiple-void datasets, indicating strong sample efficiency. 
+
+18 Appendix A. Detailed Derivation of the Diffusion Loss 
+
+While Section 2.1 outlines the forward and reverse processes, the training objective is derived from the Evidence Lower Bound (ELBO). This appendix details the decomposition of the ELBO and the derivation of the posterior distribution required to arrive at the simplified loss function in Eq. 9. 
+
+A.1. ELBO Decomposition 
+
+The goal is to maximize the log-likelihood of the data pθ (x(0) ). Since the marginal likelihood is in-tractable, we optimize the variational lower bound: log pθ (x(0) ) ≥ Eq
+
+
+
+log pθ (x(0: T ))
+
+q(x(1: T )|x(0) )
+
+
+
+. (A.1) By leveraging the Markov property of the forward and reverse chains, this bound can be decomposed into a sum of KL-divergence terms: 
+
+LVLB = Eq
+
+h
+
+DKL 
+
+
+
+q(x(T )|x(0) ) ∥ p(x(T ))
+
+| {z }
+
+> LT
+
++
+
+> T
+
+X
+
+> t=2
+
+DKL 
+
+
+
+q(x(t−1) |x(t), x(0) ) ∥ pθ (x(t−1) |x(t))
+
+| {z }
+
+> Lt−1
+
+− log pθ (x(0) |x(1) )
+
+| {z }
+
+> L0
+
+i
+
+.
+
+(A.2) The term LT is constant (as q is fixed and p is a Gaussian prior), and L0 is a reconstruction term. The core training signal comes from the Lt−1 terms, which align the learned reverse transition pθ with the tractable forward posterior q(x(t−1) |x(t), x(0) ). 
+
+A.2. Tractable Forward Posterior 
+
+Unlike the reverse transition, the forward posterior conditioned on x(0) is tractable and Gaussian. Using Bayes’ rule: 
+
+q(x(t−1) |x(t), x(0) ) = q(x(t)|x(t−1) )q(x(t−1) |x(0) )
+
+q(x(t)|x(0) ) . (A.3) Given the Gaussian forms defined in Eq. (1) and Eq. (3), the posterior is derived as N (x(t−1) ; ˜ μt, ˜βtI), where the mean ˜ μt is: ˜μt(x(t), x(0) ) = 
+
+√α(t−1) β(t)
+
+1 − α(t) x(0) +
+
+√α(t)(1 − α(t−1) )1 − α(t) x(t). (A.4) This formulation depends on x(0) , which is unknown during sampling. However, during training, we can express x(0) in terms of x(t) and the added noise ϵ using the reparameterization trick x(0) = x(t)−
+
+√1−α(t)ϵ 
+
+> √α(t)
+
+.Substituting this into Eq. A.4 simplifies the posterior mean to: ˜μt(x(t), x(0) ) = 1
+
+√α(t) x(t) − 1 − α(t)
+
+p
+
+1 − α(t) ϵ
+
+!
+
+. (A.5) 19 A.3. Parameterization and Loss Function 
+
+The reverse transition pθ (x(t−1) |x(t)) is modeled as N (x(t−1) ; μθ , σ 2 
+
+> t
+
+I). To minimize the KL divergence term Lt−1, the model mean μθ aims to predict ˜ μt. We therefore parameterize μθ to match the functional form of the posterior mean: 
+
+μθ (x(t), t ) = 1
+
+√α(t) x(t) − 1 − α(t)
+
+p
+
+1 − α(t) ˆϵθ (x(t), t )
+
+!
+
+. (A.6) The KL divergence between two Gaussians with fixed variances is proportional to the squared Euclidean distance between their means. Substituting the definitions of ˜ μt and μθ , the objective simplifies to minimizing the error between the true noise ϵ and the predicted noise ˆ ϵθ :
+
+Lsimple = Et, x(0) ,ϵ 
+
+h
+
+∥ϵ − ˆϵθ (x(t), t )∥2i
+
+. (A.7) 
+
+Declaration of generative AI and AI-assisted technologies in the writing process 
+
+During the preparation of this work, the authors used the ChatGPT 5 Thinking model in order to improve the readability and language of the Introduction section of the manuscript. After using this tool/service, the authors reviewed and edited the content as needed and take full responsibility for the content of the published article. 
+
+References 
+
+[1] J. He, D. Abueidda, R. Abu Al-Rub, S. Koric, I. Jasiuk, A deep learning energy-based method for classical elastoplasticity, International Journal of Plasticity 162 (2023) 103531. doi:https://doi.org/10.1016/j.ijplas.2023.103531 .URL https://www.sciencedirect.com/science/article/pii/S0749641923000177 
+
+[2] S. Koric, A. Viswantah, D. W. Abueidda, N. A. Sobh, K. Khan, Deep learning operator network for plastic deformation with variable loads and material properties, Engineering with Computers 40 (2) (2024) 917–929. [3] J. He, S. Kushwaha, D. Abueidda, I. Jasiuk, Exploring the structure-property relations of thin-walled, 2d extruded lattices using neural networks, Computers & Structures 277-278 (2023) 106940. doi:https://doi.org/10.1016/j.compstruc. 2022.106940 .URL https://www.sciencedirect.com/science/article/pii/S0045794922002000 
+
+[4] J.-H. Bastek, D. M. Kochmann, Inverse design of nonlinear mechanical metamaterials via video denoising diffusion models, Nature Machine Intelligence 5 (12) (2023) 1466–1475. [5] Z. Yang, C.-H. Yu, K. Guo, M. J. Buehler, End-to-end deep learning method to predict complete strain and stress tensors for complex hierarchical composite microstructures, Journal of the Mechanics and Physics of Solids 154 (2021) 104506. 
+
+doi:https://doi.org/10.1016/j.jmps.2021.104506 .URL https://www.sciencedirect.com/science/article/pii/S0022509621001721 
+
+[6] S. Ye, B. Li, Q. Li, H.-P. Zhao, X.-Q. Feng, Deep neural network method for predicting the mechanical properties of composites, Applied Physics Letters 115 (16) (2019). [7] J. Wei, X. Chu, X.-Y. Sun, K. Xu, H.-X. Deng, J. Chen, Z. Wei, M. Lei, Machine learning in materials science, InfoMat 1 (3) (2019) 338–358. [8] K. T. Butler, D. W. Davies, H. Cartwright, O. Isayev, A. Walsh, Machine learning for molecular and materials science, Nature 559 (7715) (2018) 547–555. [9] V. Venturi, H. L. Parks, Z. Ahmad, V. Viswanathan, Machine learning enabled discovery of application dependent design principles for two-dimensional materials, Machine Learning: Science and Technology 1 (3) (2020) 035015. [10] S. Y. Lee, J. Lee, J. S. Lee, S. Lee, Deep learning-based prediction and interpretability of physical phenomena for metaporous materials, Materials Today Physics 30 (2023) 100946. [11] K. Guo, Z. Yang, C.-H. Yu, M. J. Buehler, Artificial intelligence and machine learning in design of mechanical materials, Materials Horizons 8 (4) (2021) 1153–1172. [12] Z. Yang, Y. C. Yabansu, D. Jha, W.-k. Liao, A. N. Choudhary, S. R. Kalidindi, A. Agrawal, Establishing structure-property localization linkages for elastic deformation of three-dimensional high contrast composites using deep learning approaches, Acta Materialia 166 (2019) 335–345. [13] W. Chen, A. Iyer, R. Bostanabad, Data centric design: A new approach to design of microstructural material systems, Engineering 10 (2022) 89–98. [14] G. A. Sengodan, Prediction of two-phase composite microstructure properties through deep learning of reduced dimensional structure-response data, Composites Part B: Engineering 225 (2021) 109282. 
+
+20 [15] D.-W. Kim, J. H. Lim, S. Lee, Prediction and validation of the transverse mechanical behavior of unidirectional composites considering interfacial debonding through convolutional neural networks, Composites Part B: Engineering 225 (2021) 109314. [16] M. Pathan, S. Ponnusami, J. Pathan, R. Pitisongsawat, B. Erice, N. Petrinic, V. Tagarielli, Predictions of the mechanical properties of unidirectional fibre composites by supervised machine learning, Scientific Reports 9 (1) (2019) 1–10. doi: 10.1038/s41598-019-50144-w .[17] Z. Yang, Y. C. Yabansu, R. Al-Bahrani, W. keng Liao, A. N. Choudhary, S. R. Kalidindi, A. Agrawal, Deep learning approaches for mining structure-property linkages in high contrast composites from simulation datasets, Computational Materials Science 151 (2018) 278–287. doi:https://doi.org/10.1016/j.commatsci.2018.05.014 .URL https://www.sciencedirect.com/science/article/pii/S0927025618303215 
+
+[18] C. Rao, Y. Liu, Three-dimensional convolutional neural network (3d-cnn) for heterogeneous material homogenization, Computational Materials Science 184 (2020) 109850. doi:https://doi.org/10.1016/j.commatsci.2020.109850 .URL https://www.sciencedirect.com/science/article/pii/S0927025620303414 
+
+[19] K. Wang, W. Sun, A multiscale multi-permeability poroplasticity model linked by recursive homogenizations and deep learning, Computer Methods in Applied Mechanics and Engineering 334 (2018) 337–380. doi:https://doi.org/10.1016/ j.cma.2018.01.036 .URL https://www.sciencedirect.com/science/article/pii/S0045782518300380 
+
+[20] S. Saha, Z. Gan, L. Cheng, J. Gao, O. L. Kafka, X. Xie, H. Li, M. Tajdari, H. A. Kim, W. K. Liu, Hierarchical deep learning neural network (hidenn): An artificial intelligence (ai) framework for computational science and engineering, Computer Methods in Applied Mechanics and Engineering 373 (2021) 113452. doi:10.1016/j.cma.2020.113452 .URL https://www.sciencedirect.com/science/article/pii/S004578252030637X 
+
+[21] A. Bhaduri, A. Gupta, A. Olivier, L. Graham-Brady, An efficient optimization based microstructure reconstruction ap-proach with multiple loss functions, Computational Materials Science 199 (2021) 110709. [22] A. M. C. Carneiro, A. F. C. Alves, R. C. P. Coelho, J. S. Cardoso, F. M. A. Pires, A simple machine learning-based framework for faster multi-scale simulations of path-independent materials at large strains, Finite Elements in Analysis & Design 222 (2023) 103956. doi:10.1016/j.finel.2023.103956 .[23] L. F. Li, C. Q. Chen, Equilibrium-based convolutional neural networks for constitutive modeling of hyperelastic materials, Journal of the Mechanics and Physics of Solids 164 (2022) 104931. doi:10.1016/j.jmps.2022.104931 .[24] L. Liang, M. Liu, C. Martin, W. Sun, A deep learning approach to estimate stress distribution: a fast and accurate surrogate of finite-element analysis, Journal of The Royal Society Interface 15 (138) (2018) 20170844. doi:10.1098/rsif.2017.0844 .[25] Z. Nie, H. Jiang, L. B. Kara, Stress field prediction in cantilevered structures using convolutional neural networks, Journal of Computing and Information Science in Engineering 20 (1) (2020) 011002. doi:10.1115/1.4044097 .URL https://doi.org/10.1115/1.4044097 
+
+[26] Y. Sun, I. Hanhan, M. D. Sangid, G. Lin, Predicting mechanical properties from microstructure images in fiber-reinforced polymers using convolutional neural networks, Journal of Composites Science 8 (10) (2024). URL https://www.mdpi.com/2504-477X/8/10/387 
+
+[27] M. M. Rashid, T. Pittie, S. Chakraborty, N. A. Krishnan, Learning the stress-strain fields in digital composites using fourier neural operator, iScience 25 (11) (2022) 105452. doi:https://doi.org/10.1016/j.isci.2022.105452 .URL https://www.sciencedirect.com/science/article/pii/S2589004222017242 
+
+[28] A. Bhaduri, A. Gupta, L. Graham-Brady, Stress field prediction in fiber-reinforced composite materials using a deep learning approach, Composites Part B: Engineering 238 (2022) 109879. [29] M. M. Rashid, S. Chakraborty, N. A. Krishnan, Revealing the predictive power of neural operators for strain evolution in digital composites, Journal of the Mechanics and Physics of Solids 181 (2023) 105444. [30] O. Ronneberger, P. Fischer, T. Brox, U-net: Convolutional networks for biomedical image segmentation, in: Medical Image Computing and Computer-Assisted Intervention (MICCAI) 2015, Vol. 9351 of LNCS, Springer, 2015, pp. 234–241. 
+
+doi:10.1007/978-3-319-24574-4\_28 .[31] I. Saha, A. Gupta, L. Graham-Brady, Prediction of local elasto-plastic stress and strain fields in a two-phase composite microstructure using a deep convolutional neural network, Computer Methods in Applied Mechanics and Engineering 421 (2024) 116816. doi:https://doi.org/10.1016/j.cma.2024.116816 .URL https://www.sciencedirect.com/science/article/pii/S0045782524000720 
+
+[32] A. Mendizabal, P. M´ arquez-Neila, S. Cotin, Simulation of hyperelastic materials in real-time using deep learning, Medical Image Analysis 59 (2020) 101569. doi:10.1016/j.media.2019.101569 .[33] A. Bhaduri, D. Brandyberry, M. D. Shields, P. Geubelle, L. Graham-Brady, On the usefulness of gradient information in surrogate modeling: Application to uncertainty propagation in composite material models, Probabilistic Engineering Mechanics 60 (2020) 103024. [34] F. E. Bock, R. C. Aydin, C. J. Cyron, N. Huber, S. R. Kalidindi, B. Klusemann, A review of the application of machine learning and data mining approaches in continuum materials mechanics, Frontiers in Materials 6 (2019) 110. [35] A. Stoll, P. Benner, Machine learning for material characterization with an application for predicting mechanical properties, GAMM-Mitteilungen 44 (1) (2021) e202100003. [36] N. Kovachki, B. Liu, X. Sun, H. Zhou, K. Bhattacharya, M. Ortiz, A. Stuart, Multiscale modeling of materials: Computing, data science, uncertainty and goal-oriented optimization, Mechanics of Materials 165 (2022) 104156. [37] Z. Zhang, G. X. Gu, Finite-element-based deep-learning model for deformation behavior of digital materials, Advanced Theory and Simulations 3 (7) (2020) 2000031. [38] P. Zhang, Z.-Y. Yin, A novel deep learning-based modelling strategy from image of particles to mechanical properties for granular materials with CNN and BiLSTM, Computer Methods in Applied Mechanics and Engineering 382 (2021) 113858. 
+
+21 doi:10.1016/j.cma.2021.113858 .[39] S. Rezaei, R. N. Asl, S. Faroughi, M. Asgharzadeh, A. Harandi, R. N. Koopas, G. Laschet, S. Reese, M. Apel, A finite operator learning technique for mapping the elastic properties of microstructures to their mechanical deformations, International Journal for Numerical Methods in Engineering 126 (1) (2025) e7637. arXiv:https://onlinelibrary.wiley. com/doi/pdf/10.1002/nme.7637 , doi:https://doi.org/10.1002/nme.7637 .URL https://onlinelibrary.wiley.com/doi/abs/10.1002/nme.7637 
+
+[40] Z. Li, N. Kovachki, K. Azizzadenesheli, B. Liu, K. Bhattacharya, A. Stuart, A. Anandkumar, Fourier neural operator for parametric partial differential equations (2021). arXiv:2010.08895 .URL https://arxiv.org/abs/2010.08895 
+
+[41] Z. Li, D. Z. Huang, B. Liu, A. Anandkumar, Fourier neural operator with learned deformations for pdes on general geometries, Journal of Machine Learning Research 24 (388) (2023) 1–26. URL http://jmlr.org/papers/v24/23-0064.html 
+
+[42] J. He, S. Koric, S. Kushwaha, J. Park, D. Abueidda, I. Jasiuk, Novel deeponet architecture to predict stresses in elasto-plastic structures with variable complex geometries and loads, Computer Methods in Applied Mechanics and Engineering 409 (2023) 116277. doi:10.1016/j.cma.2023.116277 .[43] M. Mozaffar, R. Bostanabad, W. Chen, K. Ehmann, J. Cao, M. A. Bessa, Deep learning predicts path-dependent plasticity, Proceedings of the National Academy of Sciences 116 (52) (2019) 26414–26420. arXiv:https://www.pnas.org/doi/pdf/ 10.1073/pnas.1911815116 , doi:10.1073/pnas.1911815116 .URL https://www.pnas.org/doi/abs/10.1073/pnas.1911815116 
+
+[44] M. Shin, M. Seo, H. Choi, J. Jung, K. Yoon, Local stress fields prediction using global displacement through fourier neural operators, Journal of Computational Design and Engineering 12 (5) (2025) 21–40. [45] N. Rahaman, A. Baratin, D. Arpit, F. Draxler, M. Lin, F. Hamprecht, Y. Bengio, A. Courville, On the spectral bias of neural networks, in: International conference on machine learning, PMLR, 2019, pp. 5301–5310. [46] Z.-Q. J. Xu, Y. Zhang, T. Luo, Y. Xiao, Z. Ma, Frequency principle: Fourier analysis sheds light on deep neural networks, arXiv preprint arXiv:1901.06523 (2019). [47] A. Creswell, T. White, V. Dumoulin, K. Arulkumaran, B. Sengupta, A. A. Bharath, Generative adversarial networks: An overview, IEEE signal processing magazine 35 (1) (2018) 53–65. [48] J. Song, C. Meng, S. Ermon, Denoising diffusion implicit models, arXiv preprint arXiv:2010.02502 (2020). [49] J. Sohl-Dickstein, E. Weiss, N. Maheswaranathan, S. Ganguli, Deep unsupervised learning using nonequilibrium thermo-dynamics, in: F. Bach, D. Blei (Eds.), Proceedings of the 32nd International Conference on Machine Learning, Vol. 37 of Proceedings of Machine Learning Research, PMLR, Lille, France, 2015, pp. 2256–2265. URL https://proceedings.mlr.press/v37/sohl-dickstein15.html 
+
+[50] J. Ho, A. Jain, P. Abbeel, Denoising diffusion probabilistic models, Advances in neural information processing systems 33 (2020) 6840–6851. [51] A. Q. Nichol, P. Dhariwal, Improved denoising diffusion probabilistic models, in: International conference on machine learning, PMLR, 2021, pp. 8162–8171. [52] M. J. Buehler, Modeling atomistic dynamic fracture mechanisms using a progressive transformer diffusion model, Jour-nal of Applied Mechanics 89 (12) (2022) 121009. arXiv:https://asmedigitalcollection.asme.org/appliedmechanics/ article-pdf/89/12/121009/6925738/jam_89_12_121009.pdf , doi:10.1115/1.4055730 .URL https://doi.org/10.1115/1.4055730 
+
+[53] M. J. Buehler, Predicting mechanical fields near cracks using a progressive transformer diffusion model and exploration of generalization capacity, Journal of Materials Research 38 (5) (2023) 1317–1331. doi:10.1557/s43578-023-00892-3 .URL https://doi.org/10.1557/s43578-023-00892-3 
+
+[54] Z. Gao, C. Zhu, C. Wang, Y. Shu, S. Liu, J. Miao, L. Yang, Advanced deep learning framework for multi-scale prediction of mechanical properties from microstructural features in polycrystalline materials, Computer Methods in Applied Mechanics and Engineering 438 (2025) 117844. doi:https://doi.org/10.1016/j.cma.2025.117844 .URL https://www.sciencedirect.com/science/article/pii/S0045782525001161 
+
+[55] Y. Jadhav, J. Berthel, C. Hu, R. Panat, J. Beuth, A. B. Farimani, Stressd: 2d stress estimation using denoising diffusion model, Computer Methods in Applied Mechanics and Engineering 416 (2023) 116343. [56] H. Jiang, Z. Nie, R. Yeo, A. B. Farimani, L. B. Kara, Stressgan: A generative deep learning model for two-dimensional stress distribution prediction, Journal of Applied Mechanics 88 (5) (2021) 051005. [57] N. N. Vlassis, W. Sun, Denoising diffusion algorithm for inverse design of microstructures with fine-tuned nonlinear material properties, Computer Methods in Applied Mechanics and Engineering 413 (2023) 116126. doi:https://doi. org/10.1016/j.cma.2023.116126 .URL https://www.sciencedirect.com/science/article/pii/S0045782523002505 
+
+[58] E. Herron, X. Y. Lee, A. Balu, B. S. S. Pokuri, B. Ganapathysubramanian, S. Sarkar, A. Krishnamurthy, Generative design of material microstructures for organic solar cells using diffusion models (2022). URL https://openreview.net/forum?id=f9Lk1G9q-G-
+
+[59] A. J. Lew, M. J. Buehler, Single-shot forward and inverse hierarchical architected materials design for nonlinear mechanical properties using an attention-diffusion model, Materials Today 64 (2023) 10–20. doi:https://doi.org/10.1016/j.mattod. 2023.03.007 .URL https://www.sciencedirect.com/science/article/pii/S136970212300069X 
+
+[60] P. Dhariwal, A. Nichol, Diffusion models beat gans on image synthesis, Advances in neural information processing systems 34 (2021) 8780–8794. [61] H. Chang, H. Zhang, L. Jiang, C. Liu, W. T. Freeman, Maskgit: Masked generative image transformer, in: Proceedings 
+
+22 of the IEEE/CVF conference on computer vision and pattern recognition, 2022, pp. 11315–11325. [62] H. Chang, H. Zhang, J. Barber, A. Maschinot, J. Lezama, L. Jiang, M.-H. Yang, K. Murphy, W. T. Freeman, M. Ru-binstein, et al., Muse: Text-to-image generation via masked generative transformers, arXiv preprint arXiv:2301.00704 (2023). [63] F. Bao, C. Li, J. Sun, J. Zhu, Why are conditional generative models better than unconditional ones?, arXiv preprint arXiv:2212.00362 (2022). [64] H. Cao, C. Tan, Z. Gao, Y. Xu, G. Chen, P.-A. Heng, S. Z. Li, A survey on generative diffusion models, IEEE transactions on knowledge and data engineering 36 (7) (2024) 2814–2830. [65] D. P. Kingma, T. Salimans, M. Welling, Variational dropout and the local reparameterization trick, Advances in neural information processing systems 28 (2015). [66] L. Lu, P. Jin, G. E. Karniadakis, Learning nonlinear operators via deeponet based on the universal approximation theorem of operators, Nature Machine Intelligence 3 (2021) 218–229. doi:10.1038/s42256-021-00302-5 .[67] A. Logg, K. B. Ølgaard, M. E. Rognes, G. N. Wells, Ffc: the fenics form compiler, in: A. Logg, K.-A. Mardal, G. Wells (Eds.), Automated Solution of Differential Equations by the Finite Element Method: The FEniCS Book, Springer Berlin Heidelberg, Berlin, Heidelberg, 2012, pp. 227–238. doi:10.1007/978-3-642-23099-8_11 .URL https://doi.org/10.1007/978-3-642-23099-8_11 
+
+[68] M. W. Scroggs, J. S. Dokken, C. N. Richardson, G. N. Wells, Construction of arbitrary order finite element degree-of-freedom maps on polygonal and polyhedral cell meshes, ACM Transactions on Mathematical Software 48 (2) (2022) 18:1–18:23. doi:10.1145/3524456 .[69] M. S. Alnaes, A. Logg, K. B. Ølgaard, M. E. Rognes, G. N. Wells, Unified form language: A domain-specific language for weak formulations of partial differential equations, ACM Transactions on Mathematical Software 40 (2014). doi: 10.1145/2566630 .[70] G. A. Holzapfel, Nonlinear Solid Mechanics: A Continuum Approach for Engineering Science, Meccanica 37 (4) (2002) 489–490. doi:10.1023/A:1020843529530 .URL https://doi.org/10.1023/A:1020843529530 
+
+[71] R. Benita, M. Elad, J. Keshet, Spectral analysis of diffusion models with application to schedule design, arXiv preprint arXiv:2502.00180 (2025). [72] C. Saharia, J. Ho, W. Chan, T. Salimans, D. J. Fleet, M. Norouzi, Image super-resolution via iterative refinement, IEEE transactions on pattern analysis and machine intelligence 45 (4) (2022) 4713–4726. 
+
+23

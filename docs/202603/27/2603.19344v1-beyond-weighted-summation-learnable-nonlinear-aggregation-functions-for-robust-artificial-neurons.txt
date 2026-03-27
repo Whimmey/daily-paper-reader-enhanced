@@ -1,0 +1,254 @@
+Title: Beyond Weighted Summation: Learnable Nonlinear Aggregation Functions for Robust Artificial Neurons
+
+URL Source: https://arxiv.org/pdf/2603.19344v1
+
+Published Time: Mon, 23 Mar 2026 00:03:37 GMT
+
+Number of Pages: 7
+
+Markdown Content:
+# Beyond Weighted Summation: Learnable Nonlinear Aggregation Functions for Robust Artificial Neurons 
+
+Berke Deniz Bozyigit 
+
+Independent Researcher 
+
+berkebzt@gmail.com 
+
+## Abstract 
+
+Weighted summation has remained the default input aggregation mechanism in artificial neurons since the earliest neural network models. While computationally efficient, this design implicitly behaves like a mean-based estimator and is therefore sensitive to noisy or extreme inputs. This paper investigates whether replacing fixed linear aggregation with learnable nonlinear alternatives can improve neural network robustness without sacrificing trainability. Two differentiable aggregation mech-anisms are introduced: an F-Mean neuron based on a learnable power-weighted aggregation rule, and a Gaussian Support neuron based on distance-aware affin-ity weighting. To preserve the optimisation stability of standard neurons, hybrid neurons are proposed that interpolate between linear and nonlinear aggregation through a learnable blending parameter. Evaluated in multilayer perceptrons and convolutional neural networks on CIFAR-10 and a noisy CIFAR-10 variant with additive Gaussian corruption, hybrid neurons consistently improve robustness under noise while F-Mean hybrids also yield modest gains on clean data. The three-way hybrid achieves robustness scores of up to 0.991 compared to 0.890 for the standard baseline, and learned parameters converge consistently to sub-linear aggregation ( p ≈ 0.43 –0.50 ) and high novelty utilisation ( α ≈ 0.69 –0.79 ). These findings suggest that neuron-level aggregation is a meaningful and underexplored design dimension for building more noise-tolerant neural networks. 
+
+## 1 Introduction 
+
+Artificial neurons typically compute a weighted sum of their inputs followed by a nonlinear activation. Despite decades of progress in architectures, optimisation algorithms, and scaling, this aggregation rule has remained nearly unchanged. Yet weighted summation is not a neutral choice: it behaves like a scaled arithmetic mean over transformed inputs, inheriting the mean’s sensitivity to outliers and corrupted observations. This raises a natural question: should every neuron in a network be constrained to aggregate informa-tion in the same linear way, regardless of task, architecture, or data quality? In noisy settings, mean-like aggregation may over-react to spurious activations, whereas more robust or context-sensitive aggregation could suppress unreliable evidence. The standard neuron model computes 
+
+y = φ
+
+> n
+
+X
+
+> i=1
+
+wixi + b
+
+!
+
+, (1) where x ∈ Rn are inputs, w ∈ Rn are learnable weights, b is a bias, and φ is a nonlinear activation. The inner summation is, up to a scale factor and the bias, the weighted arithmetic mean of the inputs, which is the unique minimiser of the least-squares objective J(μ) = P
+
+> i
+
+(wixi − μ)2. For over 70 years, this formulation has remained the default building block of virtually every neural network architecture. 
+
+Preprint. Under review. 
+
+> arXiv:2603.19344v1 [cs.LG] 19 Mar 2026
+
+This paper revisits the aggregation stage of the artificial neuron. Two differentiable, learnable alternatives are proposed that retain compatibility with gradient-based training while broadening the family of computations available at the neuron level. The focus is on two mechanisms: a learnable power-based aggregation that smoothly adjusts how strongly large responses are emphasised, and a Gaussian support aggregation that weights inputs according to agreement in the transformed feature space. To reduce optimisation risk, each nonlinear aggregator is combined with the standard linear path through a learnable hybrid blend. The contributions of this paper are as follows. • Two differentiable alternatives to fixed sum aggregation are formulated: F-Mean aggregation and Gaussian Support aggregation. • Hybrid neurons are introduced that learn how much to rely on standard linear aggregation versus nonlinear alternatives. • These designs are evaluated in both MLP and CNN settings on clean and noisy CIFAR-10. • Hybrid neurons are shown to consistently improve robustness to corruption, with F-Mean hybrids additionally offering small clean-data gains. • Learned parameter convergence is analysed, revealing interpretable sub-linear aggregation strate-gies that emerge without explicit regularisation. 
+
+## 2 Related Work 
+
+Most neural architectures inherit the classical neuron design in which aggregation is fixed to weighted summation. Prior work has explored robust estimators such as median-like aggregation, generalised mean or p-norm style operators, and adaptive weighting mechanisms related to attention or kernel methods. These approaches suggest that aggregation matters, but they often emphasise either robustness or flexibility in isolation, or incur non-trivial computational costs. 
+
+Generalised neuron models. Yadav et al. [ 13 ] proposed generalised-mean neurons that replace summation with a power mean of fixed exponent. Baldeschi et al. [ 1 ] introduced a double-weight neuron definition that separates magnitude and direction in the aggregation step. Fan et al. [ 3]surveyed neuronal diversity in biological systems and argued for incorporating diverse computational primitives into artificial networks. The present work extends these ideas by making the aggregation exponent itself a trainable parameter and combining it with distance-based weighting within a hybrid framework. 
+
+Learnable aggregation in graph neural networks. Pellegrini et al. [ 10 ] introduced Learnable Aggregation Functions (LAFs), a parametric family that approximates diverse statistical behaviours including sums, means, and higher-order moments. Corso et al. [ 2] proposed Principal Neighbourhood Aggregation, which combines multiple aggregators to improve the expressive power of graph neural networks. These methods target graph-structured data and typically rely on implicit-layer solvers that introduce non-trivial computational overhead. The architectures in this paper target standard feed-forward neurons and use closed-form aggregations that avoid iterative sub-problems. 
+
+Robust aggregation. Geisler et al. [ 4] introduced the Soft Medoid, a differentiable robust aggre-gation function for graph neural networks that achieves a high breakdown point against adversarial perturbations. Pillutla et al. [ 11 ] applied the geometric median to federated learning, improving resilience to corrupted client updates. Both of these works select a fixed robust estimator. The present approach instead learns which aggregation behaviour is most appropriate for each layer, allowing the network to adapt to the distribution of its own activations. 
+
+Learnable pooling and attention. Gülçehre et al. [ 6] studied learned-norm pooling in deep feedforward and recurrent networks. Terziyan et al. [ 12 ] explored hyper-flexible CNNs based on Lehmer and power means, demonstrating that generalised pooling can improve performance with modest computational overhead. The Gaussian Support neuron draws additional inspiration from attention mechanisms [ 9 ] and Radial Basis Function networks, extending distance-based weighting to individual neurons in standard fully-connected and convolutional architectures. 2Rather than replacing the standard neuron outright, linear aggregation is treated as a strong baseline, and learnable nonlinear extensions are asked to improve performance, especially under noisy inputs. 
+
+## 3 Method 
+
+3.1 Design Criteria 
+
+Any candidate aggregation function must satisfy three properties to be practical in gradient-based training. It must include at least one learnable parameter that modifies its aggregation behaviour during training. It must be fully differentiable with respect to all inputs and parameters to enable backpropagation. And the arithmetic mean must be a special case , so that the neuron can be initialised to standard behaviour and explore alternative strategies gradually. 
+
+3.2 F-Mean Neuron 
+
+The F-Mean neuron replaces fixed summation with a power-weighted mean. Let zi = wixi denote the scaled inputs, and define softplus-transformed values 
+
+z+ 
+
+> i
+
+= ln(1 + ezi ), (2) which are guaranteed to be positive. The power-normalised aggregation weights are 
+
+ω(p) 
+
+> i
+
+= (z+ 
+
+> i
+
+)p
+
+P 
+
+> j
+
+(z+ 
+
+> j
+
+)p + ε , ε = 10 −8, (3) and the aggregation output is 
+
+AF-Mean (x) = X
+
+> i
+
+ω(p) 
+
+> i
+
+· zi. (4) The parameter p ∈ R is learnable and assigned per output unit. When p = 1 , the weights become proportional to z+ 
+
+> i
+
+, recovering approximately uniform weighting similar to standard linear aggregation. As p → 0, weights approach uniform values, producing harmonic-like averaging. As p → ∞ , weight concentrates on the maximum-valued input, producing max-like behaviour. Smaller values of p
+
+induce sub-linear behaviour that downweights large activations; this is the regime that networks consistently prefer in practice. The softplus transformation ensures z+ 
+
+> i
+
+> 0, preventing undefined gradients at zero crossings, and the epsilon term in Equation 3 prevents division by zero. Parameters are initialised at p = 1 to provide a stable starting point that matches the standard neuron. 
+
+3.3 Gaussian Support Neuron 
+
+The Gaussian Support neuron weights each input by its aggregate similarity to all other inputs in the transformed feature space. The pairwise affinity between inputs i and j is 
+
+Aff( i, j ) = exp 
+
+
+
+− ∥zi − zj ∥2
+
+2σ2
+
+
+
+, (5) where σ > 0 is a learnable width parameter stored as log σ for unconstrained optimisation. Support weights are obtained by summing affinities and normalising: 
+
+αi =
+
+P 
+
+> j
+
+Aff( i, j )
+
+P
+
+> k
+
+P 
+
+> j
+
+Aff( k, j ) . (6) The aggregation is then AGauss (x) = P 
+
+> i
+
+αizi.Large σ yields broad, nearly uniform weighting; smaller σ favours locally consistent responses. Pairwise distance computation has O(n2) complexity, which is managed through a dimensionality-reduction projection layer applied before the Gaussian neuron. 33.4 Hybrid Neurons 
+
+Pure nonlinear aggregation may be harder to optimise than the standard linear neuron. Hybrid neurons are therefore defined that interpolate between linear and nonlinear paths. The two-way hybrid combines a novel aggregation Anovel with standard linear aggregation via a learnable scalar: 
+
+y = ϕ(˜ α · Anovel (x) + (1 − ˜α) · Alinear (x) + b) , ˜α = σ(αraw ) ∈ (0 , 1) . (7) The three-way hybrid combines all three aggregations through softmax-normalised coefficients: 
+
+y = ϕ
+
+> 3
+
+X
+
+> k=1
+
+˜αk · Ak(x) + b
+
+!
+
+, ˜α = softmax( αraw ), (8) where A1, A2, A3 denote linear, F-Mean, and Gaussian aggregations respectively. Initialising αraw = 0 sets ˜α = 0 .5, providing equal initial weight to both pathways. If novel aggregation is unhelpful, the network can reduce ˜α and revert toward linear behaviour. If it is beneficial, ˜α grows during training. The blending parameter also acts as a natural regulariser, dampening gradient instability from the novel aggregation path. 
+
+## 4 Experimental Setup 
+
+4.1 Architectures 
+
+Experiments are conducted in two model families. 
+
+MLP. A projection layer first reduces input dimensionality ( 3072 → 128 ), followed by a hidden layer using the chosen hybrid neuron and a standard linear classifier. 
+
+CNN. Standard convolutional feature extraction is preserved, and hybrid neurons are introduced in the classifier head after flattening ( 8192 → 256 via projection). This isolates the effect of alternative aggregation while keeping convolutional processing unchanged. 
+
+4.2 Datasets 
+
+Experiments use CIFAR-10, comprising 50 ,000 training and 10 ,000 test images across 10 classes. To assess robustness, a noisy variant is constructed by injecting additive Gaussian noise with standard deviation σnoise = 0 .15 at test time. 
+
+4.3 Training Details 
+
+Four aggregation settings are compared: standard linear, F-Mean hybrid, Gaussian hybrid, and three-way hybrid, across two architectures and two data conditions, yielding 16 experimental configurations in total. Standard weight parameters use learning rate 10 −3; novel parameters ( α, p, log σ) use 10 −2 to encourage exploration. Gradient clipping with maximum norm 1.0, a ReduceLROnPlateau scheduler, and early stopping with patience 10 are applied throughout. Numerical stability is supported by softplus transformations, log-space parameterisation for σ, and ε = 10 −8 regularisation. 
+
+4.4 Evaluation 
+
+Clean accuracy, noisy accuracy, and a robustness score are reported: 
+
+ρ = Accuracy noisy 
+
+Accuracy clean 
+
+. (9) Learned aggregation parameters are additionally analysed to understand whether models converge toward linear or nonlinear behaviour. 4Table 1: MLP results on clean and noisy CIFAR-10. Model Clean (%) Noisy (%) ρ
+
+Baseline 52.30 51.45 0.984 F-Mean Hybrid 55.17 53.56 0.971 Gaussian Hybrid 54.30 53.30 0.982 Three-way Hybrid 55.21 54.72 0.991 
+
+Table 2: CNN results on clean and noisy CIFAR-10. Model Clean (%) Noisy (%) ρ
+
+Standard CNN 87.33 77.73 0.890 F-Mean CNN 87.61 78.41 0.895 Gaussian CNN 86.60 77.33 0.893 Three-way CNN 86.37 77.52 0.898 
+
+## 5 Results 
+
+5.1 MLP Performance 
+
+Table 1 summarises results for the MLP setting. All hybrid variants improve clean accuracy over the baseline, with F-Mean and three-way hybrids reaching approximately 55 .2% compared to 52 .3% 
+
+for the baseline. The three-way hybrid achieves the highest robustness score of 0.991 , showing the smallest performance drop under noise. This suggests that combining multiple aggregation behaviours is especially useful in low-capacity models where robustness is otherwise difficult to obtain. 
+
+5.2 CNN Performance 
+
+Table 2 presents the CNN results. The F-Mean hybrid achieves the best clean and noisy accuracy, while the three-way hybrid attains the highest robustness ratio. Clean-data gains are modest but consistent across training runs, indicating a real rather than incidental improvement. All hybrid CNN variants outperform the standard baseline on the robustness metric, indicating that nonlinear aggregation confers benefits even when strong convolutional feature extraction is already present. The transition from MLP to CNN yields approximately 32 percentage points of absolute accuracy gain across all variants, confirming that hybrid neurons integrate successfully with convolutional architectures. 
+
+5.3 Learned Aggregation Behaviour 
+
+The learned parameters reveal consistent trends across all architectures. For the F-Mean path, the power parameter converges to sub-linear values in all settings: p ≈ 0.476 (MLP F-Mean), 0.430 
+
+(CNN F-Mean), 0.495 (three-way MLP), and 0.445 (three-way CNN). These values indicate a systematic preference for suppressing extreme activations, a behaviour that was not enforced by regularisation but emerged purely from gradient-based optimisation. The blending coefficient α settles between 0.69 and 0.79 across architectures, indicating that models rely substantially on novel aggregation while retaining a non-trivial linear component. The similarity of these values across MLP and CNN settings suggests they represent fundamental optimal blending ratios rather than architecture-specific artefacts. The Gaussian width σ converges to moderate values in all cases. CNN architectures converge to larger σ values than MLPs, which is consistent with richer feature representations available after convolutional processing. Moderate σ produces neither highly localised nor fully global aggregation, suggesting that useful behaviour lies between these two extremes. 5Table 3: Converged novel parameters across architectures. Architecture α p σ
+
+MLP F-Mean 0.762 0.476 –CNN F-Mean 0.786 0.430 –MLP Gaussian 0.689 – 4.68 CNN Gaussian 0.785 – 7.30 Three-way MLP 0.70–0.79 0.495 5.08 Three-way CNN 0.70–0.79 0.445 8.50 
+
+## 6 Discussion 
+
+The results support two main conclusions. First, neuron-level aggregation is not merely an implemen-tation detail: replacing fixed summation with learnable alternatives can improve both performance and robustness. Second, hybridisation is critical. Rather than forcing the network to commit to a fully novel neuron, the blend with standard linear aggregation stabilises optimisation and acts as a safety mechanism. The strongest clean-data results come from the F-Mean hybrid, especially in CNNs, suggesting that sub-linear power-based weighting is a practical way to improve on mean-like aggregation. The three-way hybrid is the most robust under corruption, indicating that complementary aggregation mechanisms can better absorb noisy or inconsistent evidence. Three mechanisms contribute to this robustness. Sub-linear F-Mean aggregation ( p < 1) compresses large values relative to small ones, reducing the influence of inputs that are unusually large due to noise. Gaussian affinities assign lower weight to inputs that deviate from their neighbours, providing a continuous analogue of median-like consensus. And the α blending parameter allows the network to fall back toward linear aggregation during unstable phases of training. The improvements on clean CIFAR-10 are small in absolute terms. This is expected: the dataset is relatively clean and low-resolution, and standard CNNs already extract strong features from it. Alternative aggregation is most valuable where standard neurons face distribution shift, input noise, or corrupted observations. 
+
+6.1 Computational Overhead 
+
+The F-Mean neuron adds minimal overhead relative to a standard linear layer, as the additional operations are element-wise or involve small summations. The Gaussian Support neuron has O(n2)
+
+complexity due to pairwise distance computation. This is managed here with a projection layer, but further optimisation through sparse attention or approximate nearest-neighbour methods remains a direction for future work. 
+
+## 7 Limitations and Future Work 
+
+This study is limited to CIFAR-10 and one controlled noisy variant, so broader validation is still needed. The Gaussian support mechanism introduces additional computational cost due to pairwise interactions, and the present work focuses on neuron-level modifications in MLPs and CNN classifier heads; other architectural settings may expose different trade-offs. Future work should extend evaluation to larger benchmarks such as ImageNet, medical imaging tasks, and NLP problems. Comparison against other robust aggregation mechanisms, including trimmed means and M-estimators, would clarify where each approach offers the greatest advantage. Combining learnable aggregation with transformers and attention-based architectures is a particularly promising direction, given that aggregation already plays a central role in attention computation. Theoretical analysis of convergence guarantees and formal robustness bounds would also strengthen the foundations of this approach. 68 Conclusion 
+
+This paper revisited a longstanding assumption in neural network design: that neuron inputs should always be aggregated by weighted summation. Two learnable nonlinear alternatives were proposed, F-Mean and Gaussian Support aggregation, and embedded in hybrid neurons that preserve the optimisation strengths of standard layers. Across MLP and CNN experiments on CIFAR-10 and noisy CIFAR-10, hybrid neurons consistently improved robustness, while F-Mean hybrids also delivered small but repeatable gains on clean data. Learned parameters converge to interpretable sub-linear strategies without explicit regularisation, providing evidence that networks discover more robust aggregation behaviours autonomously when given the freedom to do so. These findings suggest that input aggregation is an underexplored and promising axis of neural architecture design. 
+
+## References 
+
+[1] A. Baldeschi, R. Margutti, and A. Miller. Deep learning: a new definition of artificial neuron with double weight. arXiv:1905.08478 , 2019. [2] G. Corso, L. Cavalleri, D. Beaini, P. Lió, and P. Velickovic. Principal neighbourhood aggregation for graph nets. arXiv:2004.05718 , 2020. [3] F. Fan, Y. Li, H. Peng, T. Zeng, and F. Wang. Towards NeuroAI: Introducing neuronal diversity into artificial neural networks. arXiv:2301.09245 , 2023. [4] S. Geisler, D. Zügner, and S. Günnemann. Reliable graph neural networks via robust aggregation. 
+
+arXiv:2002.06733 , 2020. [5] F. Grèzes. Finite Gaussian neurons: Defending against adversarial attacks by making neural networks say “I don’t know”. arXiv:2306.07796 , 2023. [6] Ç. Gülçehre, K. Cho, R. Pascanu, and Y. Bengio. Learned-norm pooling for deep feedforward and recurrent neural networks. arXiv:1311.1780 , 2014. [7] K. He, X. Zhang, S. Ren, and J. Sun. Deep residual learning for image recognition. 
+
+arXiv:1512.03385 , 2015. [8] W. S. McCulloch and W. Pitts. A logical calculus of the ideas immanent in nervous activity. 
+
+Bulletin of Mathematical Biophysics , 5:115–133, 1943. [9] Z. Niu, G. Zhong, and H. Yu. A review on the attention mechanism of deep learning. Neuro-computing , 452:48–62, 2021. [10] G. Pellegrini, A. Tibo, P. Frasconi, A. Passerini, and M. Jaeger. Learning aggregation functions. In IJCAI , pages 2892–2898, 2021. [11] K. Pillutla, S. M. Kakade, and Z. Harchaoui. Robust aggregation for federated learning. IEEE Transactions on Signal Processing , 70:1142–1154, 2022. [12] V. Terziyan, D. Malyk, M. Golovianko, and V. Branytskyi. Hyper-flexible convolutional neural networks based on generalized Lehmer and power means. Neural Networks , 155:177–203, 2022. [13] R. N. Yadav, N. Kumar, P. Kalra, and J. John. Learning with generalised-mean neuron model. 
+
+Neurocomputing , 69:2026–2032, 2006. 7

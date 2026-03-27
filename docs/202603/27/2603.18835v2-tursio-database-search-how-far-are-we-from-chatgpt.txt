@@ -1,0 +1,399 @@
+Title: Tursio Database Search: How far are we from ChatGPT?
+
+URL Source: https://arxiv.org/pdf/2603.18835v2
+
+Published Time: Wed, 25 Mar 2026 00:44:23 GMT
+
+Number of Pages: 13
+
+Markdown Content:
+# Tursio Database Search: How far are we from ChatGPT? 
+
+# Sulbha Jain ∗
+
+Independent Consultant Bellevue, USA 
+
+# Shivani Tripathi, Shi Qiao, Alekh Jindal 
+
+Tursio Bellevue, USA 
+
+## ABSTRACT 
+
+Business users need to search enterprise databases using natural language, just as they now search the web using ChatGPT or Per-plexity. However, existing benchmarks—designed for open-domain QA or text-to-SQL—do not evaluate the end-to-end quality of such a search experience. We present an evaluation framework for struc-tured database search that generates realistic banking queries across varying difficulty levels and assesses answer quality using relevance, safety, and conversational metrics via an LLM-as-judge approach. We apply this framework to compare Tursio, a database search plat-form, against ChatGPT and Perplexity on a credit union banking schema. Our results show that Tursio achieves answer relevancy statistically comparable to both baselines (97.8% vs. 98.1% on simple, 90.0% vs. 100.0% on medium, 89.5% vs. 100.0% on hard questions), even though Tursio answers from a structured database while the baselines generate responses from the open web. We analyze the failure modes, identify database completeness as the primary bot-tleneck, and outline directions for improving both the evaluation methodology and the systems under evaluation. 
+
+## 1 INTRODUCTION 
+
+Databases are the primary repositories for operational data in en-terprises, and better access to them can unlock significant value, from improved processes to faster decision-making and enhanced customer experiences. Unfortunately, operational data is raw and uncurated: column names are often cryptic, relationships between tables are implicit, and domain-specific conventions are undocu-mented [ 1]. This makes it difficult for business users, who lack the technical expertise to write SQL or use text-to-SQL interfaces [ 4 , 20 ], to search their data effectively. Ideally, these users should be able to query databases using natural language, just as they search the web using Google or ChatGPT. While recent efforts from Databricks [ 9 ], Snowflake [ 25 ], and Google [ 7] have made progress in this direction, the uncurated nature of operational data continues to challenge large language models (LLMs) in understanding the database, lead-ing to inaccurate or even hallucinated answers [3, 26]. A common assumption is that natural language questions can be directly translated to SQL, as captured by the “NL2SQL” para-digm. In practice, however, business users ask high-level, abstract questions that omit explicit references to tables, join paths, filter conditions, or metric definitions [ 28 ]. To quantify this gap, we measure the ratio of SQL token-length to question token-length across benchmarks and production logs (Figure 2). BIRD [ 20 ], the most widely used NL2SQL benchmark, shows a largely flat curve with ratios near 1, reflecting its literal, schema-aware questions. BEAVER [ 4 ], designed to be more representative of enterprise work-loads, tells a different story: its NW dataset exhibits ratios up to 
+
+> ∗Work done while consulting for Tursio.
+
+Figure 1: Tursio search platform connects databases through a context graph, enabling natural language search for agents, applications, and non-expert users. 
+
+55 ×, while even its DW dataset reaches 5 ×. Production Tursio logs confirm this pattern, with a long tail reaching 30 ×. This demon-strates that real business questions are fundamentally different from academic NL2SQL benchmarks and require systems that can infer the implicit structure behind high-level intent. The Tursio search platform addresses this challenge by automat-ically inferring a semantic knowledge graph over the database and using it as context for processing natural language queries [ 16 ]. As shown in Figure 1, Tursio builds a context graph from one or more databases, incorporating feedback and workload signals, and exposes a natural language search interface to agents, applications, and non-expert users. Users can ask high-level questions—not neces-sarily ones directly translatable to SQL—and Tursio resolves which parts of the graph are relevant and what relationships to traverse for generating a response. We refer the readers to [ 16 ] for more details. The natural question, then, is whether Tursio succeeds in providing a ChatGPT-like search experience for business users. In this paper, we evaluate Tursio’s search quality compared to ChatGPT and Perplexity, the gold standards for high quality chat-ting and search. Specifically, we consider a realistic search scenario where credit union users ask banking-related questions over a Symi-tar [ 15 ] core banking schema. We simulate the search experience by generating queries with varying complexity, and then asking each system to return relevant results. For ChatGPT and Perplexity, we rephrase the question to be answerable from the web. The goal is to see whether Tursio provides a comparable search experience. Our results show that Tursio achieves search relevance comparable to ChatGPT and Perplexity, matching their quality on structured data. Specifically, we make the following contributions: 
+
+• We design an evaluation framework for structured database search that measures end-to-end answer quality—not just    
+
+> arXiv:2603.18835v2 [cs.DB] 24 Mar 2026 Jain et al.
+> (a) BIRD (b) BEAVER-NW (c) BEAVER-DW (d) Tursio (production)
+
+Figure 2: SQL-to-question token-length ratio, sorted by ratio, across benchmarks and production logs. BIRD questions are mostly literal (ratio ≈ 1). Enterprise workloads (BEAVER, Tursio) show significantly higher ratios, confirming that business questions require far more SQL than their surface form suggests. 
+
+SQL correctness—including a parameterized question gener-ation pipeline, an open-domain mapping step for fair bench-marking, and an LLM-as-judge evaluation approach with relevance, safety, and conversational metrics (Section 2). 
+
+• We conduct the first head-to-head comparison of a struc-tured database search system (Tursio) against leading AI web search engines (ChatGPT, Perplexity). Our results show statistically comparable answer relevancy across all diffi-culty levels (Section 3). 
+
+• We provide a detailed analysis of failure modes, identifying database completeness—and not model comprehension— as the primary bottleneck, and characterize three distinct performance profiles shaped by each system’s data access model (Section 4). 
+
+• We outline concrete directions for improving both the eval-uation methodology and the systems under evaluation, in-cluding multi-turn assessment, data coverage enrichment, and pipeline automation (Section 5). 
+
+## 2 EVALUATING SEARCH QUALITY 
+
+Evaluating search quality over structured databases presents unique challenges compared to web search evaluation. Existing bench-marks are designed for open-domain retrieval and do not capture the complexity of real enterprise queries involving joins, aggrega-tions, and multi-table reasoning. In this section, we describe our evaluation methodology. We first discuss the limitations of current benchmarks and motivate the need for a structured-data-specific approach (§2.1). We then detail our dataset generation pipeline, which produces realistic banking queries at varying difficulty levels (§2.2). Next, we describe our answer evaluation framework, built on DeepEval [ 2], that measures relevance, bias, and conversational quality across Tursio, ChatGPT, and Perplexity (§2.3). Finally, we present the experimental settings, including the schema, personas, and KPIs used in our evaluation (§2.4). 
+
+## 2.1 Background 
+
+Most current benchmarks for evaluating search accuracy fall into two broad categories: open-domain factual QA and text-to-SQL evaluation. Neither is well suited for assessing search quality over structured enterprise databases. 
+
+Open-domain QA benchmarks. SimpleQA [ 29 ], introduced by OpenAI in 2024, measures short-form factual accuracy of LLMs. It contains 4,326 fact-seeking questions, each with a single, un-ambiguous, time-invariant answer, spanning topics such as sci-ence, politics, and art. Responses are graded on a three-tier scale— correct, incorrect, or not attempted—using an LLM-based classifier. While SimpleQA is effective for evaluating parametric knowledge recall, it tests only open-domain factual retrieval: its questions are short-form, single-answer lookups with no notion of schema, joins, aggregations, or multi-table reasoning. Search platforms such as exa.ai [ 13 ] adopt SimpleQA-style benchmarks for evaluation, but these do not capture the complexity of enterprise database search. 
+
+Text-to-SQL benchmarks. BIRD [20] is the most widely used NL2SQL benchmark, containing 12,751 question-SQL pairs across 95 databases spanning 37 professional domains. It introduced exe-cution accuracy (EX) and valid efficiency score (VES) as evaluation metrics, and its questions incorporate database values, noisy data, and external knowledge—advancing beyond earlier schema-only benchmarks like Spider. However, as we showed in Section 1 (Fig-ure 2), BIRD’s questions are largely literal translations of SQL into natural language, with SQL-to-question token-length ratios near 1. Real enterprise users ask high-level, abstract questions where this ratio can reach 30–55 ×, as confirmed by both the BEAVER bench-mark [ 4 ] and production Tursio logs. Furthermore, BIRD evaluates SQL correctness rather than end-to-end search quality, i.e., whether the final answer presented to a user is relevant, complete, or useful. 
+
+The gap. Neither category of benchmark addresses evaluation of search over structured databases: open-domain QA benchmarks ignore schema and data structure entirely, while text-to-SQL bench-marks assume literal, schema-aware questions and evaluate query correctness rather than answer quality. To bridge this gap, we de-velop an evaluation methodology that generates realistic enterprise queries at varying difficulty levels and assesses final answer quality using relevance, bias, and conversational metrics. 
+
+## 2.2 Dataset Generation 
+
+We generate a single-turn QA dataset grounded in the credit union banking domain. Starting from 15 manually curated “golden” ques-tions, we systematically expand them to approximately 150 syn-thetic examples using the pipeline shown in Figure 3. The pipeline is parameterized by three dimensions—persona ( 𝑃 ), difficulty ( 𝐷 ), and example questions for each context ( 𝑁 )—and produces 𝑃 × 𝐷 × 𝑁 
+
+candidate questions that are then quality-checked and mapped to their real-world equivalents. Tursio Database Search: How far are we from ChatGPT? Persona &        
+
+> KPIs (P)
+> Difficulty
+> Definition (D)
+> Golden
+> Examples
+> Database
+> Schemas
+> Generate Questions
+> for each Context (N)
+> Map Golden Examples to
+> Persona + KPIs + Difficulty
+> Synthetic Database
+> Questions
+> (P x D x N samples)
+> Open World Question
+> Mapper
+> Synthetic Open
+> World Questions
+> (P x D x N samples)
+> Question
+> Quality Checker
+> Rejection
+> Sampling High -quality
+> Database
+> Questions (A)
+> High -quality
+> Open World
+> Questions (B)
+> Inputs Preprocessing Generation Synthesis Quality & Output
+> Input LLM Module Output
+> Context(P)
+> Context(D)
+> Schema Context
+> Few -
+> shots
+
+Figure 3: Question generation pipeline. Golden questions, personas, KPIs, difficulty definitions, and the database schema are combined to generate synthetic questions via an LLM. Questions are quality-checked and then mapped to real-world equivalents for benchmarking. Personas and KPIs. We define 13 banking personas, each com-bining two or more roles to introduce variability in analytical focus (e.g., Risk & Credit Analytics Manager; CRO; Compliance Officer ). Each persona is associated with relevant KPIs aligned with its typ-ical role responsibilities. For instance, the risk-oriented persona above is mapped to KPIs such as 90+ DPD Rate , Delinquency Ratio ,and Non-Performing Loan % . This pairing ensures that generated questions reflect realistic analytical intent rather than simply doing generic database lookups. 
+
+Difficulty levels. Questions are classified into three difficulty levels based on their analytical complexity: 
+
+• Simple: Single-table operations involving a single metric, straightforward count, percentage, or ranking, with mini-mal filtering and no segmentation. 
+
+• Medium: Queries requiring filtering, grouping, or basic segmentation, possibly including a single time window or joins across a small number of tables. 
+
+• Hard: Multi-step analyses involving segmentation, time-based trends, concentration risk, or behavioral risk patterns— questions suitable for executive risk reviews or regulatory discussions. 
+
+Golden question segmentation. The 15 golden questions are segmented by difficulty and mapped to relevant personas and KPIs. These annotated golden questions serve as few-shot examples for the synthetic generation step, providing the LLM with grounded context on the expected question style, complexity, and domain specificity for each persona-difficulty combination. 
+
+Synthetic question generation. Using an LLM (GPT-4o-mini), we generate synthetic questions by providing the database schema, persona-KPI mappings, difficulty definitions, and sampled golden questions as few-shot examples. This produces a diverse set of questions that systematically covers the cross-product of personas and difficulty levels. 
+
+Mapping to real-world benchmarks. Since the experimental schema and data are proprietary, the generated questions cannot be directly used to benchmark public systems like ChatGPT and Perplexity. To enable fair comparison, we map each synthetic ques-tion to an equivalent open-domain question using Claude Sonnet 4.5, preserving the analytical intent and difficulty while rephras-ing it to be answerable using publicly available data. We used the 
+
+You are a subject-matter expert in {DOMAIN} with deep experience in KPIs, personas, and data-driven analysis. Your responsibility is to map each original user question to the single best-matching question that is directly answerable using open web–searchable data. Task: For each row in the input CSV: 1. Analyze the original user question, including its analytical intent and scope. 2. Evaluate the candidate questions derived from web search results. 3. Select the ONE candidate question that most accurately aligns with: - The intent and analytical depth of the original question - The referenced KPI (or a clearly defined, industry-accepted proxy KPI) - The persona’s typical decision-making needs - The specified difficulty level (simple / medium / hard) Selection rules: - Do NOT rewrite or paraphrase. - Do NOT introduce new KPIs. - The mapped question must be answerable using publicly available, open web data. - Preserve the analytical level implied by the difficulty: - simple: descriptive, single-metric, snapshot questions - medium: comparative, segmented, or time-based questions - hard: multi-step, trend-based, segmented, or contextualized questions - If multiple candidates are plausible: - Prefer the most specific, unambiguous, and commonly used industry question. - Prefer exact KPI alignment over loosely related metrics. - If no candidate adequately matches all criteria, return an empty string ("") for "mapped_question". Input: Row context: - original_question: {original_question} - persona: {persona} - kpi: {kpi} - difficulty: {difficulty} Output: Return results STRICTLY in the following JSON format: {{ "original_question": "{original_question}", "mapped_question": "string" }} Output ONLY valid JSON. Do NOT include explanations, comments, or any additional text. 
+
+Figure 4: Prompt template to map questions to real-world equivalents. 
+
+prompt template shown in Figure 4 to ensure mapping preserves the original question’s intent. 
+
+Quality assurance. Finally, the generated questions undergo both LLM-based and deterministic quality checks. An LLM with strong instruction-following capabilities (GPT-4) reviews questions for coherence and relevance. In addition, a suite of determinis-tic NLP checks is applied, including duplicate detection, semantic similarity filtering, length threshold enforcement, lexical diversity assessment, and stop-word ratio monitoring. Questions that fail any check are regenerated or discarded. 
+
+## 2.3 Answer Evaluation 
+
+Given the generated questions, we produce answers from three systems and evaluate them using automated metrics. Figure 5 illus-trates the end-to-end evaluation pipeline. 
+
+Answer generation. For each question, answers are generated from three platforms: (i) Tursio, which queries the structured credit Jain et al. Synthetic Database    
+
+> Questions (A)
+> Synthetic Open
+> World Questions (B)
+> Standardized
+> Prompt
+> Tursio
+> ChatGPT/
+> Perplexity
+> DeepEval
+> LLM -as -judge
+> multi -criteria scoring
+> Metrics
+> correctness, relevance,
+> etc.
+> Persona, KPI, and
+> Question
+> Answer
+> Answer
+> Context
+> Input LLM Module Systems Context/Output
+
+Figure 5: Answer evaluation pipeline. Synthetic custom ques-tions are answered by Tursio, while their real-world equiva-lents are answered by ChatGPT and Perplexity. All responses are evaluated by DeepEval using the question, persona, and KPI as context. 
+
+union database; (ii) ChatGPT (as of December 2025); and (iii) Per-plexity (as of December 2025). Since ChatGPT and Perplexity do not have access to the proprietary database, they receive the real-world equivalent questions produced by the mapping step described in §2.2, which are answerable using public data. All systems use a standardized prompt template that specifies the persona context and constrains responses to 3–5 sentences, ensuring comparable output across platforms. 
+
+Evaluation framework. We evaluate answer quality using DeepEval [ 2 ], an open-source LLM evaluation framework built on the G-Eval methodology [ 21 ]. DeepEval uses an LLM-as-judge (GPT-4.1) to score responses on a [0, 1] scale across multiple dimensions and supports both built-in and custom metrics. We use the following metrics in our evaluation: 
+
+• Answer Relevancy (primary metric): Measures how rele-vant the response is to the question given its context, i.e., the associated persona and KPI. 
+
+• Safety : Evaluates potential bias in responses. We report the complement of the bias score (Safety = 1− Bias) for interpretability. 
+
+• Conversation Completeness : A built-in conversation-level metric that assesses the overall quality of the full question-answer interaction. 
+
+• Custom conversational criteria : We extend DeepEval with four additional conversation-level metrics to capture dimensions not covered by the default metrics: 
+
+– Focus : Does the response directly address the specific question? 
+
+– Engagement : Is the language appropriate and engaging for the target persona? 
+
+– Helpfulness : Does the response meaningfully assist the user’s analytical task? 
+
+– Voice : Is the response clear and written in active voice? 
+
+Success criteria. Each metric produces a score in [0, 1]. A re-sponse is considered successful for a given metric if its score meets or exceeds a threshold 𝜏 . We define the success rate for a metric as the fraction of responses that pass: Success Rate = |{ 𝑖 : score 𝑖 ≥ 𝜏 }| 
+
+𝑁 
+
+where 𝑁 is the total number of evaluated responses. We use the default threshold 𝜏 = 0.5 for all metrics in this study to establish 
+
+Table 1: Banking personas and representative KPIs.            
+
+> Persona Representative KPIs
+> Risk & Credit Analytics Mgr; CRO; Compli-ance 90+ DPD Rate, Delinquency Ratio, Non-Performing Loan % Finance / Treasury Mgr; Branch / Regional Mgr Total Deposit Balance by Geography, Concen-tration Risk Product Mgr; Member Analytics Lead Early Closure Rate, Account Churn ( ≤90 days) Finance Mgr; CRO; Product Mgr Portfolio Mix %, Credit Card Exposure by Bal-ance Member Analytics Lead; Compliance Dormant Account Rate, Inactivity Ratio Member Analytics Lead; Executive Leader-ship Avg. Account Tenure, Member Lifetime Value Member Analytics Lead; Product Mgr Active Account Tenure, Retention Duration Product Mgr; Risk Mgr Monthly Closure Rate, Product Attrition Rate Member Analytics Lead; CRO Long-Tenure Account %, Dormant vs Active Ratio Executive Leadership (CEO, COO, Board, CRO) Product Mix %, Portfolio Allocation Risk Mgr; Finance Mgr Composite Health Score (Capital, Asset Qual-ity, Earnings, Liquidity, Growth) Fraud Analyst; Risk Mgr High-Balance Exposure, Concentration Risk Fraud Analyst; Card Product Mgr Transfer Limit Exposure, ATM Utilization Anomaly
+
+a baseline for comparison. We used a default threshold of 0.5 for all metrics in this study to establish a baseline for comparison. In future, we plan to caliberate thresholds for each metric to better align with user expectations. 
+
+## 2.4 Evaluation Settings 
+
+We summarize the concrete settings used for question generation and evaluation. 
+
+Database schema. The experimental database follows a Symi-tar [ 15 ] core banking schema with a tree-like topology. The root ta-ble is ACCOUNT , to which eight descendant tables— COMMENT , TRACKING ,
+
+NOTE , SHARE , LOOKUP , LOAN , CARD , and MEMBER —are joined via left joins on ACCOUNT_NUMBER . This schema captures a representative range of credit union operations, including member accounts, loan products, card instruments, and account-level annotations. 
+
+Personas and KPIs. Table 1 lists the 13 banking personas and their associated KPIs used in our experiments. Each persona com-bines two or more roles (e.g., Risk & Credit Analytics Manager; CRO; Compliance Officer ) to create realistic variability in analytical fo-cus. The KPIs span risk management (delinquency, non-performing loans), member analytics (tenure, churn, dormancy), product man-agement (portfolio mix, attrition), and fraud detection (limit utiliza-tion anomalies). 
+
+Question generation model. We use GPT-4o-mini with default hyperparameters for synthetic question generation, chosen for its fast inference speed during iterative development. Few-shot exam-ples are randomly sampled from the 15 golden questions, filtered by the target persona and difficulty level. Using this pipeline, we generate approximately 150 synthetic questions spanning all 13 personas and three difficulty levels. We used the prompt template shown in Figure 6. 
+
+Answer generation. Tursio answers are generated by submit-ting the synthetic custom questions directly to the Tursio search interface over the Symitar schema. For ChatGPT and Perplexity, the mapped real-world questions (§2.2) are submitted with a stan-dardized prompt that specifies a 3–5 sentence response length. All answers were collected in December 2025. The prompt template Tursio Database Search: How far are we from ChatGPT? 
+
+> You are a {row[ 'persona ']} as {domain} expert. ### Your goal is to improve the following KPI: {row[ 'kpi ']}. ### Task Provide actionable {row[ 'difficulty ']} difficulty questions to achieve this goal. #### {row[ 'difficulty ']} difficulty questions must : {difficulty_meaning} ### Table join {TABLE_JOINS} Here are some example questions: {examples_text}. ### Output Rules (MANDATORY) - Output JSON only - Do NOT include explanations, markdown, or extra text - Each question must be concise, specific, and clearly tied to the bank domain and the KPI ### Output Schema {"questions": [ "string", "string", ... ]}Generate {n_questions} questions directly in JSON format:
+
+Figure 6: Prompt template to generate questions. 
+
+> You are a data analyst specializing in {DOMAIN}. Answer questions using only commonly available open web knowledge. Task: - Answer ONLY the questions listed in the "answerable_question" column. Rules: 1. Do NOT rephrase or modify the question text. 2. Do NOT use information from any other columns. 3. If a question cannot be answered with general open web data, return an empty string (""). 4. Limit each answer to 3–5 sentences. 5. Do NOT include citations, sources, opinions, or assumptions. Output: Return ONLY valid JSON with no extra text. Schema: {"answers": [ {"question": "string (exact from answerable_question)", "answer": "string (3–5 sentences or empty)" }]}Generate the JSON response now.
+
+Figure 7: Prompt template to generate response. 
+
+used to generate ChatGPT and Perplexity answers is shown in Figure 7. We generated all the responses in a single turn with no follow-up or clarification allowed, to simulate a realistic search experience where users expect high-quality answers right away. 
+
+Evaluation model. DeepEval uses GPT-4.1 as the LLM judge for all metrics. The success threshold is set to 𝜏 = 0.5 across all metrics. Each response is evaluated with the original question, persona, and KPI provided as context to the judge. We performed single run of evaluation with temperature set to 0 to minimize scoring variability. 
+
+Figure 8: Answer relevancy success rate by system and dif-ficulty level. Tursio achieves relevancy comparable to Chat-GPT and Perplexity, with a small gap on medium and hard questions attributable to missing data coverage in the under-lying database. 
+
+## 3 EXPERIMENTAL RESULTS 
+
+We now present the evaluation results, starting with an overall comparison of answer relevancy across all three systems, followed by a per-system metric breakdown and a detailed analysis of the score distribution. 
+
+## 3.1 Overall Answer Relevancy 
+
+Figure 8 compares the answer relevancy success rate across Tursio, Perplexity (PPL), and ChatGPT (GPT) at each difficulty level. A response is counted as relevant if its answer relevancy score ≥ 0.5.On simple questions, all three systems perform comparably: Tursio achieves 97.8%, Perplexity 96.7%, and ChatGPT 98.1%. On medium-difficulty questions, Tursio and Perplexity both achieve 90.0%, while ChatGPT reaches 100.0%. On hard questions, Tursio maintains 89.5%, with Perplexity and ChatGPT both at 100.0%. The error bars indicate the variability across different samples within each difficulty level. These results show that Tursio’s answer relevancy is competitive with ChatGPT and Perplexity across all difficulty levels, despite op-erating under a fundamentally different constraint: Tursio answers from a structured database, whereas ChatGPT and Perplexity draw on the open web. The small gap on medium and hard questions is attributable to cases where the underlying database lacks data for certain queries—a limitation inherent to structured data search. Im-portantly, when Tursio does have the relevant data, its answers are grounded in actual database records, a property that web-based sys-tems cannot guarantee. We analyze the specific metric breakdown in Section 3.2 below. 
+
+## 3.2 Metric Breakdown 
+
+We now examine the full set of evaluation metrics—Safety, Voice, Engagement, Answer Relevancy, Focus, Helpfulness, and Conver-sation Completeness—for each system across all difficulty levels. 
+
+3.2.1 Tursio. Figure 9 shows Tursio’s per-metric success rates. On simple questions, Tursio achieves ≥93% for all except the complete-ness metric, with perfect scores (100%) on Safety. On medium and hard questions, most metrics remain in the 80–100% range, with Safety at 100% and Voice at 90–100% across all levels. The main Jain et al. 
+
+Figure 9: Tursio: per-metric success rates by difficulty level. Most metrics remain above 80% across all levels, with Con-versation Completeness showing the largest gap on medium and hard questions. 
+
+exception is Conversation Completeness, which drops to 45.0% on medium and 52.6% on hard questions, reflecting cases where the response, while relevant, does not fully address the analytical depth expected by the evaluator. Focus and Helpfulness also show mod-erate drops on medium questions (both 80.0%), recovering on hard questions (86.8% and 84.2%, respectively). 
+
+Failure analysis. We identify two root causes for low-scoring responses, illustrated with representative examples: 
+
+(1) Missing data coverage. When the database lacks the data needed to answer a query, Tursio returns a fallback message ( “no data points were found” ). This is the correct system behavior—Tursio does not hallucinate—but it receives a low relevancy score because the response does not address the question. For example:    
+
+> Q: What behavioral traits or transaction patterns can predict early warning signals for accounts that transition from 30 DPD to 90 DPD?
+> A: Great question but unfortunately no data points were found to generate an answer for you. Consider adjusting your query to change one or more parameters, such as time or other filters.
+> Score: 0.0 — The response does not address the question about behavioral traits or transaction patterns.
+
+This pattern accounts for the majority of failures on medium and hard questions, where queries often require data columns (e.g., geographic region, promotional offer metadata) that are absent from the Symitar schema. 
+
+(2) Semantic mismatch. In some cases, Tursio retrieves relevant data but answers a slightly different question than the one asked. For example:      
+
+> Q: What is the distribution of credit card balances across different age groups of members?
+> A: The dataset shows significant variability in credit card limits across the member groups. . . the average credit card limit ranges from $2,109 (Group 40) to $7,294 (Group 66). . .
+> Score: 0.0 — The response discusses credit card limits , not
+> balances as requested.
+
+These semantic mismatches are less frequent than missing data failures but represent an area for improvement in Tursio’s query interpretation. 
+
+Figure 10: Perplexity: per-metric success rates by difficulty level. Voice and Answer Relevancy are consistently high, while conversational metrics are lower on simple questions due to the constrained response length. 
+
+Figure 11: ChatGPT: per-metric success rates by difficulty level. ChatGPT achieves near-perfect scores across all met-rics, establishing an upper-bound baseline for search quality. 
+
+3.2.2 Perplexity. Figure 10 shows Perplexity’s per-metric success rates. Perplexity achieves perfect scores (100%) on Safety across all difficulty levels, and scores highly on Voice (96.7–100%) and Answer Relevancy (90.0–100%). However, the conversational met-rics reveal a notable pattern: on simple questions, Completeness (20.0%), Helpfulness (20.0%), Focus (30.0%), and Engagement (20.0%) are all significantly lower than on hard questions, where these metrics reach 89.5–97.4%. This inversion—where hard questions score better than simple ones—likely reflects the standardized 3–5 sentence response length: for simple, factual questions, concise responses are penalized by the completeness evaluator for not elab-orating, whereas complex questions naturally benefit from the same response length providing richer analytical content. 
+
+3.2.3 ChatGPT. Figure 11 shows ChatGPT’s per-metric success rates. ChatGPT achieves near-perfect performance across all met-rics and difficulty levels, with 100% success on Safety, Voice, Helpful-ness, Focus, and Engagement at every difficulty level. Conversation Completeness reaches 100% on simple and hard questions, with a minor dip to 95.0% on medium. Answer Relevancy is 98.1% on simple questions and 100% on medium and hard. These results establish ChatGPT as a strong upper-bound baseline: operating on open-domain data with well-tuned conversational responses, it consistently satisfies all evaluation criteria. Tursio Database Search: How far are we from ChatGPT? 
+
+Figure 12: Tursio score distributions on simple questions. Scores are sharply concentrated near 1.0 across all metrics. 
+
+Figure 13: Tursio score distributions on medium questions. Conversation Completeness shows a bimodal pattern due to data gaps; other metrics show moderate spread. 
+
+## 3.3 Score Distribution 
+
+While the success rates in the previous section indicate whether responses pass a threshold, they do not reveal how scores are dis-tributed. A system with 90% success rate could have most scores clustered near 1.0 (high confidence) or spread across the passing range (borderline). In this section, we examine the metric score his-tograms for each system to understand the shape and concentration of scores across difficulty levels. 
+
+3.3.1 Tursio. Figures 12–14 show Tursio’s score distributions across difficulty levels. On simple questions (Figure 12), scores are sharply concentrated near 1.0 for all metrics. Answer Relevancy, Voice, Fo-cus, and Helpfulness show strong right-skewed distributions with the vast majority of responses scoring above 0.9. Conversation Completeness is similarly concentrated at the high end. The only minor spread appears in Engagement, where a small number of responses score in the 0.6–0.8 range. 
+
+Figure 14: Tursio score distributions on hard questions. The bimodal completeness pattern persists; other metrics remain predominantly high with longer tails. 
+
+Figure 15: Perplexity score distributions on simple questions. Answer Relevancy clusters near 1.0, but conversational met-rics (Focus, Engagement, Helpfulness, Completeness) are concentrated at the low end due to brief responses. 
+
+On medium questions (Figure 13), the distributions become no-tably wider. Conversation Completeness exhibits a bimodal pattern: a cluster near 0.0 (responses where the database lacked sufficient data to provide a complete answer) and a cluster near 1.0. Answer Relevancy remains right-skewed but shows a few responses near 0.0, corresponding to the missing-data failures discussed in Section 3.2. Focus and Helpfulness show moderate spread across the 0.2–1.0 range, reflecting the partial-answer cases where Tursio addresses some but not all aspects of a multi-part question. On hard questions (Figure 14), the bimodal pattern in Conversa-tion Completeness persists, with roughly equal mass at the low and high ends. Answer Relevancy remains predominantly right-skewed with most scores near 1.0, but a visible tail extends to 0.0–0.3. En-gagement and Focus show broader distributions centered around 0.7–0.9, indicating more variability in conversational quality for Jain et al. 
+
+Figure 16: Perplexity score distributions on medium ques-tions. Conversational metrics exhibit bimodal distributions, splitting between low-scoring and high-scoring clusters, while Answer Relevancy remains concentrated near 1.0. 
+
+Figure 17: Perplexity score distributions on hard questions. All metrics shift to the high end, as complex questions elicit more detailed and analytically rich responses. 
+
+complex analytical questions. Voice remains consistently high, clus-tering in the 0.8–1.0 range. 
+
+3.3.2 Perplexity. Figures 15–17 show Perplexity’s score distribu-tions. On simple questions (Figure 15), a striking divergence appears between metrics. Answer Relevancy is sharply concentrated near 1.0, and Voice scores are distributed in the 0.6–1.0 range. However, the conversational metrics—Focus, Engagement, Helpfulness, and Completeness—are concentrated at the low end, with most scores falling in the 0.1–0.4 range. This pattern reflects Perplexity’s concise response style: for simple factual questions, short answers score well on relevancy but are penalized by conversational metrics that expect more elaboration, context, and analytical depth. On medium questions (Figure 16), the distributions reveal a tran-sitional pattern. Answer Relevancy remains strongly right-skewed 
+
+Figure 18: ChatGPT score distributions on simple questions. All metrics are sharply concentrated near 1.0, with Conver-sation Completeness at a perfect 1.0. 
+
+with most scores near 1.0, confirming that Perplexity’s factual ac-curacy holds at this difficulty level. Voice scores distribute across 0.5–1.0, clustering near the high end. However, the conversational metrics—Focus, Engagement, Helpfulness, and Completeness—exhibit pronounced bimodal distributions: each splits between a low-scoring cluster (0.1–0.3) and a high-scoring cluster near 1.0. Helpfulness is particularly striking, with roughly 9 responses near 0.1 and 5 near 1.0, with almost nothing in between. Completeness shows a similar pattern, with a dominant cluster near 0.0 and a smaller cluster near 1.0. This bimodality suggests that medium questions divide into two groups: those that map well to publicly available information (yielding detailed, high-scoring responses) and those that remain too domain-specific for comprehensive web-based answers. On hard questions (Figure 17), Perplexity’s distributions improve markedly. All metrics concentrate near 1.0, with Focus, Engagement, Helpfulness, and Completeness all shifting to the high end. Com-plex analytical questions naturally elicit more detailed responses from Perplexity, which satisfy the conversational evaluation cri-teria. A small number of Completeness scores near 0.0 remain, corresponding to cases where the response scope was insufficient. 
+
+3.3.3 ChatGPT. Figures 18–20 show ChatGPT’s score distribu-tions. On simple questions (Figure 18), ChatGPT’s distributions are sharply right-skewed across all metrics, with the vast majority of scores at or near 1.0. Conversation Completeness is perfectly concentrated at 1.0. Answer Relevancy, Focus, and Helpfulness show a tight cluster at 1.0 with only a handful of responses scoring slightly lower (0.8–1.0). Engagement shows the most spread, with scores distributed across 0.9–1.0, indicating minor variability in conversational tone. On medium questions (Figure 19), the pattern is nearly identical. Answer Relevancy and Voice remain tightly concentrated near 1.0, with over 18 and 14 responses at the peak, respectively. Engage-ment clusters at 1.0 with minimal spread. Focus and Helpfulness show slight variability in the 0.8–0.9 range but remain strongly right-skewed. The only notable deviation is a single Conversation Completeness response near 0.0, which accounts for the minor dip Tursio Database Search: How far are we from ChatGPT? 
+
+Figure 19: ChatGPT score distributions on medium questions. All metrics remain tightly concentrated near 1.0, with a single Conversation Completeness outlier near 0.0 accounting for the 95% success rate. 
+
+Figure 20: ChatGPT score distributions on hard questions. Engagement shows the widest spread; all other metrics re-main concentrated near 1.0. 
+
+to 95.0% success rate on this metric—the sole imperfection in an otherwise near-perfect profile. On hard questions (Figure 20), ChatGPT maintains its strong performance. Engagement shows the widest spread, with scores distributed across 0.8–1.0, reflecting the challenge of maintaining conversational quality on complex analytical questions. All other metrics remain tightly clustered at 1.0. These consistently con-centrated distributions confirm ChatGPT’s role as a strong upper-bound baseline in our evaluation. 
+
+## 3.4 Statistical Significance 
+
+To determine whether the observed differences in answer relevancy are statistically meaningful, we apply pairwise chi-square tests comparing Tursio against each baseline (ChatGPT and Perplexity) at each difficulty level. For each comparison, we construct a 2 × 2
+
+Figure 21: Summary of answer relevancy evaluation results. For each system and difficulty level: total samples evaluated, number of successful responses (score ≥ 0.5), answer rele-vancy rate (%), and error margin. Table 2: Pairwise chi-square tests for answer relevancy suc-cess rates. No comparison reaches statistical significance (𝛼 = 0.05 ).                      
+
+> Difficulty Comparison 𝑝 -value Significant?
+> Simple Tursio vs. GPT 1.0000 No Simple Tursio vs. PPL 1.0000 No Medium Tursio vs. GPT 0.4682 No Medium Tursio vs. PPL 1.0000 No Hard Tursio vs. GPT 0.1233 No Hard Tursio vs. PPL 0.1233 No
+
+contingency table of success/failure counts and compute the chi-square statistic with Yates’ correction. Figure 21 summarizes the sample sizes, success counts, answer relevancy rates, and error margins for each system-difficulty com-bination. The sample sizes vary slightly across systems (e.g., 45 for Tursio Simple vs. 60 for PPL Simple) due to occasional API timeouts during answer generation with DeepEval. Table 2 reports the pairwise chi-square test results. Across all six comparisons, no statistically significant difference is found at the 
+
+𝛼 = 0.05 level. On simple questions, both comparisons yield 𝑝 = 1.0,confirming that the three systems are virtually indistinguishable. On medium questions, Tursio vs. ChatGPT yields 𝑝 = 0.47 and Tursio vs. Perplexity yields 𝑝 = 1.0. The smallest p-values occur on hard questions ( 𝑝 = 0.12 for both comparisons), where ChatGPT and Perplexity achieve 100% relevancy compared to Tursio’s 89.5%— but even this gap does not reach statistical significance given the sample sizes. These results confirm that Tursio’s answer relevancy is sta-tistically comparable to ChatGPT and Perplexity across all difficulty levels, despite the fundamental difference in data access: Tursio queries a structured database while the baselines draw on the open web. 
+
+## 4 PERFORMANCE ANALYSIS 
+
+Having presented the quantitative results, we now synthesize the findings into a deeper analysis of each system’s strengths, weak-nesses, and the factors that drive their performance. We examine how data availability, response style, and query complexity interact to produce the observed patterns. Jain et al. 
+
+## 4.1 Tursio 
+
+Answer relevancy and contextual understanding. Tursio’s an-swer relevancy is high on simple questions (97.8%) and degrades modestly on medium (90.0%) and hard (89.5%) questions. The fail-ures fall into two categories identified in Section 3.2: missing data coverage and semantic mismatch. For simple questions, isolated failures occur when Tursio misinterprets the query context. For ex-ample, responding about loan records when the question asks about account comments. On medium and hard questions, the dominant failure mode shifts to data unavailability, where the underlying database simply does not contain the columns or records needed to answer the query. This distinction is important: the gap is primarily a data coverage issue rather than a comprehension issue, and can be addressed by enriching the database or improving the fallback responses that inform users better. 
+
+Completeness as the key bottleneck. Conversation Complete-ness is Tursio’s weakest metric, dropping from 93.3% on simple questions to 45.0% on medium and 52.6% on hard questions. This degradation is strongly correlated with query complexity: medium and hard questions often request multi-faceted analyses (e.g., break-downs across multiple dimensions, trend comparisons over time), and when the database provides only partial data, Tursio can ad-dress some but not all aspects of the question. For instance, a ques-tion requesting five account details may receive a response covering only one, yielding a partial but technically relevant answer. This results in high Answer Relevancy but low Completeness—a pattern that suggests Tursio prioritizes precision over recall in its responses. 
+
+Conversational quality. Tursio’s conversational metrics: En-gagement (85.0–98.3%), Helpfulness (80.0–95.0%), and Focus (80.0– 96.7%)—remain strong on simple questions and degrade moderately on medium and hard questions. The drop is largely driven by the same data availability issues: when Tursio lacks sufficient data, its responses become less helpful and less focused. Notably, Voice remains consistently high (90.0–100%), indicating that Tursio’s re-sponse style and clarity are not the limiting factor. 
+
+Consistency. The score distribution analysis (Section 3.3) re-veals that Tursio exhibits higher variance than the baselines, partic-ularly on medium and hard questions. While Tursio’s upper-bound scores match those of ChatGPT and Perplexity, the longer tails in its distributions indicate less predictable performance. This variance is driven by the binary nature of data availability: queries that hit well-populated parts of the schema receive excellent scores, while those that encounter data gaps receive poor scores. 
+
+## 4.2 Perplexity 
+
+The open-data bifurcation. Perplexity exhibits a distinctive per-formance pattern: high Answer Relevancy across all difficulty levels (90.0–100%) coexists with low conversational metrics on simple and medium questions. On simple questions, Engagement (20.0%), Help-fulness (20.0%), Completeness (20.0%), and Focus (30.0%) are all critically low despite a 96.7% answer relevancy rate. This bifur-cation is interesting and it reverses on hard questions, where all metrics rise above 89%. This pattern has a clear explanation: simple banking questions (e.g., “What percentage of accounts have made a comment in the last year?”) are domain-specific and difficult to answer comprehensively using public web data. The mapped open-domain equivalents may lack the specificity needed for a detailed, engaging response. Hard questions, by contrast, tend to be more analytical and research-oriented (e.g., trend analyses, risk comparisons), which align better with the kind of content available on the open web. 
+
+Response format constraints. Perplexity consistently achieves high Voice scores (94.4–100%), confirming that its response quality and clarity are strong. However, the standardized 3–5 sentence response limit creates a systematic tension with the Completeness metric. For questions requiring multi-part answers, this brevity constraint prevents comprehensive coverage, even when Perplexity correctly identifies the relevant information. However, this is an evaluation artifact rather than a fundamental limitation: longer responses would likely improve Completeness without degrading other metrics. 
+
+## 4.3 ChatGPT 
+
+Consistent high performance. ChatGPT achieves near-perfect scores across all metrics and difficulty levels, with most metrics at 100% and only minor dips in Answer Relevancy on simple ques-tions (98.1%) and Conversation Completeness on medium questions (95.0%). This consistency makes ChatGPT the strongest baseline in our evaluation and reflects the advantages of operating on open-domain data with a highly tuned conversational model. 
+
+Score concentration. The score distributions (Section 3.3) con-firm that ChatGPT’s high success rates are not borderline: scores are tightly concentrated near 1.0, with minimal spread. The only notable variance appears in Engagement on hard questions, where scores distribute across 0.8–1.0 rather than clustering at 1.0. This suggests that even ChatGPT faces minor challenges in maintain-ing optimal conversational tone on complex analytical questions, though the impact on success rates is negligible. 
+
+The open-data advantage. ChatGPT’s strong performance must be interpreted in context: it answers open-domain equivalents of the banking questions, drawing on its extensive pretraining data. It does not face the data availability constraints that limit Tursio (structured database) or the data dependency issues that affect Perplexity (web search). This makes ChatGPT an informative upper bound but obviously not a direct substitute for Tursio’s structured data search capability. 
+
+## 4.4 Summary 
+
+The analysis reveals three distinct performance profiles shaped by each system’s data access model: 
+
+• Tursio is bounded by database completeness. When the data exists, Tursio delivers precise, grounded answers com-petitive with the baselines. When data is missing, perfor-mance degrades—primarily in Completeness rather than Relevancy, indicating that Tursio correctly avoids halluci-nation at the cost of partial answers. 
+
+• Perplexity is bounded by open-web data alignment. Its performance varies based on how well the query maps to Tursio Database Search: How far are we from ChatGPT? 
+
+publicly available information, creating an inverted diffi-culty curve where hard, analytical questions outperform simple, domain-specific ones on conversational metrics. 
+
+• ChatGPT benefits from broad pretraining data and strong conversational tuning, achieving consistent high perfor-mance across all conditions. It serves as an upper-bound baseline, though it cannot provide the database-grounded answers that Tursio delivers. The key finding is that despite these different constraints, Tursio achieves statistically comparable answer relevancy to both baselines (Section 3.4), demonstrating that structured database search can match the quality of open-domain systems on enterprise data. 
+
+## 5 FUTURE DIRECTIONS 
+
+Our evaluation reveals several areas for improvement, both in the evaluation methodology itself and in the systems being evaluated. We organize these into three directions. 
+
+Richer evaluation methodology. The current evaluation has three key limitations that future iterations should address. First, the single-turn QA format does not capture multi-turn conversational patterns that are common in real-world search sessions, where users refine queries, ask follow-up questions, and request clarifi-cations. Extending the evaluation to multi-turn interactions (3–5 exchanges) would better assess context retention, clarification han-dling, and conversational coherence. Second, the standardized 3–5 sentence response limit, while ensuring comparability, systemati-cally penalizes systems on the Completeness metric for questions that require detailed, multi-part answers. Future evaluations should experiment with unconstrained response lengths to disentangle format constraints from genuine completeness gaps. Third, the cur-rent LLM-as-judge approach (GPT-4.1) introduces its own biases. Incorporating human-aligned reward models from benchmarks such as RewardBench [ 17 ] would reduce evaluator subjectivity and improve correlation with human judgments. 
+
+Improving data coverage and question quality. The analysis in Section 4 identifies database completeness as Tursio’s primary bottleneck, with Conversation Completeness dropping to 45.0% on medium questions due to data gaps. Addressing this requires systematic coverage audits across query patterns, data enrichment for identified gaps (particularly account-level details and temporal data), and improved fallback responses that provide more infor-mative explanations when data is unavailable. On the question generation side, the golden question set should be expanded to 3–5 examples per persona-difficulty combination to ensure balanced coverage and reduce evaluator uncertainty. The question mapping step for open-domain benchmarking should also be refined, as the current mapping occasionally produces questions that are difficult for web-based systems to answer comprehensively—particularly for simple, domain-specific queries where Perplexity’s conversational metrics drop to 20–30%. 
+
+Scaling and automation. The current evaluation pipeline in-volves manual steps in answer collection that limit scalability and re-producibility. Future work should automate the end-to-end pipeline— from question generation through answer collection to metric computation—enabling continuous evaluation as the underlying systems and databases evolve. This includes automated response extraction via APIs, version-controlled datasets for reproducibility, and monitoring dashboards for tracking quality trends over time. 
+
+## 6 RELATED WORK 
+
+We survey related work across four areas: natural language inter-faces to databases, text-to-SQL benchmarks, AI-powered search engines, and evaluation methodologies for LLM-based systems. 
+
+## 6.1 Natural Language Interfaces to Databases 
+
+The vision of querying databases in natural language dates back to the 1970s, with early systems like LUNAR [ 30 ] and Codd’s REN-DEZVOUS [ 8]. PRECISE [ 23 ] formalized the problem by reducing semantic interpretation to a maximum-bipartite-matching problem, guaranteeing correct SQL generation for a broad class of “seman-tically tractable” questions. NaLIR [ 19 ] extended the approach to support complex SQL features (aggregation, nesting, various join types) through interactive disambiguation with the user. The advent of deep learning transformed NLIDB research into the NL2SQL paradigm, where the focus shifted to training models that translate natural language to SQL. Recent approaches leverage LLMs with decomposition strategies: DIN-SQL [ 24 ] breaks text-to-SQL into sub-tasks (schema linking, query classification, SQL generation) and achieves 85.3% execution accuracy on Spider, while DAIL-SQL uses efficient few-shot prompting to reach 86.6%. However, as Floratou et al. [ 14 ] argue in their CIDR 2024 paper “NL2SQL is a Solved Problem... Not!”, enterprise-grade NL2SQL remains far from resolved. Key challenges include schema com-plexity, semantic ambiguity, and the mismatch between academic benchmarks and production workloads. Production systems from Databricks (Genie) [ 9], Snowflake (Cortex Analyst) [ 25 ], and Google (Gemini) [ 7 ] address this gap through semantic layers, knowledge stores, and agentic reasoning—but they focus on SQL generation rather than evaluating the quality of the final answer returned to the business user. Looking beyond single databases, Eckmann and Binnig [ 11 ] pro-pose a vision for query-by-collaboration , where autonomous data agents—each wrapping a distinct data source—collaboratively an-swer natural language queries without traditional data integration. Their Query Collaboration Protocol (QCP) allows agents to adver-tise capabilities, exchange partial results, and synthesize answers across heterogeneous databases, achieving accuracy comparable to centralized systems on a modified BIRD benchmark. While their work addresses the data integration bottleneck for multi-source querying, it does not evaluate the quality of the final natural lan-guage answer returned to the user. Our focus in this paper is evaluate the end-to-end search expe-rience , measuring whether the final natural language answer is relevant, complete, and useful to the business user, rather than whether the intermediate SQL is correct. 
+
+## 6.2 Text-to-SQL Benchmarks 
+
+Text-to-SQL benchmarks have evolved from simple single-table datasets to complex, cross-domain evaluations. WikiSQL [ 37 ] in-troduced large-scale evaluation with 80K question-SQL pairs but is limited to simple single-table queries. Spider [ 33 ] advanced the field significantly with 10K questions across 200 databases requiring Jain et al. 
+
+cross-domain generalization. SParC [ 35 ] and CoSQL [ 34 ] extended Spider to multi-turn conversational settings, evaluating context retention across question sequences. KaggleDBQA [ 18 ] introduced evaluation over real Kaggle databases with domain-specific data types and unrestricted questions. As discussed in Section 2.1, BIRD [ 20 ] is the most widely used benchmark, with 12,751 pairs across 95 databases, and BEAVER [ 4 ]provides a more realistic benchmark where state-of-the-art LLMs achieve far lower execution accuracy. A common limitation across all these benchmarks is their evalu-ation metric: execution accuracy (whether predicted and gold SQL produce identical result sets). This metric does not assess whether the system produces a correct, complete, and understandable nat-ural language answer—the quality dimension that matters most to end users and that our evaluation framework is designed to measure. Our evaluation closes this gap by assessing final answer quality rather than intermediate SQL correctness. 
+
+## 6.3 AI-Powered Search Engines 
+
+A new generation of AI-powered search engines has emerged that combine LLMs with web retrieval to provide synthesized answers rather than ranked document lists. Perplexity AI generates cited, synthesized answers from web sources and reports 93.9% accuracy on SimpleQA [ 29 ] via its Deep Research feature. Exa [ 13 ] trains end-to-end neural architectures for web search and has developed domain-specific evaluation benchmarks for people and company search. Tavily [ 27 ] provides a search API purpose-built for AI agents and RAG workflows, achieving 93.3% accuracy on SimpleQA by feeding retrieved content to GPT-4.1. You.com [ 32 ] targets enter-prise AI search and evaluates across accuracy, freshness, latency, and cost dimensions using SimpleQA, FreshQA, and MS MARCO benchmarks. And so on. These systems evaluate search quality primarily through factual accuracy on open-domain QA benchmarks. Our work addresses a complementary setting: search over structured enterprise databases ,where the challenge is not web retrieval but mapping high-level business questions to the correct database structures and returning grounded, precise answers. Tursio bridges these two worlds by delivering a comparable search experience over structured data. 
+
+## 6.4 Evaluation Methodologies 
+
+Automated evaluation of LLM-generated text has advanced rapidly along two fronts. The LLM-as-judge paradigm, introduced by Zheng et al. [ 36 ] with MT-Bench and Chatbot Arena, uses strong LLMs to evaluate chat assistants, achieving over 80% agreement with hu-man preferences. AlpacaEval [ 10 ] refines this approach with length-controlled comparisons to mitigate verbosity bias. G-Eval [ 21 ] ap-plies chain-of-thought reasoning for NLG evaluation, achieving strong correlation with human judgments on summarization tasks. For retrieval-augmented systems, RAGAS [ 12 ] introduces reference-free metrics that separately evaluate retrieval (context precision, context recall) and generation (faithfulness, answer relevancy) components. TruLens provides a complementary “RAG Triad” of groundedness, answer relevance, and contextual relevance metrics. Our evaluation builds on this foundation—using DeepEval [ 2 ], which implements the G-Eval methodology—but adapts it to the structured database search setting. Unlike standard RAG evalua-tion, where the retrieval corpus is a collection of text documents, our setting involves structured tables with schema semantics, join relationships, and domain-specific conventions. We also extend beyond answer relevancy to include conversational metrics (Com-pleteness, Focus, Engagement, Helpfulness, Voice) that capture the full search experience. To our knowledge, this is the first application of LLM-as-judge evaluation to structured database search. 
+
+## 6.5 Table Question Answering 
+
+Table QA benchmarks evaluate question answering over semi-structured tabular data. WikiTableQuestions [ 22 ] introduced large-scale evaluation with 22K question-answer pairs over Wikipedia ta-bles requiring aggregation, comparison, and sorting. HotpotQA [ 31 ]introduced 113K Wikipedia-based question-answer pairs that re-quire multi-hop reasoning —finding and combining evidence across multiple documents—with sentence-level supporting-fact annota-tions that enable explainability evaluation. HybridQA [ 5 ] extended multi-hop reasoning to the hybrid setting of tables and linked text passages. OTT-QA [ 6] further scaled to the open-domain setting with 45K questions over 400K candidate tables. While table QA shares the goal of answering questions over structured data, it operates at a fundamentally different scale and complexity than database search. Table QA benchmarks typically in-volve individual tables or small collections with extractive answers, whereas enterprise database search requires navigating normal-ized multi-table schemas with complex joins, aggregations, and domain-specific semantics—as demonstrated by the 30–55 × SQL-to-question token-length ratios in production workloads (Figure 2). Our evaluation targets this more complex setting, where answers must be synthesized across multiple joined tables rather than ex-tracted from a single one. 
+
+## 7 CONCLUSION 
+
+We set out to answer a simple question: can a structured database search system deliver a search experience comparable to ChatGPT? Our evaluation shows that the answer is yes—Tursio achieves an-swer relevancy statistically indistinguishable from both ChatGPT and Perplexity across simple, medium, and hard enterprise queries, despite the fundamental constraint of answering from a structured database rather than the open web. This result is significant because it demonstrates that the search quality gap between enterprise database systems and consumer AI search engines is narrower than commonly assumed. The remaining gaps are not in comprehension or response quality but in data coverage: when the database has the data, Tursio’s answers are precise, grounded, and competitive; when it does not, performance degrades gracefully through fallbacks rather than hallucination. More broadly, our work highlights the need for evaluation frame-works that go beyond SQL correctness to measure what actually matters to business users: whether the answer is relevant, complete, and useful. As natural language interfaces to databases become ubiquitous, the community needs rigorous, end-to-end evaluation methodologies for understanding user experience in structured data search. We hope this work provides a step toward that direction. Tursio Database Search: How far are we from ChatGPT? 
+
+## REFERENCES 
+
+[1] Ziawasch Abedjan, Lukasz Golab, and Felix Naumann. 2015. Profiling relational data: a survey. VLDB Journal 24, 4 (2015), 557–581. [2] Confident AI. 2024. DeepEval: The Open-Source LLM Evaluation Framework .Retrieved February 16, 2026 from https://github.com/confident-ai/deepeval [3] BBC. 2025. AI mistakes: People are getting paid to fix them . Retrieved July 19, 2025 from https://www.bbc.com/news/articles/cyvm1dyp9v2o [4] Peter Baile Chen et al . 2025. BEAVER: An Enterprise Benchmark for Text-to-SQL. https://arxiv.org/abs/2409.02038 [5] Wenhu Chen et al . 2020. HybridQA: A Dataset of Multi-Hop Question Answering over Tabular and Textual Data. In Findings of EMNLP .[6] Wenhu Chen, Ming-Wei Chang, Eva Schlinger, William Yang Wang, and William W. Cohen. 2021. Open Question Answering over Tables and Text. In ICLR .[7] Google Cloud. 2025. A new top score: Advancing Text-to-SQL on the BIRD benchmark . Retrieved November 14, 2025 from https://cloud.google.com/blog/ products/databases/how-to-get-gemini-to-deeply-understand-your-database [8] E. F. Codd, Robert S. Arnold, Jean-Marc Cadiou, Chin-Liang Chang, and Nick Roussopoulos. 1978. RENDEZVOUS Version 1: An Experimental English Lan-guage Query Formulation System for Casual Users of Relational Data Bases. 
+
+Research Report / RJ / IBM / San Jose, California RJ2144 (1978). [9] Databricks. 2025. Databricks Genie Knowledge Store . Retrieved October 7, 2025 from https://docs.databricks.com/aws/en/genie/knowledge-store [10] Yann Dubois, Balázs Galambosi, Percy Liang, and Tatsunori B. Burns. 2024. Length-Controlled AlpacaEval: A Simple Way to Debias Automatic Evaluators. In COLM .[11] Timo Eckmann and Carsten Binnig. 2026. A Vision for Autonomous Data Agent Collaboration: From Query-by-Integration to Query-by-Collaboration. In CIDR .[12] Shahul Es, Jithin James, Luis Espinosa-Anke, and Steven Schockaert. 2024. RA-GAS: Automated Evaluation of Retrieval Augmented Generation. In EACL .[13] Exa. 2025. Exa: The Search Engine for AIs . Retrieved February 17, 2026 from https://exa.ai [14] Avrilia Floratou et al. 2024. NL2SQL is a Solved Problem... Not!. In CIDR .[15] Jack Henry. 2025. Symitar Core Banking Platform . Retrieved February 16, 2026 from https://www.jackhenry.com/what-we-offer/core/symitar [16] Alekh Jindal et al . 2026. Making Databases Searchable with Deep Context. (2026). arXiv:2602.08320 [cs.DB] https://arxiv.org/abs/2602.08320 [17] Nathan Lambert et al . 2024. RewardBench: Evaluating Reward Models for Lan-guage Modeling. In Proceedings of the 62nd Annual Meeting of the Association for Computational Linguistics .[18] Chia-Hsuan Lee, Oleksandr Polozov, and Matthew Richardson. 2021. KaggleD-BQA: Realistic Evaluation of Text-to-SQL Parsers. In ACL .[19] Fei Li and H. V. Jagadish. 2014. Constructing an Interactive Natural Language Interface for Relational Databases. PVLDB 8, 1, 73–84. [20] Jinyang Li et al . 2023. Can LLM Already Serve as A Database Interface? A BIg Bench for Large-Scale Database Grounded Text-to-SQLs. In Advances in Neural Information Processing Systems .[21] Yang Liu et al . 2023. G-Eval: NLG Evaluation using GPT-4 with Better Human Alignment. In Proceedings of the 2023 Conference on Empirical Methods in Natural Language Processing .[22] Panupong Pasupat and Percy Liang. 2015. Compositional Semantic Parsing on Semi-Structured Tables. In ACL .[23] Ana-Maria Popescu, Oren Etzioni, and Henry Kautz. 2003. Towards a Theory of Natural Language Interfaces to Databases. In Proceedings of the 8th International Conference on Intelligent User Interfaces . 149–157. [24] Mohammadreza Pourreza and Davood Rafiei. 2023. DIN-SQL: Decomposed In-Context Learning of Text-to-SQL with Self-Correction. In NeurIPS .[25] Snowflake. 2025. Overview of Semantic Views . Retrieved November 15, 2025 from https://docs.snowflake.com/en/user-guide/views-semantic/overview [26] Chicago Sun-Times. 2025. Syndicated Content: Sunday Print Sun-Times AI Mis-information . Retrieved July 19, 2025 from https://chicago.suntimes.com/news/ 2025/05/20/syndicated-content-sunday-print-sun-times-ai-misinformation [27] Tavily. 2025. Tavily: Search API for AI Agents . Retrieved February 17, 2026 from https://tavily.com [28] Tursio. 2025. How Far Are NL and SQL in NL2SQL? Retrieved February 16, 2026 from https://www.tursio.ai/blog/how-far-are-nl-and-sql-in-nl2sql [29] Jason Wei et al . 2024. SimpleQA: Measuring Short-form Factuality in Large Language Models. https://arxiv.org/abs/2411.04368 [30] William A. Woods, Ronald M. Kaplan, and Bonnie L. Webber. 1972. The Lunar Sciences Natural Language Information System: Final Report . Technical Report BBN Report 2378. Bolt Beranek and Newman Inc., Cambridge, Massachusetts. [31] Zhilin Yang et al . 2018. HotpotQA: A Dataset for Diverse, Explainable Multi-hop Question Answering. In EMNLP .[32] You.com. 2025. You.com AI Search API . Retrieved February 17, 2026 from https://you.com [33] Tao Yu et al . 2018. Spider: A Large-Scale Human-Labeled Dataset for Complex and Cross-Domain Semantic Parsing and Text-to-SQL Task. In EMNLP .[34] Tao Yu et al . 2019. CoSQL: A Conversational Text-to-SQL Challenge Towards Cross-Domain Natural Language Interfaces to Databases. In EMNLP .[35] Tao Yu et al . 2019. SParC: Cross-Domain Semantic Parsing in Context. In ACL .[36] Lianmin Zheng et al . 2023. Judging LLM-as-a-Judge with MT-Bench and Chatbot Arena. In NeurIPS .[37] Victor Zhong, Caiming Xiong, and Richard Socher. 2017. Seq2SQL: Generat-ing Structured Queries from Natural Language using Reinforcement Learning. 
+
+arXiv:1709.00103 (2017).

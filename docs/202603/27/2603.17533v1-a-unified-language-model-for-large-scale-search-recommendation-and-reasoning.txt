@@ -1,0 +1,588 @@
+Title: A Unified Language Model for Large Scale Search, Recommendation, and Reasoning
+
+URL Source: https://arxiv.org/pdf/2603.17533v1
+
+Published Time: Thu, 19 Mar 2026 01:03:17 GMT
+
+Number of Pages: 15
+
+Markdown Content:
+# A Unified Language Model for Large Scale Search, Recommendation, and Reasoning 
+
+# Marco De Nadai, Edoardo D’Amico, Max Lefarov †, Alexandre Tamborrino, Divita Vohra, Mark VanMiddlesworth, Shawn Lin, Jacqueline Wood, Jan Stypka †, Eliza Klyce, Keshi Dai, Timothy Christopher Heath, Martin D. Gould, Yves Raimond, Sandeep Ghael, Tony Jebara †, Andreas Damianou, Vladan Radosavljevic, Paul N. Bennett, Mounia Lalmas and Praveen Chandar 
+
+Spotify Denmark, Spain, Germany, France, United States, United Kingdom mdenadai,edoardod,alexandret,divitav,mvanmiddlesworth,weihsiangl,jacquelinew,elizak,keshid,theath, mg,yvesr,sandeepg,andreasd,vladanr,pbennett,mounial,praveenr@spotify.com 
+
+## Abstract 
+
+Large language models (LLMs) are increasingly applied to recom-mendation, retrieval, and reasoning, yet deploying a single end-to-end model that can jointly support these behaviors over large, heterogeneous catalogs remains challenging. Such systems must generate unambiguous references to real items, handle multiple entity types, and operate under strict latency and reliability con-straints requirements that are difficult to satisfy with text-only generation. While tool-augmented recommender systems address parts of this problem, they introduce orchestration complexity and limit end-to-end optimization. We view this setting as an instance of a broader research problem: how to adapt LLMs to reason jointly over multiple-domain enti-ties , user behavior, and language in a fully self-contained manner. To this end, we introduce NEO , a framework that adapts a pre-trained decoder-only LLM into a tool-free, catalog-grounded gen-erator. NEO represents items using semantic identifiers (SIDs) and trains a single model to interleave natural language and typed item identifiers within a shared sequence. Natural-language prompts control the task, target entity type, and output format (IDs, text, or mixed), while constrained decoding guarantees catalog-valid item generation without restricting free-form text. We refer to this instruction-conditioned controllability as language-steerability .Inspired by multimodal alignment, we treat SIDs as a distinct modality and study design choices for integrating discrete entity representations into LLMs via staged alignment and instruction tun-ing. We evaluate NEO at scale on a real-world catalog of over 10M items across multiple media types and discovery tasks, including recommendation, search, and user understanding. In offline experi-ments, NEO consistently outperforms strong task-specific baselines and exhibits positive cross-task transfer, demonstrating a practical 
+
+† Work performed while at Spotify. Permission to make digital or hard copies of all or part of this work for personal or classroom use is granted without fee provided that copies are not made or distributed for profit or commercial advantage and that copies bear this notice and the full citation on the first page. Copyrights for components of this work owned by others than the author(s) must be honored. Abstracting with credit is permitted. To copy otherwise, or republish, to post on servers or to redistribute to lists, requires prior specific permission and/or a fee. Request permissions from permissions@acm.org.  
+
+> Conference acronym ’XX, Woodstock, NY
+> ©2018 Copyright held by the owner/author(s). Publication rights licensed to ACM. ACM ISBN 978-1-4503-XXXX-X/2018/06 https://doi.org/XXXXXXX.XXXXXXX
+
+path toward consolidating large-scale discovery capabilities into a single language-steerable generative model. 
+
+## CCS Concepts 
+
+• Information systems → Recommender systems ; • Comput-ing methodologies → Natural language processing .
+
+## Keywords 
+
+Recommender Systems, Large Language Models, Semantic IDs, Generative Retrieval, Podcast Discovery 
+
+ACM Reference Format: 
+
+Marco De Nadai, Edoardo D’Amico, Max Lefarov †, Alexandre Tamborrino, Divita Vohra, Mark VanMiddlesworth, Shawn Lin, Jacqueline Wood, Jan Stypka †, Eliza Klyce, Keshi Dai, Timothy Christopher Heath, Martin D. Gould, Yves Raimond, Sandeep Ghael, Tony Jebara †, Andreas Damianou, Vladan Radosavljevic, Paul N. Bennett, Mounia Lalmas and Praveen Chandar . 2018. A Unified Language Model for Large Scale Search, Recommendation, and Reasoning. In Proceedings of Make sure to enter the correct conference title from your rights confirmation email (Conference acronym ’XX). ACM, New York, NY, USA, 15 pages. https://doi.org/XXXXXXX.XXXXXXX 
+
+## 1 Introduction 
+
+Large-scale discovery systems operate over massive catalogs of discrete items (e.g., documents, media, products) and must support multiple access modes, most prominently recommendation and search. As user interfaces become more conversational, discovery interactions increasingly interleave explicit language-based queries with implicit behavioral feedback. Despite this convergence at the interaction level, recommendation and search are still typically implemented as separate system stacks [ 41 , 63 ], leading to dupli-cated modeling, fragmented objectives, and substantial operational overhead. While recent work explores unifying these capabilities through generative modeling [ 41 , 42 ], achieving practical consolida-tion at scale, especially over heterogeneous catalogs with multiple entity types, remains challenging. Large Language Models (LLMs) offer a natural abstraction for unifying discovery, providing a single sequence-modeling para-digm and a steerable natural-language interface [ 2, 39 ] However, deploying a single LLM for large-scale discovery is difficult when model outputs must unambiguously reference real catalog items. Purely textual item mentions [ 14 , 26 ] are ambiguous and unstable, embedding-based item sequences [ 38 ] require architectural changes       
+
+> arXiv:2603.17533v1 [cs.IR] 18 Mar 2026 Conference acronym ’XX, June 03–05, 2018, Woodstock, NY De Nadai et al. 421 445
+> 42
+> Catalog Tokenizer
+> User history
+> “Art and
+> spots?”
+> “You’ll
+> enjoy this…”
+> Audiobook 1 Podcast 2
+> Text Tokenizer
+> Pre-trained LLM
+> …
+> “Recommend to
+> the user…”
+> Text Tokenizer
+> …
+> …
+> Semantic ID Token
+> Text Token
+
+Figure 1: NEO adapts pre-trained LLMs to speak multi-item-type catalogs (e.g. audiobooks and podcasts) through SIDs (e.g. 2 tokens long tuples), and to output both text and SIDs. 
+
+and struggle with long histories, and tool-augmented pipelines [ 5 ,8 , 57 , 73 ] introduce orchestration complexity that limits end-to-end optimization and latency that adds practical challenges [ 45 , 46 , 67 ]. In contrast, traditional generative recommenders [ 10 , 20 ] have been demonstrated to scale on large datasets [ 69 ], but they operate on se-quences of atomic IDs and cannot interleave language with explicit item references or generate item-grounded explanations, particu-larly in heterogeneous catalogs. Motivated by these limitations, we focus on a constrained but practically relevant setting: a massive, heterogeneous catalog in which a single deployed model must simultaneously support recom-mendation, text-based retrieval, and item-grounded text generation, while remaining steerable through natural-language instructions , and operating end-to-end and tool-free at inference time. We view this setting as an instance of a broader research problem: how to adapt LLMs to reason jointly over domain entities, user behavior, and language in a fully self-contained manner. We introduce NEO , a framework that adapts an open-weight decoder-only LLM into a single end-to-end, catalog-grounded gener-ator. NEO represents items using semantic identifiers (SIDs) [ 44 , 48 ]and trains a single model to consume and produce sequences that interleave natural language with typed item identifiers (see Fig-ure 1). Natural-language prompts control the task, target entity type, and output format (IDs, text, or mixed), while constrained decoding guarantees that generated identifiers correspond to valid catalog items without restricting free-form text. Inspired by multi-modal alignment, we treat SIDs as a distinct modality and integrate them via a staged training recipe comprising semantic foundation, domain grounding, and capability induction, while preserving the standard next-token prediction objective. Within this framework, we examine a set of research questions relevant to general design choices in domain-adapted LLMs. We study the role of semantically structured identifiers versus atomic IDs, the impact of different alignment strategies on generalization and language retention, and the ability of a single model to support multiple discovery tasks under explicit language control. To ground these questions in practice, we evaluate NEO at scale on a catalog exceeding 10M items from a major streaming platform, spanning multiple item types and tasks including recommendation, search, and user understanding. Across offline experiments, NEO consis-tently outperforms strong task-specific baselines, exhibits positive cross-task transfer, and demonstrates a practical path toward con-solidating large-scale discovery into a single language-steerable and catalog-grounded generative model. 
+
+## 2 Related work 
+
+We review related work through the lens of the broader problem introduced in the previous section: adapting LLMs to operate over domain entities and user behavior in a fully self-contained manner, while remaining language-steerable and scalable to large, heteroge-neous catalogs. Prior work addresses aspects of this challenge across representation learning, generative recommendation, and LLM-based personalization, but typically resolves key requirements–such as item grounding, task control, language, or scalability–by exter-nalizing complexity to specialized architectures, auxiliary tools, or task-specific pipelines. We organize related work according to how these design choices trade off generality, steerability, and end-to-end integration. 
+
+Generative models for recommendations. Generative recommen-dation models address the entity grounding problem by predicting items autoregressively, but often assume a single task and a homo-geneous item space (e.g., next-item prediction) [ 20 , 27 , 69 ]. Many approaches rely on atomic item IDs, which limits generalization in cold-start and long-tail regimes [ 47 ]. These models are typically de-signed for single-task next-item prediction and operate purely over ID sequences, making it difficult to incorporate natural language and support multiple discovery tasks within a single model. To address limitations of atomic IDs, recent work has explored both continuous item embeddings [ 38 ] and SIDs [ 44 , 48 ]. Although continuous embeddings are effective in many multimodal settings (e.g., [ 30 ]), injecting long sequences of dense vectors into an LLM can be bandwidth- and memory-intensive for users with long in-teraction histories, and often requires architectural modifications (e.g., projection layers or adapters) or additional training objec-tives beyond standard next-token prediction. In contrast, SIDs can be treated as ordinary tokens by both traditional and generative sequence models, while preserving the semantic neighborhood structure that is richer than atomic item IDs [48]. One influential line of work that operationalizes SIDs for recom-mendation begins with TIGER [ 47 ]. TIGER introduces a pipeline that learns item embeddings, discretizes them into SIDs, and applies autoregressive modeling for recommendation. Subsequent work improves identifier quality using retrieval-oriented or contrastive objectives [ 31 , 75 ], as well as by incorporating collaborative signals during code learning [ 40 , 71 , 74 ]. However, most SID-based rec-ommenders are not language-steerable and do not support mixed text-ID inputs or outputs, limiting their applicability to tasks such as search and natural-language explanation. In addition, their inter-faces offer limited flexibility for rich textual inputs (often relying on soft tokens [ 17 , 38 ]) and do not naturally support operating over multiple item types within a single model. We summarize these capability gaps in Table 1. From the perspective of domain-adapted LLMs, these approaches provide strong item-level modeling but lack a unified interface for language steerability, multi-task discovery, and heterogeneous entity types. A Unified Model for Search, Recommendation and Reasoning Conference acronym ’XX, June 03–05, 2018, Woodstock, NY 
+
+Table 1: Comparison of NEO with prior recommendation paradigms. While several approaches support individual capabilities (e.g., discrete item IDs or LLM-based generation), NEO is the first to combine typed item addressing, mixed text–item outputs, language-steerable behavior, and multi-task discovery within a single tool-calling-free generative model.              
+
+> Capability ↓/ System →Generative SID Retrieval [43, 44] Tool-based LLMs [6, 8, 32, 57] PLUM [13] TalkPlay [5] NEO (this work)
+> Discrete item pointers ✓✗✓✓✓
+> Mixed text + item output ✗
+
+▲ ✗ ✓ ✓ 
+
+> Mixed text + item input
+
+▲ ✓ ✓ ✓ ✓  
+
+> User behaviour in input ✓
+
+▲ ✓ ▲ ✓   
+
+> Language-steerable behavior ✗✓
+
+▲ ✓ ✓ 
+
+> Multiple item types
+
+▲ ▲ ✗ ✗ ✓  
+
+> Search + Rec + Explanation ✗
+
+▲ ✗ ✗ ✓    
+
+> Tool-calling-free inference ✓✗✓
+
+▲ ✓             
+
+> Low-latency ✓✗✓✓✓
+> Industrial-scale (>10M items) ✓✗✓✗✓
+> Legend: ✓explicitly supported and demonstrated;
+
+▲ partially supported / requires extra components; ✗ not supported / not demonstrated / not studied. 
+
+LLMs for personalization and discovery. Recent work applies LLMs to personalization by introducing natural-language interfaces for recommendation and discovery, framing user intent and con-text directly in text [ 26 , 32 , 64 ]. These approaches rely on text-only representations [ 14 , 26 ], textual and rule-based IDs [ 50 ], or atomic IDs [ 6, 64 , 70 ], and some explore unifying search and recommen-dation within a single model [ 40 , 42 ]. However, such methods are often evaluated on relatively small single-typed datasets, struggle with cold-start items when SIDs are not used, or face scalability lim-itations when applied to large catalogs, particularly when relying on free-form textual references to items. To address item ambiguity and expand capability, several sys-tems augment LLMs with external tools or retrievers for personal-ized recommendation [ 5, 8, 32 , 57 ]. For example, TalkPlay-tools [ 6 ]orchestrates multiple tools via planning to answer user queries, while RecMind [ 57 ] relies on external knowledge and tool use for zero-shot personalization. While effective in certain settings, these approaches are not trained end-to-end, operate primarily in the text modality, leading to ambiguity when referencing catalog items, and introduce additional orchestration complexity and latency at inference time. We summarize these trade-offs in Table 1. 
+
+SIDs as new modality in LLMs. SIDs offer a discrete representa-tion of entities that preserves semantic structure while remaining compatible with autoregressive generation [ 44 , 48 ]. TalkPlay [ 5]reformulates music recommendation as token generation by ex-panding the LLM vocabulary with feature-engineered multimodal music tokens, enabling single turn interactions that interleave text and SIDs in both input and output. However, this approach fo-cuses on a single item type and task, relies on an external retriever operating over SIDs, is not evaluated at large scale, and does not incorporate user history for personalization. Concurrent work such as PLUM [ 13 ] explores a related direc-tion based on continual pre-training and supervised fine-tuning with SIDs, and shows partial language-steerability through qual-itative in-context learning examples. However, PLUM currently does not support mixed text–ID outputs in downstream tasks, fo-cuses exclusively on recommendations, and is limited to a single item type. Prior SID-based systems primarily target single-task rec-ommendation or retrieval, and do not study how discrete entity representations can be integrated into a language-steerable, multi-task LLM that supports mixed text+item input and output while maintaining general language competence. 
+
+NEO. In contrast to prior work that applies SIDs within LLMs pri-marily for recommendation, we introduce a typed mixed-sequence catalog interface and a staged alignment recipe. This enables an open-weight decoder-only LLM to interleave natural language with valid identifiers from a heterogeneous catalog and support recom-mendation, text retrieval, and item-grounded text generation and user understanding in a single, tool-free model. 
+
+## 3 Methodology 
+
+Figure 2 presents a general staged pipeline for training a domain-adapted, fully self-contained LLM, of which NEO instantiates the first three stages. Stage 1 learns SIDs as discrete token sequences representing catalog entities and their semantic structure. Stage 2 grounds these identifiers by aligning SID-text pairs (and option-ally adapting over user-behavior sequences) to learn a shared space where text and SIDs are interchangeable, supporting mixed text–SID sequences and sequential domain signals. Stage 3 then induces dis-covery capabilities via multi-task instruction-following, prioritiz-ing breadth over single-task specialization, whereas an optional Stage 4 captures subsequent task-specific objective optimization us-ing larger datasets and specialized objectives (e.g., business-constraint and product-specific tuning, or reinforcement learning). We com-pare with alternative training strategies, including continuous pre-training (CPT)-based approaches, in Section 4.2. NEO adapts a pre-trained open-weight decoder-only LLM to operate jointly over natural language and discrete item identifiers, while preserving the standard next-token prediction objective and requiring no architectural modifications (e.g., no bespoke attention masks, cross-attention modules, or specialized losses). Text inputs are tokenized using the native tokenizer of the backbone LLM, while catalog items are represented as short sequences of SID tokens obtained by discretizing item embeddings. Both text tokens and SID tokens are embedded into a single shared sequence and processed by the same decoder stack, enabling the model to reason uniformly over language and items. Conference acronym ’XX, June 03–05, 2018, Woodstock, NY De Nadai et al. Stage 2 : Domain Grounding Stage 1 : Semantic Foundation    
+
+> Text
+> Embedding
+> 12 257 678 1021 Final Semantic ID:
+> STAGE 1
+> Broad
+
+# LLM  
+
+> SemID Tokens Text Tokens SemID Tokens Text Tokens
+
+# LLM LLM 
+
+> Stage 3 : Capability induction
+> Mystery
+> Children SemID Tokens Text Tokens
+> Stage 4 : Task-specific post-training
+> (not studied in this paper)
+> Harry
+> Potter
+> Sherlock
+> Holmes
+> STAGE K
+> Fine category
+> ...
+
+Figure 2: We illustrate our approach as the first three stages in a more general four-stage pipeline. In the general case, in Stage 1, semantic representations are learned—such as semantic IDs (SIDs)—to capture entities, their structure, and relationships. In Stage 2, domain grounding is performed via one or both of (i) adaptation over user-behavior sequences and (ii) domain alignment between SID/text pairs, to learn a shared latent space between entities and natural language. This enables the model to use text and SIDs interchangeably and to learn sequential, domain-relevant concepts. Stage 3 teaches the model to answer questions, follow commands, and generate grounded outputs through multi-task instruction-following. We prioritize diversity of tasks over depth within any single task. In Stage 4, we may leverage task-specific datasets and objectives related to the targeted use case (e.g., topic discovery and business constraints) via task-specific fine-tuning, reinforcement learning, and related techniques. We indicate typical choices for which parameters are kept frozen (ice) or trainable (fire) for each stage. 
+
+To reliably integrate this extended vocabulary and align item identifiers with linguistic representations, NEO is trained using a three-stage recipe, as shown in Figure 2. First, item content is converted into SIDs through embedding discretization (Stage 1). Second, the newly introduced SID tokens are aligned with the LLM’s embedding space (Stage 2). Third, the model is instruction-tuned on a mixture of discovery tasks, including recommendation, retrieval, recommendation explanations, and user interest analysis (Stage 3). 
+
+## 3.1 Semantic IDs 
+
+In Stage 1, we focus on constructing discrete item representations that can be used directly by an LLM. We represent each catalog item 
+
+𝑒 with SID (𝑒 ): a short sequence of 𝑀 discrete tokens, each with 𝐾 
+
+possible values, that compactly encodes the semantic content of the item. Intuitively, SIDs provide a discrete token-level abstraction of items that preserves semantic neighborhood structure while re-maining compatible with autoregressive generation. See Appendix C for formal details. We construct SIDs by discretizing content-based item embed-dings in a hierarchical fashion using residual quantizers (e.g., [ 19 ,25 ]), inducing a coarse-to-fine decomposition: earlier codes cap-ture broad semantic regions, and later codes refine within-region distinctions. This property aligns naturally with autoregressive generation, where tokens are produced sequentially. We design the discretization to ensure semantic coherence, stability under distri-bution shift (e.g., seasonality of content consumption and shifts in interests), and compatibility with large heterogeneous catalogs. For heterogeneous entities, embeddings of different item types may lie in different latent spaces, thus requiring multiple quantizers. 
+
+Using SIDs in the LLM. To integrate SIDs and natural language, we define a unified vocabulary V = Vtext ∪ V SID . We extend the LLM’s base vocabulary by 𝑀 × 𝐾 SID tokens, which are ran-domly initialized, and add the corresponding parameters to the LLM head when their weights are untied. SIDs are interleaved with text in both inputs and outputs. Following delimiter-based conven-tions commonly used in Multimodal LLMs (MLLMs) (e.g., [ 22 , 37 ,59 ]) item references are emitted only within explicit item spans: 
+
+⟨text ⟩ [SID] ⟨𝑐 1 . . . 𝑐 𝑀 ⟩ [/SID] ⟨text ⟩. This design allows the model to freely interleave natural language and item references while enabling constrained decoding within SID spans. 
+
+## 3.2 Domain Grounding: Alignment 
+
+Stage 2 aligns SIDs with the LLM’s linguistic embedding space. This stage is inspired by MLLMs, where non-textual modalities are represented either as discrete tokens [ 28 , 37 , 51 , 56 , 59 , 61 , 62 ] or as continuous features interfaced through encoders and projection layers [ 49 , 53 , 60 ]. MLLMs are typically trained using staged recipes that introduce a new modality, align it with language, and then apply instruction tuning. Following this paradigm, we treat SIDs as a discrete “foreign-language” modality and learn a bidirectional mapping between SID sequences and natural language. This enables the model to both consume and generate mixed text–SID sequences, while preserving the standard next-token prediction objective. 
+
+Bidirectional alignment objectives. Let 𝑠 𝑒 = SID (𝑒 ) denote the SID sequence for item 𝑒 , let 𝑡 𝑒 denote a short textual descriptor of 𝑒 
+
+derived from available metadata, and let 𝑐 𝑒 denote the item type of 
+
+𝑒 . We train the model using three complementary objectives: (1) SID →text (verbalization). Given one or more SID spans (optionally with a lightweight instruction), the model pre-dicts a natural-language descriptor: ⟨prompt (𝑠 𝑒 )⟩ → ⟨ 𝑡 𝑒 ⟩
+
+(2) text →SID (grounded retrieval). Given a natural-language query 𝑞 , the model predicts the corresponding item SID span: 
+
+⟨prompt (𝑞 )⟩ → [SID] ⟨𝑠 𝑒 ⟩ [/SID] . To reduce ambiguity and noise in the supervision, queries are constructed from a subset of item fields (primarily name and short description). We hypothesize that the more specific the prompts are, the better the alignment quality is, due to reduced semantic ambiguity. A Unified Model for Search, Recommendation and Reasoning Conference acronym ’XX, June 03–05, 2018, Woodstock, NY 
+
+(3) SID →type (type disambiguation). Given one or more SID spans (optionally with a lightweight instruction), the model predicts the item type: ⟨prompt (𝑠 𝑒 )⟩ → ⟨ 𝑐 𝑒 ⟩.Together, these objectives encourage the model to align SIDs with language at the levels of semantics, retrieval, and type structure. 
+
+Parameterization and stability. To prevent catastrophic forget-ting during the alignment phase, we freeze the pre-trained backbone parameters and optimize only: (i) the input embeddings correspond-ing to newly introduced SID tokens, and (ii) the output weights used to predict SID tokens (the SID-specific logits in the LLM head). This design preserves the linguistic competence of the backbone while enabling effective alignment between SIDs and natural language. 
+
+## 3.3 Capability Induction via Instruction tuning 
+
+Stage 3 trains the domain-grounded model to perform personaliza-tion tasks and discovery under explicit control via natural-language instructions, while producing (i) SIDs, (ii) text, or (iii) mixed SIDs– text outputs. We unfreeze and fine-tune all model parameters. Al-ternatively, Stage 3 can be implemented using parameter-efficient fine-tuning methods (e.g., LoRA [ 16 ]) when full fine-tuning is im-practical. In this paper, we focus on simply introducing a large variety of types of tasks to the model including text-based retrieval, recommendation, and text generation across heterogeneous items. We save for future work demonstrating the ability to generalize in this stage to new, zero-shot domain capabilities. We train NEO using supervised instruction tuning over the uni-fied vocabulary V, where each training example is a prefix–completion pair (𝑥, 𝑦 ). The prefix 𝑥 is the input context and includes the sys-tem prompt and user instruction, optionally augmented with light-weight user features and/or item references expressed as SID spans. The completion 𝑦 is the model output and may contain natural lan-guage, SID spans, or both. During training, we apply the loss only to tokens in 𝑦 , masking all tokens in 𝑥 . We restrict 𝑥 to single-turn interactions to simplify evaluation; the same formulation extends directly to multi-turn dialogues by concatenating the full conversa-tion history ( (𝑥, 𝑦 ) pairs) and masking all user messages. 
+
+Task families. All tasks are described through prompts that fol-low a consistent schema that explicitly specifies (i) the task (rec-ommend, retrieve, explain, understand), (ii) the target item type, and (iii) the desired output format (SID-only, text-only, or mixed). This explicit conditioning enables fine-grained control over model behavior using natural-language instructions. The tasks are formulated as next-token prediction over mixed text–SID sequences that may involve items from multiple types: 
+
+• Next-item recommendation. Given an instruction, light-weight user or context features, and a short interaction his-tory represented as SIDs, the model predicts the next con-sumed item of the specified type as a SID. 
+
+• Text-based retrieval. Given a natural-language query (op-tionally with lightweight user context), the model generates the SID(s) of the most relevant item(s). 
+
+• Grounded mixed generation (recommendation + recs-planation). The model generates a recommended item SID together with a natural-language justification grounded in the user’s history and the recommended item(s). 
+
+• User understanding (interest profiling). Given a user’s interaction history expressed as SIDs, the model generates a short natural-language description of the user’s interests. In settings where natural-language data is unavailable (e.g., user interest profiles), we prompt a stronger LLM to distill synthetic supervision for NEO’s training. 
+
+## 3.4 Inference 
+
+Because multi-token SIDs induce a large combinatorial output space (e.g., a 4-token SID with 𝐾 =256 yields 256 4 possible sequences), we constrain decoding so that generated SIDs always map to existing catalog items. We precompute all valid SID tuples and store them in a prefix trie. During autoregressive decoding, we apply trie-based masking only within [SID] ... [/SID] spans, restricting each next token to trie-consistent continuations. Outside SID spans, we restrict generation to text tokens (and [SID] token), which prevents accidental SID token emission in free-form text while preserving the ability to introduce item references when needed. The mapping from items to SID tuples is not necessarily one-to-one, as multiple items may share the same SID. We resolve such collisions by mapping each SID tuple to a single canonical item, selected based on multiple possible heuristics (e.g. item popularity, recency). For retrieval tasks, we generate multiple candidate items by applying beam search over SID tokens. 
+
+## 4 Evaluation 
+
+We evaluate NEO at scale across recommendation, retrieval, and user understanding tasks, focusing on effectiveness, steerability, and robustness under realistic production constraints. 
+
+## 4.1 Experimental setup. 
+
+We evaluate NEO using a sample of interaction logs from a large-scale media streaming platform, spanning a catalog of over 10M items and approximately 15M users. The catalog includes multiple item types, including episodes, shows, 1 audiobooks, and artists. We use around 5M examples in the domain grounding stage, while in the capability induction stage we train on a total of 10M training examples and test on around 100K examples. 
+
+4.1.1 Baselines. We compare the NEO-trained LLM against strong and mature production systems optimized over multiple years using large-scale data and extensive feature engineering. For recommendation tasks (audiobooks, shows, and episodes), the baseline combines Graph Neural Networks with a two-tower architecture [ 68 ] and models cross-item-type relationships through item co-consumption patterns, inspired by [ 4 ]. It incorporates weak signals (e.g., follows and previews prior to streams) to better handle cold-start users, and uses categorical features (e.g., categories, topics, user country) alongside LLM-encoded item metadata. For text-based retrieval, the baseline is a dense retrieval system similar to [ 66 ], trained on historical search logs. Training data includes query-entity pairs, multi-step reformulation sessions (in which the user had to reformulate the query to find the desired content), manually curated semantic queries, and synthetic queries generated as done in [ 29 ]. The query encoder processes a textual  
+
+> 1We define a show as a podcast series, composed of episodes. Conference acronym ’XX, June 03–05, 2018, Woodstock, NY De Nadai et al.
+
+concatenation of the user’s geographic location and the search query, while the entity encoder represents item metadata using concatenated metadata such as name and description. We evaluate recommendation and text-based retrieval perfor-mance using standard ranking metrics: Hit Rate@K (HR@K) and Normalized Discounted Cumulative Gain@K (NDCG@K), with 
+
+𝐾 ∈ { 10 , 30 } (see Section B.1 for details). There are no baselines for grounded text-SID mixed generation. These tasks are completely novel in our setting. 
+
+4.1.2 Semantic ID creation (Stage 1). Each item is represented using its available content and metadata. For artists, we encode tracks from track spectrograms into audio embeddings and average them by artist to obtain artist-level vectors. For shows, episodes, and audiobooks, we embed title and description text using the Qwen3 embeddings (8B) pre-trained text model [ 72 ]. Metadata quality can vary, particularly for podcast episodes, where descriptions may be missing or largely identical across episodes of the same show. To mitigate this, we generate richer episode summaries using a pre-trained LLM applied to multiple available metadata fields, and embed these summaries using the same text encoder. We construct SIDs using Residual 𝐾 -means [ 19 ] with 𝑀 =4 code-books. We use 𝐾 =256 centroids per codebook for audiobooks, episodes and shows, and 𝐾 =1024 for artists to better model the higher com-plexity of audio embeddings. We construct separate SID vocabu-laries per item type, as early experiments showed that embedding spaces differ substantially across types. All SID tokens, along with span delimiters [SID] and [/SID] are added to the LLM vocabu-lary, extending the embedding layer and LLM head by 7168 + 2. To mitigate the curse of dimensionality of 𝐾 -means, we reduce em-bedding dimensionality to 1024 dimensions using the Matryoshka property [ 23 ] of Qwen3 embeddings. We solve collisions with a popularity-based selection for items colliding in the same SID bucket. Section 4.2.1 challenges this solution without seeing signif-icant differences from random selection. In our heterogeneous setting, using a single quantizer for all item embedding spaces would severely compromise SIDs quality. 
+
+4.1.3 Domain Alignment (Stage 2). We construct paired alignment examples linking each item SID 𝑠 𝑒 with a short textual descriptor 
+
+𝑡 𝑒 derived from metadata. For audiobooks, episodes, and shows, descriptors include titles, descriptions, summaries, topics, and cate-gories. For artists, descriptors include names, genres, and Wikipedia snippets when available. Text-to-SID queries 𝑞 are constructed from a subset of these fields to reduce ambiguity. 
+
+4.1.4 Capability Induction via Instruction Tuning (Stage 3). This stage fine-tunes the aligned model on multiple supervised instruction-following discovery tasks. All prompts use a consistent instruction-tuning format specifying task, target item type, and output con-straints (SID-only, text-only, or mixed). Prompt templates are pro-vided in Section G. 
+
+Next-item(s) recommendation. Each example consists of an instruc-tion, user context, and target label. User context includes re-cent interaction history represented as SIDs. For audiobooks and shows, we include recent cross-item types activity, following [ 4]. 
+
+Text-based retrieval. We build a dataset mapping natural-language queries to the SID of the most relevant item of a specified type, using engagement logs as supervision. Prompts may optionally include lightweight user context. 
+
+User understanding (interest profiling). Explicit natural-language su-pervision for user interest profiling is typically unavailable. We therefore create training targets via distillation from a larger LLM (32B parameters), which is prompted with textual descriptions of a user’s consumed items to generate a concise interest summary. We then replace textual item representations with SIDs and train NEO to generate the same summary directly from the SID-based history, without intermediate chain-of-thought. 
+
+Recommendation + explanation (“recsplanation”). We build a mixed output dataset where the target consists of (i) a recommended item SID and (ii) a natural-language justification grounded in the user’s history and the recommended item. Rationales are ob-tained via distillation from a larger LLM: for each user sequence, we sample a cut point 𝑡 and prompt the LLM to explain why the item at 𝑡 + 1 matches the user’s prior interests. We then replace textual item mentions with SIDs and train NEO to reproduce the rationale while outputting the correct SID. 
+
+4.1.5 Implementation details. Unless otherwise stated, we use Qwen3-0.6B [ 65 ] as decoder-only backbone. To evaluate backbone general-ity, we also report results with Llama 3.2 1B [ 11 ]. We follow a global temporal evaluation protocol [ 33 ]. For each example, the context contains interactions up to day 𝑡 and the label corresponds to the item consumed at 𝑡 +𝑘 with 𝑘 =1 for episodes and shows and 𝑘 =7
+
+for audiobooks. We prevent temporal leakage across all tasks and evaluate at 𝑡 + 2𝑘 . To ensure fair comparison, NEO and all baselines are trained on the same temporal window and evaluated on an identical held-out test window under the same candidate universe. For mixed text-SID generation tasks, we build 20 types of prompt templates that are randomly selected for each data sample and filled with user information, to enhance the diversity of our examples. 
+
+Cold-start users. We simulate cold-start users by removing past listening behavior information and rely only on user metadata for predictions on recommendations and text-based retrieval. 
+
+## 4.2 Design Analysis Research Questions 
+
+We analyze the design choices underlying NEO’s item tokeniza-tion, alignment, and decoding as it relates to the general stages we present for fully self-contained domain-adapted LLMs in Figure 2. 
+
+4.2.1 Semantic Foundation. We examine generalization effective-ness of SIDs versus atomic IDs, importance of semantic structure in the SID token space, importance of the grounding content quality, whether learning user preferences among entities, from Collabora-tive Filtering (CF) data, is critical at this stage, whether constrained decoding is necessary, and its practical scale implications. 
+
+Do semantically-structured discrete item tokens improve tool-free generation over large catalogs beyond atomic IDs? To isolate the im-pact of semantic structure from the use of short discrete codes, we construct an “atomic ID” baseline by randomly permuting the SID tuples across items. This preserves the same code length and vocab-ulary size as NEO, but removes semantic neighborhood structure (items that are close in embedding space are no longer assigned sim-ilar codes). Because our SID configuration supports up to 𝐾 𝑀 ≈ 4BA Unified Model for Search, Recommendation and Reasoning Conference acronym ’XX, June 03–05, 2018, Woodstock, NY 
+
+Table 2: Ablation for multiple types of item representation.        
+
+> Method ΔHR@10
+> NEO (Baseline) -A - Atomic item IDs -59.7%
+> Semantic IDs
+> B - LSH quantizer -51.2% C - No augmented data -2.9% D - Collaborative filtering -25.6%
+
+distinct tuples, this provides a practical approximation of unique atomic identifiers at our catalog scale. Table 2 (A) shows that semantically structured item represen-tations consistently improve performance. Compared to purely ID-based modeling, SIDs enable better generalization across related episodes and reduce sensitivity to sparsity and cold-start items. These findings align with prior work [ 44 , 48 ] in settings involving a single item type and a single task. 
+
+Does how the discretize embeddings support semantic structure matter (learned vs. random partitions)? To isolate the effect of the discretization method from that of the underlying embedding se-mantics, we compare Residual 𝐾 -means SIDs to Locality-Sensitive Hashing (LSH) [ 3] SIDs. Both approaches operate on the same se-mantic space, but differ in how embeddings are mapped to discrete codes: Residual 𝐾 -means learns codebooks from data, whereas LSH uses data-independent random projections that preserve similarity only in expectation. Table 2 (B) shows a clear performance drop when using LSH-based SIDs, indicating that learned, distribution-adaptive quantization produces more informative SID token neigh-borhoods than data-independent hashing in our setting. 
+
+How sensitive are SIDs to metadata quality? Because the SID con-struction is driven by the geometry of item embeddings, we evaluate sensitivity to metadata quality by comparing the SIDs created from raw metadata vs. those created from augmented, cleaner metadata (Section 4.1.2). Table 2 (C) shows that the use of raw metadata leads to a 2.91% drop in performance. We attribute this degradation to lower-quality content embeddings caused by missing, one-liner text, or repetitive descriptions, which increase collisions and reduce semantic separability in the resulting SID space. 
+
+When do content-based vs. collaborative-based SIDs work better? 
+
+Introducing CF-based signals in SIDs is a way of learning rela-tionships among entities beyond content, using user behavioural signals directly from the Semantic Foundation stage. Motivated by prior work suggesting that CF signals can improve discrete tokenization [ 15 ], we evaluate whether CF-derived representa-tions consistently yield better SIDs than content-based embeddings. We construct CF-based representations for artists by training a word2vec-style model [ 35 ] on artist co-occurrence in playlists. De-spite performing strongly in traditional production recommender systems, CF-derived artist SIDs perform significantly worse than content-derived artist SIDs within our framework (Table 2 (D)). This indicates that, in our setting, CF vectorization produce inferior semantic identifiers for generative, language-interleaved model-ing. Overall, CF-derived SIDs underperform content-based SIDs and exhibit instability over time (see Appendix D), complicating alignment across item types. 
+
+Table 3: Accuracy/latency trade-off at inference time.                       
+
+> Inference strategy ΔHR@K Δlatency
+> 𝑘 =10 𝑘 =30 𝑘 =10
+> NEO (Baseline) ---A - Beam Search w/o constrains -1.80% -1.93% -2.92% B - Top-𝑝 sampling -21.97% -32.41% -7.91%
+
+What is the accuracy-latency trade-off of constrained decoding for catalog-valid generation? As SID tuples induce a large combinato-rial output space, we evaluate whether catalog-validity constraints (implemented via prefix-trie-constrained decoding) are necessary for accuracy. Table 3 (A) shows that, even without constrained de-coding, the model generates valid SIDs in 98% of the case. Adding catalog-validity constraints incurs only a small latency overhead, while enabling greater flexibility at inference time (e.g., restricting generation to a subset of items such as newly added content). We also compare Beam search with 30 beams against top-𝑝 
+
+sampling, using Qwen’s default decoding hyperparameters (tem-perature = 0.6, top-𝑘 = 20 , top-𝑝 = 0.95 ). Table 3 (B) shows that the performance degradation induced by Beam Search is probably justified by the significant lower accuracy of Top-𝑝 sampling. Finally, we evaluate the sensitivity of inference-time perfor-mance to the popularity-based collision resolution described in Section 3.4 by randomly selecting an item within each collision bucket. We observe no significant performance differences, indi-cating that SID collisions are rare at inference time and do not materially affect results. 
+
+4.2.2 Domain Grounding. Here, we focus on alignment and exam-ine whether a staged training recipe is necessary for effective gen-eralization, how different optimization strategies (e.g., CPT vs. our Alignment) affect retention of language capabilities, and whether the approach truly generalizes across different LLM backbones. 
+
+Table 4: Comparison of training strategies alternative to NEO.                                  
+
+> Method HR@K ↑NDCG@K ↑
+> 𝑘 =10 𝑘 =30 𝑘 =10 𝑘 =30
+> NEO (Baseline) ----A - w/o Domain Grounding −6% −7% −8% −8%
+> B - Everything in two-stages −8% −7% −10% −10%
+> C - Random init −44% −44% −44% −43%
+> D - Continuos pretraining −3% −3% −2% −3%
+
+Is a staged alignment recipe necessary to integrate SID tokens into an LLM without degrading language competence? We evalu-ate whether NEO’s staged training is necessary by comparing it to: (i) removing the Domain Grounding stage, (ii) collapsing Do-main Grounding and Capability Induction into one stage, and (iii) randomly initialized parameters without a pre-trained backbone. Table 4 (A) shows that the three-stage recipe is critical for both effectiveness and optimization. Removing the Domain Grounding Conference acronym ’XX, June 03–05, 2018, Woodstock, NY De Nadai et al. 
+
+stage consistently degrades retrieval performance and slows con-vergence under the same compute budget. Collapsing Stage 2 and 3 (Table 4 (B)) further reduces performance, consistent with in-creased objective interference and weaker grounding of SID tokens. (Table 4 (C)) Training from scratch performs substantially worse, highlighting the importance of pre-trained language representa-tions for sample-efficient learning and strong final accuracy. 
+
+Using our Alignment vs Continuous pretraining (CPT) in Do-main Grounding. Table 4 (D) shows that the CPT approach used in PLUM [ 13 ] slightly underperforms NEO-Qwen on downstream tasks. However, CPT causes a severe drop in general knowledge; its MMLU-Redux [ 9] score plunges to 0.03, whereas NEO-Qwen main-tains the original backbone score of 0.46 after Domain Grounding. This difference matters because NEO targets tasks that require robust instruction following and grounded natural-language gen-eration (e.g., text-based retrieval, recs-planations), not just item prediction. Severe loss of language retention degrades language steerability compliance and the quality of mixed text–SID outputs, even when ID-level retrieval remains competitive. By isolating SID integration to newly introduced token parameters before full in-struction tuning, NEO achieves a better trade-off between item grounding and preserving general linguistic competence. 
+
+Is the framework backbone-agnostic? To demonstrate that the framework is backbone-agnostic, we did a focused adaptation of Llama 3.2 1B [ 11 ] with NEO and found that the Domain Ground-ing stage improves the performance by around 18% in text-based retrieval, indicating that NEO is a framework-level contribution rather than a model-specific trick. All other results are observed in Llama as well. Since we are not focused on identifying the op-timal backbone here, we limited the comprehensiveness of this evaluation; a comprehensive evaluation would also require careful selection of backbones that could be considered to be comparable by a number of other factors. 
+
+4.2.3 Capability Induction. Finally, we verify that the model is capable of performing a diverse set of tasks from text-based retrieval, recommendation, text generation, the language steerability of the model, and discuss considerations for generalizing to new tasks. 
+
+Multi-task Performance on Text-based Retrieval and Recommenda-tion. Table 5 reports results for multiple recommendation as well as text-based retrieval performance cast as SIDs generation. Multi-task training yields small but consistent improvements over mono-task across HR@K and NDCG@K, indicating positive transfer from jointly training recommendation, retrieval, and explanation objec-tives. For text-based retrieval, performance varies by item type (see Table 9), with episode retrieval being the most challenging due to finer granularity and higher lexical ambiguity. NEO is trained on only about 50% of the historical logs used by the production baseline model, highlighting the sample-efficiency of our model. 
+
+Text Generation for Interest profiling and Recsplanations. When asked to analyze a user’s listening history, represented as an ordered list of SIDs, the model can recover coherent high-level interests and produce item-grounded explanations. We quantify the quality of these generations using an LLM-as-a-judge protocol [ 7, 12 ] with 
+
+Table 5: Multi-task performance                                                              
+
+> Method HR@K ↑NDCG@K ↑
+> 𝑘 =10 𝑘 =30 𝑘 =10 𝑘 =30
+> Episode Recommendation Baseline ----
+> NEO - mono +57% +41% +80% +60%
+> NEO - multi +58% +40% +80% +59%
+> Show Recommendations
+> Baseline −−−−
+> NEO - mono +20% +2% +46% +30%
+> NEO - multi +24% +2% +58% +39%
+> Audiobook Recommendation
+> Baseline −−−−
+> NEO - mono +36% +6% +73% +52%
+> NEO - multi +46% +14% +97% +66%
+> Text-based retrieval
+> Baseline 0.45 0.51 0.37 0.38
+> NEO - mono +45% +36% +62% +58%
+> NEO - multi +47% +36% +62% +58%
+
+GPT-4o-mini. For interest profiling, the judge evaluates three dimen-sions: coverage, groundedness, and faithfulness. For recsplanations, we assess faithfulness to the recommended item, faithfulness to the user history, and deceptiveness (the tendency to introduce plausible but unsupported rationales). Each dimension is scored on a 0–5 scale. Full evaluation prompts are provided in Section E. Table 6 reports the results, showing that NEO enables the model to interpret SID-based user histories and leverage the semantic structure encoded by the identifier space to produce grounded natural-language outputs. We provide qualitative examples of in-terest profiles and recsplanations in Section E. 
+
+Table 6: LLM as a Judge result for user analysis and recspla-nation tasks. Scores from 0 to 5              
+
+> Variation Artists Episodes
+> Interest profiling Coverage 3.79 3.47 Groundedness 3.81 3.50 Recsplanation Faithfulness item 4.08 3.28 Faithfulness history 4.16 2.79 Deceptiveness 4.74 4.52
+
+Is the LLM item-type language-steerable? To evaluate language steering, we change only Target Item Type: <item-type> from each original data sample and disable the constrained decoding. The model successfully follows these instructions, steering all 30 beams toward the desired SIDs. To improve few- and zero-shot generalization [ 2 ], it will be critical for future work to expand the variety of tasks during this stage to increase capability induction, deferring task-specific behaviors to the final fine-tuning phase. 
+
+## 5 Conclusions 
+
+We introduced NEO, a tool-free framework for adapting decoder-only LLMs to operate over large, heterogeneous catalogs by inter-leaving natural language with semantic identifiers and enforcing A Unified Model for Search, Recommendation and Reasoning Conference acronym ’XX, June 03–05, 2018, Woodstock, NY 
+
+catalog-valid generation via prefix-trie–constrained decoding. At a scale exceeding 10M items, NEO consistently outperforms strong production baselines for recommendation and text-based retrieval, while remaining language-steerable and supporting mixed ID–text outputs for explanations and user understanding. Beyond empirical gains, our design analysis highlights two key principles for grounding LLMs in large discrete domains: the im-portance of high quality semantically structured identifiers over atomic IDs, and the role of a staged alignment recipe in balancing item grounding with retention of general language competence, key for tasks involving mixed text-SIDs in output. Our results show that naive alternatives—such as random tokenization, collapsing alignment stages, or continuous pre-training—either degrade per-formance or compromise language capabilities, especially for tasks that require instruction following and mixed text–item generation. More broadly, we view NEO as an instance of a general approach to building fully self-contained, domain-adapted LLMs that reason jointly over entities, user behavior, and language without relying on external tools or task-specific pipelines. We believe the framework and empirical insights presented here provide practical guidance for extending LLMs to other large-scale discovery settings involving heterogeneous entities and steerable generative behavior. 
+
+## Acknowledgments 
+
+Special thanks to Cara Van Uden, Matthew N.K. Smith, Paul Gigi-oli, David Murgatroyd, Vincent Tang, Doug J. Cole, Martin Bomio, Enrico Palumbo, Zahra Nazari, Yu Zhao, Francesco Fabbri, Ali Var-dasbi, José Luis Redondo García, Gustavo Penha, Oguz Semerci, Sahitya Mantravadi, Alice Y. Wang, Catie Edwards, and Alyssa Yang. We also thank the many engineers, researchers, data scientists, and product managers across these groups whose feedback shaped the modeling, serving, and evaluation behind this work. 
+
+## References 
+
+[1] BehnamGhader, P., Adlakha, V., Mosbach, M., Bahdanau, D., Chapados, N., and Reddy, S. LLM2Vec: Large language models are secretly powerful text encoders. In First Conference on Language Modeling (2024). [2] Brown, T., Mann, B., Ryder, N., Subbiah, M., Kaplan, J. D., Dhariwal, P., Neelakantan, A., Shyam, P., Sastry, G., Askell, A., et al. Language models are few-shot learners. Advances in neural information processing systems 33 (2020), 1877–1901. [3] Charikar, M. S. Similarity estimation techniques from rounding algorithms. In 
+
+Proceedings of the thiry-fourth annual ACM symposium on Theory of computing 
+
+(2002), pp. 380–388. [4] De Nadai, M., Fabbri, F., Gigioli, P., Wang, A., Li, A., Silvestri, F., Kim, L., Lin, S., Radosavljevic, V., Ghael, S., Nyhan, D., Bouchard, H., Lalmas, M., and Damianou, A. Personalized audiobook recommendations at spotify through graph neural networks. In Companion Proceedings of the ACM Web Conference 2024 
+
+(New York, NY, USA, 2024), WWW ’24, Association for Computing Machinery, p. 403–412. [5] Doh, S., Choi, K., and Nam, J. Talkplay: Multimodal music recommendation with large language models. arXiv preprint arXiv:2502.13713 (2025). [6] Doh, S., Choi, K., and Nam, J. Talkplay-tools: Conversational music recommen-dation with llm tool calling. arXiv preprint arXiv:2510.01698 (2025). [7] Fabbri, F., Penha, G., D’Amico, E., Wang, A., Nadai, M. D., Doremus, J., Gigioli, P., Damianou, A., Stål, O., and Lalmas, M. Evaluating podcast recommenda-tions with profile-aware llm-as-a-judge. In Proceedings of the 19th ACM Conference on Recommender Systems (RecSys) (2025), pp. 1181–1186. [8] Friedman, L., Ahuja, S., Allen, D., Tan, Z., Sidahmed, H., Long, C., Xie, J., Schubiner, G., Patel, A., Lara, H., et al. Leveraging large language models in conversational recommender systems. arXiv preprint arXiv:2305.07961 (2023). [9] Gema, A. P., Leang, J. O. J., Hong, G., Devoto, A., Mancino, A. C. M., Saxena, R., He, X., Zhao, Y., Du, X., Madani, M. R. G., Barale, C., McHardy, R., Harris, J., Kaddour, J., van Krieken, E., and Minervini, P. Are we done with mmlu?, 2024. [10] Geng, S., Liu, S., Fu, Z., Ge, Y., and Zhang, Y. Recommendation as language processing (rlp): A unified pretrain, personalized prompt & predict paradigm (p5). In Proceedings of the 16th ACM Conference on Recommender Systems (RecSys) 
+
+(2022), pp. 299–315. [11] Grattafiori, A., Dubey, A., Jauhri, A., Pandey, A., Kadian, A., Al-Dahle, A., Letman, A., Mathur, A., Schelten, A., Vaughan, A., et al. The llama 3 herd of models. arXiv preprint arXiv:2407.21783 (2024). [12] Gu, J., Jiang, X., Shi, Z., Tan, H., Zhai, X., Xu, C., Li, W., Shen, Y., Ma, S., Liu, H., et al. A survey on llm-as-a-judge. The Innovation (2024). [13] He, R., Heldt, L., Hong, L., Keshavan, R., Mao, S., Mehta, N., Su, Z., Tsai, A., Wang, Y., Wang, S.-C., Yi, X., Baugher, L., Cakici, B., Chi, E., Goodrow, C., Han, N., Ma, H., Rosales, R., Soest, A. V., Tandon, D., Wu, S.-L., Yang, W., and Zheng, Y. PLUM: Adapting Pre-trained Language Models for Industrial-scale Generative Recommendations, Oct. 2025. [14] He, Z., Xie, Z., Jha, R., Steck, H., Liang, D., Feng, Y., Majumder, B. P., Kallus, N., and McAuley, J. Large language models as zero-shot conversational recom-menders. In Proceedings of the 32nd ACM international conference on information and knowledge management (2023), pp. 720–730. [15] Hong, M., Xia, Y., Wang, Z., Zhu, J., Wang, Y., Cai, S., Yang, X., Dai, Q., Dong, Z., Zhang, Z., and Zhao, Z. EAGER-LLM: Enhancing Large Language Mod-els as Recommenders through Exogenous Behavior-Semantic Integration. In 
+
+Proceedings of the ACM on Web Conference 2025 (Apr. 2025), pp. 2754–2762. [16] Hu, E. J., Shen, Y., Wallis, P., Allen-Zhu, Z., Li, Y., Wang, S., Wang, L., Chen, W., et al. Lora: Low-rank adaptation of large language models. ICLR 1 , 2 (2022), 3. [17] Huber, B., Fazelnia, G., Damianou, A., Peleato, S., Lefarov, M., Ravichan-dran, P., De Nadai, M., Lalmas-Roellke, M., and Bennett, P. N. Embedding-to-prefix: Parameter-efficient personalization for pre-trained large language models. 
+
+arXiv preprint arXiv:2505.17051 (2025). [18] Huh, M., Cheung, B., Agrawal, P., and Isola, P. Straightening out the straight-through estimator: Overcoming optimization challenges in vector quantized net-works. In International Conference on Machine Learning (ICML) (2023), pp. 14096– 14113. [19] Ju, C. M., Collins, L., Neves, L., Kumar, B., Wang, L. Y., Zhao, T., and Shah, N. Generative recommendation with semantic ids: A practitioner’s handbook. In Proceedings of the 34th ACM International Conference on Information and Knowledge Management (2025), pp. 6420–6425. [20] Kang, W.-C., and McAuley, J. Self-attentive sequential recommendation. In 2018 IEEE international conference on data mining (ICDM) (2018), IEEE, pp. 197–206. [21] Kim, T., Yoon, S., Kang, S., Yeo, J., and Lee, D. Sc-rec: Enhancing generative retrieval with self-consistent reranking for sequential recommendation. arXiv preprint arXiv:2408.08686 (2024). [22] Kondratyuk, D., Yu, L., Gu, X., Lezama, J., Huang, J., Hornung, R., Adam, H., Akbari, H., Alon, Y., Birodkar, V., Cheng, Y., Chiu, M.-C., Dillon, J., Essa, I., Gupta, A., Hahn, M., Hauth, A., Hendon, D., Martinez, A., Minnen, D., Ross, D., Schindler, G., Sirotenko, M., Sohn, K., Somandepalli, K., Wang, H., Yan, J., Yang, M.-H., Yang, X., Seybold, B., and Jiang, L. VideoPoet: A Large Language Model for Zero-Shot Video Generation. [23] Kusupati, A., Bhatt, G., Rege, A., Wallingford, M., Sinha, A., Ramanujan, V., Howard-Snyder, W., Chen, K., Kakade, S., Jain, P., et al. Matryoshka representation learning. Advances in Neural Information Processing Systems 35 
+
+(2022), 30233–30249. [24] Łańcucki, A., Chorowski, J., Sanchez, G., Marxer, R., Chen, N., Dolfing, H. J., Khurana, S., Alumäe, T., and Laurent, A. Robust training of vector quantized bottleneck models. In 2020 International Joint Conference on Neural Networks (IJCNN) (2020), IEEE, pp. 1–7. [25] Lee, D., Kim, C., Kim, S., Cho, M., and Han, W.-S. Autoregressive image genera-tion using residual quantization. In Proceedings of the IEEE/CVF conference on computer vision and pattern recognition (2022), pp. 11523–11532. [26] Lee, D.-H., Kraft, A., Jin, L., Mehta, N., Xu, T., Hong, L., Chi, E. H., and Yi, X. STAR: A Simple Training-free Approach for Recommendations using Large Language Models, Feb. 2025. [27] Li, D., Course, K., Li, W., Li, H., Hua, J., Chen, Y., Zhu, Z., Jian, R., Cao, X., Xue, B., et al. Realizing scaling laws in recommender systems: A foundation-expert paradigm for hyperscale model deployment. arXiv preprint arXiv:2508.02929 
+
+(2025). [28] Li, H., Peng, X., Wang, Y., Peng, Z., Chen, X., Weng, R., Wang, J., Cai, X., Dai, W., and Xiong, H. Onecat: Decoder-only auto-regressive model for unified understanding and generation. arXiv preprint arXiv:2509.03498 (2025). [29] Liang, D., Xu, P., Shakeri, S., Santos, C. N. d., Nallapati, R., Huang, Z., and Xiang, B. Embedding-based zero-shot retrieval through query generation. arXiv preprint arXiv:2009.10270 (2020). [30] Liu, H., Li, C., Wu, Q., and Lee, Y. J. Visual instruction tuning. Advances in neural information processing systems 36 (2023), 34892–34916. [31] Liu, Q., Zhu, J., Fan, L., Zhao, Z., and Wu, X.-M. STORE: Streamlining Semantic Tokenization and Generative Recommendation with A Single LLM. [32] Lyu, H., Jiang, S., Zeng, H., Xia, Y., Wang, Q., Zhang, S., Chen, R., Leung, C., Tang, J., and Luo, J. Llm-rec: Personalized recommendation via prompting large Conference acronym ’XX, June 03–05, 2018, Woodstock, NY De Nadai et al. 
+
+language models. In Findings of the Association for Computational Linguistics: NAACL 2024 (2024), pp. 583–612. [33] Meng, Z., McCreadie, R., Macdonald, C., and Ounis, I. Exploring data splitting strategies for the evaluation of recommendation models. In Proceedings of the 14th acm conference on recommender systems (2020), pp. 681–686. [34] Mentzer, F., Minnen, D., Agustsson, E., and Tschannen, M. Finite scalar quantization: Vq-vae made simple. arXiv preprint arXiv:2309.15505 (2023). [35] Mikolov, T., Chen, K., Corrado, G., and Dean, J. Efficient estimation of word representations in vector space. arXiv preprint arXiv:1301.3781 (2013). [36] Miller, D. L. Wordllama: Recycled token embeddings from large language models, 2024. [37] Nguyen, T. A., Muller, B., Yu, B., Costa-Jussa, M. R., Elbayad, M., Popuri, S., Ropers, C., Duqenne, P.-A., Algayres, R., Mavlyutov, R., et al. Spirit-lm: Interleaved spoken and written language model. Transactions of the Association for Computational Linguistics 13 (2025), 30–52. [38] Ning, L., Liu, L., Wu, J., Wu, N., Berlowitz, D., Prakash, S., Green, B., O’Banion, S., and Xie, J. User-llm: Efficient llm contextualization with user embeddings. In 
+
+Companion Proceedings of the ACM on Web Conference 2025 (2025), pp. 1219–1223. [39] Ouyang, L., Wu, J., Jiang, X., Almeida, D., Wainwright, C., Mishkin, P., Zhang, C., Agarwal, S., Slama, K., Ray, A., et al. Training language models to follow instructions with human feedback. Advances in neural information processing systems 35 (2022), 27730–27744. [40] Penha, G., D’Amico, E., De Nadai, M., Palumbo, E., Tamborrino, A., Vardasbi, A., Lefarov, M., Lin, S., Heath, T., Fabbri, F., and Bouchard, H. Semantic ids for joint generative search and recommendation. In Proceedings of the Nineteenth ACM Conference on Recommender Systems (New York, NY, USA, 2025), RecSys ’25, Association for Computing Machinery, p. 1296–1301. [41] Penha, G., D’Amico, E., Nadai, M. D., Palumbo, E., Tamborrino, A., Vardasbi, A., Lefarov, M., Lin, S., Heath, T., Fabbri, F., and Bouchard, H. Semantic ids for joint generative search and recommendation. In Proceedings of the 19th ACM Conference on Recommender Systems (RecSys) (2025), pp. 1181–1186. [42] Penha, G., Vardasbi, A., Palumbo, E., De Nadai, M., and Bouchard, H. Bridging search and recommendation in generative retrieval: Does one task help the other? In Proceedings of the 18th ACM Conference on Recommender Systems (New York, NY, USA, 2024), RecSys ’24, Association for Computing Machinery, p. 340–349. [43] Qu, H., Fan, W., Zhao, Z., and Li, Q. TokenRec: Learning to Tokenize ID for LLM-based Generative Recommendation, Aug. 2024. [44] Rajput, S., Mehta, N., Singh, A., Keshavan, R., Vu, T., Helber, L., Hong, L., Tay, Y., Tran, V., Samost, J., Kula, M., Chi, E., and Sathiamoorthy, M. Rec-ommender systems with generative retrieval. In Advances in Neural Information Processing Systems (NeurIPS) (2024). [45] Schick, T., Dwivedi-Yu, J., Dessì, R., Raileanu, R., Lomeli, M., Hambro, E., Zettlemoyer, L., Cancedda, N., and Scialom, T. Toolformer: Language models can teach themselves to use tools. Advances in Neural Information Processing Systems 36 (2023), 68539–68551. [46] Sharma, C. Retrieval-augmented generation: A comprehensive survey of archi-tectures, enhancements, and robustness frontiers. arXiv preprint arXiv:2506.00054 
+
+(2025). [47] Singh, A., Vu, T., Mehta, N., Keshavan, R., Sathiamoorthy, M., Zheng, Y., Hong, L., Heldt, L., Wei, L., Tandon, D., Chi, E. H., and Yi, X. Better General-ization with Semantic IDs: A Case Study in Ranking for Recommendations. [48] Singh, A., Vu, T., Mehta, N., Keshavan, R., Sathiamoorthy, M., Zheng, Y., Hong, L., Heldt, L., Wei, L., Tandon, D., et al. Better generalization with semantic ids: A case study in ranking for recommendations. In Proceedings of the 18th ACM Conference on Recommender Systems (2024), pp. 1039–1044. [49] Sun, Q., Yu, Q., Cui, Y., Zhang, F., Zhang, X., Wang, Y., Gao, H., Liu, J., Huang, T., and Wang, X. Emu: Generative pretraining in multimodality. arXiv preprint arXiv:2307.05222 (2023). [50] Tan, J., Xu, S., Hua, W., Ge, Y., Li, Z., and Zhang, Y. IDGenRec: LLM-RecSys Alignment with Textual ID Learning. [51] Team, C. Chameleon: Mixed-modal early-fusion foundation models. arXiv preprint arXiv:2405.09818 (2024). [52] Wang, H., Ye, Y., Li, B., Nie, Y., Lu, J., Tang, J., Wang, Y., and Huang, C. Vision as lora. arXiv preprint arXiv:2503.20680 (2025). [53] Wang, P., Bai, S., Tan, S., Wang, S., Fan, Z., Bai, J., Chen, K., Liu, X., Wang, J., Ge, W., et al. Qwen2-vl: Enhancing vision-language model’s perception of the world at any resolution. arXiv preprint arXiv:2409.12191 (2024). [54] Wang, W., Bao, H., Dong, L., Bjorck, J., Peng, Z., Liu, Q., Aggarwal, K., Mo-hammed, O. K., Singhal, S., Som, S., et al. Image as a foreign language: Beit pretraining for vision and vision-language tasks. In Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition (2023), pp. 19175–19186. [55] Wang, W., Bao, H., Lin, X., Zhang, J., Li, Y., Feng, F., Ng, S.-K., and Chua, T.-S. 
+
+Learnable item tokenization for generative recommendation. In Proceedings of the 33rd ACM International Conference on Information and Knowledge Management 
+
+(2024), pp. 2400–2409. [56] Wang, X., Zhang, X., Luo, Z., Sun, Q., Cui, Y., Wang, J., Zhang, F., Wang, Y., Li, Z., Yu, Q., et al. Emu3: Next-token prediction is all you need. arXiv preprint arXiv:2409.18869 (2024). [57] Wang, Y., Jiang, Z., Chen, Z., Yang, F., Zhou, Y., Cho, E., Fan, X., Lu, Y., Huang, X., and Yang, Y. Recmind: Large language model powered agent for recommen-dation. In Findings of the Association for Computational Linguistics: NAACL 2024 
+
+(2024), pp. 4351–4364. [58] Wang, Y., Ren, Z., Sun, W., Yang, J., Liang, Z., Chen, X., Xie, R., Yan, S., Zhang, X., Ren, P., et al. Content-based collaborative generation for recommender systems. In Proceedings of the 33rd ACM International Conference on Information and Knowledge Management (2024), pp. 2420–2430. [59] Wang, Z., Zhu, K., Xu, C., Zhou, W., Liu, J., Zhang, Y., Wang, J., Shi, N., Li, S., Li, Y., Que, H., Zhang, Z., Zhang, Y., Zhang, G., Xu, K., Fu, J., and Huang, W. 
+
+MIO: A Foundation Model on Multimodal Tokens. [60] Wu, C., Chen, X., Wu, Z., Ma, Y., Liu, X., Pan, Z., Liu, W., Xie, Z., Yu, X., Ruan, C., et al. Janus: Decoupling visual encoding for unified multimodal understanding and generation. In Proceedings of the Computer Vision and Pattern Recognition Conference (2025), pp. 12966–12977. [61] Wu, J., Jiang, Y., Ma, C., Liu, Y., Zhao, H., Yuan, Z., Bai, S., and Bai, X. Liquid: Language models are scalable and unified multi-modal generators. International Journal of Computer Vision 134 , 1 (2026), 39. [62] Wu, Y., Zhang, Z., Chen, J., Tang, H., Li, D., Fang, Y., Zhu, L., Xie, E., Yin, H., Yi, L., et al. Vila-u: a unified foundation model integrating visual understanding and generation. arXiv preprint arXiv:2409.04429 (2024). [63] Xu, J., He, X., and Li, H. Deep learning for matching in search and recommenda-tion. In The 41st International ACM SIGIR Conference on Research & Development in Information Retrieval (2018), pp. 1365–1368. [64] Xu, S., Hua, W., and Zhang, Y. Openp5: Benchmarking foundation models for recommendation. arXiv preprint arXiv:2306.11134 (2023). [65] Yang, A., Li, A., Yang, B., Zhang, B., Hui, B., Zheng, B., Yu, B., Gao, C., Huang, C., Lv, C., et al. Qwen3 technical report. arXiv preprint arXiv:2505.09388 (2025). [66] Yang, Z., Yang, Y., Cer, D., Law, J., and Darve, E. Universal sentence repre-sentation learning with conditional masked language model. In Proceedings of the 2021 Conference on Empirical Methods in Natural Language Processing (2021), pp. 6216–6228. [67] Yao, S., Zhao, J., Yu, D., Du, N., Shafran, I., Narasimhan, K. R., and Cao, Y. 
+
+React: Synergizing reasoning and acting in language models. In The eleventh international conference on learning representations (2022). [68] Yi, X., Yang, J., Hong, L., Cheng, D. Z., Heldt, L., Kumthekar, A., Zhao, Z., Wei, L., and Chi, E. Sampling-bias-corrected neural modeling for large corpus item recommendations. In Proceedings of the 13th ACM conference on recommender systems (2019), pp. 269–277. [69] Zhai, J., Liao, L., Liu, X., Wang, Y., Li, R., Cao, X., Gao, L., Gong, Z., Gu, F., He, M., et al. Actions speak louder than words: Trillion-parameter sequential transducers for generative recommendations. arXiv preprint arXiv:2402.17152 
+
+(2024). [70] Zhang, J., Xie, R., Hou, Y., Zhao, X., Lin, L., and Wen, J.-R. Recommendation as instruction following: A large language model empowered recommendation approach. ACM Transactions on Information Systems 43 , 5 (2025), 1–37. [71] Zhang, Y., Feng, F., Zhang, J., Bao, K., Wang, Q., and He, X. CoLLM: Integrating Collaborative Embeddings into Large Language Models for Recommendation. [72] Zhang, Y., Li, M., Long, D., Zhang, X., Lin, H., Yang, B., Xie, P., Yang, A., Liu, D., Lin, J., et al. Qwen3 embedding: Advancing text embedding and reranking through foundation models. arXiv preprint arXiv:2506.05176 (2025). [73] Zhao, Y., Wu, J., Wang, X., Tang, W., Wang, D., and De Rijke, M. Let me do it for you: Towards llm empowered recommendation via tool learning. In Proceedings of the 47th International ACM SIGIR Conference on Research and Development in Information Retrieval (2024), pp. 1796–1806. [74] Zheng, B., Hou, Y., Lu, H., Chen, Y., Zhao, W. X., Chen, M., and Wen, J.-R. 
+
+Adapting Large Language Models by Integrating Collaborative Semantics for Recommendation, Apr. 2024. [75] Zhu, J., Jin, M., Liu, Q., Qiu, Z., Dong, Z., and Li, X. CoST: Contrastive Quanti-zation based Semantic Tokenization for Generative Recommendation. A Unified Model for Search, Recommendation and Reasoning Conference acronym ’XX, June 03–05, 2018, Woodstock, NY 
+
+## A Example Text Generation 
+
+Figure 3 shows an example of a “Recs-planation” generated – an explanation for the recommendation generated together with the SID. In this case, the portion indicated by “Recommendation:” is what is returned to the user with the semantic ID that was predicted resolved to a catalog item. Figure 4 demonstrates how NEO can predict a user interest pro-file based on just a sequence of SIDs from the user’s historical interactions. Evaluation of recs-planations and user profiling is reported in Section 4.2.3 
+
+Result: Recs-planations 
+
+USER: I’m looking for a funny podcast that explores moral theo-ries. The user history is: ⟨list of Semantic IDs ⟩. Provide... ASSISTANT: The user’s podcast history suggests an interest in comedy and storytelling, with a focus on humorous conversations and absurd situations. They enjoy episodes with lighthearted and [. . . ] The user also appears to appreciate episodes that explore themes of friendship, adventure, and personal growth, particu-larly in the context of fantasy role-playing and comedy shows. Recommendation: ⟨Semantic ID ⟩. This episode discusses morality in a humorous way, aligning with your interest in comedy and thought-provoking discussions. 
+
+Figure 3: Recsplanation result for an episode request. This randomly selected result shows that the model can interleave recommendations (SIDs) and explanation (text) fluently. 
+
+Result: user understanding 
+
+USER: Build a listener profile: What kind of podcasts does this user enjoy? What themes or characteristics define their taste? The user history is: ⟨list of Semantic IDs ⟩. Provide... Ground truth: Pronounced interest in womenś health, particu-larly hormonal wellness, fertility, and healthcare disparities, as seen in their choice of a dedicated episode on womenś health top-ics. They also consistently engage with holistic wellness practices and personal development content centered on entrepreneurship, mindset, and womenś leadership. [. . . ] 
+
+Prediction from SIDs: Clear preference for content centered on holistic health and women’s empowerment. Their listening history consistently explores resilience through health (PCOS, PCOS treatment), mental well-being (coping with loss, self-worth), and practical self-improvement strategies. They en-gage deeply with narratives of overcoming health challenges, redefining success, and integrating physical and emotional wellness into daily life. [. . . ] 
+
+Figure 4: Qualitative example of user understanding for an episode, from the SID history of an user. 
+
+## B Implementation details 
+
+Table 7: Detailed hyperparameters of NEO applied to Qwen                        
+
+> Hyperparameters Stage 2 Stage 3
+> Learning rate 1.0×10 −31×10 −4
+> LR scheduler Cosine Cosine Weight decay 0.01 0.01
+> Gradient clip 1.01.0
+> Optimizer AdamW ( 𝛽 1=0.9, 𝛽 2=0.95 )Warm-up steps 300 400
+> Batch size 64 64
+
+For an efficient training, we use sequence packing and Ray, which helps distributing the load between CPUs and GPUs. We use Py-Torch and 8x Nvidia H100 GPUs. Table 7 shows the hyperparame-ters used for training 
+
+## B.1 Evaluation metrics 
+
+We evaluate the performance of our recommendation task on im-plicit feedback through two standard metrics, namely HR@K and NDCG@K. HR @𝐾 =
+
+Í𝑢 ∈𝑈 1(the relevant item is in top 𝐾 )|𝑈 | (1) NDCG @𝐾 = 1
+
+|𝑈 |∑︁ 𝑢 ∈𝑈 
+
+log (2)
+
+log (𝑟 𝑢 + 1) (2) where 𝑈 is the set of users, 𝑟 𝑢 is the rank of the relevant item for user 𝑢 (if the item is within the top 𝐾 , otherwise the contribution is 0), and Υ is the entire catalogue. 
+
+## B.2 Podcast recommendations 
+
+Table 8 reports podcast episode recommendation performance bro-ken down by user type into coldstart and warmstart. Performance gains are larger for warm-start users (i.e., users with non-empty interaction histories), where richer histories provide stronger per-sonalization signals. However, there is room for improvement for simulated cold-start users, where the baseline model uses special-ized side features specifically designed for the no-history regime. 
+
+User type HR@K ↑ NDCG@K ↑
+
+𝑘 = 10 𝑘 = 30 𝑘 = 10 𝑘 = 30 
+
+Coldstart −48% −57% −34% −40% 
+
+Warmstart +57% +40% +70% +60% 
+
+Table 8: Episode recommendations detailed results. The LLM has room for improvement in coldstart users, which repre-sent ∼ 2% of our data. Conference acronym ’XX, June 03–05, 2018, Woodstock, NY De Nadai et al. 
+
+## B.3 Search by item type and query complexity 
+
+Table 9 further analyzes a subset of challenging queries that re-quired user reformulation ("Multi-steps"); these sessions are dif-ficult to construct because the initial query did not immediately lead to engagement and remain an open challenge for single-shot retrieval. Our results show that the significantly outperform the baseline model, especially in multi-steps settings. 
+
+Table 9: Text-based retrieval/search performance by item type and query complexity. Variation HR@K ↑ NDCG@K ↑
+
+𝑘 = 10 𝑘 = 30 𝑘 = 10 𝑘 = 30 
+
+Item type 
+
+Artists +36% +35% +38% +38% 
+
+Audiobooks +26% +27% +29% +30% 
+
+Episodes +40% +16% +73% +59% 
+
+Query complexity 
+
+One step +21% +12% +33% +30% 
+
+Multi-steps +185% +176% +243% +229% 
+
+## C Semantic ID Formal Details 
+
+Formally, given an item embedding 𝑥 𝑒 ∈ R𝑑 , we map it to an SID defined as 
+
+SID (𝑒 ) = (𝑐 1, 𝑐 2, . . . , 𝑐 𝑀 ), 𝑐 𝑚 ∈ { 1, . . . , 𝐾 }. (3) where 𝐾 denotes the number of clusters per position 𝑀 ≪ 𝐾 to ensure meaningful semantic partitioning. Thus, each SID is an ordered tuple of discrete codes drawn from 𝑀 codebooks. 
+
+Residual Quantization. NEO is agnostic to a specific quantizer method used to construct SIDs. However, in this work we focus on residual quantizers, which often induces a coarse-to-fine decompo-sition: earlier codes capture broad semantic regions, and later codes refine within-region distinctions. This property aligns naturally with autoregressive generation, where tokens are produced sequen-tially. Specifically, we adopt Residual 𝐾 -means [ 19 ] for its flexibility and empirical stability, particularly compared to alternatives such as RQ-VAE, which often require multiple auxiliary losses to avoid poor local minima [18, 24, 34]. Residual 𝑘 -means represents each embedding as a sequence of codebook indices by iteratively quantizing the residual error. Con-cretely, we maintain 𝑀 codebooks {𝐶 1, . . . , 𝐶 𝑀 }, each containing 𝐾 
+
+centroids {𝜇 𝑚, 1, . . . , 𝜇 𝑚,𝐾 }. Starting from the initial residual 𝑟 0 = 𝑥 𝑒 ,we select the closest centroid at each stage 
+
+𝑐 𝑚 = arg min    
+
+> 𝑗 ∈ { 1,...,𝐾 }
+
+∥𝑟 𝑚 −1 − 𝜇 𝑚,𝑗 ∥22, (4) and update the residual as: 
+
+𝑟 𝑚 = 𝑟 𝑚 −1 − 𝜇 𝑚,𝑐 𝑚 , 𝑚 = 1, . . . , 𝑀. (5) 
+
+Choosing SID Length and Codebook Size. The SID length and codebook size 𝐾 trade off addressability, semantic coherence, and sequence length. Longer SIDs increase addressability but inflate prompt length, while shorter SIDs risk semantic collisions. We guide this choice using two criteria: (i) collision rate, the fraction of SID tuples assigned to multiple items; and (ii) prefix coherence, the average cosine similarity between items sharing the same SID prefix. We select 𝑀 and 𝐾 to minimize collisions while maintaining high semantic coherence for short prefixes, enabling reliable generation without excessive sequence overhead. 
+
+Item embeddings from content. The quality of SIDs depends crit-ically on the underlying item embedding 𝑥 𝑒 . Such embeddings may be derived from collaborative signals [ 55 , 58 ], content meta-data [ 44 , 48 ], or hybrid representations [ 13 , 15 , 21 ], provided they induce a meaningful semantic geometry over items. In practice, item representations must remain stable under distri-bution shift. In domains with strong seasonality and rapidly evolv-ing trends (e.g., music, video, or spoken audio), embeddings derived from collaborative signals can drift quickly, causing an item to be reassigned different identifiers over short time spans. This drift may require frequent retraining of both LLM and the quantizer, or the introduction of additional stabilization mechanisms. Moreover, collaborative signals are often sparse or unavailable for cold-start items. For these reasons, NEO constructs SIDs using content-based item representations, and defers delegates the incorporation of col-laborative signals to later instruction-tuning stages, where the LLM can learn to leverage user interaction history directly. 
+
+## D CF-based Semantic IDs stability 
+
+We have analyzed the stability of our CF-based embeddings by sampling 1,000,000 random artists, computed each artist’s top-50 nearest neighbors under the CF embedding space, and measured neighborhood overlap across time using Jaccard similarity. Over a 3-week horizon, the median overlap is 0.59 (Jaccard@50), cor-responding to roughly 37 out of 50 neighbors retained; the least stable decile has overlap 0.37, corresponding to roughly 27 out of 50 neighbors retained. CF-based SIDs may exhibit temporal instability due to evolving user behavior. This instability suggests that CF-based tokenizations may require frequent retraining of the quantizer and the LLM, or explicit stabilization mechanisms (e.g., anchoring or temporal regularization), to function as reliable identifiers in fast-moving catalogs. 
+
+## E LLM as a Judge 
+
+Figures 5 and 6 shows the prompts used to evaluate our recspla-nations and interest profiling from SID sequences. Figures 3 and 4 instead shows some qualitative results. 
+
+## F Unsuccessful attempts 
+
+SID expert. Following BEIT-3 [ 54 ], we modified the LLM backbone architecture to add a SID expert, activated with a hard router mask whenever the input token was a SID. The performance was similar to the non-expert approach, so we have discarded this modification. 
+
+Vision as LoRA. We implemented Vision as Lora [ 52 ], which proves to be effective in extending (via LoRA [ 16 ] text-only LLMs for the new vision modality. However, we have observed lower performance than NEO. A Unified Model for Search, Recommendation and Reasoning Conference acronym ’XX, June 03–05, 2018, Woodstock, NY 
+
+Instruction D.2: LLM as a Judge (user) 
+
+You are an expert evaluator of EXPLANATIONS produced by a podcast recommendation system. You will be given: - user_history_with_descriptions: a list of recently listened episode descriptions (text) - suggested_episode: the recommended episode title/descrip-tion (text) - explanation: the system’s natural-language explanation for why it recommended the episode. It is based to align the user to stream the item Your task: judge whether the explanation is (a) faithful to the suggested_episode, and (b) useful to the user. CRITICAL RULES: - Use ONLY user_history_with_descriptions and sug-gested_episode as evidence. - Do NOT assume hidden signals (e.g., demographics, embed-dings, similar users, popularity, “because you liked X” unless X is in user_history_with_descriptions). - The explanation must connect at least one concrete aspect of user_history_with_descriptions to one concrete aspect of the suggested_episode. Score each dimension 0–5: 1) FAITHFULNESS_TO_HISTORY: Are references to user interests grounded in user_history_with_descriptions? 2) FAITHFULNESS_TO_ITEM: Are claims about the recom-mended episode grounded in suggested_episode text? 3) NON_DECEPTIVE: Avoids implying the system used signals not present (“people like you”, “trending”, “based on your location”) unless evidenced. Compute: overall_score (0–5) Then produce: - verdict (1–2 sentences) Return ONLY valid JSON: "faithfulness_to_history": int, "faithfulness_to_item": int, "non_deceptive": int, "overall_score": int "verdict": string, 
+
+Figure 6: Prompt template used for LLM as a Judge for the recsplanation task. 
+
+Instruction D.1: LLM as a Judge (user) 
+
+You are an expert evaluator of user-interest summaries derived from podcast listening history. Your job: judge how well the prediction matches the ground_truth summary of user interests, USING the user_history_with_descriptions as evidence. Be strict about grounding: - Do NOT reward eloquence; reward factual and thematic alignment. - Do NOT assume extra user info beyond what is in the user_history_with_descriptions. Evaluate across these dimensions (0–5 each): 1) COVERAGE: Does the prediction capture the main themes from ground_truth, or user_history_with_descriptions)? 2) EVIDENCE GROUNDEDNESS: Are prediction claims supported either by either the user_history_with_descriptions or ground_truth? Then produce: - average_score (0–5) - verdict: a small textual verdict Return ONLY valid JSON with this schema: "coverage": int, "evidence_groundedness": int, "oaverage_score": int "verdict": string, 
+
+Figure 5: Prompt template used for LLM as a Judge for the user analysis task. Semantic ID token embeddings for k-NN. To connect NEO-trained generative models with embedding-based retrieval, we ex-plored whether the learned SID token embeddings can be used to construct an item embedding space for approximate 𝑘 -NN. After training Qwen3-0.6B with NEO, we represent each item by the concatenation (or mean) of the 𝑀 learned input embeddings corre-sponding to its SID tokens. We then build a simple episode-retrieval recommender where each user is represented by the average em-bedding of episodes streamed in the previous 30 days, and recom-mendations are obtained via approximate 𝑘 -NN in the resulting embedding space. In our experiments, this approach significantly underperforms the production retrieval baseline and the generative NEO model. A likely explanation is that concatenating token embeddings yields very high-dimensional item vectors (e.g., 𝑀 =4 and hidden size 1024 
+
+⇒ 4096 dimensions), which can make nearest-neighbor retrieval less reliable without additional metric learning or dimensional-ity reduction. We also evaluated alternative text-based embedding models (e.g., WordLlama [ 36 ]) for item representations, but did not observe improvements. We leave a more principled study of deriv-ing retrieval-friendly embeddings from SID-token representations (e.g., projection layers, pooling/whitening, contrastive fine-tuning, or mixed models [1]) to future work. Conference acronym ’XX, June 03–05, 2018, Woodstock, NY De Nadai et al. 
+
+Instruction G.3: Shows 
+
+USER: As a podcast specialist, predict which show the user will stream next. Analyze the user’s profile below to identify patterns in their listening behavior. Note that new users may have limited or no history available. **User Profile** 
+
+⟨artist followed SIDs ⟩⟨audiobook streams SIDs ⟩⟨shows user history SIDs ⟩⟨recent show streams SIDs ⟩
+
+Country (ISO code): ⟨registration country ⟩
+
+Preferred languages (ISO codes): ⟨languages ⟩
+
+Based on this profile, which show should be recommended? ASSISTANT: ⟨Semantic ID ⟩[the semantic id] ⟨/Semantic ID ⟩
+
+Figure 9: Prompt template used for show recommendation. 
+
+Instruction G.4: Audiobooks 
+
+USER: You are an expert in audiobook recommendations. Your task is to suggest a new audiobook the user would like to stream based on the user’s listening habits and preferences. Consider the following information: user history, registration country, and language preferences. Use the information you need to make the best recommendation. The user history might be empty if the user is a new user. **Constraint** - Start the answer with the semantic ID, thus with ⟨Semantic ID ⟩
+
+and end it with ⟨/Semantic ID ⟩
+
+**User’s information** 
+
+⟨description of the contextual content (shows) the user has listened to ⟩
+
+Here are the user’s last ⟨number ⟩ historical interactions, ordered by timestamp: ⟨Semantic ID ⟩⟨ list of SIDs ⟩⟨ /Semantic ID ⟩
+
+The user is registered in (country code): ⟨registration country ⟩ .The user listens to content in the following languages (ISO codes): ⟨languages ⟩ .The user has listened to audiobooks in the following genres: 
+
+⟨genres ⟩
+
+Recommend the next audiobook the user would like to stream. 
+
+ASSISTANT: ⟨Semantic ID ⟩[the semantic id] ⟨/Semantic ID ⟩
+
+Figure 10: Prompt template used for audiobook recommen-dation. 
+
+Instruction G.1: Text-based Search/retrieval 
+
+USER: You are a specialized Search Assistant for music and talk audio. Your goal is to retrieve the most relevant artist, podcast episode, or audiobook based on the user’s query and listening history. *** Instructions 1. Analyze the user’s search query and country. 2. Use the user’s affinity history (most listened) for personaliza-tion context. 3. Return the specific Semantic ID for the requested entity type. *** User Context <SIDs of the most liked artists, episodes and audiobooks, if present> *** Current Request User Country (ISO 3166-1 alpha-2 code): ⟨user_country ⟩
+
+Search Query: ⟨query ⟩
+
+*** TARGET Based on the query and context, output the Semantic ID for the following item type only. Target Entity Type: **<item_type>** 
+
+ASSISTANT: ⟨Semantic ID ⟩[the semantic id] ⟨/Semantic ID ⟩
+
+Figure 7: Prompt template used for text-based re-trieval/search. 
+
+## G Prompt templates 
+
+Figure 7, Figure 8, Figure 9 and Figure 7 show the prompt templates used for our experimental tasks. 
+
+Instruction G.2: Episodes 
+
+USER: You are an expert in podcast recommendations. Your task is to suggest a new episode the user would like to stream from the user’s podcast listening habits based on the following infor-mation: user history, registration country, language preferences. Use the information you need to make the best recommendation. The user history might be empty if the user is a new user. **Constraint** - Start the answer with the semantic ID, thus with ⟨Semantic ID ⟩
+
+and end it with ⟨/Semantic ID ⟩
+
+**User’s information** 
+
+⟨list of streamed SIDs ⟩
+
+The user is registered in (country code): ⟨registration country ⟩
+
+The user listens to content in the following languages: 
+
+⟨languages ⟩
+
+Recommend the next item the user would like to stream. 
+
+ASSISTANT: ⟨Semantic ID ⟩⟨ the semantic id ⟩ ⟨ /Semantic ID ⟩
+
+Figure 8: Prompt template used for episode recommendation. A Unified Model for Search, Recommendation and Reasoning Conference acronym ’XX, June 03–05, 2018, Woodstock, NY 
+
+## H LSH 
+
+For any embedding vector x ∈ R𝑑 𝑒𝑚𝑏𝑒𝑑 , a hash function ℎ𝑟 (x) is defined as: 
+
+ℎ𝑟 (x) = sgn (w · x) (6) where w ∈ R𝑑 𝑒𝑚𝑏𝑒𝑑 is a random hyperplane vector sampled from a standard Gaussian distribution N ( 0, 𝐼 ). To improve precision and reduce false positives, we concatenate 𝐾 such independent hash functions to form a 𝐾 -bit signature: 
+
+𝐻 (x) = [ℎ1 (x), ℎ 2 (x), . . . , ℎ 𝐾 (x)] (7) The probability that two vectors u and v result in the same hash bit for a single random projection is a function of the angle 𝜃 between them: 
+
+𝑃 (ℎ𝑟 (u) = ℎ𝑟 (v)) = 1 − 𝜃 (u, v)
+
+𝜋 (8) ,

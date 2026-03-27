@@ -1,0 +1,507 @@
+Title: Continual Learning as Shared-Manifold Continuation Under Compatible Shift
+
+URL Source: https://arxiv.org/pdf/2603.20036v1
+
+Published Time: Mon, 23 Mar 2026 01:02:36 GMT
+
+Number of Pages: 11
+
+Markdown Content:
+# Continual Learning as Shared-Manifold Continuation Under Compatible Shift 
+
+Henry J. Kobs 
+
+henrykryon@gmail.com 
+
+Abstract 
+
+Continual learning methods usually preserve old behavior by regularizing parameters, match-ing old outputs, or replaying previous examples. These strategies can reduce forgetting, but they do not directly specify how the latent representation should evolve. We study a narrower geometric alternative for the regime where old and new data should remain on the same latent support: continual learning as continuation of a shared manifold . We instantiate this view within Support-Preserving Manifold Assimilation ( SPMA ) and evaluate a geometry-preserving variant, SPMA-OG , that combines sparse replay, output distillation, relational geometry preser-vation, local smoothing, and chart-assignment regularization on old anchors. On representative compatible-shift CIFAR10 and Tiny-ImageNet runs, SPMA-OG improves over sparse replay baselines in old-task retention and representation-preservation metrics while remaining compet-itive on new-task accuracy. On a controlled synthetic atlas-manifold benchmark, it achieves near-perfect anchor-geometry preservation while also improving new-task accuracy over replay. These results provide evidence that geometry-aware anchor regularization is a useful inductive bias when continual learning should preserve a shared latent support rather than create a new one. 
+
+## 1 Introduction 
+
+Catastrophic forgetting remains a central difficulty in continual learning [de Lange et al., 2022]. When a model is fine-tuned on new data, the latent representation often changes in ways that are globally disruptive for previously learned behavior. Existing methods usually operate at one of three levels: parameter preservation [Kirkpatrick et al., 2017, Zenke et al., 2017, Aljundi et al., 2018], functional preservation through distillation [Hinton et al., 2015, Li and Hoiem, 2016], or replay of previous examples [Lopez-Paz and Ranzato, 2017, Chaudhry et al., 2019, Rolnick et al., 2019, Buzzega et al., 2020]. These strategies can be effective, but they do not directly encode a geometric preference over how the representation itself should move. We study a representation-level hypothesis: in many continual-learning settings, the new task should not require a completely new latent topology. Instead, new data should be absorbed into the same shared manifold already used by the old task. The goal is therefore neither to freeze coordinates exactly nor to allocate fully orthogonal task subspaces. Rather, we aim to preserve the global support and geometry of the old manifold while permitting only local, task-necessary deformation. We study this hypothesis through the SPMA family. The paper’s empirical focus is SPMA-OG ,a geometry-preserving instantiation of SPMA that models the old representation as a collection of local latent charts fit to frozen teacher features. During fine-tuning, old anchors preserve chart structure and relational geometry, while new-task adaptation is driven by task supervision 1
+
+> arXiv:2603.20036v1 [cs.LG] 20 Mar 2026
+
+under those same anchor-based geometric constraints. The resulting bias favors shared-support continuation over global reorganization. The contribution is therefore not a claim of broad continual-learning superiority, but a targeted result about compatible-shift settings where old and new samples plausibly share latent support. Our falsifiable expectation is that, in this regime, SPMA-OG should improve representation preservation and old-task retention with only modest new-task cost relative to sparse replay. We view that scoped geometric framing, together with the resulting empirical tradeoff, as the primary contribution. 
+
+## 2 Related Work 
+
+Continual-learning methods are commonly organized into parameter-regularization, replay, and distillation families [de Lange et al., 2022]. Parameter-based approaches such as EWC, Synaptic Intelligence, and MAS estimate parameter importance and penalize updates to important weights [Kirkpatrick et al., 2017, Zenke et al., 2017, Aljundi et al., 2018]. These methods directly address forgetting at the parameter level, but they do not explicitly constrain how the representation geometry should evolve. Replay remains one of the strongest practical paradigms. Gradient-constrained replay methods such as GEM and A-GEM preserve past performance through episodic memories and constrained updates [Lopez-Paz and Ranzato, 2017, Chaudhry et al., 2019]. Simpler rehearsal variants and retrieval-based methods also remain competitive, including experience replay, MIR, and DER++ [Rolnick et al., 2019, Aljundi et al., 2019, Buzzega et al., 2020]. In class-incremental recognition, replay is often coupled with distillation, as in iCaRL and LUCIR [Rebuffi et al., 2017, Hou et al., 2019]. Our work is most closely related to representation-preserving continual learning. Relational Knowledge Distillation preserves inter-example geometry rather than matching coordinates directly [Park et al., 2019]. PODNet distills pooled intermediate structure for class-incremental learning [Douillard et al., 2020]. Backward Feature Projection and related methods constrain how features may change under fine-tuning [Zheng et al., 2023]. Subspace Distillation emphasizes stable low-dimensional structure during continual adaptation [Li et al., 2023]. We build on these ideas but adopt a more explicit geometric interpretation: the old representation is treated as a collection of local latent charts, and continual learning is posed as continuation of that shared manifold rather than preservation of coordinates alone. 
+
+## 3 Method 
+
+3.1 Problem setup 
+
+Let fθ0 be a model trained on an old task, and let fθ be a student initialized from fθ0 and fine-tuned on a new task. Let h(·) denote a chosen latent representation layer. We assume access to: 
+
+• new-task data Dnew ,
+
+• a small old-task anchor set Danc ,
+
+• and frozen teacher features z0(x) = hθ0 (x). The goal is to learn the new task while preserving the old latent manifold globally and allowing only local, task-necessary deformation. 23.2 Local chart memory 
+
+We build a compact memory from teacher features on Danc by clustering {z0(x)} into K local components. For each component k, we estimate a low-rank factor model 
+
+z ≈ μk + Uka + ε, a ∼ N (0 , Λk), ε ∼ N (0 , σ 2
+
+> k
+
+I),
+
+where μk is the local mean, Uk is an orthonormal basis for the local tangent subspace, Λ k contains retained factor variances, and σ2 
+
+> k
+
+models isotropic residual variation. The corresponding covariance is Σ k = UkΛkU ⊤ 
+
+> k
+
++ σ2
+
+> k
+
+I. In the experiments, chart memory is built once from frozen teacher features using K-means and local low-rank fits; it is not refreshed during fine-tuning. This chart memory serves two roles. First, it provides a coarse atlas of the old manifold. Second, it defines a soft chart assignment for each feature vector through factor-model scores. For a feature 
+
+z, the score of chart k is 
+
+sk(z) = 1
+
+d
+
+> rk
+
+X
+
+> r=1
+
+ak,r (z)2
+
+λk,r + σ2
+
+> k
+
++ ∥z − μk − Ukak(z)∥22
+
+σ2
+
+> k
+
++ log det Σ k
+
+!
+
+,
+
+where d is the feature dimension, rk is the retained rank, and ak(z) = U ⊤ 
+
+> k
+
+(z − μk). We convert these scores into soft chart assignments with 
+
+pk(z) = exp( −sk(z)/τ c)
+
+P 
+
+> j
+
+exp( −sj (z)/τ c) .
+
+3.3 SPMA objective family 
+
+The broader SPMA family combines task supervision with output preservation, geometric regular-ization, chart preservation, and optional continuation constraints on new-task samples: 
+
+LSPMA = Lnew + λKD LKD + λanchor Lanchor + λgeo Lgeo 
+
++ λsmooth Lsmooth + λchart Lchart + λcont Lcont 
+
++ λsupport Lsupport + λreg Lreg .
+
+(1) The continuation and support terms act directly on new-task samples by penalizing departures from the old chart atlas. They are part of the broader SPMA viewpoint, but the experiments in this paper evaluate a simpler geometry-preserving instance, SPMA-OG , which omits those explicit new-sample terms. We therefore treat the full objective as conceptual context and SPMA-OG as the concrete method under study. 
+
+3.4 The SPMA-OG instantiation 
+
+Let Bnew denote a new-task batch and Banc an old-anchor replay batch. The SPMA-OG objective is LSPMA-OG (t) = Lnew + β(t)λanchor Lanchor 
+
++ α(t)
+
+
+
+λKD LKD + λgeo Lgeo + λsmooth Lsmooth 
+
++ λchart Lchart + λreg Lreg 
+
+
+
+.
+
+(2) where α(t) and β(t) are linearly decayed retention schedules over fine-tuning. 3The individual losses are: 
+
+Lnew = 1
+
+|Bnew |
+
+X
+
+> (x,y )∈Bnew
+
+CE( fθ(x), y ),
+
+Lanchor = 1
+
+|Banc |
+
+X
+
+> (x,y )∈Banc
+
+CE( fθ(x), y ),
+
+LKD = T 2
+
+|Banc |
+
+X
+
+> x∈Banc
+
+KL 
+
+
+
+σ
+
+ fθ0 (x)
+
+T
+
+
+
+σ
+
+ fθ(x)
+
+T
+
+ 
+
+.
+
+To preserve geometry, we compute normalized pairwise distance matrices on anchor features, 
+
+eDij (z) = ∥zi − zj ∥2
+
+mean off-diagonal Euclidean distance ,
+
+and match them with 
+
+Lgeo = 1
+
+m(m − 1) 
+
+X
+
+> i̸=j
+
+ eDij (z) − eDij (z0)
+
+2
+
+,
+
+where m = |Banc |.We additionally preserve local geometry through a teacher k-nearest-neighbor graph: 
+
+Lsmooth =
+
+P 
+
+> i,j
+
+wij 
+
+ eDij (z) − eDij (z0)
+
+2
+
+P 
+
+> i,j
+
+wij 
+
+, wij = exp 
+
+
+
+− eDij (z0)/τ s
+
+
+
+,
+
+where the weights are restricted to teacher-neighbor pairs. This term penalizes local tearing of the old manifold. Finally, chart preservation matches the teacher and student soft chart assignments on old anchors: 
+
+Lchart = τ 2
+
+> c
+
+1
+
+|Banc |
+
+X
+
+> x∈Banc
+
+KL  p(z0(x)) ∥ p(z(x)) ,
+
+and Lreg is an ℓ2 penalty on parameter drift relative to θ0.Operationally, Lanchor preserves supervised old-task behavior on sparse replay, LKD preserves teacher logits, Lgeo preserves global anchor geometry, Lsmooth preserves local neighborhoods, Lchart 
+
+discourages wholesale reassignment of anchors to different charts, and Lreg limits excessive parameter drift. The new-task cross-entropy then adapts the model under these anchor-based constraints, encouraging continuation of the old manifold rather than global representational drift. 
+
+## 4 Experimental Setup 
+
+4.1 Benchmarks 
+
+We focus on two compatible-shift settings that are directly aligned with the shared-manifold hypothesis: 1. CIFAR10 compatible shift : the same CIFAR10 classes under a shifted input distribution. 2. Tiny-ImageNet compatible shift : same semantic classes under a new shifted input distribu-tion. 4Frozen teacher             
+
+> f0
+> Teacher anchor features
+> z0=h0(x)
+> Local chart memory
+> {k,Uk,2
+> k}
+> New-task batch
+> Dnew
+> Student features
+> z=h(x)
+> Fine-tuning objective
+> CE(new) + CE(anchor)
+> + KD + geometry + chart
+> Shared-manifold continuation
+> Preserve old chart structure while adapting the student to the new task
+> fit charts
+> optimize
+> KD + geometry chart signal
+
+Figure 1: Overview of the SPMA viewpoint. Frozen teacher features define a local chart memory. Old anchors preserve function, geometry, and chart structure; the student is then adapted to the new task using cross-entropy together with anchor-based geometric regularization. Both settings keep the same semantic classes and were chosen deliberately as hypothesis tests, not as claims about general class-incremental learning. In both benchmarks, the new input distribution applies the same family of image transformations used in the saved runs: a 12 ◦ rotation, translation by (+2 , −1) pixels, scale 0.95, additive noise with standard deviation 0.03, and a blur kernel of size 3. 
+
+4.2 Models and protocol 
+
+For CIFAR10 we use a ResNet-18 adapted to CIFAR; for Tiny-ImageNet we use an ImageNet-style ResNet-18 backbone. Old-task teachers are trained first and then frozen. Fine-tuning uses a single shared classifier because the label space does not change between old and new data. The representative runs reported here use seed 7, 10 base-training epochs, and 5 fine-tuning epochs on both benchmarks. Anchor memories are built once from frozen teacher features, with 64 buffered anchors per class and cluster-stratified replay for sparse-anchor methods. The full old anchor set contains 640 examples on CIFAR10 and 12,800 on Tiny-ImageNet; ER-512 and SPMA-OG both replay 512 anchors, while Anchor CE replays 256. SPMA-OG uses the same sparse replay budget as ER-512, but adds linearly decayed retention terms for KD, geometry, smoothing, and chart preservation. 
+
+4.3 Baselines 
+
+We compare against: 
+
+• Plain FT : standard fine-tuning. 
+
+• Anchor CE : sparse supervised replay on old anchors. 
+
+• ER-512 : sparse replay with 512 old anchors. 5Table 1: Fixed-seed compatible-shift results on CIFAR10 and Tiny-ImageNet.                                    
+
+> Method Replay CIFAR10-Shift Old CIFAR10-Shift New CIFAR10-Shift Harm. Tiny-Shift Old Tiny-Shift New Tiny-Shift Harm. Plain FT 640 0.7151 0.7748 0.7438 0.0838 0.3320 0.1338 Anchor CE 256 0.7977 0.7773 0.7874 0.1983 0.3214 0.2453 ER-512 512 0.7948 0.7755 0.7850 0.2218 0.3254 0.2638 SPMA-OG 512 0.8195 0.7906 0.8048 0.3059 0.3250 0.3152
+
+Table 2: Representation-level diagnostics for the same representative runs. SPMA-OG improves substantially over replay-only in preserving old structure while remaining competitive on new-task accuracy.                               
+
+> Method CIFAR10-Shift CKA CIFAR10-Shift Dist. Corr. CIFAR10-Shift Support-In Tiny CKA Tiny Dist. Corr. Tiny Support-In Plain FT 0.8485 0.8166 0.0000 0.4200 0.4625 0.6183 Anchor CE 0.8816 0.8476 0.0000 0.4330 0.3639 0.6702 ER-512 0.8966 0.8670 0.0000 0.4439 0.3962 0.5907 SPMA-OG 0.9209 0.8970 0.7950 0.7525 0.7773 0.7279
+
+• and SPMA-OG : the old-geometry preserving SPMA variant that serves as the main method in this paper. 
+
+4.4 Metrics 
+
+We report old-task accuracy after fine-tuning, new-task accuracy after fine-tuning, forgetting, harmonic mean of old and new accuracy, linear CKA, pairwise-distance correlation, and empirical support inclusion. Because some variants use different support score parameterizations, we use CKA and pairwise-distance correlation as the primary cross-method representation metrics and treat support inclusion as a secondary diagnostic. 
+
+## 5 Results 
+
+5.1 Compatible-shift benchmarks 
+
+Table 1 summarizes the CIFAR10 and Tiny-ImageNet compatible-shift runs used throughout the paper. These benchmarks are deliberately chosen to test the regime in which old and new data should remain on the same latent support. On CIFAR10 compatible shift, SPMA-OG is best in these representative runs: it retains old-task accuracy at 0 .8195 versus 0 .7948 for ER-512 while also reaching higher new-task accuracy (0 .7906 vs. 0 .7755). On Tiny-ImageNet compatible shift, SPMA-OG retains substantially more old-task accuracy than ER-512 (0 .3059 vs. 0 .2218) while matching new-task accuracy (0 .3250 vs. 0 .3254). Taken together, these runs are consistent with the intended hypothesis: when the new data should lie on the same broad support, stronger geometry preservation need not require large new-task sacrifice. 
+
+5.2 Representation preservation 
+
+The stronger case for SPMA-OG is representational rather than purely leaderboard-based. Table 2 compares selected methods on CKA, pairwise-distance correlation, and empirical support inclusion. On CIFAR10 compatible shift, SPMA-OG improves over ER-512 from 0.8966 to 0.9209 in CKA and from 0.8670 to 0.8970 in pairwise-distance correlation. On Tiny-ImageNet compatible shift, the gain is much larger: CKA rises from 0.4439 to 0.7525 and pairwise-distance correlation 62                     
+
+> 1
+> 0
+> 1
+> 21.5
+> 1.0
+> 0.5
+> 0.0
+> 0.5
+> 1.0
+> 1.5
+> 0.5
+> 0.0
+> 0.5
+> 1.0
+> 1.5
+> 2.0
+> 2.5
+> 3.0
+> True latent surface
+> old
+> new
+> 50510 15 20
+> 2.5
+> 5.0
+> 7.5
+> 10.0
+> 12.5
+> 15.0
+> 17.5
+> 20.0
+> Feature UMAP: teacher
+> old
+> new
+> 0510 15 20
+> 5
+> 0
+> 5
+> 10
+> 15
+> Feature UMAP: plain_ft
+> old
+> new
+> 0510 15
+> 5
+> 0
+> 5
+> 10
+> 15
+> Feature UMAP: replay_anchor
+> old
+> new
+> 0510 15 20
+> 10
+> 5
+> 0
+> 5
+> 10
+> 15
+> 20
+> Feature UMAP: old_geometry
+> old
+> new
+> 0510 15 20
+> 10
+> 5
+> 0
+> 5
+> 10
+> 15
+> 20
+> Feature UMAP: spma_old_geometry
+> old
+> new
+
+Figure 2: Synthetic atlas-manifold benchmark. The true latent surface is shown at left, followed by teacher, plain fine-tuning, replay-anchor, old-geometry, and SPMA-OG feature views. SPMA-OG 
+
+preserves the old manifold most faithfully while still absorbing the new task into the same shared support. from 0.3962 to 0.7773. These diagnostics are consistent with the paper’s main claim: the full geometry-preserving package yields a more stable old representation than replay alone, not just a different old/new accuracy tradeoff. 
+
+5.3 Synthetic manifold sanity check 
+
+To isolate the geometry claim more directly, we also evaluate on a controlled synthetic atlas-manifold benchmark in which a warped ribbon surface is observed through two different input maps while the semantic classes are kept fixed. We treat this as a corroborating sanity check rather than a main empirical pillar. On this synthetic manifold, SPMA-OG improves over replay-anchor from 0 .9213 to 0 .9269 on old-task accuracy and from 0 .8712 to 0 .8875 on new-task accuracy, while raising anchor CKA from 0.9813 to 0 .9994 and anchor pairwise-distance correlation from 0 .9759 to 0 .9992. This controlled result is consistent with the geometric interpretation and shows near-perfect preservation on the anchor-based geometry metrics used in the paper. 7Table 3: Synthetic atlas-manifold results. SPMA-OG achieves the best old-task accuracy, the best new-task accuracy among the manifold-preserving methods, and near-perfect anchor geometry preservation. 
+
+Method Old After New After Harmonic Mean Anchor CKA Anchor Dist. Corr. Plain FT 0.5800 0.8994 0.7052 0.9563 0.9470 Replay Anchor 0.9213 0.8712 0.8956 0.9813 0.9759 Old Geometry 0.9169 0.8719 0.8938 0.9883 0.9834 SPMA-OG 0.9269 0.8875 0.9068 0.9994 0.9992 0.7750 0.7775 0.7800 0.7825 0.7850 0.7875 0.7900      
+
+> New-task accuracy
+> 0.72
+> 0.74
+> 0.76
+> 0.78
+> 0.80
+> 0.82
+> Old-task accuracy
+> Anchor CE
+> ER-512
+> Plain FT
+> SPMA-OG
+> CIFAR10 compatible shift
+> 0.322 0.324 0.326 0.328 0.330 0.332
+> New-task accuracy
+> 0.10
+> 0.15
+> 0.20
+> 0.25
+> 0.30
+> Old-task accuracy
+> Anchor CE
+> ER-512
+> Plain FT
+> SPMA-OG
+> Tiny-ImageNet compatible shift
+
+Figure 3: Old/new tradeoff on the two compatible-shift benchmarks used in the paper. SPMA-OG 
+
+occupies the best or near-best region while preserving the strongest latent geometry. 
+
+5.4 Detailed Tiny-ImageNet run 
+
+The Tiny-ImageNet compatible-shift benchmark is the setting most closely aligned with the original manifold-assimilation hypothesis. Table 4 reports that run directly. The teacher starts at 0 .3482 old-task accuracy, and SPMA-OG retains 0 .3059 after fine-tuning while reaching 0 .3250 on the shifted new data. We view this as the most direct large-scale evidence in the paper for the intended shared-support behavior, because it keeps the semantic label space fixed while perturbing only the input distribution. 
+
+## 6 Discussion 
+
+The main contribution of SPMA-OG is not that it universally dominates all baselines on task accuracy. Rather, it offers a coherent third operating point between unrestricted drift and rigid freezing in the compatible-shift regime studied here. On the compatible-shift benchmarks, replay remains a strong task-level baseline. However, replay alone often preserves old behavior without preserving shared latent structure, whereas SPMA-OG 
+
+retains substantially more old-manifold structure and, on both shift benchmarks, better old-task accuracy as well. We therefore view this work as a representation-centric continual-learning result. The current evidence supports the full geometry-preserving package of replay, distillation, geometry, smoothing, 8Plain Anchor ER SPMA                           
+
+> 0.0
+> 0.2
+> 0.4
+> 0.6
+> 0.8
+> 1.0
+> Score
+> 0.85 0.88 0.90 0.92
+> CIFAR10 shift: CKA
+> Plain Anchor ER SPMA
+> 0.82 0.85 0.87 0.90
+> CIFAR10 shift: Pairwise corr.
+> Plain Anchor ER SPMA
+> 0.00 0.00 0.00
+> 0.80
+> CIFAR10 shift: Support-in
+> Plain Anchor ER SPMA
+> 0.0
+> 0.2
+> 0.4
+> 0.6
+> 0.8
+> 1.0
+> Score
+> 0.42 0.43 0.44
+> 0.75
+> Tiny-ImageNet shift: CKA
+> Plain Anchor ER SPMA
+> 0.46
+> 0.36 0.40
+> 0.78
+> Tiny-ImageNet shift: Pairwise corr.
+> Plain Anchor ER SPMA
+> 0.62
+> 0.67
+> 0.59
+> 0.73
+> Tiny-ImageNet shift: Support-in
+
+Figure 4: Representation preservation summary. Compared with replay-only and plain fine-tuning, 
+
+SPMA-OG yields markedly stronger CKA and pairwise-distance correlation, especially on Tiny-ImageNet compatible shift. Table 4: Tiny-ImageNet compatible-shift run. We report old-task accuracy both before and after fine-tuning to make the same-class setting explicit. 
+
+Method Replay Old Before Old After New After Harmonic Mean Plain FT 12800 0.3482 0.0838 0.3320 0.1338 Anchor CE 256 0.3482 0.1983 0.3214 0.2453 ER-512 512 0.3482 0.2218 0.3254 0.2638 SPMA-OG 512 0.3482 0.3059 0.3250 0.3152 
+
+chart preservation, and drift control; it does not isolate chart preservation alone as the sole source of the gains. The paper also does not establish that shared-manifold continuation is the right inductive bias for generic class-incremental or novel-class continual learning. When new tasks require genuine representational expansion, the shared-support assumption may be too restrictive. The claim is therefore intentionally narrower: geometry-aware anchor regularization appears useful when old and new data should plausibly inhabit the same latent support. 
+
+## 7 Conclusion 
+
+We introduced the SPMA viewpoint and evaluated the geometry-preserving variant SPMA-OG in compatible-shift settings where old and new data plausibly share latent support. Instead of freezing old features or allocating orthogonal task subspaces, the method preserves old chart structure while 9adapting to new data under explicit anchor-based geometric constraints. Across the CIFAR10 and Tiny-ImageNet compatible-shift benchmarks, SPMA-OG remains competitive with sparse replay on task accuracy while showing substantially stronger representation preservation. On the synthetic atlas-manifold benchmark, it also preserves the old geometry more faithfully than replay alone. These results do not establish a general continual-learning state of the art, but they do provide evidence that shared-manifold continuation is a useful framing in the regime it is intended to model. 
+
+## References 
+
+Rahaf Aljundi, Francesca Babiloni, Mohamed Elhoseiny, Marcus Rohrbach, and Tinne Tuytelaars. Memory aware synapses: Learning what (not) to forget. In Proceedings of the European Conference on Computer Vision , pages 139–154, 2018. Rahaf Aljundi, Min Lin, Baptiste Goujaud, and Yoshua Bengio. Online continual learning with maximally interfered retrieval. In Advances in Neural Information Processing Systems , volume 32, 2019. Pietro Buzzega, Matteo Boschini, Angelo Porrello, Davide Abati, and Simone Calderara. Dark experience for general continual learning: a strong, simple baseline. In Advances in Neural Information Processing Systems , volume 33, pages 15920–15930, 2020. Arslan Chaudhry, Marc’Aurelio Ranzato, Marcus Rohrbach, and Mohamed Elhoseiny. Efficient lifelong learning with A-GEM. In International Conference on Learning Representations , 2019. Matthias de Lange, Rahaf Aljundi, Marc Masana, Sarah Parisot, Xu Jia, Aleˇ s Leonardis, Gregory Slabaugh, and Tinne Tuytelaars. A continual learning survey: Defying forgetting in classification tasks. IEEE Transactions on Pattern Analysis and Machine Intelligence , 44(7):3366–3385, 2022. Arthur Douillard, Matthieu Cord, Charles Ollion, Thomas Robert, and Eduardo Valle. Podnet: Pooled outputs distillation for small-tasks incremental learning. In European Conference on Computer Vision , pages 86–102. Springer, 2020. Geoffrey Hinton, Oriol Vinyals, and Jeff Dean. Distilling the knowledge in a neural network. arXiv preprint arXiv:1503.02531 , 2015. Saihui Hou, Xinyu Pan, Chen Change Loy, Zilei Wang, and Dahua Lin. Learning a unified classifier incrementally via rebalancing. In Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition , pages 831–839, 2019. James Kirkpatrick, Razvan Pascanu, Neil Rabinowitz, Joel Veness, Guillaume Desjardins, Andrei A. Rusu, Kieran Milan, John Quan, Tiago Ramalho, Agnieszka Grabska-Barwinska, et al. Overcoming catastrophic forgetting in neural networks. Proceedings of the National Academy of Sciences , 114 (13):3521–3526, 2017. Yuyang Li et al. Subspace distillation for continual learning. arXiv preprint arXiv:2307.16419 , 2023. Zhizhong Li and Derek Hoiem. Learning without forgetting. In European Conference on Computer Vision , pages 614–629. Springer, 2016. David Lopez-Paz and Marc’Aurelio Ranzato. Gradient episodic memory for continual learning. In 
+
+Advances in Neural Information Processing Systems , volume 30, 2017. 10 Wonpyo Park, Dongju Kim, Yan Lu, and Minsu Cho. Relational knowledge distillation. In 
+
+Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition , pages 3967–3976, 2019. Sylvestre-Alvise Rebuffi, Alexander Kolesnikov, Georg Sperl, and Christoph H. Lampert. iCaRL: Incremental classifier and representation learning. In Proceedings of the IEEE Conference on Computer Vision and Pattern Recognition , pages 2001–2010, 2017. David Rolnick, Arun Ahuja, Jonathan Schwarz, Timothy Lillicrap, and Greg Wayne. Experience replay for continual learning. arXiv preprint arXiv:1811.11682 , 2019. Friedemann Zenke, Ben Poole, and Surya Ganguli. Continual learning through synaptic intelligence. In Proceedings of the 34th International Conference on Machine Learning , pages 3987–3995, 2017. Yixiao Zheng et al. Backward feature projection for class-incremental learning. arXiv preprint arXiv:2303.14595 , 2023. 11

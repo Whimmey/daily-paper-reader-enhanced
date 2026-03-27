@@ -1,0 +1,640 @@
+Title: DSS-GAN: Directional State Space GAN with Mamba backbone for Class-Conditional Image Synthesis
+
+URL Source: https://arxiv.org/pdf/2603.17637v1
+
+Published Time: Thu, 19 Mar 2026 01:18:19 GMT
+
+Number of Pages: 25
+
+Markdown Content:
+# DSS-GAN: Directional State Space GAN with Mamba backbone for Class-Conditional Image Synthesis 
+
+Aleksander Ogonowski 1,2∗
+
+, Konrad Klimaszewski 2, Przemysław Rokita 11Warsaw University of Technology 
+
+> 2
+
+National Centre for Nuclear Research March 19, 2026 
+
+Abstract 
+
+We present DSS-GAN, the first generative adversarial network to employ Mamba as a hierarchical generator backbone for noise-to-image synthesis. The central contribution is Di-rectional Latent Routing (DLR), a novel conditioning mechanism that decomposes the latent vector into direction-specific subvectors, each jointly projected with a class embedding to produce a feature-wise affine modulation of the corresponding Mamba scan. Unlike conven-tional class conditioning that injects a global signal, DLR couples class identity and latent structure along distinct spatial axes of the feature map, applied consistently across all gen-erative scales. DSS-GAN achieves improved FID, KID, and precision-recall scores compared to StyleGAN2-ADA [23] across multiple tested datasets. Analysis of the latent space reveals that directional subvectors exhibit measurable specialization: perturbations along individual components produce structured, direction-correlated changes in the synthesized image. 
+
+# 1 Introduction 
+
+Generative image modeling has undergone a fundamental shift in recent years. Diffusion models [14, 42] and autoregressive approaches [47, 8] now dominate the field, delivering impressive sample quality at the cost of iterative inference passes [44, 7] and latent spaces that are notoriously difficult to interpret and control [26]. GANs, however, remain the natural choice wherever single-pass inference speed matters [43, 18] and where direct, deterministic control over the generated output is required [9, 22, 23, 4] - in particular for applications demanding precise class- and structure-conditioned synthesis [33, 38, 34]. One of the central challenges in conditional GANs is how to efficiently inject class and structure information across spatial scales while preserving long-range dependencies [4, 23, 3]. Convolutional generators capture local features well, but their receptive field is inherently bounded [28]. ViT-based generators [8, 18] recover global context at the price of O(N 2) attention complexity — at 
+
+256 ×256 resolution this amounts to 65 536 tokens and prohibitive memory requirements. State space models (SSMs) [11, 10], and Mamba in particular, offer linear-complexity sequence modeling while retaining long-range dependencies — initially demonstrated in discriminative tasks such as classification and segmentation [30, 53, 36]. Their application to generative modeling has since ex-panded, yet remains confined to image-to-image translation and restoration [1, 17, 49, 15], where Mamba acts as an encoder or bottleneck module processing existing image features, and to diffu-sion frameworks [46, 16, 41], where it replaces the denoising backbone but inherits the iterative inference pipeline. Their potential as a GAN generator backbone for class-conditioned noise-to-image synthesis remains unexplored. We propose DSS-GAN (Directional State Space GAN ) — the first GAN to employ Mamba as a generator backbone for noise-to-image synthesis. Existing Mamba-GAN works are confined to image translation and restoration [49, 17], where Mamba acts as an encoder module — generation from noise has remained the exclusive domain of CNN and ViT architectures.   
+
+> ∗Corresponding author: aleksander.ogonowski.dokt@pw.edu.pl ,aleksander.ogonowski@ncbj.gov.pl
+
+1
+
+> arXiv:2603.17637v1 [cs.LG] 18 Mar 2026
+
+The core contribution is DLR (Directional Latent Routing ): the latent vector z is decomposed into direction-specific subvectors, each jointly conditioned with a class embedding to modulate the token sequence of the corresponding Mamba scan. The same routing is applied consistently across all scales, providing globally coherent conditioning. DSS-GAN achieves comparable or superior FID, KID, and precision-recall scores to StyleGAN2-ADA [23] across all tested datasets while requiring more than 3× fewer parameters. Latent space analysis demonstrates that directional subvectors exert distinct, direction-correlated influence on class-specific spatial features of the synthesized image. The source code is publicly available at https://github.com/dssgan/DSS_GAN .
+
+# 2 Related Works 
+
+Class-conditional image synthesis and latent modulation. Early conditional GANs in-ject class information by concatenating a class embedding with the noise vector (e.g., cGAN [33]) or by adding an auxiliary classification objective (e.g., AC-GAN [38]). BigGAN [4] scales this paradigm to large category sets using class-conditional batch normalization: a shared class em-bedding, concatenated with a chunk of the latent vector, is linearly projected to per-channel gains and biases (γ, β ) that modulate each residual block — a mechanism closely related to Feature-wise Linear Modulation (FiLM) [40], which formalizes this class of affine conditioning layers. Notably, BigGAN also splits z into per-resolution chunks (skip-z connections), providing a form of scale-wise latent routing — but without any direction-specific decomposition of the conditioning signal. StyleGAN [22] and StyleGAN2 [23] introduce a learned mapping network that transforms the la-tent vector into a style code — a learned intermediate representation that disentangles the latent space — which is then used to globally modulate the synthesis process at each layer, either via per-channel affine shifts applied to feature maps (StyleGAN) or through weight scaling and de-modulation (StyleGAN2). Style mixing allows different codes to be applied at different resolution stages, providing coarse-to-fine hierarchical control, but within each layer the conditioning remains spatially uniform — the same modulation is applied to every spatial position of the feature map. StyleGAN3 [24] further reformulates synthesis as continuous signal processing to eliminate aliasing artifacts, but retains the same globally-uniform conditioning scheme. In all these approaches, the latent vector and class signal are either concatenated or jointly mapped to a single global condi-tioning vector, with no mechanism to assign different components of the latent space to distinct spatial structures of the image. SPADE [39] breaks the spatial uniformity constraint by conditioning on a dense semantic map to produce spatially-varying affine shifts, achieving fine-grained local control — but at the cost of requiring an explicit pixel-aligned spatial input rather than a compact latent code. InfoGAN [5] takes a different approach to latent structure: it decomposes z into interpretable components by maximizing mutual information between latent variables and generated observations, achieving unsupervised disentanglement through a training objective rather than by architectural design. ViTGAN [29], a representative ViT-based generator, adopts self-modulated layer normalization (SLN), an AdaIN-style mechanism in which the latent code globally modulates transformer token representations via learned affine parameters — without class conditioning or direction-specific differentiation of the latent signal. The DLR mechanism in DSS-GAN differs from all of the above: it couples class identity and latent structure along distinct scan directions of the feature map by architectural design, without requiring a spatial input map, a mutual information objective, or quadratic attention. 
+
+State space models in vision and generative modeling. Mamba [10] introduces selec-tive state space models with linear complexity, enabling efficient modeling of long-range depen-dencies. Follow-up works adapt Mamba to vision tasks via multi-directional scanning strategies: VMamba [30] and Vim [53] achieve strong results in classification and segmentation, while Mamba-ND [36] extends scanning to arbitrary dimensionalities. However, all these works employ Mamba exclusively as an encoder backbone for discriminative tasks. In the GAN setting, MambaRA-GAN [49] and HMSMamba-GAN [17] incorporate Mamba as an encoder module for image-to-image translation and restoration — generation from noise remains unexplored. 2Mamba in diffusion models. Recent work has explored Mamba as a denoising backbone in diffusion models. DiM [46] replaces the U-Net with a multi-directional Mamba architecture for effi-cient high-resolution synthesis; ZigMa [16] introduces spatially continuous zigzag scanning schemes to improve position-awareness; DiMSUM [41] integrates wavelet-domain scanning with spatial Mamba via cross-attention fusion. In all these works, Mamba processes noisy image tokens to predict noise at each diffusion step — a discriminative role within an iterative refinement process. DSS-GAN is the first GAN to use Mamba as a hierarchical generator backbone for noise-to-image synthesis. 
+
+# 3 DSS GAN 
+
+3.1 Architecture Overview 
+
+DSS-GAN is a class-conditional GAN evaluated at up to 512 ×512 resolution. The generator combines a hierarchical Mamba backbone with a StyleGAN2-inspired convolutional refinement block at the final resolution, exploiting the complementary strengths of both architectures: Mamba builds global coherence across scales, while the CNN adds local high-frequency detail. The overall generator architecture is illustrated in Fig. 1. Mamba 
+
+> Mamba
+> Reshape
+> DLR
+> Upsample
+> Modulated
+> Conv
+> Stylegan 2
+> block tokenizer
+> LPE - Learned Positional
+> Encoding
+
+Figure 1: DSS-GAN generator architecture (Only two scan directions shown for clarity). Zbase is base global latent vector, zkK 
+
+> dir
+
+are directional latent vectors. For 256 × 256 resolution N is 5 and 
+
+C0 - feature map channels in DLR blocks is 148 .The discriminator follows the StyleGAN2-ADA architecture [21]. A ViT-based discriminator was evaluated early in development but proved destabilizing: jointly optimizing a novel generator backbone and a non-standard discriminator introduces too many simultaneous degrees of freedom. We therefore retained the well-validated StyleGAN2-ADA discriminator to isolate the contribution of the generator. Both generator and discriminator are trained with the non-saturating GAN loss [9] and R1 gradient penalty [32]; full training configuration is provided in Appendix D. 
+
+Latent vector and class conditioning. The latent vector z ∈ RDz is partitioned into two components: a base latent zbase , consumed once by the tokenizer 3.1, and a directional routing vector zdir , which is further split into K equal subvectors - one per scan direction (detailed in Section 3.2). The key property of zdir is that it is fixed across all resolution stages : the same vector is re-injected independently at every DLR 3.2 , so the directional routing signal remains constant throughout the hierarchy. The class label y is treated identically - re-injected at every DLR stage rather than propagated through the spatial feature map, which carries only the progressively refined image representation between blocks. Table 1 summarizes the routing for 512 ×512 image generation. 
+
+Mamba tokenizer. The zbase vector is mapped to an initial token sequence by a learned linear projection, then processed by two Mamba blocks before being reshaped into an 8×8 spatial grid. 3Block Resolution zbase zdir y                   
+
+> Tokenizer 8×8seed —additive bias DLR 8×8→256 ×256 (×6) —shared, per-direction shared, per-direction Conv 512 ×512 ——global toRGB 512 ×512 ———
+
+Table 1: Generator routing summary for the DSS-GAN blocks: Tokenizer (3.1), DLR (3.2), Conv and toRGB (3.2.4). The zbase seeds the tokenizer only; zdir and y are re-injected unchanged at every DLR stage. Each Mamba block projects the input to a higher-dimensional space, applies the selective SSM with a depthwise convolutional mixing layer, and projects back to the original dimension, with a residual connection around the full block. For a detailed description of the Mamba architecture the reader is referred to [10]. Crucially, the class label y is injected after the Mamba blocks and before the reshape, as a global additive bias t ← t + Embed( y) to the token sequence. This ordering is a deliberate design choice: the SSM establishes token interactions solely on the basis of zbase , without the class signal influencing the recurrent state. The class embedding then shifts the entire token representation by a class-specific offset. As a result, intra-class structural diversity is preserved — samples of the same class differ in layout and composition, which is determined entirely by zbase , and share only a class-level bias in the initial spatial seed. 
+
+DLR blocks and upsampling. A sequence of resolution stages processes the feature map from 8×8 to 128 ×128 (Figure 1). Each stage applies one or more DLR blocks (Section 3.2), each wrapped in a residual connection. To adapt channel dimensions between stages, a two-step upsampling is applied: nearest-neighbour interpolation doubles the spatial resolution, followed by a learned convolutional projection that adjusts the number of channels. Since the convolution is applied after the interpolation step, the spatial layout is determined solely by the upsampling and is not distorted by learned kernel weights. Upsampling via transposed convolutions is avoided due to known checkerboard artifacts [37], following ProGAN [19]. 
+
+Convolutional refinement. The final resolution stage uses a StyleGAN2-inspired convolutional block rather than a Mamba stage. Each additional Mamba stage quadruples the token count, so replacing the highest-resolution stage with a convolutional block balances global coherence with local high-frequency refinement that convolutional layers handle more efficiently. Table 2: Ablation: effect of Stylegan2 CNN refinement block boundary resolution on AFHQ ( cat, dog, wild )128 ×128 . All variants share the same training configuration.                                                                                      
+
+> Global Mean Class Stylegan2 refinement from FID ↓KID ↓P↑R↑D↑C↑FID ↓KID ↓P↑R↑D↑C↑
+> N one 21.75 5.26 .815 .242 1.078 .577 27.35 13.86 .814 .188 1.031 .563
+> 128 ×128 11.66 2.71 .822 .407 1.144 .748 12.93 5.67 .826 .394 1.125 .744
+> 64 ×64 18.48 8.27 .574 .264 0.357 .388 20.75 13.45 .541 .264 0.322 .364
+> 32 ×32 25.67 9.19 .621 .038 0.394 .323 29.18 16.62 .596 .035 0.366 .297
+> 16 ×16 50.30 23.61 .248 .009 0.104 .098 59.08 40.49 .241 .005 0.100 .097
+
+Table 2 reports the effect of progressively replacing Mamba stages with StyleGAN2-inspired convolutional blocks, evaluated on AFHQ 128 ×128 . Removing the convolutional block entirely increases precision but substantially reduces recall — the Mamba backbone alone produces sharp but poorly diverse outputs, collapsing toward class-conditional means at the finest spatial scales. Conversely, the convolutional block receives no directional latent input, so extending it to lower 4resolutions progressively displaces latent routing, which is responsible for output diversity — hence the monotonic recall collapse as the CNN boundary moves earlier. The convolutional block is most effective as a purely local refinement stage at the final resolution, where it adds high-frequency detail without interfering with the latent 
+
+3.2 Directional Latent Routing 
+
+Directional Latent Routing (DLR) is the central conditioning mechanism of DSS-GAN. Rather than injecting a single global class and latent signal into every layer, DLR decomposes z into direction-specific subvectors and couples each with a dedicated class embedding to produce a feature-wise affine modulation of the corresponding Mamba scan. Intuitively, each scan direction acts as a distinct perceptual axis, while the direction weighting network plays the role of class-aware attentional gating — determining how much each axis contributes to the final representation, conditioned jointly on the class label and the directional latent. Scan directions 
+
+> Selective
+> SSM
+> Random rotation
+> Selective
+> SSM
+> softmax
+> Directional latent
+> Feature map
+> 1
+> 1
+> Tanh
+> Inverse rotation
+
+Figure 2: DLR block. For each scan direction k, the directional latent zk 
+
+> dir
+
+and class embedding ek
+
+are projected to affine parameters (γk, βk) that modulate the token sequence before the Mamba SSM. Both the class and the directional latent determine the contribution of each scan direction to the generated feature map, with directional weights wdir  
+
+> k
+
+= f (y, z dir  
+
+> k
+
+) satisfying PKk=1 wk 
+
+> dir
+
+= 1 .A random 180 ◦ rotation is applied before the block and inverted after unscan. 
+
+3.2.1 Scan, Unscan, and Rotation Scan directions. Mamba operates on one-dimensional sequences. To apply it to a two-dimensional feature map h ∈ RC×H×W , the spatial grid must first be serialized into a token sequence — a scan 
+
+operation — and the output must be deserialized back to the spatial grid after the SSM — an 
+
+unscan operation. The choice of serialization order determines which spatial relationships are captured by the recurrent state. Each direction k defines a scan permutation πk — a fixed reordering of spatial positions that determines the traversal order. Applying πk to h produces an independent token sequence sk =
+
+πk(h) ∈ RN ×C , where N = H ·W is the number of spatial positions at the current resolution stage. After the Mamba SSM processes sk, the inverse permutation π−1 
+
+> k
+
+restores spatial alignment. In the final experiments, K = 3 out of 6 possible scan directions were used: a left-to-right row scan, a top-to-bottom column scan, and an anti-diagonal scan. The effect of the number of scan directions 
+
+K is dataset- and resolution-dependent: increasing K does not yield consistent gains across all 5settings, suggesting that the benefit of additional directions depends on the geometric structure of the training data. This is examined in detail in Section 4. 
+
+Intra-block rotation. Before each DLR block, the feature map h is randomly rotated by 180 ◦.After the block’s unscan, the rotation is inverted, restoring the canonical spatial orientation. This is not a data augmentation strategy: because the inversion is applied within the same forward pass, the output spatial layout is unchanged. The purpose is to improve gradient stability during training — a 180 ◦ rotation effectively reverses the scan order of each direction, so the recurrent state receives gradients from both forward and backward traversals, making the gradient signal more consistent across training steps. No additional parameters are introduced. The rotation mode is sampled uniformly from 0◦, 180 ◦ during training. Reversing the scan traversal order to expose the recurrent state to both forward and backward gradient paths has been explored in related work: LBMamba [51] and Adventurer [48] reverse the sequence order between consecutive layers to approximate bidirectional scanning without additional SSM blocks. Tang et al. [45] apply spatial rotation before scanning in a medical segmentation context, motivated by coverage rather than gradient flow. In contrast, our 180 ◦ rotation is applied and inverted within a single forward pass, leaving the output layout unchanged — its sole purpose is to expose the SSM recurrence to reversed gradient paths during backpropagation. Table 3 quantifies the effect of rotation on both generation quality and gradient flow, evaluated on AFHQ 128 ×128 . Rotation yields a consistent improvement in FID and recall, a pattern that holds across resolutions and datasets. Gradient flow analysis over epochs 0–200 reveals that rotation increases mean gradient norms in the deeper Mamba stages: the ratio between the two variants reaches 1.23 × at the 64 ×64 stage, while shallower stages remain largely unaffected. The coeficient of variation (CV = σ/μ ) measures the relative variability of gradient norms across training steps. CV remains comparable between the two variants across all stages, confirming that rotation does not destabilise gradient dynamics. Table 3: Ablation: effect of 180 ◦ rotation on AFHQ 128 ×128 (top) and mean gradient norm per Mamba block averaged over all epochs (bottom).                                                                                      
+
+> Global Mean Class Rotation FID ↓KID ↓P↑R↑D↑C↑FID ↓KID ↓P↑R↑D↑C↑
+> None 16.58 7.09 .567 .364 0.360 .443 18.46 11.70 .543 .318 0.327 .418
+> {0◦,180 ◦}(ours) 11.66 2.71 .822 .407 1.144 .748 12.93 5.67 .826 .394 1.125 .744
+> None {0◦,180 ◦}(ours) Mamba Block mean norm CV mean norm CV ratio ↑
+> Tokenizer 0.02947 0.121 0.02713 0.118 0.921 ×
+> 8×80.01911 0.156 0.01862 0.205 0.974 ×
+> 16 ×16 0.00876 0.231 0.00955 0.254 1.091 ×
+> 32 ×32 0.00346 0.239 0.00427 0.230 1.233 ×
+> 64 ×64 0.00130 0.193 0.00160 0.215 1.232 ×
+
+3.2.2 Class and Latent Conditioning per Direction Latent decomposition. The directional routing vector zdir ∈ RK·Ddir is partitioned into K
+
+equal subvectors zdir = [ z1 
+
+> dir
+
+| · · · | zK
+
+> dir
+
+], where zk 
+
+> dir
+
+∈ RDdir . Each subvector zk 
+
+> dir
+
+is exclusively associated with scan direction k and does not influence any other direction. 
+
+Per-direction class embedding. Each scan direction k maintains a dedicated class embedding table Ek : {1, . . . , C } → RDe . Given class label y, the direction-specific embedding is ek =
+
+Ek(y). Using separate embedding tables per direction is a deliberate choice: different scan axes capture spatially distinct features, and the class signal relevant to each axis may differ. The DLR conditioning input for direction k is formed by concatenating the latent subvector with its class embedding: uk = [ zk 
+
+> dir
+
+∥ ek] ∈ RDdir +De .6Affine modulation. The joint conditioning vector uk captures both the direction-specific latent structure and the class identity. To translate this into a conditioning signal for the Mamba SSM, a direction-specific MLP projects uk to a pair of feature-wise affine parameters [˜ γk, ˜βk] = MLP k(uk),where ˜γk, ˜βk ∈ RC . This is the core of the DLR mechanism: rather than injecting the conditioning signal additively into the feature map (as in standard FiLM [40]), the modulation is applied to the token sequence sk before it enters the SSM recurrence. This means the class and latent information directly shapes what the recurrent state integrates along direction k, rather than post-hoc shifting the output. Each direction receives an independent MLP k, so the conditioning function can specialize to the spatial statistics of that scan axis. To improve training stability, residual routing is applied: the raw MLP output is passed through a clipped tanh and offset so that the modulation starts close to identity: 
+
+γk = tanh(˜ γk) · δℓ + 1 , βk = tanh( ˜βk) · δℓ, (1) where δℓ > 0 is a resolution-dependent clip value. The +1 offset ensures γk ≈ 1 at initialisation, so the DLR block acts as identity early in training and the modulation is learned progressively. The conditioned token sequence fed into the SSM is then: 
+
+ˆsk = γk ⊙ sk + βk, (2) where γk and βk are broadcast over the sequence length dimension N .Figure 3 visualises the mean absolute activations per scan direction at each resolution stage, confirming that independent MLP k conditioning leads to direction-specific specialisation. At low resolutions ( 8×8, 16 ×16 ), directions capture complementary aspects of global structure — the column scan concentrates on the vertical extent of the subject, the row scan on horizontal layout. At higher resolutions ( 64 ×64 , 128 ×128 ) the directional geometry becomes explicit: row activations form horizontal bands, column activations vertical bands, and diagonal activations oriented texture. 
+
+Figure 3: Per-direction feature maps (mean absolute activation, averaged over 10 channels) at each resolution stage, for a representative sample from the LSUN tower class (from bridge, church, tower classes ) in Mamba blocks. Each row corresponds to one scan direction; each column to one resolution stage. At low resolutions directions capture complementary aspects of global structure; at higher resolutions the directional geometry becomes explicit, with row, column, and diagonal activations forming spatially oriented patterns consistent with their respective scan axes. 
+
+3.2.3 Direction Weighting 
+
+After each directional Mamba block processes its modulated sequence, the outputs are combined via a learned weighted sum w ∈ RK . To compute these weights, a small routing network maps the directional features zdir to per-direction logits using a weight matrix Wz . These logits are added to learnable base weights b ∈ RK and a shared class embedding ey = Embed( y) ∈ RDe projected by a weight matrix Wy . Both Wz and Wy are initialized to zero so that routing starts uniform. Finally, the total sum is scaled by a temperature parameter τ and normalized via the softmax function, denoted as σS :7w = σS (( b + Wz zdir + Wy ey )/τ ). (3) The class label y enters the direction weighting jointly with zdir . This is a deliberate design choice: the class signal serves a dual role — it modulates what is generated along each direc-tion (via γk, βk in Eq. 2) and simultaneously steers how much each direction contributes to the output. Class-conditioned weighting allows the model to learn that certain scan axes are more informative for specific categories — for instance, a class with strong vertical structure may con-sistently up-weight the column scan. Intra-class diversity is preserved through zdir , which provides a sample-specific perturbation of the class-determined base routing. The degenerate case in which all directions are set identically — eliminating the geometric basis for specialisation — is examined empirically in Appendix C. Figure 4 tracks the evolution of per-direction routing weights across resolution stages over the course of training (AFHQ 256 ×256 , 3-direction model). Weights are initialised close to uniform (1/K = 0 .33 , dashed red line) and diverge as training progresses, confirming that the direction weighting network learns non-trivial, resolution-dependent routing. The column scan acquires the highest weight at 16 ×16 (0.54), suggesting that vertically-oriented structure is most informative at low resolutions. The row scan is suppressed at 16 ×16 but recovers at higher resolutions, while the diagonal scan peaks at 32 ×32 before declining. The most pronounced specialisation occurs at the lowest resolution stages, where the primary class-specific structure is established. This is consistent with the sensitivity analysis in Table 4, which shows that class variations produce the highest perceptual impact at 8×8 (LPIPS = 0 .612 ) and 16 ×16 (LPIPS = 0 .464 ), with substan-tially lower sensitivity at higher resolutions. LPIPS [52] measures perceptual distance between generated images under isolated component variations — higher values indicate that changing a given factor produces more visually distinct outputs, making it a direct proxy for the influence of each component on the generated result. The direction weighting network thus concentrates its class-aware routing signal precisely where it has the greatest influence on the generated output. 8×8 16×16 32×32 64×64 128×128           
+
+> Resolution
+> 0.15
+> 0.20
+> 0.25
+> 0.30
+> 0.35
+> 0.40
+> 0.45
+> 0.50
+> 0.55
+> 0.60
+> Routing Weight
+> Row
+> 0.47
+> 0.20
+> 0.26
+> 0.38 0.40
+> 8×8 16×16 32×32 64×64 128×128
+> Resolution
+> Column
+> 0.25
+> 0.54
+> 0.32 0.31
+> 0.34
+> 8×8 16×16 32×32 64×64 128×128
+> Resolution
+> Diagonal
+> Uniform (1/K)
+> Min Max range
+> Increase
+> Decrease
+> 0.27
+> 0.26
+> 0.43
+> 0.31
+> 0.27
+> 0
+> 24
+> 51
+> 81
+> 108
+> 135
+> 165
+> 192
+> 219
+> 249
+> Epoch
+
+Figure 4: Evolution of per-direction routing weights across resolution stages during training (AFHQ 
+
+256 ×256 , 3-direction model). Each line corresponds to a training snapshot; colour indicates epoch (light = early, dark = late). The dashed red line marks the uniform weight 1/K . Arrows indicate the direction of change between the first and last snapshot. Weights diverge from uniform and specialise by resolution, with the column scan dominating at 16 ×16 and the diagonal scan peaking at 32 ×32 .
+
+3.2.4 Mamba Blocks and Output Aggregation 
+
+Table 4 reports the perceptual impact (LPIPS) of independently perturbing the class and latent representations in each model component. In the class experiment, the learned class is fully substi-tuted with that of a target class in a selected subset of components - a single scan direction, a single resolution stage, or the tokenizer and CNN refinement block - while all remaining components, y,and z are kept fixed. In the latent experiment, the corresponding fragment of z is replaced with an independent Gaussian sample in the same subset of components, while y and the remaining parts of z are kept fixed. In both cases, LPIPS is computed between the unmodified output and the 8output after the perturbation, and averaged over 10 randomly sampled latent vectors. The class experiment additionally averages over all six ordered class pairs. A higher LPIPS value indicates a higher perceptual difference in the generated image, and thus a stronger influence of the perturbed component on the output. Table 4: Sensitivity analysis: Perceptual impact (LPIPS ↑) of Class vs. Latent variations across model components.                                    
+
+> General Mamba Stages Mamba Directions Factor All dir Base CNN 8×816 ×16 32 ×32 64 ×64 128 ×128 Col Row Diag Class 0.676 0.044 0.047 0.612 0.464 0.190 0.149 0.144 0.484 0.455 0.485 Latent 0.682 0.621 —0.628 0.496 0.091 0.322 0.290 0.608 0.591 0.573
+
+Disentanglement of the latent space. The two components of z serve complementary roles in the generated image, each governing a distinct aspect of the synthesis process. Zbase controls global composition and structure through the tokenizer, while zdir shapes what the SSM integrates along each scan direction through the affine modulations (γk, βk). The class label y can be swapped independently of z, producing a semantic change while preserving the spatial layout — as illustrated in Figure 5. 
+
+Figure 5: The same latent vector z generated with three different class labels. The spatial layout is preserved across classes, confirming that zbase controls composition independently of class identity. Left: AFHQ 256 × 256 , right : LSUN 256 × 256 .
+
+Class override experiments. To investigate how individual scan directions carry class infor-mation, we conduct experiments in which only a selected subset of per-direction class embeddings is replaced with those of a target class, while the remaining directions and zbase are kept fixed. Figure 6 shows results for the pairs cat →dog and cat →wild — overriding a single direction pro-duces a gradual semantic transformation, and only replacing all directions yields a complete class conversion. The perceptual distance LPIPS between the base and overridden image, averaged over 
+
+N random latent vectors and six class pairs from {cat, dog, wild}, is summarised in Table 4. 
+
+Directional latent swap. Figure 7 shows the effect of randomly swapping the subvector zk
+
+> dir
+
+between samples while keeping all other components fixed. Replacing the subvector of a single direction produces a localised change in style or texture characteristic of that scan axis, while the global structure of the image remains unchanged — consistent with the low LPIPS sensitivity of higher-resolution stages to latent variations seen in Table 4. 
+
+Noise perturbation. Figure 8 shows the effect of Gaussian perturbation applied to zcol dir and 
+
+zbase . Perturbing zbase alters the spatial layout and overall scene composition, as expected from its high LPIPS sensitivity (Table 4). Directional components learn finer details: subtle geometry, colouring, and surface structure. In particular, perturbing zcol dir gradually modifies texture and sharpness while preserving subject identity. Corresponding results for all above experiments for the LSUN outdoor dataset are provided in Appendix B. 9Figure 6: Partial class override experiments on AFHQ 256 × 256 . Top: base class cat , target class dog . Bottom: base class cat , target class wild . Each column replaces a different subset of per-direction classes with the target class, keeping z fixed. The row direction shows little influence on class conversion; the majority of class information is modulated by the blocks at low resolutions. 
+
+Figure 7: Swapping directional subvectors zk 
+
+> dir
+
+between samples. Each column replaces the sub-vector of one direction while keeping all other components of z fixed. 
+
+# 4 Results 
+
+This section presents the results of DSS-GAN across five dataset configurations at varying reso-lutions and scan direction settings. As a reference point, we use StyleGAN2-ADA [21], a model combining the StyleGAN2 generator with adaptive discriminator augmentation, which established state-of-the-art results on FFHQ and AFHQ at the time of its publication [21]. Since the discrim-inator is identical in both models, any difference in performance can be attributed directly to the generator. We evaluate on four datasets: AFHQ [6] (3 classes: cat, dog, wild, approximately 5k samples per class), FFHQ [22] (unconditional, 70k samples), LSUN [50] evaluated on two distinct subsets — indoor scenes (LSUN Rooms: bedroom, kitchen; 15k samples per class) at 128 ×128 
+
+and outdoor architectural scenes (bridge, church, tower; 15k samples per class) at 256 ×256 — and CelebA [31] (10 attribute classes, 10k samples per class). All subsets use a fixed sample selection across all experiments. All models were trained from scratch. StyleGAN2-ADA training configurations define a set of hyperparameters — network depth and width, R1 regularisation strength, learning rate schedule — tuned to a specific resolution and dataset [20]. For FFHQ we used paper256 that is dedicated to this dataset on 256 × 256 
+
+resolution. For AFHQ, LSUN, and CelebA we compared auto , paper256 , and paper512 , selecting the configuration with the lowest FID — in all cases this was paper512 . This configuration 
+
+Figure 8: Effect of noise perturbation on latent space components. Left: perturbation of the column direction ( zcol dir ). Right: perturbation of the tokenizer component ( zbase ). 10 is dedicated to AFHQ dataset on 512 × 512 resolution. DSS-GAN was trained with identical hyperparameters across all datasets at a given resolution; as resolution increases, R1 regularisation strength and latent space dimensionality are increased, while the number of feature map channels is reduced. Both models were trained with a batch size of 96 at 128 ×128 and 256 ×256 , and 48 at 
+
+512 ×512 , with ADA augmentation disabled, eliminating augmentation as a confounding variable. ADA could be applied to DSS-GAN as well but was deliberately excluded. Sample quality was assessed using FID [13] and KID [2] ( ×10 3), which measure distribu-tional similarity between generated and real samples. We additionally report Precision (P), Re-call (R), Density (D), and Coverage (C) following [27, 35], which decompose sample quality into fidelity (P, D) and diversity (R, C) components. All metrics are computed over 50k samples. Den-sity and Coverage extend Precision and Recall by replacing binary membership with a count-based estimator (Density) and a coverage indicator (Coverage), yielding metrics that are more robust to outliers in the feature space. Both models were evaluated with the same script and the same set of real reference images. FID and KID values are consistent with those produced by the original StyleGAN2-ADA evaluation script [20], with a maximum deviation of 0.3 FID points and 0.2 KID points across best checkpoints. 
+
+Results. Results are reported in order of increasing resolution. Per-class metrics are provided for AFHQ and LSUN; CelebA results are averaged over the 10 attribute classes; FFHQ is reported as a single unconditional result. KID values are reported multiplied by 10 3 throughout. Where not stated otherwise, the 1-dir variant uses a left-to-right row scan. Table 5: Results on LSUN Rooms 128 ×128 (classes: Bedroom, Kitchen).                                                                                                                                 
+
+> Global Bedroom Kitchen Model FID ↓KID ↓P↑R↑D↑C↑FID ↓KID ↓P↑R↑D↑C↑FID ↓KID ↓P↑R↑D↑C↑
+> StyleGAN2-ADA 20.31 10.10 .59 .25 .94 .65 26.06 11.51 .58 .24 .85 .61 26.64 12.70 .62 .27 .97 .58 DSS-GAN 3-dir 23.22 13.23 .52 .28 .62 .67 25.16 13.45 .52 .28 .62 .67 31.29 20.28 .52 .28 .62 .67 DSS-GAN 2-dir (row + column) 17.79 8.79 .64 .20 .88 .75 21.56 9.61 .59 .26 .78 .76 23.32 12.30 .71 .18 .97 .78
+> DSS-GAN 1-dir (row) 20.28 11.93 .55 .30 .66 .73 21.39 10.06 .55 .35 .69 .79 28.78 19.35 .59 .27 .62 .72 DSS-GAN 1-dir (column) 20.30 10.73 .58 .23 .65 .68 24.97 11.95 .58 .24 .69 .69 25.83 14.43 .60 .18 .70 .75 DSS-GAN 1-dir (diagonal) 22.74 14.44 .50 .31 .56 .67 23.80 12.32 .47 .40 .47 .69 32.76 22.81 .54 .28 .55 .68
+
+LSUN Rooms 128 ×128 . The LSUN Rooms dataset [50] contains two classes of indoor scenes (bedroom, kitchen), characterised by rectangular geometry dominated by two principal spatial directions. Table 5 shows that the 2-dir variant achieves the lowest FID and KID among all DSS-GAN variants and outperforms StyleGAN2-ADA globally. The 3-dir variant underperforms relative to 2-dir despite the larger number of scan directions — the diagonal direction does not correspond to the dominant geometric structure of the dataset and introduces a conditioning signal misaligned with the data. Among single-direction variants (1-dir), the diagonal achieves the weakest results across all metrics except Recall, directly confirming that scan direction effectiveness is a property of the dataset rather than of the direction itself. Some DSS-GAN variants show consistently higher Recall than StyleGAN2-ADA, indicating broader coverage of the real data distribution. Table 6: Results on CelebA 128 ×128 . Classes: Bald, Black Hair, Blond Hair, Eyeglasses, Goatee, Male, Mustache, Smiling, Wearing Hat, Young (10k samples per class).                                                  
+
+> Global Mean class Model FID ↓KID ↓P↑R↑D↑C↑FID ↓KID ↓P↑R↑D↑C↑
+> StyleGAN2-ADA 15.63 10.91 .56 .38 .55 .68 14.30 10.28 .59 .33 .53 .70 DSS-GAN 1-dir 12.42 6.17 .69 .56 .85 .83 11.05 7.39 .76 .57 .90 .89 DSS-GAN 3-dir 13.40 7.43 .74 .52 .88 .83 12.19 8.91 .79 .54 .91 .92
+
+CelebA 128 ×128 . The CelebA dataset [31] comprises 10 facial attribute classes (10k samples per class). Human faces exhibit a relatively isotropic local structure — skin, hair, and facial feature textures do not display a dominant spatial axis. As shown in Table 6, the 1-dir variant achieves lower FID and KID than the 3-dir variant, both globally and per class. With isotropic data, addi-tional scan directions do not contribute complementary spatial information, and a simpler latent 11 routing translates to better coverage of the sample space. Both DSS-GAN variants achieve lower FID and KID alongside higher Precision, Recall, and Coverage relative to StyleGAN2-ADA. Den-sity increases from 0.55 to 0.88–0.91, indicating that the Mamba backbone concentrates generated samples more tightly around the real data distribution even in the absence of strong directional structure. Table 7: Results on AFHQ 256 ×256 .                                                                                                                                                   
+
+> Global Cat Dog Wild Model FID ↓KID ↓P↑R↑D↑C↑FID ↓KID ↓P↑R↑D↑C↑FID ↓KID ↓P↑R↑D↑C↑FID ↓KID ↓P↑R↑D↑C↑
+> StyleGAN2-ADA 13.16 4.13 .75 .21 .84 .64 11.04 4.70 .78 .14 1.15 .78 33.27 18.49 .73 .25 .55 .43 7.56 1.96 .77 .12 .82 .64 DSS-GAN 1-dir 13.58 3.37 .85 .35 1.14 .67 9.74 4.46 .88 .26 1.41 .87 27.34 14.60 .85 .55 .70 .53 6.07 1.96 .77 .23 1.02 .62 DSS-GAN 2-dir (row+col) 22.50 5.85 .87 .16 1.14 .53 20.09 10.04 .95 .08 1.91 .74 41.37 23.01 .86 .32 .78 .44 19.61 7.94 .73 .06 .66 .38 DSS-GAN 2-dir (row+diag) 22.76 5.17 .89 .17 1.33 .53 20.88 9.35 .94 .10 1.97 .72 40.03 19.03 .91 .25 .90 .45 21.90 8.67 .77 .13 1.02 .41 DSS-GAN 3-dir 10.29 2.39 .88 .36 1.33 .74 8.87 2.65 .91 .18 1.87 .89 26.51 13.05 .83 .46 .73 .51 6.73 1.51 .87 .09 1.74 .77
+
+AFHQ 256 ×256 . The AFHQ dataset [6] contains three animal classes. As reported in Table 7, the 3-dir variant achieves FID 10.29 against 13.16 for StyleGAN2-ADA. The most pronounced improvement is in Density: 1.33 against 0.84 globally, and 1.87 against 1.15 for the cat class — indicating that generated samples not only lie closer to the real data manifold but also cover it more uniformly. Fur texture, body contours, and coat markings exhibit strong spatial correlations along multiple axes, providing a natural setting for the DLR mechanism where each scan direction contributes complementary structural information. Notably, both 2-dir variants (row+col and row+diag) underperform not only 3-dir but also 1-dir, with global FID degrading to 22.50 and 22.76 respectively, and Recall collapse for the cat class. Crucially, the two 2-dir variants perform comparably despite their different geometric relationship: row+col provides orthogonal axes while row+diag shares a horizontal component with the row direction, yet neither combination recovers the quality of 1-dir. This suggests that the degradation does not stem from an inappropriate choice of directions but from a structural property of K=2 . One possible interpretation is a routing stability failure: at K=1 , DLR reduces to global conditioning with no conflict between directions, whereas at K=2 , two directions must share the latent space and compete for routing weight — without a third direction to mediate, the decomposition may oscillate between inconsistent solutions, which could account for the Recall collapse on the cat class. Appendix C provides direct empirical evidence for this failure mode: training with K=3 identical row scans shows that routing weight specialisation does not emerge, the class routing scale |α| remains near zero throughout training, and the model collapses after epoch 108. At K=3 , routing stabilises because three directions form a sufficiently rich basis for the isotropic geometry of AFHQ, allowing each direction to specialise in a distinct aspect of the spatial structure. This result contrasts with LSUN Rooms, where 2-dir is optimal: the rectangular geometry of indoor scenes admits a natural two-axis decomposition aligned with the horizontal and vertical scan directions, requiring no third direction to stabilise routing. The optimal number of scan directions is thus a property of the dataset geometry rather than a hyperparameter to maximise. The cat class exhibits consistently low Recall across all DSS-GAN variants despite high Precision and Density, suggesting that the generator covers the real distribution with high fidelity but does not span its full extent — a pattern likely attributable to the limited within-class diversity of the cat subset relative to dog and wild. The dog class remains the most challenging for both models, consistent with its higher intra-class variability. Table 8: Results on LSUN 256 ×256 (15k samples per class).                                                                                                                            
+
+> Global Bridge Church Tower Model FID ↓KID ↓P↑R↑D↑C↑FID ↓KID ↓P↑R↑D↑C↑FID ↓KID ↓P↑R↑D↑C↑FID ↓KID ↓P↑R↑D↑C↑
+> StyleGAN2-ADA 10.85 5.39 .72 .39 0.86 0.81 19.23 9.02 .62 .30 0.63 0.69 11.99 5.75 .74 .29 1.25 0.81 15.40 6.50 .68 .33 0.70 0.69
+> DSS-GAN 3-dir 12.66 3.45 .79 .31 1.08 0.75 22.75 6.65 .70 .20 0.85 0.55 12.11 6.35 .81 .25 1.25 0.75 18.40 5.44 .76 .27 0.89 0.66 DSS-GAN 2-dir 21.79 10.30 .71 .19 0.84 0.65 35.49 20.98 .69 .16 0.70 0.56 19.54 11.00 .78 .14 1.11 0.75 25.60 12.76 .68 .22 0.76 0.65 DSS-GAN 1-dir 22.05 7.83 .72 .25 0.92 0.68 40.10 17.17 .66 .19 0.58 0.54 20.52 8.21 .80 .21 1.35 0.81 28.70 11.31 .71 .29 0.81 0.67
+
+LSUN 256 ×256 . The LSUN outdoor dataset [50] contains three architectural classes (15k sam-ples per class). As shown in Table 8, StyleGAN2-ADA achieves lower FID and higher Recall, while DSS-GAN 3-dir leads in KID (3.45 against 5.39) and in Precision and Density across all classes. 12 The heterogeneity of the dataset — a wide range of viewpoints, architectural styles, and lighting conditions within each class — favours a model with higher parametric capacity in covering data variance. KID, being less sensitive to heavy-tailed distributions, consistently favours DSS-GAN, suggesting higher sample quality near the centre of the real distribution. Outdoor architectural scenes are dominated by global compositional structure — perspective, horizon lines, building sym-metry — rather than by local directional features, making this a considerably more difficult setting for the DLR mechanism compared to datasets with pronounced directional texture geometry. Table 9: Results on FFHQ 256 ×256 .                        
+
+> Global Model FID ↓KID ↓P↑R↑D↑C↑
+> StyleGAN2-ADA 7.64 2.68 .79 .54 1.25 .92 DSS-GAN 3-dir 8.27 2.53 .83 .53 1.39 .93
+> DSS-GAN 1-dir 8.69 3.06 .80 .52 1.25 .90
+
+FFHQ 256 ×256 . The FFHQ dataset [22] contains 70k face images without class labels. Table 9 shows that DSS-GAN achieves FID 8.27 against 7.64 for StyleGAN2-ADA, with better KID (2.53 against 2.68), Density (1.39 against 1.23), and Coverage (0.93 against 0.92). Results are compa-rable; StyleGAN2-ADA holds a slight advantage in FID and Recall, while DSS-GAN leads in the remaining metrics. It should be noted that StyleGAN2-ADA was evaluated with the paper256 
+
+configuration dedicated to this dataset, while DSS-GAN used no dataset-specific tuning. Table 10: Results on AFHQ 512 ×512 .                                                                                                   
+
+> Global Cat Dog Wild Model FID ↓KID ↓P↑R↑D↑C↑FID ↓KID ↓P↑R↑D↑C↑FID ↓KID ↓P↑R↑D↑C↑FID ↓KID ↓P↑R↑D↑C↑
+> StyleGAN2 11.74 3.06 .86 .22 1.35 .73 9.38 2.55 .86 .17 1.69 .85 27.49 10.40 .85 .25 .80 .51 9.13 2.22 .82 .11 1.30 .76
+> DSS-GAN 1-dir 17.77 4.91 .80 .28 1.03 .59 12.64 5.14 .90 .16 1.53 .83 39.46 25.34 .77 .43 .59 .41 12.65 3.15 .71 .23 .91 .55 DSS-GAN 3-dir 14.44 4.11 .86 .25 1.18 .64 12.63 4.65 .91 .16 1.56 .83 36.06 22.70 .87 .43 .80 .48 8.81 2.50 .75 .19 1.22 .59
+
+AFHQ 512 ×512 . Table 10 reports results for DSS-GAN at 512 ×512 resolution. The global FID of 15.65 and Precision of 0.86 for the 3-dir variant are consistent with the proportions observed at 256 ×256 , confirming that the architecture scales to higher resolution without quality degrada-tion. The 3-dir variant outperforms 1-dir across all global metrics — FID 15.65 against 17.77, KID 4.18 against 4.91, Precision 0.86 against 0.80 — indicating that the advantage of directional routing observed at 256 ×256 is preserved at higher resolution. The dog class remains the most challenging (FID 36.06), a consistent pattern across all resolutions and datasets reflecting the intra-class variability of that category. These results show that extending the Mamba hierarchy with an additional resolution stage and a StyleGAN2 block at 512 ×512 preserves the generative properties of the model without requiring dataset-specific tuning. It is worth to note that the result for StyleGAN2-ADA is obtained using dedicated tuning for this dataset while tuning for the DSS-GAN is left unchanged. Generated samples for original datasets are provided in Appendix A. Table 11: Computational efficiency and memory footprint at 256 ×256 resolution, measured on a single NVIDIA H100 GPU.                    
+
+> Model Parameters Weight size (MB) Latency (batch 1) ↓Peak throughput ↑
+> StyleGAN2-ADA 25.0 M 24.7 9.1 ms 1451.6 img/s (b=128 )DSS-GAN (3-dir) 7.3 M 21.3 15.1 ms 280.6 img/s ( b=32 )DSS-GAN (1-dir) 4.4 M 13.6 8.1 ms 441.6 img/s ( b=32 )
+
+Computational Efficiency. Table 11 summarises the inference speed and memory footprint of two DSS-GAN variants compared to StyleGAN2-ADA at 256 ×256 resolution, measured on a single NVIDIA H100 GPU. Both DSS-GAN variants are substantially more compact: the 3-dir variant 13 requires 7.3M parameters, while the 1-dir variant uses only 4.4M — an 82% reduction relative to StyleGAN2-ADA (25.0M). Despite the sequential nature of state space models, both variants maintain competitive inference speeds. The 1-dir variant achieves 8.1 ms latency at batch size 1 ( ≈122 FPS), outperforming StyleGAN2-ADA (9.1 ms) in single-sample generation, and scales to 441.6 img/s at b=32 . StyleGAN2-ADA achieves higher peak throughput at large batches due to fully parallelised convolutions; DSS-GAN provides strong structural control and parameter efficiency while remaining competitive for latency-critical applications. 
+
+# 5 Conclusion 
+
+5.1 Summary 
+
+We presented DSS-GAN, the first generative adversarial network to employ Mamba as a hierarchical generator backbone for noise-to-image synthesis, operating directly from a latent vector without any spatial input. The generator processes the feature map through a sequence of DLR blocks across multiple resolution stages, establishing global spatial coherence via the SSM recurrence. The architecture was evaluated at resolutions up to 512 ×512 .The final resolution stage uses a StyleGAN2-inspired convolutional refinement block rather than an additional Mamba stage. Each additional SSM stage quadruples the token count, making high-resolution Mamba processing increasingly costly; replacing it with a convolutional block balances global coherence with local high-frequency detail that convolutional layers handle more efficiently. Ablation results confirm that this boundary placement is critical: removing the convolutional block increases precision but substantially reduces recall, while extending it to lower resolutions progressively displaces the latent routing responsible for output diversity. The central contribution is Directional Latent Routing (DLR), a conditioning mechanism that decomposes the latent vector into direction-specific subvectors, each jointly projected with a class embedding to produce a feature-wise affine modulation of the corresponding Mamba scan. Unlike conventional class conditioning schemes that inject a single global signal, DLR couples class iden-tity and latent structure along distinct spatial axes of the feature map, applied consistently across all generative scales. The direction weighting network learns non-uniform, resolution-dependent routing from a uniform initialisation, concentrating class-aware conditioning precisely at the scales where it has the greatest perceptual impact. Perceptual sensitivity analysis (LPIPS) confirms that class variations have the strongest impact at low resolutions ( 8×8, 16 ×16 ), consistent with the routing weights learned by the direction weighting network. Per-direction feature map visualisa-tions further show that individual scan directions develop spatially distinct activation patterns — row, column, and diagonal scans specialise to horizontally, vertically, and diagonally oriented struc-tures respectively — and that this specialisation is class-specific, with different classes inducing different activation geometries across the same set of directions. An intra-block 180 ◦ rotation mechanism is introduced to improve gradient stability during train-ing. Applied and inverted within a single forward pass, it exposes the SSM recurrence to reversed gradient paths without altering the output spatial layout or introducing additional parameters. This technique is independent of the DLR mechanism and is applicable to any unidirectional Mamba architecture operating on spatially structured data. Experimental results show that the optimal number of scan directions is a property of the dataset geometry rather than a hyperparameter to maximise — datasets with pronounced direc-tional texture structure benefit from multiple directions, while isotropic or rectilinearly dominated data favour fewer. The importance of scan direction count increases with resolution: at 128 ×128 
+
+a single direction can maintain competitive results on several datasets, while at 256 ×256 the per-formance gap between 1-dir and 3-dir variants widens, reflecting the larger token sequences over which long-range directional dependencies must be maintained. DSS-GAN achieves results comparable to or better than StyleGAN2-ADA across all evaluated datasets, with consistent improvements in KID, Precision, and Density. KID measures sample quality near the centre of the real distribution and is less sensitive to outliers than FID; Precision and Density reflect how tightly generated samples concentrate around the real data manifold. The consistent advantage in these metrics suggests that the hierarchical Mamba backbone, conditioned via DLR, produces samples that are structurally closer to real data rather than merely covering the 14 distribution broadly. This comes with an 82% reduction in parameter count relative to StyleGAN2-ADA, with the 1-dir variant achieving lower single-sample inference latency than the baseline. Direct comparison with other generative models is limited by differences in experimental setup: most published results on FFHQ, AFHQ, and LSUN use unconditional training, adaptive augmen-tation, or iterative inference. As a point of reference, f-DM [12], a multi-stage diffusion model using 250 denoising steps per sample, reports FID 10.8 on FFHQ 256 ×256 and FID 5.6–6.4 on AFHQ 256 ×256. DSS-GAN 3-dir achieves FID 8.27 on FFHQ in a single forward pass, with Precision 0.83 against 0.74 for the best f-DM variant. On AFHQ, f-DM achieves lower FID (5.6–6.4 vs. 10.29), but DSS-GAN reaches Precision 0.88 and Density 1.33 against 0.76–0.81 and 0.48–0.53 for f-DM — indicating that DSS-GAN samples concentrate more tightly around the real data manifold despite the FID gap. On LSUN Church 256 ×256, f-DM reports FID 8.0–8.2 on the full unconditional dataset; DSS-GAN is trained conditionally on three architectural classes (bridge, church, tower) and achieves FID 12.11 on the church class, with Precision 0.81 and Density 1.25. 
+
+5.2 Limitations 
+
+Although DSS-GAN achieves competitive results across multiple datasets, several limitations should be noted. The sequential nature of the SSM recurrence limits peak inference throughput at large batch sizes relative to fully parallelised convolutional architectures, as reflected in Table 11; this is an inherent property of state space models rather than a specific design choice. At higher resolutions, Mamba block capacity ( dstate , expand factor ) is progressively reduced to accommodate the quadratically growing token count (Appendix D), which may account for part of the performance gap relative to StyleGAN2-ADA at 512 ×512; at 128 ×128, where full Mamba capacity is retained, DSS-GAN achieves the strongest relative improvements over StyleGAN2-ADA across all evaluated datasets. Finally, although the DLR conditioning mechanism is geometry-agnostic in principle and could accommodate non-standard spatial structures — including hexagonal, or irregular grids — by defining appropriate scan permutations, the CNN-based discriminator is tied to a regular 2D grid, which restricts the current architecture to standard image domains and would require replacement to exploit this flexibility in practice. 
+
+5.3 Outlook 
+
+Several directions remain open for future work. The DLR mechanism is architecture-agnostic in its conditioning principle and could be applied to any sequence-based architecture operating on spatially structured data — including discriminative models such as Mamba-based classifiers and segmentation networks, as well as generative architectures such as diffusion models with Mamba backbones, where direction-specific latent routing may provide a lightweight alternative to cross-attention for class and structure conditioning. Incorporating a Mamba-based discriminator conditioned via DLR is a natural extension not explored in the present work, where the standard StyleGAN2-ADA discriminator was retained to isolate the generator contribution. A direction-aware discriminator could provide richer feedback on the spatial consistency of generated samples along individual scan axes. At the architectural level, combining DSS-GAN with adaptive discriminator augmentation [21] was deliberately excluded here to isolate the generator contribution; applying ADA may further improve results in low-data regimes. Scaling the architecture beyond 512 ×512 by extending the Mamba hierarchy with additional resolution stages is a direct extension, as results at 512 ×512 
+
+suggest the model scales without architectural modification. The directional scanning principle extends naturally to three-dimensional data by introducing scan directions transverse to the feature map axes — corresponding, for instance, to axial, coronal, and sagittal orientations in volumetric medical imaging — without modification to the DLR routing mechanism. A systematic grid search over training hyperparameters — in particular R1 regularisation strength, learning rate schedule, and latent space dimensionality — could be expected to yield further improvements on individual datasets. The choice of scan directions examined in this work — row, column, and diagonal — covers the principal spatial axes of two-dimensional feature maps, but the DLR framework places no 15 constraint on the form of the scan permutation πk. Directions designed to capture specific spatial statistics of the target domain are a natural extension: space-filling curves such as the Hilbert curve preserve locality and could improve conditioning on datasets with strong local texture dependencies; Archimedean spiral scans traverse the feature map from centre outward, potentially capturing radially symmetric structure present in face and object datasets; Morton (Z-order) curves provide a multi-scale locality-preserving traversal that may be better suited to hierarchical spatial structure than row or column scans. Whether a given scan direction is beneficial depends, as shown in Section 4, on the geometric structure of the underlying data — direction selection could therefore be treated as a dataset-specific design choice or learned end-to-end via a differentiable relaxation of the permutation πk.The original motivation for DSS-GAN was calorimeter response simulation [25], where sensi-tivity to directional energy deposition patterns is essential and geometry varies across detector configurations. Applying DSS-GAN in this domain, where the directional structure of the data is physically meaningful and well-defined, is a natural next step. 
+
+# 6 Acknowledgments 
+
+This work was completed with resources provided by the Świerk Computing Centre at the National Centre for Nuclear Research. We gratefully acknowledge Polish high performance computing in-frastructure PLGrid (HPC Centre: ACK Cyfronet AGH) for providing computer facilities and support within computational grant no. PLG/2024/017403. 
+
+# References 
+
+[1] Omer Faruk Atli, Bilal Kabas, Fuat Arslan, Mahmut Yurt, Onat Dalmaz, and Tolga Çukur. I2I-Mamba: Multi-modal medical image synthesis via selective state space modeling. arXiv preprint arXiv:2405.14022 , 2024. [2] Mikołaj Bińkowski, Danica J. Sutherland, Michael Arbel, and Arthur Gretton. Demystifying MMD GANs. In International Conference on Learning Representations , 2018. [3] Andrei Bourou et al. GANs conditioning methods: A survey. arXiv preprint arXiv:2408.15640 ,2024. [4] Andrew Brock, Jeff Donahue, and Karen Simonyan. Large scale GAN training for high fidelity natural image synthesis. In ICLR , 2019. [5] Xi Chen, Yan Duan, Rein Houthooft, John Schulman, Ilya Sutskever, and Pieter Abbeel. Info-GAN: Interpretable representation learning by information maximizing generative adversarial nets. In NeurIPS , 2016. [6] Yunjey Choi, Youngjung Uh, Jaejun Yoo, and Jung-Woo Ha. StarGAN v2: Diverse image synthesis for multiple domains. In Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition , pages 8188–8197, 2020. [7] Prafulla Dhariwal and Alexander Nichol. Diffusion models beat GANs on image synthesis. In 
+
+NeurIPS , 2021. [8] Patrick Esser, Robin Rombach, and Björn Ommer. Taming transformers for high-resolution image synthesis. In CVPR , 2021. [9] Ian Goodfellow, Jean Pouget-Abadie, Mehdi Mirza, Bing Xu, David Warde-Farley, Sherjil Ozair, Aaron Courville, and Yoshua Bengio. Generative adversarial nets. In NeurIPS , 2014. [10] Albert Gu and Tri Dao. Mamba: Linear-time sequence modeling with selective state spaces. 
+
+arXiv preprint arXiv:2312.00752 , 2023. [11] Albert Gu, Karan Goel, and Christopher Ré. Efficiently modeling long sequences with struc-tured state spaces. In International Conference on Learning Representations , 2022. 16 [12] Jiatao Gu, Shuangfei Zhai, Yizhe Zhang, Miguel Angel Bautista, and Josh Susskind. f-DM: A multi-stage diffusion model via progressive signal transformation. In Advances in Neural Information Processing Systems , 2022. [13] Martin Heusel, Hubert Ramsauer, Thomas Unterthiner, Bernhard Nessler, and Sepp Hochre-iter. GANs trained by a two time-scale update rule converge to a local Nash equilibrium. In 
+
+Advances in Neural Information Processing Systems , volume 30, 2017. [14] Jonathan Ho, Ajay Jain, and Pieter Abbeel. Denoising diffusion probabilistic models. In 
+
+NeurIPS , 2020. [15] Zhou Hong, Ning Dong, Yicheng Di, Xiaolong Xu, Rongsheng Hu, Yihua Shao, Run Ling, Yun Wang, Juqin Wang, Zhanjie Zhang, and Ao Ma. StyMam: A Mamba-based generator for artistic style transfer. arXiv preprint arXiv:2601.12954 , 2026. [16] Vincent Tao Hu, Stefan Andreas Baumann, Ming Gui, Olga Grebenkova, Pingchuan Ma, Johannes Fischer, and Björn Ommer. ZigMa: A DiT-style zigzag mamba diffusion model. In 
+
+European Conference on Computer Vision , 2024. [17] Liwei Jin et al. Hierarchical multi-scale Mamba generative adversarial network for multi-modal medical image synthesis. Expert Systems with Applications , 2025. [18] Minguk Kang, Jun-Yan Zhu, Richard Zhang, Jaesik Park, Eli Shechtman, Sylvain Paris, and Taesung Park. Scaling up GANs for text-to-image synthesis. In CVPR , 2023. [19] Tero Karras, Timo Aila, Samuli Laine, and Jaakko Lehtinen. Progressive growing of GANs for improved quality, stability, and variation. In International Conference on Learning Rep-resentations , 2018. [20] Tero Karras, Miika Aittala, Janne Hellsten, Samuli Laine, Jaakko Lehtinen, and Timo Aila. StyleGAN2-ADA — official PyTorch implementation. https://github.com/NVlabs/ stylegan2-ada-pytorch , 2020. [21] Tero Karras, Miika Aittala, Janne Hellsten, Samuli Laine, Jaakko Lehtinen, and Timo Aila. Training generative adversarial networks with limited data. In Advances in Neural Information Processing Systems , volume 33, pages 12104–12114, 2020. [22] Tero Karras, Samuli Laine, and Timo Aila. A style-based generator architecture for generative adversarial networks. In Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition , pages 4401–4410, 2019. [23] Tero Karras, Samuli Laine, Miika Aittala, Janne Hellsten, Jaakko Lehtinen, and Timo Aila. Analyzing and improving the image quality of StyleGAN. In CVPR , 2020. [24] Tero Karras, Samuli Laine, Miika Aittala, Janne Hellsten, Jaakko Lehtinen, and Timo Aila. Alias-free generative adversarial networks. In NeurIPS , 2021. [25] Claudius Krause et al. CaloChallenge 2022: A community challenge for fast calorimeter simulation. Rep. Prog. Phys. , 88(1):116201, 2024. [26] Mingi Kwon, Jaeseok Jeong, and Youngjung Uh. Diffusion models already have a semantic latent space. In ICLR , 2023. [27] Tuomas Kynkäänniemi, Tero Karras, Samuli Laine, Jaakko Lehtinen, and Timo Aila. Im-proved precision and recall metric for assessing generative models. In Advances in Neural Information Processing Systems , volume 32, 2019. [28] Yann LeCun, Léon Bottou, Yoshua Bengio, and Patrick Haffner. Gradient-based learning applied to document recognition. Proceedings of the IEEE , 86(11):2278–2324, 1998. [29] Kwonjoon Lee, Huiwen Chang, Lu Jiang, Han Zhang, Zhuowen Tu, and Ce Liu. ViTGAN: Training GANs with vision transformers. In ICLR , 2022. 17 [30] Yue Liu, Yunjie Tian, Yuzhong Zhao, Hongtian Yu, Lingxi Xie, Yaowei Wang, Qixiang Ye, and Yunfan Liu. VMamba: Visual state space model. In NeurIPS , 2024. [31] Ziwei Liu, Ping Luo, Xiaogang Wang, and Xiaoou Tang. Deep learning face attributes in the wild. In Proceedings of the IEEE International Conference on Computer Vision , pages 3730–3738, 2015. [32] Lars Mescheder, Andreas Geiger, and Sebastian Nowozin. Which training methods for GANs do actually converge? In International Conference on Machine Learning , pages 3481–3490, 2018. [33] Mehdi Mirza and Simon Osindero. Conditional generative adversarial nets. arXiv preprint arXiv:1411.1784 , 2014. [34] Takeru Miyato and Masanori Koyama. cGANs with projection discriminator. In ICLR , 2018. [35] Muhammad Ferjad Naeem, Seong Joon Oh, Youngjung Uh, Yunjey Choi, and Jaejun Yoo. Reliable fidelity and diversity metrics for generative models. In Proceedings of the 37th In-ternational Conference on Machine Learning , volume 119 of Proceedings of Machine Learning Research , pages 7176–7185. PMLR, 2020. [36] Eric Nguyen et al. Mamba-ND: Selective state space modeling for multi-dimensional data. In 
+
+ECCV , 2024. [37] Augustus Odena, Vincent Dumoulin, and Chris Olah. Deconvolution and checkerboard arti-facts. In Distill , 2016. [38] Augustus Odena, Christopher Olah, and Jonathon Shlens. Conditional image synthesis with auxiliary classifier GANs. In ICML , 2017. [39] Taesung Park, Ming-Yu Liu, Ting-Chun Wang, and Jun-Yan Zhu. Semantic image synthesis with spatially-adaptive normalization. In CVPR , 2019. [40] Ethan Perez, Florian Strub, Harm de Vries, Vincent Dumoulin, and Aaron Courville. FiLM: Visual reasoning with a general conditioning layer. In AAAI Conference on Artificial Intelli-gence , 2018. [41] Hao Phung, Quan Dao, Trung Dao, Hoang Phan, Dimitris N. Metaxas, and Anh Tran. DiM-SUM: Diffusion mamba – a scalable and unified spatial-frequency method for image generation. In Advances in Neural Information Processing Systems , 2024. [42] Robin Rombach, Andreas Blattmann, Dominik Lorenz, Patrick Esser, and Björn Ommer. High-resolution image synthesis with latent diffusion models. In CVPR , 2022. [43] Axel Sauer, Katja Schwarz, and Andreas Geiger. StyleGAN-XL: Scaling StyleGAN to large diverse datasets. In SIGGRAPH , 2022. [44] Yang Song, Jascha Sohl-Dickstein, Diederik P. Kingma, Abhishek Kumar, Stefano Ermon, and Ben Poole. Score-based generative modeling through stochastic differential equations. In 
+
+ICLR , 2021. [45] Hao Tang et al. Rotate to scan: UNet-like mamba with triplet SSM module for medical image segmentation. arXiv preprint arXiv:2403.17701 , 2024. [46] Yao Teng, Yue Wu, Han Shi, Xuefei Ning, Guohao Dai, Yu Wang, Zhenguo Li, and Xihui Liu. DiM: Diffusion mamba for efficient high-resolution image synthesis, 2024. [47] Aaron van den Oord, Oriol Vinyals, and Koray Kavukcuoglu. Neural discrete representation learning. In NeurIPS , 2017. 18 [48] Feng Wang, Timing Yang, Yaodong Yu, Sucheng Ren, Guoyizhe Wei, Angtian Wang, Wei Shao, Yuyin Zhou, Alan Yuille, and Cihang Xie. Adventurer: Optimizing vision mamba architecture designs for efficiency. In Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition (CVPR) , pages 30157–30166, 2025. [49] Jiangyan Wu, Guanghui Zhang, and Yugang Fan. MambaRA-GAN: Underwater image en-hancement via Mamba and intra-domain reconstruction autoencoder. Journal of Marine Science and Engineering , 13(9), 2025. [50] Fisher Yu, Ari Seff, Yinda Zhang, Shuran Song, Thomas Funkhouser, and Jianxiong Xiao. LSUN: Construction of a large-scale image dataset using deep learning with humans in the loop. arXiv preprint arXiv:1506.03365 , 2015. [51] Jingwei Zhang, Xi Han, Hong Qin, Mahdi S. Hosseini, and Dimitris Samaras. Lbmamba: Locally bi-directional mamba, 2025. [52] Richard Zhang, Phillip Isola, Alexei A. Efros, Eli Shechtman, and Oliver Wang. The unrea-sonable effectiveness of deep features as a perceptual metric. In Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition (CVPR) , pages 586–595, 2018. [53] Lianghui Zhu, Bencheng Liao, Qian Zhang, Xinlong Wang, Wenyu Liu, and Xinggang Wang. Vision Mamba: Efficient visual representation learning with bidirectional state space model. In ICML , 2024. 
+
+# A Examples 
+
+All samples in this appendix section were generated using truncation ψ = 0 .85 , i.e. z = ψ · ϵ,
+
+ϵ ∼ N (0, I), applied to the input noise prior to inference. 
+
+Figure 9: Generated samples, FFHQ 256 ×256. 19 cat dog wild Figure 10: Generated samples, AFHQ 256 ×256. Same latent space in each row. cat dog wild 
+
+Figure 11: Generated samples, AFHQ 512 ×512. Same latent space in each row. 20 B Class and Latent Conditioning - LSUN outdoor Cat (base) Row direction Column direction Diagonal direction Column + Diagonal Early stages only All DLR All DLR + CNN 
+
+Figure 12: Class embedding override: bridge → church. Starting from a base cat image, DLR class embeddings are progressively replaced with church embeddings across individual directions (row, column, diagonal), combinations, early stages only (8 ×8, 16 ×16), all DLR directions, and all DLR with CNN refinement block. Cat (base) Row direction Column direction Diagonal direction Column + Diagonal Early stages only All DLR All DLR + CNN 
+
+Figure 13: Class embedding override: bridge → tower with same protocol as Fig. 12. Reference Row direction Column direction Diagonal direction All directions All dir, 
+
+> 8×8 only
+> All dir,
+> 16×16 only
+> Tokenizer only
+
+Figure 14: Swapping directional subvectors zkdir between samples in LSUN dataset. Each column replaces the values of one direction or block stage while keeping all other components of latent fixed. From left: reference, row, column, diagonal, all directions combined, all directions in DLR early-stage only (8 ×8, 16 ×16), and tokenizer zbase swap. 
+
+(a) = 0.0 = 1.0 = 1.5 = 2.0 (b) = 1.2 = 0.0 = 1.0 = 2.0 
+
+(c) = 1.2 = 0.0 = 1.0 = 2.0 (d) = 1.2 = 0.0 = 1.0 = 2.0 
+
+Figure 15: Latent space perturbation analysis (bridge). (a) Tokenizer ztok ; (b) column direction 
+
+zcol dir ; (c) diagonal direction zdiag dir ; (d) combined column and diagonal. Each panel shows the effect of scaling perturbation magnitude γ.21 (a) = 0.0 = 1.0 = 1.5 = 2.0 (b) = 1.2 = 0.0 = 1.0 = 2.0 
+
+(c) = 1.2 = 0.0 = 1.0 = 2.0 (d) = 1.2 = 0.0 = 1.0 = 2.0 
+
+Figure 16: Latent space perturbation analysis (church outdoor). (a) Tokenizer ztok ; (b) column direction zcol dir ; (c) diagonal direction zdiag dir ; (d) combined column and diagonal. Each panel shows the effect of scaling perturbation magnitude γ.
+
+(a) = 0.0 = 1.0 = 1.5 = 2.0 (b) = 1.2 = 0.0 = 1.0 = 2.0 
+
+(c) = 1.2 = 0.0 = 1.0 = 2.0 (d) = 1.2 = 0.0 = 1.0 = 2.0 
+
+Figure 17: Latent space perturbation analysis (tower). (a) Tokenizer ztok ; (b) column direction 
+
+zcol dir ; (c) diagonal direction zdiag dir ; (d) combined column and diagonal. Each panel shows the effect of scaling perturbation magnitude γ.
+
+# C Scan Direction Diversity 
+
+We compare two configurations of K=3 directions trained on AFHQ 256 ×256 under identical hyperparameters: a baseline in which all three directions are set to the same row scan, and the standard configuration used throughout the paper consisting of a horizontal row scan, a vertical column scan, and a diagonal scan. The two configurations differ only in whether the scan directions provide geometrically distinct traversal axes of the feature map. In the same-direction case, each of the K latent subvectors zk
+
+dir conditions a scan that serialises the spatial grid identically: the K directions carry no independent spatial information. In the distinct case, each direction imposes a different ordering of spatial positions, exposing the SSM recurrence to different relational structures and giving the routing network a meaningful basis for specialisation. Table 12: Generation quality comparison between identical and distinct scan direction configura-tions (AFHQ 256 ×256 ). Best checkpoint per run reported.                                                                              
+
+> Global Cat Dog Wild Model FID ↓KID ↓P↑R↑D↑C↑FID ↓KID ↓P↑R↑D↑C↑FID ↓KID ↓P↑R↑D↑C↑FID ↓KID ↓P↑R↑D↑C↑
+> DSS-GAN 3×same dir 19.20 4.16 .894 .217 1.457 .569 13.97 5.58 .959 .074 1.750 .820 38.26 21.33 .899 .315 .907 .463 20.35 8.20 .814 .133 1.090 .435 DSS-GAN 3-dir 10.29 2.39 .879 .356 1.327 .743 7.88 2.74 .903 .293 1.652 .872 25.15 12.86 .868 .548 .805 .601 6.08 1.35 .877 .150 1.624 .765
+
+Direction specialisation. Figure 18 shows how routing weights evolve across DLR blocks during training for the distinct-direction configuration. 22 8×8 16×16 32×32 64×64 128×128          
+
+> Resolution
+> 0.15
+> 0.20
+> 0.25
+> 0.30
+> 0.35
+> 0.40
+> 0.45
+> 0.50
+> 0.55
+> 0.60
+> Routing Weight
+> Row
+> 0.39
+> 0.37
+> 0.42
+> 0.30
+> 0.37
+> 8×8 16×16 32×32 64×64 128×128
+> Resolution
+> Row
+> 0.32
+> 0.27 0.27
+> 0.29
+> 0.40
+> 8×8 16×16 32×32 64×64 128×128
+> Resolution
+> Row
+> Uniform (1/K)
+> Min Max range
+> Increase
+> Decrease
+> 0.28
+> 0.36
+> 0.32
+> 0.41
+> 0.23
+> 0
+> 1
+> 6
+> 12
+> 18
+> 21
+> 27
+> 33
+> 39
+> 45
+> Epoch
+
+Figure 18: Per-direction routing weights across DLR blocks during training (AFHQ 256 ×256 ), for the same-direction (3× row) configuration. Each line corresponds to a training snapshot; colour indicates epoch (light = early, dark = late). The dashed red line marks the uniform weight 
+
+1/K =0 .33 . Arrows indicate the direction of change from the first to the last snapshot. With identical directions, routing weights remain noisy throughout training and show no convergence toward a stable resolution-dependent pattern, in contrast to the distinct-direction case (Figure 4). Figure 18 shows the routing weight profiles for the same-direction configuration. In contrast to the distinct-direction case (Figure 4), where each block develops a clear directional preference — the row scan dominant at 8×8, the column scan peaking at 16 ×16 (0.54), the diagonal scan at 
+
+32 ×32 (0.43) — the same-direction profiles show no structured resolution-dependent routing. The weights are noisy throughout training and do not converge: the min–max band is wide relative to the mean, and the final values at different resolutions show no consistent directional preference. Unlike the distinct-direction case, where the highest resolution stages converge toward uniformity after early specialisation, here the weights fluctuate around 1/K from the start, with no block ever becoming dominant. This is the expected behaviour: because all three scans traverse the feature map in the same order, the routing network has no geometric basis to assign different weights to different slots, and the direction weighting mechanism provides no additional conditioning signal beyond what a single direction would deliver. This contrasts sharply with Figure 4, where the lowest resolution stages show the strongest spe-cialisation and the highest resolution stages converge toward uniformity — a structured, resolution-dependent routing pattern that emerges precisely because each direction imposes a geometrically distinct traversal axis. 
+
+Routing collapse. Figure 19 shows four complementary diagnostic signals for both configura-tions. 0 50 100 150 200 250                     
+
+> Epoch
+> 0.000
+> 0.025
+> 0.050
+> 0.075
+> 0.100
+> 0.125
+> 0.150
+> 0.175
+> 0.200
+> | | (mean over blocks)
+> 0.095
+> 0.0092
+> Class Routing Scale ||
+> 3 same directions
+> 3 distinct directions
+> 050 100 150 200 250
+> Epoch
+> 0
+> 50
+> 100
+> 150
+> 200
+> 250
+> FID
+> FID50k = 19.20
+> FID50k = 10.29
+> collapse
+> ep. 108
+> FID (global)
+> 3 same directions
+> 3 distinct directions
+> 050 100 150 200 250
+> Epoch
+> 0.0
+> 0.2
+> 0.4
+> 0.6
+> 0.8
+> 1.0
+> 1.2
+> 1.4
+> 1.6
+> R1
+> max = 0.23
+> max = 1.30
+> R1 Penalty
+> 3 same directions
+> 3 distinct directions
+> 050 100 150 200 250
+> Epoch
+> 0.2
+> 0.3
+> 0.4
+> 0.5
+> 0.6
+> L1 loss (EMA)
+> EMA decay switch
+> (0.999 0.9995)
+> L1 loss (EMA)
+> 3 same directions
+> 3 distinct directions
+
+Figure 19: Routing diagnostics for 3× same (red) vs. 3× distinct (blue) directions (AFHQ 
+
+256 ×256 ). From left to right: class-to-routing scale |α| with EMA decay switch marked (dot-ted line); global FID over training epochs with FID at the best checkpoint annotated; R1 penalty with maximum values annotated; L1 loss (EMA) with EMA decay switch marked. The class-to-routing scale |α| is a learned scalar per direction, initialised near zero, that controls 23 how strongly the class label steers direction weighting. The direction weights are computed as in Eq. 3, where the class embedding ey is scaled by |α| (Figure 2) before being added to the routing logits. With distinct directions, |α| grows steadily to 0.095 at the final checkpoint, indicating that the model has learned to use class identity when selecting which scan axis to emphasise. With same directions, |α| remains below 0.010 throughout training — the routing network has three times the capacity but no geometric signal to exploit, so the class routing contribution is never learned enough. The FID curve reflects the downstream consequence. With distinct directions, training con-verges monotonically to FID = 10.29 at epoch 240. With same directions, FID plateaus near 21 from epoch 90 and then rises sharply from epoch 108, eventually reaching 189 — a pattern consis-tent with a generator that has exhausted its capacity for improvement and begins to destabilise. The R1 penalty measures the gradient norm of the discriminator evaluated at real samples; elevated R1 indicates that the discriminator loss surface has become steep, typically in response to mode collapse in the generator. With distinct directions, R1 remains bounded throughout training, reaching a maximum of 0.23. With same directions, R1 spikes to 1.30 at epoch 114 — a 5.7 × increase — and remains elevated for the remainder of training, coinciding exactly with the FID collapse. The L1 loss (EMA) confirms the same pattern: with distinct directions the generator loss decreases steadily throughout training; with same directions it rises sharply after epoch 108, indi-cating that the generator has lost its ability to produce outputs that challenge the discriminator. 
+
+Summary. Providing K identical scan directions prevents the routing mechanism from learning direction-specific behaviour at every level of the hierarchy: routing weights do not specialise, the class routing scale |α| does not grow, and the absence of diverse conditioning eventually destabilises the discriminator gradient landscape, causing training to collapse. Geometric diversity of scan directions is therefore a prerequisite for effective DLR — not a performance hyperparameter to tune, but a structural requirement for the routing mechanism to function as intended. 24 D Training Configuration 
+
+Table 13: Training configuration across resolutions. ′′ denotes identical value to the 128 ×128 baseline. 
+
+Hyperparameter 128 256 512 
+
+Optimiser and training 
+
+Adam (β1, β 2) (0 .0, 0.99) ′′ ′′ 
+
+LR G 9×10 −5 ′′ ′′ 
+
+LR D 3×10 −5 ′′ ′′ 
+
+Batch size 128 96 48 
+
+Regularisation 
+
+R1 penalty γ 5 ′′ ′′ 
+
+R1 interval 4 ′′ ′′ 
+
+Grad clip G 10 ′′ ′′ 
+
+Grad clip D 15 ′′ ′′ 
+
+EMA 
+
+Decay phase 1 0.999 ′′ ′′ 
+
+Decay phase 2 0.9995 ′′ ′′ 
+
+Switch 10 6 images ′′ ′′ 
+
+Latent space 
+
+Dbase 92 ′′ ′′ 
+
+Ddir 20 28 ′′ 
+
+De 64 ′′ ′′ 
+
+Routing temp. τ 1.0 ′′ ′′ 
+
+Generator channels 
+
+8×8 — 32 ×32 148 ′′ ′′ 
+
+64 ×64 148 ′′ 128 
+
+128 ×128 168 (CNN) 148 (M) 98 (M) 
+
+256 ×256 — 216 (CNN) 72 (M) 
+
+512 ×512 — — 64 (CNN) 
+
+Mamba tokenizer 
+
+Depth 2 ′′ ′′ 
+
+dstate 64 ′′ ′′ 
+
+dconv 4 ′′ ′′ 
+
+Expand 2 ′′ ′′ 
+
+Mamba blocks 
+
+Depth 8×8 2 ′′ ′′ 
+
+Depth 16 ×16 + 1 ′′ ′′ 
+
+dstate 8×8–32 ×32 64 ′′ ′′ 
+
+dstate 64 ×64 64 48 ′′ 
+
+dstate 128 ×128 — 48 32 
+
+dstate 256 ×256 — — 16 
+
+dconv 8×8–32 ×32 4 ′′ ′′ 
+
+dconv 64 ×64 3 ′′ ′′ 
+
+dconv 128 ×128 — 3 2
+
+dconv 256 ×256 — — 1Expand 8×8–32 ×32 2.0 1.5 1.0 Expand 64 ×64 1.5 1.0 ′′ 
+
+Expand 128 ×128 — 1.0 ′′ 
+
+Expand 256 ×256 — — 1.0 
+
+Discriminator (StyleGAN2) 
+
+Base channels 96 64 16 Max channels 512 384 256 Minibatch std group 8 ′′ ′′ 
+
+25

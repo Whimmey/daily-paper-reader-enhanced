@@ -6,116 +6,107 @@
 </div>
 
 ## 每次日报
-- 最新运行日期：2026-03-24
-- 运行时间：2026-03-24 20:02:42 UTC
+- 最新运行日期：2026-03-27
+- 运行时间：2026-03-27 08:23:02 UTC
 - 运行状态：成功
-- 本次总论文数：31
-- 精读区：20
+- 本次总论文数：29
+- 精读区：18
 - 速读区：11
 
 ### 今日简报（AI）
-- 今日共生成 31 篇推荐（精读 20 篇，速读 11 篇）
-- 精读：《Understanding the geometry of deep learning with decision boundary volume》（10.0/10）, 《M2IR: Proactive All-in-One Image Restoration via Mamba-style Modulation and Mixture-of-Experts》（10.0/10）
-- 速读：《AILive Mixer: A Deep Learning based Zero Latency Automatic Music Mixer for Live Music Performances》（8.0/10）, 《VisBrowse-Bench: Benchmarking Visual-Native Search for Multimodal Browsing Agents》（8.0/10）, 《VisBrowse-Bench: Benchmarking Visual-Native Search for Multimodal Browsing Agents》（8.0/10）
-- 这些结果覆盖了当下较热的方向，建议先看精读区论文的关键问题与方法。
-- 详情：[/202603/24/README](/202603/24/README)
+今日精读29篇论文，重点探索AI生成模型与材料科学前沿应用。DSS-GAN在条件图像生成和混合扩散-DeepONet在材料应力预测领域取得突破性进展。建议关注AI生成内容的可靠性问题及材料科学中深度学习应用的最新突破。
+- 详情：[/202603/27/README](/202603/27/README)
 
 ### 精读区论文标签
-1. [Understanding the geometry of deep learning with decision boundary volume](/202603/24/2603.14768v1-understanding-the-geometry-of-deep-learning-with-decision-boundary-volume)  
-   标签：评分：10.0/10、query:dl-cv
-   evidence：图像处理任务中深度学习的几何结构
-2. [M2IR: Proactive All-in-One Image Restoration via Mamba-style Modulation and Mixture-of-Experts](/202603/24/2603.14816v1-m2ir-proactive-all-in-one-image-restoration-via-mamba-style-modulation-and-mixture-of-experts)  
-   标签：评分：10.0/10、query:dl-cv
-   evidence：基于Mamba风格调制的通用图像修复
-3. [GeoNVS: Geometry Grounded Video Diffusion for Novel View Synthesis](/202603/24/2603.14965v1-geonvs-geometry-grounded-video-diffusion-for-novel-view-synthesis)  
-   标签：评分：10.0/10、query:dl-cv
-   evidence：基于几何引导的视频扩散模型用于新视角合成
-4. [Joint Degradation-Aware Arbitrary-Scale Super-Resolution for Variable-Rate Extreme Image Compression](/202603/24/2603.17408v1-joint-degradation-aware-arbitrary-scale-super-resolution-for-variable-rate-extreme-image-compression)  
-   标签：评分：10.0/10、query:dl-cv
-   evidence：基于扩散模型的图像压缩与超分辨率
-5. [MeInTime: Bridging Age Gap in Identity-Preserving Face Restoration](/202603/24/2603.18645v1-meintime-bridging-age-gap-in-identity-preserving-face-restoration)  
-   标签：评分：10.0/10、query:dl-cv
-   evidence：计算机视觉中基于扩散模型的面部修复
-6. [Vision Tiny Recursion Model (ViTRM): Parameter-Efficient Image Classification via Recursive State Refinement](/202603/24/2603.19503v1-vision-tiny-recursion-model-vitrm-parameter-efficient-image-classification-via-recursive-state-refinement)  
-   标签：评分：10.0/10、query:dl-cv
-   evidence：用于计算机视觉图像分类的深度学习
-7. [CTCal: Rethinking Text-to-Image Diffusion Models via Cross-Timestep Self-Calibration](/202603/24/2603.20741v1-ctcal-rethinking-text-to-image-diffusion-models-via-cross-timestep-self-calibration)  
-   标签：评分：10.0/10、query:dl-cv
-   evidence：文本到图像扩散模型与计算机视觉对齐
-8. [LPNSR: Prior-Enhanced Diffusion Image Super-Resolution via LR-Guided Noise Prediction](/202603/24/2603.21045v1-lpnsr-prior-enhanced-diffusion-image-super-resolution-via-lr-guided-noise-prediction)  
-   标签：评分：10.0/10、query:dl-cv
-   evidence：计算机视觉中基于扩散模型的图像超分辨率
-9. [Deep learning and the rate of approximation by flows](/202603/24/2603.15363v1-deep-learning-and-the-rate-of-approximation-by-flows)  
+1. [DSS-GAN: Directional State Space GAN with Mamba backbone for Class-Conditional Image Synthesis](/202603/27/2603.17637v1-dss-gan-directional-state-space-gan-with-mamba-backbone-for-class-conditional-image-synthesis)  
    标签：评分：9.0/10、query:dl-cv
-   evidence：深度残差网络的逼近能力
-10. [SEA-Vision: A Multilingual Benchmark for Comprehensive Document and Scene Text Understanding in Southeast Asia](/202603/24/2603.15409v1-sea-vision-a-multilingual-benchmark-for-comprehensive-document-and-scene-text-understanding-in-southeast-asia)  
+   evidence：新型GAN架构
+2. [A Hybrid Conditional Diffusion-DeepONet Framework for High-Fidelity Stress Prediction in Hyperelastic Materials](/202603/27/2603.18225v1-a-hybrid-conditional-diffusion-deeponet-framework-for-high-fidelity-stress-prediction-in-hyperelastic-materials)  
    标签：评分：9.0/10、query:dl-cv
-   evidence：多语言文档和场景文本理解基准
-11. [V-Co: A Closer Look at Visual Representation Alignment via Co-Denoising](/202603/24/2603.16792v1-v-co-a-closer-look-at-visual-representation-alignment-via-co-denoising)  
+   evidence：混合深度学习框架
+3. [MedQ-UNI: Toward Unified Medical Image Quality Assessment and Restoration via Vision-Language Modeling](/202603/27/2603.18465v1-medq-uni-toward-unified-medical-image-quality-assessment-and-restoration-via-vision-language-modeling)  
    标签：评分：9.0/10、query:dl-cv
-   evidence：视觉表示对齐与像素级扩散模型
-12. [Continual Multimodal Egocentric Activity Recognition via Modality-Aware Novel Detection](/202603/24/2603.16970v1-continual-multimodal-egocentric-activity-recognition-via-modality-aware-novel-detection)  
+   evidence：用于医学图像恢复的视觉语言模型
+4. [Beyond Weighted Summation: Learnable Nonlinear Aggregation Functions for Robust Artificial Neurons](/202603/27/2603.19344v1-beyond-weighted-summation-learnable-nonlinear-aggregation-functions-for-robust-artificial-neurons)  
    标签：评分：9.0/10、query:dl-cv
-   evidence：结合视觉线索和深度学习的多模态第一视角动作识别
-13. [Accurate Shift Invariant Convolutional Neural Networks Using Gaussian-Hermite Moments](/202603/24/2603.17098v1-accurate-shift-invariant-convolutional-neural-networks-using-gaussian-hermite-moments)  
+   evidence：新型神经网络设计
+5. [Continual Learning as Shared-Manifold Continuation Under Compatible Shift](/202603/27/2603.20036v1-continual-learning-as-shared-manifold-continuation-under-compatible-shift)  
    标签：评分：9.0/10、query:dl-cv
-   evidence：用于计算机视觉中平移不变卷积神经网络的新型下采样策略
-14. [A Proposal-Free Query-Guided Network for Grounded Multimodal Named Entity Recognition](/202603/24/2603.17314v2-a-proposal-free-query-guided-network-for-grounded-multimodal-named-entity-recognition)  
+   evidence：共享流形延续的持续学习
+6. [Predictive Regularization Against Visual Representation Degradation in Multimodal Large Language Models](/202603/27/2603.20808v1-predictive-regularization-against-visual-representation-degradation-in-multimodal-large-language-models)  
    标签：评分：9.0/10、query:dl-cv
-   evidence：使用深度网络将文本实体对应到图像区域的多模态实体识别
-15. [Mathematical Foundations of Deep Learning](/202603/24/2603.18387v1-mathematical-foundations-of-deep-learning)  
+   evidence：多模态视觉表示
+7. [Democratizing AI: A Comparative Study in Deep Learning Efficiency and Future Trends in Computational Processing](/202603/27/2603.20920v1-democratizing-ai-a-comparative-study-in-deep-learning-efficiency-and-future-trends-in-computational-processing)  
    标签：评分：9.0/10、query:dl-cv
-   evidence：深度神经网络和生成模型的全面论述
-16. [SEM: Sparse Embedding Modulation for Post-Hoc Debiasing of Vision-Language Models](/202603/24/2603.19028v1-sem-sparse-embedding-modulation-for-post-hoc-debiasing-of-vision-language-models)  
+   evidence：深度学习效率基准测试
+8. [FeatDistill: A Feature Distillation Enhanced Multi-Expert Ensemble Framework for Robust AI-generated Image Detection](/202603/27/2603.21939v1-featdistill-a-feature-distillation-enhanced-multi-expert-ensemble-framework-for-robust-ai-generated-image-detection)  
    标签：评分：9.0/10、query:dl-cv
-   evidence：使用稀疏自编码器对CLIP等视觉语言模型进行去偏
-17. [Diffusion-Guided Semantic Consistency for Multimodal Heterogeneity](/202603/24/2603.19337v1-diffusion-guided-semantic-consistency-for-multimodal-heterogeneity)  
+   evidence：AI生成图像检测
+9. [λ-GELU: Learning Gating Hardness for Controlled ReLU-ization in Deep Networks](/202603/27/2603.21991v1--gelu-learning-gating-hardness-for-controlled-relu-ization-in-deep-networks)  
    标签：评分：9.0/10、query:dl-cv
-   evidence：联邦学习中的多模态感知和扩散模型
-18. [Deep learning-based phase-field modelling of brittle fracture in anisotropic media](/202603/24/2603.20120v1-deep-learning-based-phase-field-modelling-of-brittle-fracture-in-anisotropic-media)  
+   evidence：用于深度网络的参数化GELU激活函数
+10. [Benchmarking Deep Learning Models for Aerial LiDAR Point Cloud Semantic Segmentation under Real Acquisition Conditions: A Case Study in Navarre](/202603/27/2603.22229v1-benchmarking-deep-learning-models-for-aerial-lidar-point-cloud-semantic-segmentation-under-real-acquisition-conditions-a-case-study-in-navarre)  
    标签：评分：9.0/10、query:dl-cv
-   evidence：物理信息深度学习框架
-19. [Taming Sampling Perturbations with Variance Expansion Loss for Latent Diffusion Models](/202603/24/2603.21085v1-taming-sampling-perturbations-with-variance-expansion-loss-for-latent-diffusion-models)  
+   evidence：用于航空激光雷达分割的深度学习模型
+11. [A Multi-Modal CNN-LSTM Framework with Multi-Head Attention and Focal Loss for Real-Time Elderly Fall Detection](/202603/27/2603.22313v1-a-multi-modal-cnn-lstm-framework-with-multi-head-attention-and-focal-loss-for-real-time-elderly-fall-detection)  
    标签：评分：9.0/10、query:dl-cv
-   evidence：提高潜在扩散模型中的图像生成质量
-20. [TERS-ABNet: A Deep Learning Approach for Automated Single-Molecule Structure Reconstruction with Atomic Precision from TERS Mapping](/202603/24/2603.21579v1-ters-abnet-a-deep-learning-approach-for-automated-single-molecule-structure-reconstruction-with-atomic-precision-from-ters-mapping)  
+   evidence：用于跌倒检测的多模态CNN-LSTM框架
+12. [Do Large Language Models Reduce Research Novelty? Evidence from Information Systems Journals](/202603/27/2603.22510v1-do-large-language-models-reduce-research-novelty-evidence-from-information-systems-journals)  
    标签：评分：9.0/10、query:dl-cv
-   evidence：用于光谱图像到图结构重建的深度学习方法
+   evidence：衡量研究语义新颖性
+13. [Asymptotic Learning Curves for Diffusion Models with Random Features Score and Manifold Data](/202603/27/2603.22962v1-asymptotic-learning-curves-for-diffusion-models-with-random-features-score-and-manifold-data)  
+   标签：评分：9.0/10、query:dl-cv
+   evidence：流形数据上扩散模型的理论分析
+14. [VQ-Jarvis: Retrieval-Augmented Video Restoration Agent with Sharp Vision and Fast Thought](/202603/27/2603.22998v1-vq-jarvis-retrieval-augmented-video-restoration-agent-with-sharp-vision-and-fast-thought)  
+   标签：评分：9.0/10、query:dl-cv
+   evidence：检索增强视频修复智能体
+15. [Attention-aware Inference Optimizations for Large Vision-Language Models with Memory-efficient Decoding](/202603/27/2603.23914v1-attention-aware-inference-optimizations-for-large-vision-language-models-with-memory-efficient-decoding)  
+   标签：评分：9.0/10、query:dl-cv
+   evidence：视觉语言模型的注意力感知优化
+16. [Reservoir-Based Graph Convolutional Networks](/202603/27/2603.24131v1-reservoir-based-graph-convolutional-networks)  
+   标签：评分：9.0/10、query:dl-cv
+   evidence：基于水库计算的图卷积网络
+17. [Unlocking Few-Shot Capabilities in LVLMs via Prompt Conditioning and Head Selection](/202603/27/2603.24181v1-unlocking-few-shot-capabilities-in-lvlms-via-prompt-conditioning-and-head-selection)  
+   标签：评分：9.0/10、query:dl-cv
+   evidence：LVLM的提示 conditioning 和头部选择
+18. [Robust synchrotron-based deep learning algorithm for intracochlear segmentation in clinical scans: development and international validation](/202603/27/2603.24476v1-robust-synchrotron-based-deep-learning-algorithm-for-intracochlear-segmentation-in-clinical-scans-development-and-international-validation)  
+   标签：评分：9.0/10、query:dl-cv
+   evidence：临床扫描中耳蜗分割的深度学习
 
 ### 速读区论文标签
-1. [AILive Mixer: A Deep Learning based Zero Latency Automatic Music Mixer for Live Music Performances](/202603/24/2603.15995v1-ailive-mixer-a-deep-learning-based-zero-latency-automatic-music-mixer-for-live-music-performances)  
+1. [FINER: MLLMs Hallucinate under Fine-grained Negative Queries](/202603/27/2603.17662v1-finer-mllms-hallucinate-under-fine-grained-negative-queries)  
    标签：评分：8.0/10、query:dl-cv
-   evidence：基于深度学习的自动音乐混音及音视频同步
-2. [VisBrowse-Bench: Benchmarking Visual-Native Search for Multimodal Browsing Agents](/202603/24/2603.16289v1-visbrowse-bench-benchmarking-visual-native-search-for-multimodal-browsing-agents)  
+   evidence：基于细粒度查询的MLLM幻觉检测
+2. [Deep Learning-Based 3D Seismic Velocity Inversion Under Dual-Domain Sparse Representation](/202603/27/2603.17701v1-deep-learning-based-3d-seismic-velocity-inversion-under-dual-domain-sparse-representation)  
    标签：评分：8.0/10、query:dl-cv
-   evidence：多模态浏览与视觉推理
-3. [VisBrowse-Bench: Benchmarking Visual-Native Search for Multimodal Browsing Agents](/202603/24/2603.16289v2-visbrowse-bench-benchmarking-visual-native-search-for-multimodal-browsing-agents)  
+   evidence：双域稀疏表示的地震反演
+3. [On min-Storey estimators for multiple testing and conformal novelty detection](/202603/27/2603.17984v1-on-min-storey-estimators-for-multiple-testing-and-conformal-novelty-detection)  
    标签：评分：8.0/10、query:dl-cv
-   evidence：多模态浏览与视觉推理
-4. [Accelerating Structure-Property Relationship Discovery with Multimodal Machine Learning and Self-Driving Microscopy](/202603/24/2603.17028v1-accelerating-structure-property-relationship-discovery-with-multimodal-machine-learning-and-self-driving-microscopy)  
+   evidence：用于机器学习的新型统计估计器
+4. [Multimodal Task Interference: A Benchmark and Analysis of History-Target Mismatch in Multimodal LLMs](/202603/27/2603.18425v1-multimodal-task-interference-a-benchmark-and-analysis-of-history-target-mismatch-in-multimodal-llms)  
    标签：评分：8.0/10、query:dl-cv
-   evidence：用于显微镜的多模态机器学习和深度核学习
-5. [Deep learning and the rate of approximation by flows](/202603/24/2603.15363v2-deep-learning-and-the-rate-of-approximation-by-flows)  
+   evidence：多模态LLM任务干扰分析基准
+5. [A Unified Language Model for Large Scale Search, Recommendation, and Reasoning](/202603/27/2603.17533v1-a-unified-language-model-for-large-scale-search-recommendation-and-reasoning)  
    标签：评分：7.0/10、query:dl-cv
-   evidence：深度残差网络的逼近能力
-6. [Work Sharing and Offloading for Efficient Approximate Threshold-based Vector Join](/202603/24/2603.16360v1-work-sharing-and-offloading-for-efficient-approximate-threshold-based-vector-join)  
+   evidence：统一语言模型
+6. [A Contextual Help Browser Extension to Assist Digital Illiterate Internet Users](/202603/27/2603.17592v1-a-contextual-help-browser-extension-to-assist-digital-illiterate-internet-users)  
    标签：评分：7.0/10、query:dl-cv
-   evidence：用于多模态检索和语义分析的高效向量连接
-7. [Evaluating Game Difficulty in Tetris Block Puzzle](/202603/24/2603.18994v2-evaluating-game-difficulty-in-tetris-block-puzzle)  
+   evidence：使用LLM的浏览器扩展提供上下文帮助
+7. [Halo: Domain-Aware Query Optimization for Long-Context Question Answering](/202603/27/2603.17668v1-halo-domain-aware-query-optimization-for-long-context-question-answering)  
    标签：评分：7.0/10、query:dl-cv
-   evidence：使用AlphaZero深度学习模型进行游戏评估
-8. [A Federated Many-to-One Hopfield model for associative Neural Networks](/202603/24/2603.19902v1-a-federated-many-to-one-hopfield-model-for-associative-neural-networks)  
+   evidence：长上下文问答的领域感知查询优化
+8. [The Spillover Effects of Peer AI Rinsing on Corporate Green Innovation](/202603/27/2603.18415v1-the-spillover-effects-of-peer-ai-rinsing-on-corporate-green-innovation)  
    标签：评分：7.0/10、query:dl-cv
-   evidence：联邦关联神经网络与赫布学习
-9. [HindSight: Evaluating LLM-Generated Research Ideas via Future Impact](/202603/24/2603.15164v2-hindsight-evaluating-llm-generated-research-ideas-via-future-impact)  
+   evidence：LLM用于语义分析
+9. [Mitigating LLM Hallucinations through Domain-Grounded Tiered Retrieval](/202603/27/2603.17872v1-mitigating-llm-hallucinations-through-domain-grounded-tiered-retrieval)  
    标签：评分：6.0/10、query:dl-cv
-   evidence：评估AI生成研究思路的创新框架
-10. [A Kolmogorov-Arnold Surrogate Model for Chemical Equilibria: Application to Solid Solutions](/202603/24/2603.15307v1-a-kolmogorov-arnold-surrogate-model-for-chemical-equilibria-application-to-solid-solutions)  
+   evidence：大语言模型幻觉缓解
+10. [The Spillover Effects of Peer AI Rinsing on Corporate Green Innovation](/202603/27/2603.18415v2-the-spillover-effects-of-peer-ai-rinsing-on-corporate-green-innovation)  
    标签：评分：6.0/10、query:dl-cv
-   evidence：将 Kolmogorov-Arnold 网络作为深度学习模型的应用
-11. [Music Genre Classification: A Comparative Analysis of Classical Machine Learning and Deep Learning Approaches](/202603/24/2603.15440v1-music-genre-classification-a-comparative-analysis-of-classical-machine-learning-and-deep-learning-approaches)  
+   evidence：使用LLM分析AI洗牌对创新的影响
+11. [Tursio Database Search: How far are we from ChatGPT?](/202603/27/2603.18835v2-tursio-database-search-how-far-are-we-from-chatgpt)  
    标签：评分：6.0/10、query:dl-cv
-   evidence：传统机器学习与深度学习在音频分类中的对比
+   evidence：使用大语言模型的数据库搜索
 
 
 <div class="dpr-home-promo-card">

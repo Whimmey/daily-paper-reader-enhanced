@@ -1,0 +1,2009 @@
+Title: FINER: MLLMs Hallucinate under Fine-grained Negative Queries
+
+URL Source: https://arxiv.org/pdf/2603.17662v1
+
+Published Time: Thu, 19 Mar 2026 01:19:56 GMT
+
+Number of Pages: 35
+
+Markdown Content:
+## FINER: MLLMs Hallucinate under Fine-grained Negative Queries 
+
+Rui Xiao 1,2 , Sanghwan Kim 1,2,3 , Yongqin Xian 4, Zeynep Akata 1,2,3 , Stephan Alaniz 51Technical University of Munich 2Munich Center for Machine Learning 
+
+3Helmholtz Munich 4Google 5LTCI, T´ el´ ecom Paris, Institut Polytechnique de Paris, France 
+
+Abstract 
+
+Multimodal large language models (MLLMs) struggle with hallucinations, particularly with fine-grained queries, a challenge underrepresented by existing benchmarks that fo-cus on coarse image-related questions. We introduce FI ne-grained NE gative que Ries ( FINER ), alongside two bench-marks: FINER-CompreCap and FINER-DOCCI . Using FINER, we analyze hallucinations across four settings: multi-object, multi-attribute, multi-relation, and “what” questions. Our benchmarks reveal that MLLMs hallu-cinate when fine-grained mismatches co-occur with gen-uinely present elements in the image. To address this, we propose FINER-Tuning , leveraging Direct Preference Optimization (DPO) on FINER-inspired data. Finetun-ing four frontier MLLMs with FINER-Tuning yields up to 24.2% gains (InternVL3.5-14B) on hallucinations from our benchmarks, while simultaneously improving perfor-mance on eight existing hallucination suites, and en-hancing general multimodal capabilities across six bench-marks. Code, benchmark, and models are available at https://explainableml.github.io/finer-project/. 
+
+1. Introduction 
+
+Multimodal large language models (MLLMs) have demon-strated significant progress in visual perception [2] and instruction following [25], enabling increasingly sophisti-cated image question answering. Real-world users, how-ever, often ask fine-grained questions requiring precise un-derstanding of image content. While current models [4, 27, 46] handle coarse questions reasonably well, it remains unclear whether they can detect nuanced errors in detailed user queries when describing image content. This is critical in domains like medical visual question answering, where trustworthiness requires spotting and correcting errors in complex queries. In the context of natural images, we focus on hallucination [5, 37], the generation of answers unsup-ported by the image, and define “negative queries” as those asking about non-existent image content. Prior studies show Can you see the cat in this image? Can you see the wolf in this image? 
+
+> Can you see the cat with predominantly white coat featuring black and grey markings in this image?
+> Can you see the cat with predominantly brown coat featuring orange and pink markings in this image?
+> Can you see the cat with predominantly white coat featuring black and grey markings, with its head turned downwards in this image?
+> Can you see the cat with predominantly white coat featuring black and grey markings, with its head tilted backward in this image?
+> Can you see the cat with predominantly white coat featuring black and grey markings, with its head turned downwards, with perked ears in this image?
+> Can you see the cat with predominantly white coat featuring black and grey markings, with its head turned downwards, with drooping ears in this image?
+> Can you see the cat with predominantly white coat featuring black and grey markings, with its head turned downwards, with perked ears , that is sitting on the chair in this image?
+> Can you see the cat with predominantly white coat featuring black and grey markings, with its head turned downwards, with perked ears , that is sitting below the chair in this image?
+> Can you see the cat with predominantly white coat featuring black and grey markings, with its head turned downwards, with perked ears , that is sitting on the chair in this image?
+> Can you see the cat with predominantly white coat featuring black and grey markings, with its head turned downwards, with perked ears , that is sitting on the sofa in this image?
+> Can you see the cat with predominantly white coat featuring black and grey markings, with its head turned downwards, with perked ears , that is sitting on the chair with primarily blue and white in color exhibiting signs of wear in this image?
+> Can you see the cat with predominantly white coat featuring black and grey markings, with its head turned downwards, with perked ears , that is sitting on the chair with largely purple and orange in color indicating heavy use in this image?
+> Can you see the cat in this image?
+
+Can you see the wolf? 
+
+> Can you see the ca and grey markings i
+
+Can you see the cat with predominantly brown coat? 
+
+> Can you see the cat w image?
+
+Can you see the cat with …, with its head tilted backward? 
+
+> Can you see the cat with …, …, with perked ears in th
+
+Can you see the cat with …, …, with drooping ears? 
+
+> Can you see the cat with …, …, …, that is sitting on the this image?
+
+Can you see the cat with …, ..., …, that is sitting below the chair? 
+
+> Can you see the cat with …, …, …, that is sitting on the this image?
+
+Can you see the cat with …, …, …, that is sitting on the sofa? 
+
+> Can you see the cat with …, …, …, that is … with prima and white in color in this image?
+
+Can you see the cat with …, …, …, that … chair with largely purple…? 
+
+> Increasing levels of Negative Questions
+
+[NEG_OBJ] 
+
+[OBJ] [NEG_ATTR] 
+
+[OBJ] [ATTR] [NEG_ATTR] 
+
+[OBJ] [ATTR] [ATTR] [NEG_ 
+
+[OBJ] [ATTR] [ATTR] [ATTR 
+
+[OBJ] [ATTR] [ATTR] [ATTR 
+
+[OBJ] [ATTR] [ATTR] [ATTR 
+
+L1 
+
+L2 
+
+L3 
+
+L4 
+
+L5 
+
+L6 
+
+L7 
+
+[NEG_OBJ] 
+
+[OBJ] [NEG_ATTR] 
+
+[OBJ] [ATTR] [NEG_ATTR] 
+
+[OBJ] [ATTR] [ATTR] [NEG_ATTR] 
+
+[OBJ] [ATTR] [ATTR] [ATTR] [NEG_REL] [OBJ] 
+
+[OBJ] [ATTR] [ATTR] [ATTR] [REL] [NEG_OBJ] 
+
+[OBJ] [ATTR] [ATTR] [ATTR] [REL] [OBJ] [NEG_ATTR] 
+
+320 Samples 
+
+1687 Samples 
+
+(a) Negative Queries from Coarse to Fine Granularity 
+
+(b) Comparison between Baseline and FINER-Tuning 
+
+Coarse 
+
+Fine 
+
+> Granularity
+
+Granularity 
+
+Coarse Fine Granularity 
+
+Coarse Fine 
+
+Figure 1. We compare the performance InternVL3.5-14B [46] (Baseline) with the one fine-tuned by FINER-Tuning under neg-ative queries of seven different granularity levels. 
+
+MLLMs often exhibit false-positive hallucination, failing to answer “No” to negative queries [3, 22, 44, 56]. Yet, these probes are largely coarse; POPE and DASH focus on single 
+
+object presence [3, 22], and AMBER includes only single 
+
+objects, attributes, and relations [44]. This raises an im-portant question: Can MLLMs reject fine-grained mistakes involving multiple objects, attributes, and relations, rather than only coarse mismatches? To investigate, we first con-duct a motivation study, increasing the granularity of nega-tive queries to probe for false positives. 
+
+Question granularity affects hallucination. We examine how MLLMs behave as negative queries become progres-sively more fine-grained . Mimicking how human constructs a sentence: starting with a single object, adding attributes, and then relations, we construct queries of increasing gran-ularity from coarse to fine, as shown in Fig. 1. This yields seven levels, each injecting a single, fine-grained contra-diction ( NEG OBJ , NEG ATTR , or NEG REL ) while keeping the 1
+
+> arXiv:2603.17662v1 [cs.CV] 18 Mar 2026
+
+rest of the description visually consistent. For each sam-ple, we feed the model with the image and each of the seven queries separately, limiting the answer to “Yes” or “No”, while the correct answer is always “No”. We sam-ple from two sources: 320 from FINER-C OMPRE CAP and 1,687 from FINER-DOCCI. We report averaged accuracy per level for I NTERN VL3.5-14B [46] and the model fine-tuned with FINER-Tuning. As shown in Fig. 1, the accuracy of I NTERN VL3.5-14B steadily decreases with increased query granularity, drop-ping from ∼ 80% at level 1 to ∼ 20% by levels 5-7 on FINER-C OMPRE CAP , and from ∼ 58% at level 1 to ∼
+
+15% by levels 6-7 on FINER-DOCCI. This demonstrates the model’s brittleness to fine-grained negations: as gran-ularity increases, it more often answers “Yes” to queries that should be “No”, resulting in more false positives. The model finetuned with FINER-Tuning, however, consistently demonstrates performance gains, particularly at finer granu-larity. This highlights MLLMs’ susceptibility to hallucina-tion at finer granularity and the potential for improvement. Hence, we ask: Can we systematically study hallucina-tions under fine-grained negative queries? Our initial anal-ysis mixes objects, attributes, and relations, hindering iso-lation of causal factors. To disentangle these, we introduce FINER-C OMPRE CAP and FINER-DOCCI, which group queries into four settings: multiple objects (Multi-obj), mul-tiple attributes (Multi-attr), multiple relations (Multi-rel), and “what”-questions (Wh). The first three target exis-tence and binding, assessing whether the model can de-tect errors hidden in multiple objects, attributes, and rela-tions. The Wh-setting probes factual answering with ill-posed queries, asking “what”-questions about a target ob-ject with one incorrect attribute. Together, these four set-tings reveal whether a model can say “No” to precise but wrong claims, beyond handling coarse mismatches. 
+
+2. FINER Benchmarks 
+
+Our FINER benchmarks aim to compose negative ques-tions involving multiple semantic elements, i.e., objects, at-tributes, and relations, to evaluate an MLLM’s ability to de-tect and reason about missing or incorrect components in a scene, even with subtle perturbations. We begin by explain-ing our benchmark construction as illustrated in Fig. 2. 
+
+2.1. Question Construction Pipeline 
+
+We base our FINER benchmarks on the scene graph (SG) of an image, encoding objects ( OBJ ), their attributes ( ATTR ), and spatial or semantic relations ( REL ). For each compo-nent, we generate negative counterparts ( NEG OBJ , NEG ATTR ,
+
+> NEG REL
+
+), semantically plausible but incorrect substitutions (e.g., replacing “door frame” with “pillar”). Unlike prior work [3, 22], which rely on a single negative, we gener-ate four distinct negative variants per entity (as described in Sec. 2.3). The initial processing steps are visualized at the top of Fig. 2. We then use a template-based approach to compose pos-itive questions ( q+) mentioning multiple elements of the same category sampled from the positive SG. For example, a multiple-object question ( q+
+
+> multi-obj
+
+) might be “Can you see cat and door frame?”. Corresponding negative questions (q−) are constructed by replacing one randomly chosen el-ement with a randomly sampled, negative counterpart (e.g., “Can you see cat and pillar?”). The correct answers are “Yes” and “No” respectively. To move beyond binary re-sponses, we construct Multiple Choice Questions (MCQs) requiring the model to specify the correct entities in the im-age. For example, the correct answer to q− 
+
+> multi-obj
+
+would be “No, but I can see cat and door frame”. We use the other negative options of the same component as distractors for the other answer options (see “Multi-obj” in Fig 2.). Equiv-alently, we construct q± 
+
+> multi-attr
+
+and q± 
+
+> multi-rel
+
+from the SGs’ at-tributes and relations. Finally, we create “what”-questions (Wh) asking about an object in relation to another, using ei-ther its positive or negative attribute. The complete question template is described in Sec. B in the supplementary. 
+
+Benchmarks. Based on this pipeline, we constructed FINER-C OMPRE CAP (based on CompreCap [31]) and FINER-DOCCI (based on DOCCI [34]). CompreCap provides human-annotated scene graphs, but is limited to COCO images. DOCCI consists of 5K images with long human-annotated captions which allow us to create a more large-scale question set. The detailed statistics of both benchmarks are in Sec. B in the supplementary. FINER-COMPRE CAP consists of 6,300 Multi-obj, 3,338 Multi-attr, 4,280 Multi-rel, and 3,166 Wh MCQs with a maximum of 6,3,3 objects, attributes, or relations per question. FINER-DOCCI comprises 10,000 Multi-obj, 28,630 Multi-attr, 11,542 Multi-rel, and 20,944 Wh MCQs with a maximum of 6,5,3 objects, attributes, or relations per question. In the following, we detail how we extract the SG from DOCCI, and how we generate the negative components. 
+
+2.2. Scene Graph Extraction 
+
+For DOCCI, where ground-truth SGs are unavailable, we build a non-panoptic SG by extracting objects, attributes, and relations directly from the human-written long captions. We use a multi-stage pipeline powered by Gemini-2.0-Flash [41], with filtering by a strong MLLM (Qwen2.5VL-72B [4]) and human verification on sampled data, to convert captions into SG-like annotations. The validation steps re-duce the risk of introducing incorrect features into the SG which is particularly important for REL . We provide more details regarding the pipeline in Sec. B.2 in supplementary. 2Extract Scene Graph 
+
+> with a light gray color
+> An overhead view of a white puppy and a gray tabby cat staring out of a door. The puppy is standing and the cat is sitting on a light brown wooden floor. …The cat is casting a shadow on the door frame to the right. There is a white wall visible on the right side of the door frame in the top right portion of the image.
+
+Gemini Summarize objects & attributes 
+
+> Puppy: white Cat: gray Door:... Door Frame:... Carpet:... Bag:... …
+
+Gemini: Recording relations if any 
+
+> Puppy is staring out of Door Cat is staring out of Door. …Cat is casting shadow on Door Frame.
+
+Gemini Qwen2.5VL Human Filtering 
+
+> Puppy
+> Cat
+> Door
+> Door Frame
+> Carpet
+> Bag
+
+Cat 
+
+Carpet 
+
+Bag 
+
+> Gemin Qwen
+
+Is looking out of Floor 
+
+Door Frame  
+
+> Is looking out of
+
+Obj: Puppy Attr: With a white color Rel: Is standing on the Floor Is looking out of the door 
+
+Attr: 1. With a white color Bag 
+
+Is on the right of the  
+
+> puppy
+> door
+> with a standing posture
+> with a dark green color
+> is looking out of
+> [ pillar, fence ]
+> [ with a kneeling posture, with a sitting posture ]
+> hamster [ is facing away from, is lying on ]
+
+Positive scene graph Negative scene graph                  
+
+> {obj: teddy bear, attr: with a brown color, rel: is leaning against, obj: pillow}
+> Multi-obj
+> Can you see the puppy that.. and is facing away from the door? A. Yes, puppy that is.. and is facing away from the door. B. No, but puppy that is.. and is looking out of the door. ✅
+> C. No, but puppy that is.. and is lying on the door. D. … E. …
+> Can you see the puppy with a kneeling posture and with..? A. Yes, puppy with a kneeling posture and with.. B. No, but puppy with a standing posture and with.. ✅
+> C. No, but puppy with a sitting posture and with.. D. … E. …
+> Can you see the puppy that.. and is looking out of the door? A. Yes, puppy that is.. and is looking out of the door. ✅
+> B. No, but puppy that is.. and is facing away from the door. C. No, but puppy that is.. and is lying on the door. D. … E. …
+> Can you see the puppy with a standing posture and with.. A. Yes, puppy with a standing posture and with.. ✅
+> B. No, but puppy with a kneeling posture and with.. C. No, but puppy with a sitting posture and with.. D. … E. …
+> What is looking out of the door with a light gray color? A. The puppy. B. The door is with a dark green color. ✅
+> C. The hamster. D. … E. …
+> What is looking out of the door with a dark green color? A. The puppy. ✅
+> B. The door is with a light gray color. C. The hamster. D. … E. …
+
+Multi-rel 
+
+> An overhead view of a white puppy looking out of a dark green door. The puppy is standing on a light brown wooden floor.
+> DOCCI  CompreCap
+
+Human-annotated Caption 
+
+Ground Truth Scene Graph 
+
+Rule-based Query Construction         
+
+> NEG  POS  Can you see cat and door frame? A. Yes, I can see cat and door frame. ✅
+> B. No, but I can see cat and pillar. C. No, but I can see cat and fence. D. … E. …
+> Can you see cat and pillar? A. Yes, I can see cat and pillar. B. No, but I can see cat and door frame. ✅
+> C. No, but I can see cat and fence. D. … E. …
+> Multi-rel
+> NEG  POS
+> Multi-attr
+> NEG  POS
+> Wh
+> NEG  POS
+> Gemini-2.0-Flash
+> Qwen2.5-V L-72B Human
+> Extract Obj, Attr, Rel
+> Extract Rels
+> Verify Verify Samples
+
+Negatives Generation                   
+
+> Verify Samples
+> Generate Four Negatives Classify Regenerate
+> Can you see {}in this image? Yes,I can see {}. /No,but Ican see { }.
+
+Input Image for MCQ   
+
+> Gemini-2.0-Flash Qwen2.5-VL-72B Human Gemini-2.0-Flash
+
+Figure 2. Data construction pipeline for FINER benchmarks. For FINER-DOCCI, we extract the positive scene graph (SG) from DOCCI [34] captions, while for FINER-C OMPRE CAP , the SG is provided by CompreCap [31]. From the positive SG, we generate the negative SG using Qwen3-14B [51] as negatives generator for FINER-C OMPRE CAP and Gemini-2.0-Flash [41] for FINER-DOCCI. Finally, a rule-based query construction pipeline builds multiple choice questions. In practice, choices are shuffled in both benchmarks. 
+
+2.3. Negatives Generation 
+
+Starting from the positive SGs, we generate four corre-sponding negatives for each object, attribute, and relation, using an LLM with carefully designed prompts. We use Qwen3-14B [51] for FINER-CompreCap and Gemini-2.0-Flash [41] for FINER-DOCCI to ensure consistency with the SG creation. To decrease the risk of generated nega-tives being present in the image, we use a strong MLLM (Qwen2.5-VL-72B) as a discriminator. If it fails to identify the positive item mixed into the negatives, we conclude that at least one negative is ambiguous or present in the image. Based on the MLLM’s classification entropy, we identify which negatives require to be regenerated and repeat this process iteratively. Human verifies samples to specify re-generation thresholds. For more details on the negatives generation, please refer to Sec. B.3 in the supplementary. 
+
+2.4. Evaluation Setting 
+
+As binary “Yes/No” responses are vulnerable to model bi-ases, we use MCQs to move models beyond simple negation and enforce visual understanding, with each MCQ includ-ing one correct answer and four distractors. To prevent bias toward positive or negative answers, we pair each negative MCQ ( q−) with its corresponding positive MCQ ( q+), re-quiring both to be answered correctly. This pairing ensures models cannot succeed by simply memorizing “No” pat-terns or exploiting label imbalances. As a result, let M (·)
+
+be the model, we define paired accuracy as the primary eval-uation metric for N paired questions of q+ and q−:
+
+Acc paired = 1
+
+N
+
+NX
+
+i=1 
+
+Γ( M (xi, q +
+
+i )) Γ( M (xi, q −
+
+i )) (1) where Γ( ·) evaluates to 1 for correct responses and 0 oth-erwise. This metric requires success on both positive and negative variants, ensuring robustness against false posi-tives and false negatives. 
+
+3. Training with FINER (FINER-Tuning) 
+
+Observing MLLM vulnerabilities under FINER, we address them with a data-driven training approach via direct prefer-ence optimization (DPO) [36] using fine-grained negative queries , denoted as FINER-Tuning. Unlike approaches op-timizing for simple queries [52, 55, 57], FINER-Tuning em-ploys minimally edited, semantically precise contradictions over objects, attributes, and relations (e.g., “car with yellow bumper” vs. “car with chrome bumper”), including both fine-grained positive and negative queries. Fig. 3 illustrates our training data generation pipeline. It is inspired by the four settings in our benchmarks with both accept and reject answers for every query. This focuses learning on detecting fine-grained hallucinations in the queries, rather than solely avoiding them in the model’s responses. 
+
+Setup. We select data avoiding in-distribution leakage , ex-cluding COCO data [23], and the DOCCI training split [34]. To leverage the availability of dense image annotations, we 3Diverse Summarization   
+
+> A gleaming convertible A Martin chrom bumper and
+> An Aston M reflects the trees on its b front of the…
+> A green con Martin…, re background are planted i …
+> A gleaming green, convertible Aston Martin chrome bumper and wheels…
+> MLLM
+> MLLM
+> MLLM
+> P(Acc): 0.75 P(Rej): 0.25
+> P(Acc): 0.32 P(Rej): 0.68
+> P(Acc): 0.55 P(Rej): 0.45
+> Question: …with chrome bumper..?
+> ✅Yes, … with chrome bumper
+> ❌No, but … with yellow bumper
+> This striking image features a gleaming green Aston Martin convertible, capturing the essence of luxury and sophistication. …This atmospheric setting contributes to the car's prominence and the overall allure of the photograph.
+
+Long Caption Summarize objects Aston Martin, trees, pedestrian… 
+
+> Summarize attributes
+> Summarize relations
+> Compose one sentence
+
+(1) Extract Features (2)                   
+
+> Aston Martin, flowers, pedestrian…
+> A green, convertible Aston Martin with chrome bumper…
+> Template-based Composition
+> Negative Queries Positive Queries
+> Question Templates: Is there … / Can you see… / Is it true that … / … ?
+> Phi-4-14B
+> Question: … the flowers …?
+> ✅No, but … Aston Martin…
+> ❌Yes, … flowers…
+> An Aston Martin that reflects trees on its body, is in front of the pedestrian…
+> A green …, reflects the trees on urban rows …
+> Phi-4-14B
+> Question: …in front of the pedestrian?
+> ✅Yes, … in front of the
+> ❌No, but … behind the
+> A green, convertible Aston Martin with yellow bumper…
+> An Aston Martin that reflects trees on its body, is behind the pedestrian…
+> A green …, reflects the trees on country fields …
+> Phi-4 14B
+> Q:… is behind the … ?…is in front of the pedestrian ..?
+> ✅: No, but … is in front of the …✅: Yes, … is in front of the..
+> ❌: Yes, … is behind the …❌: No, but … is behind the…
+> What reflects the trees that are planted in countryside fields ..?
+> Question: … in country fields?
+> ✅The trees are not in country fields, but in urban rows
+> ❌A green Aston Martin with..
+> Generated Question: What reflects the trees that are planted…?
+> A g
+> Question: … in urban rows?
+> ✅A green Aston Martin with...
+> ❌The trees are not in urban rows, but in country fields
+
+(1) Extract Positives (2) Generate Negatives (3) Query & Answer Construction        
+
+> NEG POS
+> Question: … the Aston Martin...?
+> ✅Yes, … Aston Martin
+> ❌No, but … flowers
+> Question: …with yellow bumper..?
+> ✅No, but … with chrome bumper…
+> ❌Yes, … with yellow bumper…
+> Question: …behind the pedestrian?
+> ✅No, but … in front of the
+> ❌Yes, … behind the
+
+Input Image 
+
+> Multi-obj
+> Multi-attr
+> Multi-rel
+> Wh
+> NEG POS
+> NEG POS
+> NEG POS
+
+Figure 3. Training data generation pipeline for FINER-Tuning. (1) We adopt long captions from Pixmo [11] and extract diverse phrases with PHI-4-14B [1]. (2) We then prompt the same LLM to modify and generate negative phrases. (3) We construct both positive and negative query-answer tuples via template-based composition or LLM generation. 
+
+adopt Pixmo-caption [11] as our base corpus. We further avoid using the LLMs used for benchmark construction, employing Phi-4-14B [1] for our training data pipeline. 
+
+(1) Extract Positives. As illustrated in Fig. 3, given a long caption, we prompt Phi-4-14B to extract fine-grained posi-tive phrases, mirroring our four evaluation scenarios: Multi-obj, Multi-attr, Multi-rel, and Wh. We define the following four positive phrase types: 
+
+Ψ+ ∈ Ψ+
+
+OBJ , Ψ+
+
+ATTR , Ψ+
+
+REL , Ψ+
+
+WH (2) The LLM produces: Ψ+
+
+OBJ : a phrase summarizing the objects; Ψ+
+
+ATTR : a phrase summarizing attributes for a ran-dom object; Ψ+
+
+REL : a phrase summarizing relations between a random object and others; Ψ+
+
+WH : a composed sentence describing two objects with a relation and summarized at-tributes, subsequently forming a positive question-answer pair. Our prompt templates are detailed in Sec. G. 
+
+(2) Generate Negatives. Transforming the positive phrases 
+
+Ψ+, we generate negative phrases Ψ− with the same LLM: 
+
+Ψ− ∈ Ψ−
+
+OBJ , Ψ−
+
+ATTR , Ψ−
+
+REL , Ψ−
+
+WH (3) For each phrase type Ψ+
+
+T (where T ∈{OBJ , ATTR , REL , WH}), we randomly select one in-stance of T, and prompt the LLM to replace that instance with a negative, forming Ψ−
+
+T . Please refer to Sec. E for the complete prompt details. 
+
+(3) Query & Answer Construction. With Ψ+ and Ψ−, we construct query-answer pairs for DPO training, including both positive ( q+) and negative ( q−) questions paired with accepted ( a+) and rejected ( a−) responses. a+ begins with the correct response (”Yes” for q+, ”No” for q−) and men-tions the correct image features, while a− is the opposite. For O BJ /A TTR /R EL , we directly use question-answer templates on Ψ+ and Ψ− to construct (q+, a ++, a −
+
++) and 
+
+(q−, a +
+
+−, a −−) pairs. We use five templates to avoid over-fitting to the benchmark’s prompt pattern, as detailed in Sec. G. For W H, data pairs are already constructed by the LLM due to the free-form nature of these questions and an-swers. Fig. 3 provides example data for all data types and more examples are provided in Sec. C in the supplementary. 
+
+DPO Training. This creates a dataset of preference tuples 
+
+D = {(x, q s, a +
+
+s , a −
+
+s )}, s ∈ { +, −} (4) where x is the image. Let πθ (· | x, q ) be the policy and πref 
+
+be a frozen reference model. We train with DPO, maximiz-ing the probability that the policy ranks a+ above a−:
+
+∆θ (x, q ) := log πθ (a+ | x, q ) − log πθ (a− | x, q ),
+
+∆ref (x, q ) := log πref (a+ | x, q ) − log πref (a− | x, q ),
+
+LDPO (θ) = − E(x,q,a +,a −)∼D 
+
+h
+
+log σ β(∆ θ − ∆ref )i
+
+.
+
+(5) 
+
+where σ(·) is the logistic function and β = 0 .1.
+
+4. Experiments 
+
+We present experiments of FINER-Tuning on three tasks, i.e., evaluation on FINER benchmarks (Sec. 4.2), other hal-lucination benchmarks (Sec. 4.3), and general MLLM ca-pabilities (Sec. 4.4). In addition, we show qualitative exam-ples on FINER benchmarks (Sec. 4.5), and ablate important training strategies and subset selections (Sec. 4.6). 
+
+4.1. Experimental Setup 
+
+Fine-tuning Setup. We are interested in applying FINER-Tuning to frontier-MLLMs: LLaVA-NeXT-7B (LLaVA-1.6-7B) [27], Qwen2.5-VL-7B-Instruct [4], and InternVL-3.5-8B [46]. To test scalability within our compute limits, we also include InternVL-3.5-14B [46]. We fine-tune each model on our constructed data with maximally 160k pref-erence tuples. All models are trained for one epoch using LLaMA-Factory [58] with LoRA [17]. Full training details are in Sec. C in the supplementary. 
+
+Evaluation Setup. We evaluate all models on three tasks across 16 benchmarks. We primarily use VLMEvalKit [14] 4Table 1. Paired accuracy (Acc paired ) results on FINER-CompreCap and FINER-DOCCI. ∗For Gemini-2.5-Flash, we evaluate on the whole FINER-C OMPRE CAP and on 3K MCQs per setting in FINER-DOCCI due to the scale of the benchmark.                                                                                                                                                                                           
+
+> FINER-CompreCap FINER-DOCCI Models Size Multi-obj Multi-attr Multi-rel Wh Multi-obj Multi-attr Multi-rel Wh
+> Random Guess -4.0 4.0 4.0 4.0 4.0 4.0 4.0 4.0 LRV-V2 [24] 13B 6.1 6.8 5.6 4.0 6.3 5.4 6.1 5.2 LLaVA-RLHF [40] 13B 11.4 2.0 1.1 6.9 7.3 3.0 5.1 5.3 RLHF-V [54] 13B 13.4 6.1 1.6 10.8 13.2 7.2 8.1 7.0 OPA-DPO [52] 13B 10.9 3.0 2.2 6.9 8.1 5.5 8.3 8.0 RLAIF-V [55] 12B 62.2 39.6 19.2 20.5 46.5 31.7 32.4 19.4 LLaVA-1.6 [27] 7B 25.3 13.0 7.6 15.3 10.1 12.3 8.2 13.3 +FINER-Tuning 7B 48.4 23.1 38.4 25.4 24.2 16.6 22.1 6.8 26.4 16.3 29.4 17.1 24.7 16.5 18.5 5.2
+> Qwen2.5-VL [4] 7B 69.2 62.5 30.1 28.9 48.7 47.5 36.7 23.4 +FINER-Tuning 7B 71.4 2.2 67.0 4.5 38.3 8.2 34.8 5.9 49.8 1.1 52.2 4.7 43.4 6.7 28.0 4.6
+> InternVL-3.5 [46] 8B 75.0 72.5 49.8 23.5 58.1 54.3 41.8 16.8 +FINER-Tuning 8B 77.1 2.1 78.9 6.4 64.1 14.3 34.2 10.7 62.6 4.5 60.1 5.8 52.7 10.9 23.7 6.9
+> InternVL-3.5 [46] 14B 74.5 68.1 47.0 21.8 58.6 55.9 41.4 15.6 +FINER-Tuning 14B 80.0 5.5 78.9 10.8 71.2 24.2 30.1 8.3 65.9 7.3 65.0 9.1 57.0 15.6 23.0 7.4
+> InternVL-3.5 [46] 38B 77.8 78.1 66.8 50.9 62.3 64.8 54.2 36.6 Gemini-2.5-Flash [10] ∗-75.7 77.3 77.8 58.2 64.4 64.5 56.7 49.6
+
+for standardized evaluations. For benchmarks not integrated in VLMEvalKit, we follow each benchmark’s official evalu-ation protocol. Refer to Sec. D in supplementary for details. 
+
+4.2. Results on FINER benchmarks 
+
+Baselines. We primarily compare the performance of the four frontier MLLMs before and after FINER-Tuning, and also show the performance of stronger models such as InternVL-3.5-38B and Gemini-2.5-Flash [41]. Addition-ally, we benchmark hallucination-aware fine-tuning meth-ods such as RLAIF-V [55], OPA-DPO [52], RLHF-V [54], Llava-RLHF [40], and LRV-Instruct-V2 [24]. Note that dif-ferent methods are typically based on different MLLMs and fine-tuned on different data. Given their effectiveness on general hallucination reduction, we aim to find out how well they fare on our FINER benchmarks. Furthermore, we es-timate human performance with a human study on a subset of 20 MCQs for each setting. The results and details of our human study can be found in Sec. F in the supplementary. 
+
+Main results. The results are presented in Tab. 1. Base model capability strongly influences overall performance. Hallucination-aware fine-tuning methods like RLHF-V [54] and LLaVA-RLHF [40] only achieve 1.6% and 1.1% paired accuracy on the Multi-rel subset of FINER-C OMPRE CAP .RLAIF-V-12B, while remaining the best among these meth-ods, scores substantially below advanced MLLMs, includ-ing Qwen2.5-VL and InternVL-3.5. This shows that mit-igating hallucination on previous datasets do not directly translate to our FINER benchmarks, highlighting the im-portance to start from and improve upon frontier MLLMs. Meanwhile, FINER-Tuning consistently improves all baselines. Specifically, on FINER-C OMPRE CAP , LLaVA-1.6 shows remarkable 23.1% and 25.4%, and 16.6% on Multi-obj, Multi-Attr and Multi-Rel subsets, and InternVL-3.5-14B shows improvements of up to 24.2% (Multi-rel), outperforming its 38B version by 4.4%. On FINER-DOCCI, FINER-Tuning on InternVL-3.5-14B scores on-paar with Gemini-2.5-Flash in 3 out of 4 settings. Moreover, Wh-questions challenge all models. Even InternVL-3.5-38B and Gemini-2.5-Flash achieve only 36.6% and 49.6% Acc paired on FINER-DOCCI, leaving room for future re-search on reducing hallucinations in FINER. 
+
+Different number of objects, attributes and relations. 
+
+Both FINER benchmarks cover Multi-obj, Multi-attr, and Multi-rel settings. We study how Acc paired changes as the number of entities increases (Fig. 4). Models show sim-ilar trends in all three settings: performance drops as the entity counts increases, with much smaller drops in Multi-obj. FINER-Tuning consistently improves performance, with larger gains in Multi-attr and Multi-rel, and the gains grow with higher counts. For example, FINER-Tuning im-proves InternVL3.5-14B by 8.3%, 19.1% and 28.1% in 6-obj, 3-attr and 3-rel setting on FINER-C OMPRE CAP .
+
+4.3. Results on other hallucination benchmarks 
+
+FINER-Tuning achieves consistent improvements on FINER benchmarks. Hence, we are interested how well models fine-tuned with FINER-Tuning generalize to other hallucination benchmarks. Additionally, we show the performance of RLAIF-V-12B against its baseline model OmniLMM-12B [35], to see whether other hallucination reduction methods achieve balanced improvements across various hallucination benchmarks. We evaluate models on both discriminative benchmarks like DASH [3], POPE [22], RePOPE [33], HallusionBench [16], AMBER [44], CRPE relation split (CRPE R) [45], as well as generative bench-51 2 3 4 5 6               
+
+> 0
+> 20
+> 40
+> 60
+> 80
+> 100
+> Paired Accuracy (%)
+> +17.0
+> +26.0
+> +26.7
+> +23.0
+> +24.5
+> +21.2
+> -0.3
+> +3.1
+> +0.1
+> +3.3
+> +3.1
+> +3.0
+> +1.9
+> +2.5
+> +3.3
+> +0.6
+> +2.3
+> +3.7
+> +2.5
+> +7.3
+> +5.7
+> +3.1
+> +4.7
+> +8.3
+> 123
+> +30.4
+> +19.0
+> +13.9
+> +2.4
+> +6.6
+> +6.6
+> +2.6
+> +10.9
+> +13.1
+> +4.2
+> +18.3
+> +19.1
+> 123
+> +18.7
+> +15.0
+> +12.1
+> +8.1
+> +9.2
+> +5.9
+> +13.0
+> +16.0
+> +16.0
+> +21.1
+> +28.8
+> +28.1
+> 123456
+> Number of objects
+> 0
+> 20
+> 40
+> 60
+> 80
+> 100
+> Paired Accuracy (%)
+> +9.2
+> +21.4
+> +22.7
+> +16.2
+> +15.1
+> +11.9
+> +3.8
+> -0.3
+> -0.2
+> +2.8
+> +1.5
+> +1.5
+> +0.1
+> +3.3
+> +3.7
+> +4.8
+> +4.4
+> +5.3
+> +1.6
+> +6.5
+> +6.1
+> +6.3
+> +6.4
+> +9.6
+> 12345
+> Number of Attributes
+> +27.8
+> +19.8
+> +13.4
+> +11.3
+> +6.6
+> +3.0
+> +5.9
+> +5.0
+> +5.1
+> +4.5
+> +3.1
+> +5.5
+> +7.3
+> +5.8
+> +7.2
+> +5.7
+> +8.3
+> +11.0
+> +10.6
+> +11.1
+> 123
+> Number of relations
+> +18.3
+> +10.6
+> +8.6
+> +6.5
+> +7.4
+> +6.6
+> +10.0
+> +13.1
+> +18.6
+> +14.2
+> +17.8
+> +30.7
+> Llava-Next-7B
+> Qwen2.5VL-7B
+> InternVL3.5-8B
+> InternVL3.5-14B
+> w/ FINER-Tuning
+
+Figure 4. Acc paired versus the number of objects, attributes, and relations. Top: FINER-C OMPRE CAP ; Bottom: FINER-DOCCI. Dashed arrows show the gain from FINER-Tuning. Table 2. Results on hallucination benchmarks including discriminative (DASH [3], POPE [22], RePOPE [33], HallusionBench [16], AMBER [44], CRPE R [45]) and generative ones (MMHal-Bench [40], HaloQuest [47]). Sc.:Score (max. 6); HR.: Hallucination Rate. DASH POPE RePOPE HallBench AMBER CRPE R MMHal-Bench HaloQuest Models Size Acc. ↑ Acc. ↑ Acc. ↑ aAcc. ↑ Acc. ↑ Acc. ↑ Sc. ↑ HR. ↓ Sc. ↑
+
+OmniLMM [35] 12B 79.0 88.0 93.8 54.9 86.9 51.7 3.5 34.0 39.9 +RLAIF-V [55] 12B 76.3 2.7 87.7 0.3 93.4 0.4 53.7 1.2 87.4 0.5 52.2 0.5 4.0 0.5 29.0 5.0 62.4 22.5 
+
+LLaVA-1.6 [27] 7B 58.0 88.2 92.3 33.0 78.1 56.5 3.3 43.0 44.2 +FINER-Tuning 7B 57.4 0.6 88.8 0.6 93.2 0.9 36.3 3.3 85.0 6.9 56.0 0.5 3.5 0.2 40.0 3.0 63.5 19.3 
+
+Qwen2.5-VL [4] 7B 74.6 86.4 92.4 65.4 85.2 69.9 4.6 18.0 74.8 +FINER-Tuning 7B 76.6 2.0 87.2 0.8 92.8 0.4 68.5 3.1 85.8 0.6 70.7 0.8 4.7 0.1 15.0 3.0 80.8 6.0 
+
+InternVL-3.5 [46] 8B 68.3 88.6 91.5 71.0 88.2 67.7 4.5 19.0 62.4 +FINER-Tuning 8B 74.5 6.2 89.4 0.8 93.1 1.6 73.0 2.0 88.6 0.4 68.0 0.3 4.6 0.1 14.0 5.0 73.5 11.1 
+
+InternVL-3.5 [46] 14B 55.8 89.5 91.8 69.5 88.0 67.2 4.7 11.0 65.0 +FINER-Tuning 14B 61.3 5.5 90.2 0.7 93.6 1.8 71.2 1.7 89.4 1.4 69.0 1.8 4.7 10.0 1.0 71.0 6.0 
+
+marks like MMHalBench [40] and HaloQuest [47]. The summarized results are shown in Tab. 2. In supplementary, We further include detailed breakdowns (Tabs. 13 and 14), results for AMBER generative (Tab. 15) and comparisons with more methods (Tab. 16). Intuitively, FINER-Tuning strengthens discrimination through FINER training; our re-sults on discriminative benchmarks confirm this. FINER-Tuning consistently improves Qwen2.5-VL and InternVL-3.5 across all benchmarks. On DASH, it boosts the two InternVL-3.5 variants by 6.2% and 5.5%. LLaVA-1.6 also gains 6.9% on AMBER with FINER-Tuning. FINER-Tuning further reduces hallucination on generative bench-marks. On MMHal-Bench, it lowers hallucination rate for all base models, reaching 10% with InternVL-3.5-14B. On HaloQuest, it improves LLaVA-1.6 by 19.3%. Even for Qwen2.5-VL and InternVL-3.5, we observe at least 6% gains. In contrast, while RLAIF-V delivers strong gains on generative benchmarks, its improvements on discrimi-native tasks are less consistent, where FINER-Tuning ben-efits both. RLAIF-V degrades performance compared to the base OmniLMM on benchmarks like DASH, POPE, Re-POPE, and HallusionBench. By comparing these “deltas” between fine-tuned models and baselines, we show that FINER-Tuning is a balanced approach that leads to a com-prehensive reduction in hallucination. These results also validate the effectiveness of FINER benchmarks, show-ing that improvements on FINER benchmarks align with broader improvements in other benchmarks as well. 
+
+4.4. Results on general capabilities 
+
+Since FINER-Tuning adds fine-grained negative queries to DPO, a natural concern is over-rejection : the model becom-ing overly cautious, refusing answerable questions, or re-gressing on existing skills. To test this, we compare each base model and its FINER-Tuning-tuned counterpart on six additional benchmarks: MMStar [7] (general abilities), 6Table 3. Results on six general purpose MLLM benchmarks. M.S.: MMStar [7]; Text: TextVQA [39]; Chart: ChartQA [32]; M.P.: MMVP [42]; N.B.: NaturalBench [21]; V ∗: V ∗ Bench [48]                                                                              
+
+> Models M.S. Text Chart M.P. N.B. V∗Avg. OmniLMM-12B 39.7 64.5 24.2 69.7 26.9 52.9 46.3
+> +RLAIF-V 40.9 64.5 25.1 70.0 19.4 54.4 45.7 LLaVA-1.6-7B 37.6 63.7 54.4 65.0 15.7 53.9 48.4 +FINER-Tuning 39.2 63.9 54.9 68.7 19.8 55.0 50.3
+> Qwen2.5-VL-7B 63.7 84.9 87.0 76.7 34.1 72.7 69.8 +FINER-Tuning 64.7 85.1 86.4 77.3 34.1 72.8 70.1
+> InternVL3.5-8B 68.0 77.8 86.7 76.7 30.4 69.1 68.1 +FINER-Tuning 68.3 77.9 86.7 77.0 31.1 71.2 68.7
+> InternVL3.5-14B 67.2 77.2 86.4 78.3 30.7 68.0 68.0 +FINER-Tuning 67.7 77.2 86.8 78.7 35.5 70.2 69.4
+
+TextVQA [39], ChartQA [32], MMVP [42] (vision-centric abilities), NaturalBench [21] (compositionality), and V ∗
+
+(visual search). The results are shown in Tab. 3. Unlike prior work reporting an “alignment tax”, with gains on tar-get benchmarks at the cost of general ability [56], FINER-Tuning avoids this trade-off and even improves strong base-lines on general benchmarks (improving InternVL3.5-14B by 1.4%). This shows that FINER provides a useful training signal that complements the model’s internal capabilities. 
+
+4.5. Qualitative Results 
+
+Figure 5 shows four FINER-C OMPRE CAP examples; more qualitative results, including FINER-DOCCI, are in Sec. E in the supplementary. FINER-Tuning avoids the spurious “necklace” in the Multi-obj case and correctly identifies the fine color details of the strawberry-patterned food in the Multi-attr case. In the Multi-rel example, both Qwen2.5-VL and InternVL3.5 hallucinate the second relation as “hiding behind the football”. In the Wh example, FINER-Tuning shifts InternVL-3.5-14B from answering “bear” to flagging the incorrect attribute of the rock. These examples indicate that FINER-Tuning helps the model detect fine-grained er-rors and locate correct the information in complex queries. 
+
+4.6. Ablation Studies 
+
+Training strategies. FINER-Tuning trains on both positive and negative queries {(x, q +, a ++, a −
+
+> +
+
+), (x, q −, a +
+
+> −
+
+, a −−)}.To ablate this setting, we investigate the training with and without positive questions, and compare the performance of DPO against supervised fine-tuning (SFT). We train four InternVL-3.5-8B variants accordingly and compare with the baseline in Tab. 4. Results show mixed outcomes for SFT: with both queries, SFT reduces Multi-obj performance by 36.7% relative to the baseline. DPO with only negative queries exceeds the base model but still lags behind DPO with both query types (FINER-Tuning), underscoring the value of training with both. 
+
+Table 4. Ablation study on different training strategies. SFT methods only use a+. The base model is InternVL-3.5-8B [46]. Q.Type: Query Type; M.S.: MMStar [7]                                   
+
+> Method Q.Type FINER-CompreCap Other Neg Both Obj Attr Rel Wh RePOPE M.S. Base --74.2 71.9 49.8 25.5 91.5 68.0 +SFT ✓47.4 59.7 53.8 38.7 69.1 61.7 +SFT ✓37.5 49.5 55.2 18.9 92.2 63.3 +DPO ✓75.8 75.2 52.4 29.8 93.1 68.3
+> +DPO ✓76.5 78.3 64.1 36.1 93.1 68.3
+
+Table 5. Training-on-subset ablation for FINER-Tuning with InternVL-3.5-8B [46]. Obj/Attr/Rel denote Multi-obj/Multi-attr/Multi-rel for both training and evaluation.                                 
+
+> Train Subset FINER-CompreCap Other Obj Attr Rel Wh RePOPE M.S. Base 74.2 71.9 49.8 25.5 91.5 68.0 Obj 78.8 76.4 54.2 28.7 93.5 67.9 Attr 71.3 76.7 56.8 26.5 91.5 68.2 Rel 69.2 73.0 66.7 24.1 91.4 67.7 Wh 75.9 75.3 55.0 46.5 92.9 68.3
+> All 76.5 78.3 64.1 36.1 93.1 68.3
+
+Training on subsets. Our training data matches the bench-mark query types: Multi-Obj, Multi-Attr, Multi-Rel, and Wh. We train InternVL-3.5-8B on each subset separately and compare to FINER-Tuning trained on all subsets, keep-ing the total number of training samples fixed at 160k. As shown in Tab. 5, models trained only on Multi-Obj, Multi-Rel, or Wh achieve the best scores on their corresponding tests. Notably, they also improve on other settings, suggest-ing the model is not merely echoing supervision from data: FINER fosters a more general rejection pattern that trans-fers beyond the seen subset. Overall, training on all subsets yields the most balanced results. 
+
+5. Related Works 
+
+Hallucination Benchmarks. POPE [22] probes object hal-lucination by asking yes-or-no questions. RePOPE [33] identifies and corrects annotation errors in POPE. Am-ber [44] categorizes hallucinations into “object,” “relation,” and “attribute” types in its discriminative subset. A com-mon limitation of these benchmarks is their reliance on the MSCOCO dataset [23]. Therefore, DASH [3] applies re-trieval to select challenging images from LAION-5B [20]. CRPE [45] focuses on relation hallucinations but is limited to single-relation cases. NOPE [30] targets non-existent objects, not attribute or relation hallucinations. ROPE [8] probes object classes with visual prompts (bounding boxes). Unlike ROPE, our Multi-obj setting randomly replaces a positive object with a negative one and does not rely on 7Can you see the boy that is on the playingfield and is hiding behind the football in this image?      
+
+> A. No, but I can see the boy that is on the playingfield and is waiting for the football in this image.
+> B. Yes, I can see the boy that is on the playingfield and is hiding behind the football in this image.
+> C. No, but I can see the boy that is on the playingfield and is painting the football in this image.
+> D. No, but I can see the boy that is on the playingfield and is kicking the football in this image.
+> E. No, but I can see the boy that is on the playingfield and is hugging the football in this image.
+
+Multi-attr Can you see the food with strawberry patterns and with shades of green and yellow in this image?      
+
+> A. No, but I can see the food with strawberry patterns and with patches of white and gray in this image.
+> B. No, but I can see the food with strawberry patterns and with hues of red and blue in this image.
+> C. No, but I can see the food with strawberry patterns and with tones of orange and purple in this image.
+> D. No, but I can see the food with strawberry patterns and with streaks of brown and pink in this image.
+> E. Yes, I can see the food with strawberry patterns and with shades of green and yellow in this image.
+> NEG
+
+Multi-rel 
+
+> NEG
+
+Wh       
+
+> NEG What is walking on the rock with shiny surfaces and various shades of blue?
+> A. The wolf with large torso and strong, broad shoulder.
+> B. The bear with large torso and strong, broad shoulders.
+> C. The rock is not with shiny surfaces and various shades of blue, but is with uneven surfaces and different shades of gray.
+> D. The lion with large torso and strong, broad shoulders.
+> E. The tiger with large torso and strong, broad shoulders.
+
+Qwen2.5-VL-7B LLaVA-1.6-7B InternVL3.5-14B InternVL3.5-14B w/ FINER-Tuning                           
+
+> E❌
+> E❌B✅E❌B✅B✅C❌B❌B❌D✅D✅
+> C✅B❌B❌C✅C✅
+
+Gemini-2.5-Flash      
+
+> Can you see man and necklace in this image?
+> A. Yes, I can see man and necklace in this image.
+> B. No, but I can see man and belt in this image.
+> C. No, but I can see man and tie in this image.
+> D. No, but I can see man and scarf in this image.
+> E. No, but I can see man and shoelace in this image.
+
+Multi-obj         
+
+> NEG
+> A❌A❌A❌C✅A❌
+
+Figure 5. Qualiative examples of FINER-CompreCap MCQs for each category together with MLLM answers. 
+
+MSCOCO/ADE20K box annotations [23, 59]. MMHal-Bench [40] evaluates hallucination via eight types of ques-tions with limited scale. HaloQuest [47] includes a “false premise” subset with a similar motivation to our Wh set-ting. However, our setting differs: we target false premises in fine-grained attributes of existing objects, whereas Halo-Quest primarily targets non-existent objects. 
+
+Hallucination-aware Fine-tuning. Prior work reduces hallucinations via supervised or contrastive tuning and instruction-based data augmentation: LRV-Instruct [24] adds negative instructions to MiniGPT-4 [61] and mPLUG-Owl [53]; HALVA [38] builds paired correct vs. hal-lucinated responses for contrastive learning; Pertur-boLLaVA [6] trains under misleading contexts; RE-VERSE [49] adds uncertainty tokens and retrospective rea-soning. Other studies use preference learning: OPA-DPO [52] constructs on-policy corrections with GPT-4V; CHiP [15] decomposes the DPO loss into three hierar-chies; HA-DPO [57] detects and corrects hallucinations with GPT-4; LLaVA-RLHF [40] and RLHF-V [54] rely on human preferences; RLAIF-V [55] iterates with model feedback. FINER-Tuning differs in three ways: (1) we tar-get fine-grained negative input queries, not only response-side errors [38, 40, 52, 54, 55, 57]; (2) we post-train fron-tier MLLMs beyond the LLaVA family [38, 52] and show strong performance against FINER; (3) we use standard DPO with a scalable data pipeline and a small LLM [1] for annotation, avoiding costly closed-source models and multi-iteration training [6, 24, 38, 52, 55, 57]. 
+
+6. Conclusion and Limitation 
+
+Conclusion. We introduced FINER, a suite of fine-grained negative queries that reveals how current MLLMs fail under precise negations. Systematic evaluation across all four settings of FINER-C OMPRE CAP and FINER-DOCCI shows that even frontier MLLMs remain vulner-able to FINER-induced hallucinations. To address this, we proposed FINER-Tuning, a simple, model-agnostic recipe that aligns models to react correctly to fine-grained negative queries. Across diverse backbones and training regimes, FINER-Tuning consistently reduces hallucinations and im-proves paired accuracy on FINER benchmarks, as well as a wide range of hallucination and general purpose bench-marks. Despite these gains, high-granularity cases and Wh questions remain challenging. Future work will focus on stronger negation-aware reasoning, that comprehensively enhances MLLMs’ capabilities. We envision FINER as a start to incentivize better benchmarks and methods. 
+
+Limitations. Despite careful filtering, the large-scale benchmark is not fully curated by human; constructing a noise-free, fully human-validated FINER benchmark is left for future research. Our rule-based MCQ construction en-ables flexible entity combinations but may reduce question naturalness. Future work could refine phrasing with LLMs or human rewrites while ensuring correctness. In addition, our Multi-rel subsets contain at most three relations, which, with a suitable data source, could be extended to improve model capabilities and further challenge FINER. 8Acknowledgments. This work was supported by the German Research Foundation (DFG): SFB 1233, Robust Vision: Inference Principles and Neural Mechanisms, TP A2, project number: 276693517. This work was partially funded by the ERC (853489 - DEXIM), the German Federal Ministry of Education and Research (BMBF, grant number: 01IS18039A), and the Alfried Krupp von Bohlen und Halbach Foundation, which we thank for their gener-ous support. This work is also supported by Hi! PARIS and ANR/France 2030 program (ANR-23-IACL-0005). This project was also supported by Google.org with a Google Cloud Platform (GCP) credit award. The authors gratefully acknowledge the scientific support and resources of the AI service infrastructure LRZ AI Systems provided by the Leibniz Supercomputing Centre (LRZ) of the Bavarian Academy of Sciences and Humanities (BAdW), funded by Bayerisches Staatsministerium f¨ ur Wissenschaft und Kunst (StMWK). In addition, the authors gratefully acknowledge the Gauss Centre for Supercomputing e.V. (www.gauss-centre.eu ) for funding this project by providing computing time on the GCS Supercomputer JUWELS [18] at J¨ ulich Supercomputing Centre (JSC). 
+
+References 
+
+[1] Marah Abdin, Jyoti Aneja, Harkirat Behl, S´ ebastien Bubeck, Ronen Eldan, Suriya Gunasekar, Michael Harrison, Russell J Hewett, Mojan Javaheripi, Piero Kauffmann, et al. Phi-4 technical report. arXiv , 2024. 4, 8, 2, 11, 14 [2] Josh Achiam, Steven Adler, Sandhini Agarwal, Lama Ah-mad, Ilge Akkaya, Florencia Leoni Aleman, Diogo Almeida, Janko Altenschmidt, Sam Altman, Shyamal Anadkat, et al. Gpt-4 technical report. arXiv , 2023. 1, 9, 11 [3] Maximilian Augustin, Yannic Neuhaus, and Matthias Hein. Dash: Detection and assessment of systematic hallucinations of vlms. In ICCV , 2025. 1, 2, 5, 6, 7, 8 [4] Shuai Bai, Keqin Chen, Xuejing Liu, Jialin Wang, Wenbin Ge, Sibo Song, Kai Dang, Peng Wang, Shijie Wang, Jun Tang, et al. Qwen2. 5-vl technical report. arXiv , 2025. 1, 2, 4, 5, 6, 11, 13 [5] Zechen Bai, Pichao Wang, Tianjun Xiao, Tong He, Zongbo Han, Zheng Zhang, and Mike Zheng Shou. Hallucination of multimodal large language models: A survey. arXiv , 2024. 1[6] Cong Chen, Mingyu Liu, Chenchen Jing, Yizhou Zhou, Fengyun Rao, Hao Chen, Bo Zhang, and Chunhua Shen. Per-turbollava: Reducing multimodal hallucinations with pertur-bative visual training. ICLR , 2025. 8, 1, 2 [7] Lin Chen, Jinsong Li, Xiaoyi Dong, Pan Zhang, Yuhang Zang, Zehui Chen, Haodong Duan, Jiaqi Wang, Yu Qiao, Dahua Lin, et al. Are we on the right way for evaluating large vision-language models? NeurIPS , 2024. 6, 7, 10 [8] Xuweiyi Chen, Ziqiao Ma, Xuejun Zhang, Sihan Xu, Shengyi Qian, Jianing Yang, David Fouhey, and Joyce Chai. Multi-object hallucination in vision language models. In 
+
+NeurIPS , 2024. 7, 1 [9] Yung-Sung Chuang, Yujia Xie, Hongyin Luo, Yoon Kim, James R Glass, and Pengcheng He. Dola: Decoding by con-trasting layers improves factuality in large language models. In The Twelfth International Conference on Learning Repre-sentations , 2023. 11, 13 [10] Gheorghe Comanici, Eric Bieber, Mike Schaekermann, Ice Pasupat, Noveen Sachdeva, Inderjit Dhillon, Marcel Blis-tein, Ori Ram, Dan Zhang, Evan Rosen, et al. Gemini 2.5: Pushing the frontier with advanced reasoning, multimodality, long context, and next generation agentic capabilities. arXiv ,2025. 5, 2, 11 [11] Matt Deitke, Christopher Clark, Sangho Lee, Rohun Tri-pathi, Yue Yang, Jae Sung Park, Mohammadreza Salehi, Niklas Muennighoff, Kyle Lo, Luca Soldaini, et al. Molmo and pixmo: Open weights and open data for state-of-the-art vision-language models. In CVPR , 2025. 4, 8, 10 [12] Ailin Deng, Tri Cao, Zhirui Chen, and Bryan Hooi. Words or vision: Do vision-language models have blind faith in text? In CVPR , 2025. 1 [13] Peng Ding, Jingyu Wu, Jun Kuang, Dan Ma, Xuezhi Cao, Xunliang Cai, Shi Chen, Jiajun Chen, and Shujian Huang. Hallu-pi: Evaluating hallucination in multi-modal large lan-guage models within perturbed inputs. In ACM MM , 2024. 1[14] Haodong Duan, Junming Yang, Yuxuan Qiao, Xinyu Fang, Lin Chen, Yuan Liu, Xiaoyi Dong, Yuhang Zang, Pan Zhang, Jiaqi Wang, et al. Vlmevalkit: An open-source toolkit for evaluating large multi-modality models. In ACM MM , 2024. 4, 8, 10 [15] Jinlan Fu, Shenzhen Huangfu, Hao Fei, Xiaoyu Shen, Bryan Hooi, Xipeng Qiu, and See-Kiong Ng. Chip: Cross-modal hierarchical direct preference optimization for multimodal llms. In ICLR , 2025. 8, 1 [16] Tianrui Guan, Fuxiao Liu, Xiyang Wu, Ruiqi Xian, Zongxia Li, Xiaoyu Liu, Xijun Wang, Lichang Chen, Furong Huang, Yaser Yacoob, et al. Hallusionbench: an advanced diagnostic suite for entangled language hallucination and visual illusion in large vision-language models. In CVPR , 2024. 5, 6, 8, 11, 13 [17] Edward J Hu, Yelong Shen, Phillip Wallis, Zeyuan Allen-Zhu, Yuanzhi Li, Shean Wang, Lu Wang, Weizhu Chen, et al. Lora: Low-rank adaptation of large language models. ICLR ,2022. 4, 8 [18] J¨ ulich Supercomputing Centre. JUWELS Cluster and Booster: Exascale Pathfinder with Modular Supercomputing Architecture at Juelich Supercomputing Centre. Journal of large-scale research facilities , 2021. 9 [19] Sanghwan Kim, Rui Xiao, Mariana-Iuliana Georgescu, Stephan Alaniz, and Zeynep Akata. Cosmos: Cross-modality self-distillation for vision language pre-training. In 
+
+Proceedings of the IEEE/CVF Conference on Computer Vi-sion and Pattern Recognition , pages 14690–14700, 2025. 1 [20] LAION. Releasing re-laion-5b: transparent iteration on laion-5b with additional safety fixes, 2024. Accessed: 30 aug, 2024. 7, 1 [21] Baiqi Li, Zhiqiu Lin, Wenxuan Peng, Jean de Dieu Nyandwi, Daniel Jiang, Zixian Ma, Simran Khanuja, Ranjay Krishna, 
+
+9Graham Neubig, and Deva Ramanan. Naturalbench: Evalu-ating vision-language models on natural adversarial samples. In NeurIPS , 2024. 7, 10 [22] Yifan Li, Yifan Du, Kun Zhou, Jinpeng Wang, Xin Zhao, and Ji-Rong Wen. Evaluating object hallucination in large vision-language models. In EMNLP , 2023. 1, 2, 5, 6, 7, 8, 11, 13 [23] Tsung-Yi Lin, Michael Maire, Serge Belongie, James Hays, Pietro Perona, Deva Ramanan, Piotr Doll´ ar, and C Lawrence Zitnick. Microsoft coco: Common objects in context. In 
+
+ECCV , 2014. 3, 7, 8, 1 [24] Fuxiao Liu, Kevin Lin, Linjie Li, Jianfeng Wang, Yaser Ya-coob, and Lijuan Wang. Aligning large multi-modal model with robust instruction tuning. In ICLR , 2024. 5, 8, 1, 2 [25] Haotian Liu, Chunyuan Li, Qingyang Wu, and Yong Jae Lee. Visual instruction tuning, 2023. 1 [26] Haotian Liu, Chunyuan Li, Yuheng Li, and Yong Jae Lee. Improved baselines with visual instruction tuning. In CVPR ,2024. 11, 13 [27] Haotian Liu, Chunyuan Li, Yuheng Li, Bo Li, Yuanhan Zhang, Sheng Shen, and Yong Jae Lee. Llava-next: Im-proved reasoning, ocr, and world knowledge, 2024. 1, 4, 5, 6, 13 [28] Yexin Liu, Zhengyang Liang, Yueze Wang, Xianfeng Wu, Feilong Tang, Muyang He, Jian Li, Zheng Liu, Harry Yang, Sernam Lim, et al. Unveiling the ignorance of mllms: Seeing clearly, answering incorrectly. In Proceedings of the Com-puter Vision and Pattern Recognition Conference , 2025. 1 [29] Ilya Loshchilov and Frank Hutter. Decoupled weight decay regularization. In ICLR , 2019. 8 [30] Holy Lovenia, Wenliang Dai, Samuel Cahyawijaya, Ziwei Ji, and Pascale Fung. Negative object presence evaluation (nope) to measure object hallucination in vision-language models. In Proceedings of the 3rd Workshop on ALVR , 2024. 7, 1 [31] Fan Lu, Wei Wu, Kecheng Zheng, Shuailei Ma, Biao Gong, Jiawei Liu, Wei Zhai, Yang Cao, Yujun Shen, and Zheng-Jun Zha. Benchmarking large vision-language models via directed scene graph for comprehensive image captioning. In CVPR , 2025. 2, 3 [32] Ahmed Masry, Xuan Long Do, Jia Qing Tan, Shafiq Joty, and Enamul Hoque. Chartqa: A benchmark for question an-swering about charts with visual and logical reasoning. In 
+
+Findings of ACL , 2022. 7, 10 [33] RePOPE: Impact of Annotation Errors on the POPE Bench-mark. Neuhaus, yannic and hein, matthias. arXiv , 2025. 5, 6, 7, 1, 8, 11, 13 [34] Yasumasa Onoe, Sunayana Rane, Zachary Berger, Yonatan Bitton, Jaemin Cho, Roopal Garg, Alexander Ku, Zarana Parekh, Jordi Pont-Tuset, Garrett Tanzer, et al. Docci: De-scriptions of connected and contrasting images. In ECCV ,2024. 2, 3, 1, 4 [35] OpenBMB. Large multi-modal models for strong perfor-mance and efficient deployment, 2024. 5, 6 [36] Rafael Rafailov, Archit Sharma, Eric Mitchell, Christo-pher D Manning, Stefano Ermon, and Chelsea Finn. Direct preference optimization: Your language model is secretly a reward model. NeurIPS , 2023. 3 [37] Anna Rohrbach, Lisa Anne Hendricks, Kaylee Burns, Trevor Darrell, and Kate Saenko. Object hallucination in image cap-tioning. arXiv , 2018. 1 [38] Pritam Sarkar, Sayna Ebrahimi, Ali Etemad, Ahmad Beirami, Sercan ¨ O Arık, and Tomas Pfister. Data-augmented phrase-level alignment for mitigating object hallucination. In 
+
+ICLR , 2025. 8, 1, 2, 11, 13 [39] Amanpreet Singh, Vivek Natarjan, Meet Shah, Yu Jiang, Xinlei Chen, Devi Parikh, and Marcus Rohrbach. Towards vqa models that can read. In CVPR , 2019. 7, 10 [40] Zhiqing Sun, Sheng Shen, Shengcao Cao, Haotian Liu, Chunyuan Li, Yikang Shen, Chuang Gan, Liang-Yan Gui, Yu-Xiong Wang, Yiming Yang, et al. Aligning large multi-modal models with factually augmented rlhf. arXiv , 2023. 5, 6, 8, 1, 2, 11 [41] Gemini Team, Rohan Anil, Sebastian Borgeaud, Jean-Baptiste Alayrac, Jiahui Yu, Radu Soricut, Johan Schalkwyk, Andrew M Dai, Anja Hauth, Katie Millican, et al. Gemini: a family of highly capable multimodal models. arXiv , 2023. 2, 3, 5, 1, 4, 9, 11, 24 [42] Shengbang Tong, Zhuang Liu, Yuexiang Zhai, Yi Ma, Yann LeCun, and Saining Xie. Eyes wide shut? exploring the visual shortcomings of multimodal llms. In CVPR , 2024. 7, 10 [43] Yahan Tu, Rui Hu, and Jitao Sang. Ode: Open-set evaluation of hallucinations in multimodal large language models. In 
+
+CVPR , 2025. 1, 2 [44] Junyang Wang, Yuhang Wang, Guohai Xu, Jing Zhang, Yukai Gu, Haitao Jia, Jiaqi Wang, Haiyang Xu, Ming Yan, Ji Zhang, et al. Amber: An llm-free multi-dimensional bench-mark for mllms hallucination evaluation. arXiv , 2023. 1, 5, 6, 7, 8, 11, 13 [45] Weiyun Wang, Yiming Ren, Haowen Luo, Tiantong Li, Chenxiang Yan, Zhe Chen, Wenhai Wang, Qingyun Li, Lewei Lu, Xizhou Zhu, et al. The all-seeing project v2: To-wards general relation comprehension of the open world. In 
+
+ECCV , 2024. 5, 6, 7, 1, 8, 11, 13 [46] Weiyun Wang, Zhangwei Gao, Lixin Gu, Hengjun Pu, Long Cui, Xingguang Wei, Zhaoyang Liu, Linglin Jing, Shenglong Ye, Jie Shao, et al. Internvl3. 5: Advancing open-source multimodal models in versatility, reasoning, and efficiency. 
+
+arXiv , 2025. 1, 2, 4, 5, 6, 7, 3, 10, 13, 14, 15 [47] Zhecan Wang, Garrett Bingham, Adams Wei Yu, Quoc V Le, Thang Luong, and Golnaz Ghiasi. Haloquest: A visual hallucination dataset for advancing multimodal reasoning. In 
+
+ECCV , 2024. 6, 8, 1, 11, 13 [48] Penghao Wu and Saining Xie. V?: Guided visual search as a core mechanism in multimodal llms. In CVPR , 2024. 7 [49] Tsung-Han Wu, Heekyung Lee, Jiaxin Ge, Joseph E Gonza-lez, Trevor Darrell, and David M Chan. Generate, but verify: Reducing hallucination in vision-language models with ret-rospective resampling. In NeurIPS , 2025. 8, 1, 11, 13 [50] Rui Xiao, Sanghwan Kim, Mariana-Iuliana Georgescu, Zeynep Akata, and Stephan Alaniz. Flair: Vlm with fine-grained language-informed image representations. In CVPR ,2025. 1 [51] An Yang, Anfeng Li, Baosong Yang, Beichen Zhang, Binyuan Hui, Bo Zheng, Bowen Yu, Chang Gao, Chengen 
+
+10 Huang, Chenxu Lv, et al. Qwen3 technical report. arXiv ,2025. 3, 2, 4 [52] Zhihe Yang, Xufang Luo, Dongqi Han, Yunjian Xu, and Dongsheng Li. Mitigating hallucinations in large vision-language models via dpo: On-policy data hold the key. In 
+
+CVPR , 2025. 3, 5, 8, 1, 2 [53] Qinghao Ye, Haiyang Xu, Guohai Xu, Jiabo Ye, Ming Yan, Yiyang Zhou, Junyang Wang, Anwen Hu, Pengcheng Shi, Yaya Shi, et al. mplug-owl: Modularization empowers large language models with multimodality. arXiv , 2023. 8, 1 [54] Tianyu Yu, Yuan Yao, Haoye Zhang, Taiwen He, Yifeng Han, Ganqu Cui, Jinyi Hu, Zhiyuan Liu, Hai-Tao Zheng, Maosong Sun, et al. Rlhf-v: Towards trustworthy mllms via behavior alignment from fine-grained correctional human feedback. In CVPR , 2024. 5, 8, 1, 2 [55] Tianyu Yu, Haoye Zhang, Yuan Yao, Yunkai Dang, Da Chen, Xiaoman Lu, Ganqu Cui, Taiwen He, Zhiyuan Liu, Tat-Seng Chua, and Maosong Sun. Rlaif-v: Aligning mllms through open-source ai feedback for super gpt-4v trustworthiness. In 
+
+CVPR , 2025. 3, 5, 6, 8, 1, 2, 11, 13 [56] Zongmeng Zhang, Wengang Zhou, Jie Zhao, and Houqiang Li. Robust multimodal large language models against modal-ity conflict. In ICML , 2025. 1, 7 [57] Zhiyuan Zhao, Bin Wang, Linke Ouyang, Xiaoyi Dong, Ji-aqi Wang, and Conghui He. Beyond hallucinations: Enhanc-ing lvlms through hallucination-aware direct preference op-timization, 2023. 3, 8, 1, 2, 11, 13 [58] Yaowei Zheng, Richong Zhang, Junhao Zhang, Yanhan Ye, Zheyan Luo, Zhangchi Feng, and Yongqiang Ma. Llamafac-tory: Unified efficient fine-tuning of 100+ language models. In ACL , 2024. 4, 8 [59] Bolei Zhou, Hang Zhao, Xavier Puig, Sanja Fidler, Adela Barriuso, and Antonio Torralba. Scene parsing through ade20k dataset. In CVPR , 2017. 8, 1 [60] Yiyang Zhou, Chenhang Cui, Rafael Rafailov, Chelsea Finn, and Huaxiu Yao. Aligning modalities in vision large lan-guage models via preference fine-tuning. arXiv , 2024. 1, 2[61] Deyao Zhu, Jun Chen, Xiaoqian Shen, Xiang Li, and Mo-hamed Elhoseiny. Minigpt-4: Enhancing vision-language understanding with advanced large language models. In 
+
+ICLR , 2023. 8, 1 
+
+11 FINER: MLLMs Hallucinate under Fine-grained Negative Queries 
+
+## Supplementary Material 
+
+A. Extended Related Works 
+
+A.1. Hallucination benchmarks 
+
+CHAIR [37] benchmarks object hallucination in image cap-tioning by measuring how many generated words actually appear in the image, based on ground-truth captions and object segmentations. However, the CHAIR metric suf-fers from instability issues [22]. POPE [22] simplifies hallucination detection by asking models yes-or-no ques-tions. RePOPE [33] identifies annotation errors in POPE and provides a revised version. Amber [44] evaluates hal-lucinations in both generative and discriminative settings. In the discriminative setting, it categorizes hallucinations into “object,” “relation,” and “attribute” types. A com-mon limitation of these benchmarks is their reliance on the MSCOCO dataset [23]. To better detect object hallucina-tions at scale, DASH [3] adopts a retrieval-based approach to select images from LAION-5B [20]. CRPE [45] focuses on relation-based hallucinations but limits its evaluation to single-relation cases. Beyond hallucination detection, MMMC [56] introduces the concept of “modality conflicts,” referring to mismatches between the image and the text query, an approach we con-sider coarse-grained negative querying. FLAIR [50] con-structs DOCCI-FG that also adopts DOCCI captions to test how well vision-language models understand images from a fine-grained perspective. COSMOS [19] evaluates and fur-ther improves fine-grained vision-language alignment via a self-distillation approach. The “Blind-faith-in-Text” phe-nomenon [12] shows that when a conflicting textual context is prefixed to a query, models tend to trust the text more than the image. Similarly, Hallu-PI [13] evaluates halluci-nations by appending additional images or texts as a pertur-bation. In our work, we do not add extra textual context. Instead, we design user queries that contain subtle and nu-anced conflicts with the image, allowing us to study hallu-cination behavior without altering the conversational setup. MMVU [28] also proposes a benchmark that investigates “negative questions.” The key difference is that our work studies this problem at a finer level of granularity. HaloQuest [47] includes a “false premise” subset with a similar motivation to our Wh setting. However, our set-ting differs because our false premises lie in the fine-grained attributes of existing objects, while HaloQuest mainly fo-cuses on non-existent objects. Likewise, NOPE [30] mainly evaluates hallucinations involving non-existent objects but does not test hallucinations related to attributes or rela-tions. ROPE [8] evaluates object hallucinations by prompt-ing MLLM to pick the correct objects corresponding multi-ple input visual prompts. While this approach shares simi-larity with our Multi-obj subset, we aim for more flexibility by directly inserting the negative object at random position in the prompt and we do not rely on bounding boxes an-notation from MSCOCO-Panoptic [23] or ADE20K [59]. ODE [43] introduces an open-set dynamic hallucination evaluation to prevent data contamination. This also aligns with our intuition to adopt DOCCI [34] as an additional data source and create the less-saturated FINER-DOCCI. 
+
+A.2. Hallucination-aware Fine-tuning 
+
+To reduce hallucinations, various fine-tuning techniques have been developed for MLLMs. Closely related to our motivation, LRV-Instruct [24] applies supervised fine-tuning (SFT) to MiniGPT-4 [61] and mPLUG-Owl [53], and introduces negative instructions by manipulating ob-jects and factual knowledge using GPT-4 [2]. HALVA [38] leverages Gemini Vision Pro [41] to construct both correct and hallucinated responses, and applies a contrastive loss between them, explicitly pushing the model away from hal-lucinated generations. PerturboLLaVA [6] appends misleading textual context as perturbations generated by GPT-4o [2] and trains the model via instruction tuning to remain robust under such distracting inputs. REVERSE [49] expands the model’s vo-cabulary with special uncertainty tokens and builds a large-scale instruction-following dataset; the model learns to per-form retrospective reasoning whenever these tokens are triggered, allowing it to revise potentially hallucinated con-tent. RLHF-V [54] and LLaVA-RLHF [40] apply reinforce-ment learning from human feedback (RLHF) to vision-language models, using human preference signals to im-prove response quality and reduce hallucinations. RLAIF-V [55] instead leverages AI feedback (RLAIF): a stronger teacher model provides automatic preference judgments, and the student model is updated in a self-evolving manner over multiple training rounds. Several studies employ Direct Preference Optimization (DPO) to reduce hallucinations. OPA-DPO [52] constructs on-policy data for hallucination mitigation and uses GPT-4V for fine-grained hallucination correction in the train-ing set. CHiP [15] decomposes the DPO objective into response-level, segment-level, and token-level components to better localize hallucinations. HA-DPO [57] also uses GPT-4 [2] to identify and correct hallucinations in model outputs. POVID [60] adopts GPT-4V to inject hallucinated objects, attributes, and relations directly into the dispre-ferred responses, encouraging the model to reject these pat-terns during training. 1In light of these works, our approach differs in three main aspects. First, most prior studies [38, 40, 52, 54, 55, 57, 60] focus on detecting and correcting hallucinations in model responses, whereas we explicitly construct fine-grained negative input queries at the object, attribute, and relation level. Second, previous efforts [38, 52] primarily target the LLaVA family, while we directly post-train several state-of-the-art MLLMs and evaluate them on the FINER bench-marks, improving model’s robustness against nuanced er-rors in queries. Third, FINER-Tuning follows the standard DPO algorithm and does not require multi-iteration training as in RLAIF-V. Unlike prior works [6, 24, 38, 52, 57, 60] that rely heavily on costly closed-source models to build training data, we propose a scalable pipeline that uses an open-source LLM [1] to generate high-quality preference pairs from existing long-caption datasets. 
+
+B. FINER Benchmark Details 
+
+In this section, we describe the construction of FINER-C OMPRE CAP and FINER-DOCCI. FINER-COMPRE CAP starts from human-annotated positive scene-graphs (SGs) with minor edits (Sec. B.1). FINER-DOCCI derives positive SGs from dense captions (Sec. B.2). We then apply the same negative-generation and filtering pipeline to obtain negative SGs (Sec. B.3). Finally, both positive and negative SGs are converted into benchmark questions via our rule-based MCQ pipeline (Sec. B.4). The two benchmarks are motivated slightly differently. FINER-C OMPRE CAP builds on human-annotated SGs, supporting more precise evaluation. In contrast, FINER-DOCCI explores whether dense captions can be used to synthesize SGs beyond COCO object classes and images, enabling open-set evaluation [43] at substantially larger scale. As a result, FINER-DOCCI is primarily designed to validate our findings at scale, rather than to maximize per-sample annotation fidelity. 
+
+B.1. Positive SG for FINER-C OMPRE CAP 
+
+CompreCap [31] offers 560 human-annotated images, each with a scene-graph (SG) annotation. Each SG annotation already consists of objects, attributes, and relations. The attribute annotations in the original SG are lists of sim-ple sentences, which we rewrite with Qwen3-14B [51] into “with {attr }” phrases without changing their original mean-ing. The original relation annotations are also sentences de-scribing a relation between a subject and an object. There-fore, we use a rule-based method to parse the relation sen-tences into dictionary-like annotations. These steps are nec-essary because we need to combine objects, relations, and attributes in our MCQ construction. We manually inspect the positive annotations to ensure their integrity. Since our preprocessing only changes sentence structure and does not introduce new annotations, it is robust. We provide an ex-ample SG in Fig. 7. As shown in Fig. 7, the original at-tribute “The cat is black and orange” is rewritten as “with a black and orange color”. Meanwhile, the original relation “The cat is lying on a desk” is parsed into a dictionary-like structure. 
+
+B.2. SG Extraction Pipeline for FINER-DOCCI DOCCI [34] consists of 5,000 images, each paired with a detailed human-annotated caption. Such rich descriptions already contain the necessary information about objects, at-tributes, and relations. Fig. 8 shows an example caption together with the positive scene graph extracted by Gemini-2.0-Flash [10]. Directly prompting an LLM to “summarize” a full scene graph is known to be brittle and prone to errors. Instead, inspired by PerturboLLaVA [6], which prompts an LLM to extract objects, attributes, and relations from long captions, we design a conservative two-stage extraction pipeline that decomposes the task into simpler subproblems and incorpo-rates explicit cross-checks and human validation. 
+
+Stage 1: object and attribute extraction. In the first stage, we only ask Gemini-2.0-Flash to extract objects and their attributes from the caption. The model is instructed to copy phrases verbatim from the caption and to avoid inventing new entities or attributes. This turns the problem into a pure information extraction task rather than open-ended genera-tion. The prompt is visualized in Fig. 24. Human annotators inspect randomly sampled outputs to check the robustness of this stage, as the model only needs to detect and group textual mentions instead of inferring unseen content. 
+
+Stage 2: relation extraction and validation. In the sec-ond stage, we consider pairs of extracted objects and ask Gemini-2.0-Flash whether the caption explicitly states a re-lation between them. Given the full caption and a candidate object pair, Gemini is instructed to either (i) return the exact relation phrase from the caption, or (ii) not return anything if no relation is explicitly mentioned. The model is explic-itly told not to infer or imagine relations that are not written in the caption. This again restricts Gemini to acting as an in-formation extractor, which increases reliability. The prompt is displayed in Fig.25. Even with these restrictions, some errors in the extracted relations remain. To further filter noisy relations, we per-form a joint visual-textual validation step. For each candi-date relation, we: • run a binary classifier with Qwen2.5-VL-72B [4] to de-cide whether the relation holds in the image; and • query Gemini again, this time asking whether the relation is explicitly supported by the caption. If both models disagree with the proposed relation, we dis-card it. Among the misclassified relations, we further ask human annotators to verify a subset of 400 samples and, whenever they spot errors, remove incorrect extracted rela-20 1 2    
+
+> Position
+> 0
+> 10
+> 20
+> 30
+> 40
+> 50
+> 60
+> 70
+> 80
+> 90
+> Paired Accuracy (%)
+> Multi-obj
+> 012
+> Position
+> Multi-attr
+> 012
+> Position
+> Multi-rel
+> Llava-next
+> Qwen2.5VL-7B
+> InternVL3.5-8B
+> InternVL3.5-14B
+> Base
+> W/ FINER-Tuning
+
+Figure 6. Positional bias analysis on FINER-C OMPRE CAP . We select all q±
+
+> multi-obj
+
+, q±
+
+> multi-attr
+
+, and q± 
+
+> multi-rel
+
+that contain three entities. Since each q− always has exactly one negated entity, we cyclically move that negated entity to each of the three positions (and move the corresponding positive entity accordingly), and compute the averaged paired accuracy Acc paired for each position. CompreCap Image Original Scene Graph 
+
+> [
+> {"object ": "cat", "attribute ": ["The cat is black and orange.", "It has large, round, golden-yellow and black eyes that stand out.", "Its ears are pointy and alert."], "relation ": [“The cat is lying on a desk.”, “The cat is in the drawer.”] },
+> …]
+> Positive Scene Graph
+> [
+> {"object ": "cat", "attribute ": ["with a black and orange color", "with large, round, golden-yellow and black eyes that stand ou", "with pointy and alert ears"], "relation ": [{"object_a": cat, "rel": "is lying on the", "object_b": desk}], {"object_a": cat, "rel": "is in the", "object_b": drawer}] },
+> …]
+> Rewrite
+
+Figure 7. Example of positive scene graph (SG) in FINER-C OMPRE CAP . CompreCap [31] already pairs each image with SG-like annotation. We further adopts Qwen3-14B [51] to simply rewrite attribute sentences into phrases. 
+
+tion annotations. In total, this joint process of Qwen2.5-VL, Gemini, and humans filters out 1,771 relations. Overall, this pipeline is deliberately conservative: we only keep relations that are supported by the caption (via extraction) and by the image (via a strong MLLM), with additional human checks on top. This design prioritizes pre-cision over recall and makes our extracted SG for FINER-DOCCI more reliable despite the known challenges of us-ing LLMs for scene-graph extraction. 
+
+Quality Assessment. To assess the quality of the ex-tracted objects, attributes, and relations in the positive SG of FINER-DOCCI, we run InternVL3.5-8B [46] as a binary classifier. For each extracted object, attribute, or relation, the model is asked to answer “Yes” or “No” regarding its presence in the image. As a baseline, we apply the same procedure to the positive SG of FINER-C OMPRE CAP ,whose scene graphs are human-annotated. The results are reported in Tab. 6. InternVL3.5-8B achieves comparable performance (96.4% vs. 96.1%) when classifying ground-truth objects in both benchmarks. For attributes, its accu-racy on FINER-DOCCI is 3.2% lower than on FINER-COMPRE CAP . Given that the SG in FINER-DOCCI is much larger in scale than in FINER-C OMPRE CAP (see Tab. 7), this gap is acceptable. Notably, the accuracy on relations in the positive SG of FINER-DOCCI is slightly higher than that of FINER-C OMPRE CAP (85.1% vs. 82.8%). This likely reflects that the relation annota-tions in FINER-DOCCI are more detailed, providing the MLLM with more information to verify their correctness, rather than indicating that the human-annotated relations in FINER-C OMPRE CAP are of lower quality. 
+
+B.3. Negatives Generation Pipeline. 
+
+Having obtained the positive scene graphs (SGs) for both FINER-C OMPRE CAP and FINER-DOCCI, we construct a pipeline for generating negatives. For each object (OBJ ), attribute ( ATTR ), and relation ( REL ), we generate four negative counterparts, denoted as NEG OBJ , NEG ATTR , and 
+
+NEG REL .
+
+LLM-based negatives proposal. We first use an LLM as a “negatives generator”. For FINER-DOCCI we use Gemini-2.0-Flash [41], and for FINER-C OMPRE CAP we 3An outdoor front view of a turtle that is sitting 
+
+> on a floating tree trunk that has moss growing at the front of it. The turtle is yellow and green and has a dark green shell. The turtle is pointing his head up and soaking up the sun. On the water, there are a couple pieces of foam floating in the swamp. In the far background, there are multiple dried pieces of grass. On the far left side of the swamp, there is a fallen tree trunk that has moss on it.
+
+, "object_index": 0, ["with a yellow and green up", "with a posture soaking up with a purple and orange color", or"], ["with a light blue shell", h a dull grey shell"], ["with his his head buried in the sand", n the cold", "with a posture dows", "with a posture digging in ng on the", "object_b": 1}], left of the", "is falling behind _index": 1, "neg_object": ["root", w ng at the front"], arved wooden handle", "with a op"]], "parsed_relation": [], 
+
+> Human Annotation DOCCI Image
+> Gemini-2.0-Flash
+> Extract Obj, Attr
+> Extract Rel
+> Extraction
+> [{"object": "turtle", "object_index": 0, "attribute": ["with a yellow and green color", "with a dark green shell", "with his head pointing up", "with a posture soaking up the sun"], "relation": [{"object_a": 0, "rel": "is sitting on the", "object_b": 1}]}, {"object": "trunk", "object_index": 1, "attribute": ["with moss growing at the front"], "relation": []}]
+> Positive Scene Graph
+
+Figure 8. Example positive scene graph (SG) extracted by Gemini-2.0-Flash [41]. Given a long human-annotated caption from DOCCI [34], we apply a two-stage extraction pipeline to obtain the positive SG. Table 6. Quality assessment of the extracted positive objects, attributes, and relations for FINER-DOCCI using InternVL3.5-8B [46] as a binary classifier. As a baseline, we also run InternVL3.5-8B as a binary classifier to classify the human an-notations from FINER-C OMPRE CAP .
+
+FINER-C OMPRE CAP FINER-DOCCI Obj Attr Rel Obj Attr Rel Acc. (%) 96.4 91.5 82.8 96.1 88.3 85.1 use Qwen3-14B [51]. Given a positive phrase ( OBJ , ATTR , or 
+
+> REL
+
+), the LLM is prompted to produce four negative phrases that have the opposite or a clearly different meaning from the positive. This step is efficient and does not directly in-herit visual biases from any vision model, since it operates purely in text space. A limitation of this step is that some generated negatives may in fact describe entities that are present in the image. Such “false negatives” are harmful for evaluation. Given the scale of the two positive SGs, pure human validation on the whole set is unfortunately not possible, so we need an automatic way to detect and filter these false negatives. 
+
+MLLM-based discrimination and entropy. To filter these cases, we use Qwen2.5-VL-72B [4] as a visual discrimina-tor. For each positive phrase x (where x can be either OBJ ,
+
+> ATTR
+
+, or REL ) and its four candidate negatives {x− 
+
+> j
+
+}4
+
+> j=1
+
+, we form a five-choice multiple-choice question with the candi-date set 
+
+C(x) = {x, x − 
+
+> 1
+
+, x − 
+
+> 2
+
+, x − 
+
+> 3
+
+, x − 
+
+> 4
+
+}.
+
+We query Qwen2.5-VL-72B with the image and the set 
+
+C(x), and obtain a probability distribution 
+
+p = ( p1, . . . , p 5),
+
+> 5
+
+X
+
+> i=1
+
+pi = 1 ,
+
+over the five choices. We treat the original positive x as the correct label. If the model selects x, the classification is correct; otherwise it is misclassified. We compute the entropy of the model output 
+
+H(p) = −
+
+> 5
+
+X
+
+> i=1
+
+pi log pi, (6) where the logarithm is natural. Low entropy means that the model is very confident in one of the options, while high entropy indicates uncertainty. If Qwen2.5-VL-72B makes a misclassification by choosing one negative while maintain-ing very low entropy, this indicates high confidence in its prediction. This likely reflects that the chosen entity some-how exists in the image (or, of course, the model can also be too confident about an actually wrong prediction). We show several examples in Fig. 9. Empirically, we observe that many bad negatives that actually appear in the image lead to misclassifications with very low entropy. For example, in one sample, “ground” is proposed as a nega-tive for the object “wall”. Since the ground region is clearly visible in the image, Qwen2.5-VL-72B strongly prefers the option “ground”, with an entropy of H(p) = 0 .0119 . This indicates that the model is highly confident that “ground” is present in the image, and therefore this negative should be rejected. In such cases, we prompt the LLM again and rewrite the negative, for example from “ground” to “ceil-ing”, which does not appear in the image. However, low entropy does not always mean that the negative actually appears in the image; the MLLM can also be confidently wrong. For instance, in the car example in Fig. 9, Qwen2.5-VL-72B misclassifies the relation phrase “is behind the” with low entropy H(p) = 0 .0119 , even though “is behind the” is a valid negative. In this case, we still replace it with a new negative proposal such as “is on top of the”, which remains valid. Since our primary goal is to remove negatives that truly appear in the image, occa-sionally regenerating valid negatives is acceptable. 
+
+Entropy-based filtering with human verification. We de-note the entropy filtering threshold as θ. For each bench-mark and each level (object, attribute, relation), we choose a separate threshold θ.To set these thresholds, we first run Qwen2.5-VL-72B on 4Table 7. Statistics for the generating negative scene graph for FINER-C OMPRE CAP (denoted as C-SG) and FINER-DOCCI (denoted as D-SG).Counts: number of objects, attributes and rela-tions inside the SG annotation. θ: entropy-based filtering threshold; #Re-gen.: number of re-generated negatives. 
+
+Benchmark θ Counts # Re-gen. C-SG Obj 0.8 3505 320 Attr 0.8 4509 414 Rel 0.4 3494 173 D-SG Obj 0.8 24,528 3,242 Attr 0.4 52,911 2,827 Rel 0.8 15,342 2,143 the entire dataset and record, for each example, the model prediction and the corresponding entropy H(p). We then collect all misclassified examples and sort them in ascend-ing order of entropy. Starting from the lowest-entropy re-gion, a human annotator verifies 10 misclassified examples and labels whether the proposed negative actually appears in the image. We then incrementally increase the candidate entropy threshold and, at each step, again sample 10 mis-classified examples around the current threshold for human verification. We repeat this process until no “bad negatives” (negatives that truly appear in the image) are found among the 10 inspected samples; we then take the current entropy value as the threshold θ such that misclassified examples with H(p) < θ are likely to be true false negatives (the negative phrase is in the image), while those with higher entropy are retained as hard but valid negatives. During the full pipeline, each negative candidate that leads to a misclassification with H(p) < θ is sent back to the LLM and regenerated. The new proposal is checked again by Qwen2.5-VL-72B with the same procedure. After each round of regeneration and classification, we subsam-ple a small set of misclassified examples and ask a human annotator to inspect the remaining negatives. This human-in-the-loop process is to reduce the risk of systematic errors introduced by the automatic filtering pipeline. We summarize the thresholds θ, the total number of samples, and the number of regenerated negatives for each benchmark and each level (Obj, Attr, Rel) in Tab. 7. 
+
+Quality Assessment. Given the scale of our benchmarks, we adopt a model-based assessment approach. We as-sess the quality of the generated negatives by evaluat-ing Qwen2.5-VL-72B on objects (Obj), attributes (Attr), and relations (Rel) in FINER-C OMPRE CAP and FINER-DOCCI. Tab. 8 reports the corresponding classification ac-curacies. For example, Qwen2.5-VL-72B achieves 94.1% accuracy when selecting the positive relation from its four negative counterparts in FINER-C OMPRE CAP , which sup- 
+
+> Table 8. Quality assessment of generated negatives. We show the classification accuracy of Qwen2.5-VL-72B [4] after classifying the objects (obj), attributes (attr) and relations (rel) in FINER-COMPRE CAP and FINER-DOCCI
+
+FINER-C OMPRE CAP FINER-DOCCI obj attr rel obj attr rel Acc. (%) 89.8 91.1 94.1 89.5 88.3 82.8 ports the quality of the constructed negatives in this bench-mark. On FINER-DOCCI, the model attains close to 90% accuracy in objects and attributes. Note that FINER-DOCCI is designed to test whether rich, human-described semantics can enable large-scale hallucination evaluation, rather than building a small, noise-free benchmark fully cu-rated by humans. Given its substantially larger scale and higher difficulty, we consider the achieved negatives clas-sification accuracies to show a sufficient negatives quality that helps validating our findings at scale .
+
+B.4. MCQ Design 
+
+Having obtained the positive SG and negative SG for FINER-C OMPRE CAP and FINER-DOCCI, we now con-struct MCQs. Sec. 2.1 already provides an explanation of our MCQ construction pipeline: we use a fixed template to compose both positive and negative MCQs ( q±
+
+> multi-obj
+
+,
+
+q±
+
+> multi-attr
+
+, q±
+
+> multi-rel
+
+). For q±
+
+> Wh
+
+, we prompt Gemini-2.0-Flash to construct the question templates. We describe the two templates in detail. 
+
+Fixed question template. We use a simple yes/no-style template for all q±
+
+> multi-obj
+
+, q±
+
+> multi-attr
+
+, and q±
+
+> multi-rel
+
+. To make the format explicit, we display it as a small template box:                                                    
+
+> Can you see {X}in this image? A. Yes, Ican see {Y}in this image. B. No, but Ican see {Z1}in this image. C. No, but Ican see {Z2}in this image. D. No, but Ican see {Z3}in this image. E. No, but Ican see {Z4}in this image.
+
+Here, {X}, {Y }, and {Z1}, . . . , {Z4} are placeholders that will later be filled with phrases. In the benchmark, the choices are randomly shuffled. 
+
+Construction of q±
+
+> multi-obj
+
+, q±
+
+> multi-attr
+
+, and q±
+
+> multi-rel
+
+. We only describe the construction process for q±
+
+> multi-obj
+
+; the same pro-cedure is applied to q± 
+
+> multi-attr
+
+and q±
+
+> multi-rel
+
+.From the positive SG of an image, we first sample k
+
+distinct objects and concatenate them into a positive multi-object phrase P + 
+
+> obj
+
+(for example, “dog, ball, and tree”). This phrase P + 
+
+> obj
+
+contains only objects that truly appear in the image. We then randomly select one of these k objects, 5GT attribute: 
+
+> with a gray color
+> Chosen attribute:
+> with a brown color
+> Entropy:
+> 0.0009
+> Re-generated:
+> with a pink color
+> GT object:
+> drawer
+> Chosen object:
+> shelf
+> Entropy:
+> 0.0795
+> Re-generated:
+> lamp
+> GT object:
+> ornament
+> Chosen object:
+> bowl
+> Entropy:
+> 0.0197
+> Rewritten:
+> Umbrella
+> GT object:
+> wall
+> Chosen object:
+> ground
+> Entropy:
+> 0.0119
+> Re-generated:
+> ceiling
+> GT attribute:
+> with no lights around
+> Chosen attribute:
+> with many lights around
+> Entropy:
+> 0.0398
+> Re-generated:
+> with a glassy transparent surface
+> GT attribute:
+> with a shaggy black color
+> Chosen attribute:
+> with a sleek white color
+> Entropy:
+> 0.2743
+> Re-generated:
+> with a spotted pattern
+> Objects: Toyota 4-RUNNER SUV, Mercedes SUV GT relation:
+> is to the right of
+> Chosen relation:
+> is behind the
+> Entropy:
+> 0.3826
+> Re-generated:
+> is on top of the
+> Objects: rope, cannon GT relation:
+> is on the ground on each side of the
+> Chosen relation:
+> Is under the
+> Entropy:
+> 0.0939
+> Re-generated:
+> is hanging from the ceiling above the
+> Objects: chair, wall GT relation:
+> is against the
+> Chosen relation:
+> is in front of the
+> Entropy:
+> 0.0081
+> Re-generated:
+> is to the left of the
+
+Attributes 
+
+Objects 
+
+Relations Figure 9. Examples of entropy-based filtering for objects, attributes, and relations. The corresponding objects are shown with red bounding boxes. The ground-truth object/attribute/relation is highlighted in green. We prompt Qwen2.5-VL-72B [4] to select the positive among four negatives. Green text indicates that the model makes an incorrect prediction and chooses a negative with low entropy scores. Blue text shows new negative candidates generated by the LLM. The examples are from both FINER-C OMPRE CAP and FINER-DOCCI. 
+
+denote the selected object by o, and retrieve its four nega-tive counterparts {o− 
+
+> j
+
+}4 
+
+> j=1
+
+from the negative SG. For each 
+
+j ∈ { 1, . . . , 4}, we form a corrupted phrase P − 
+
+> obj ,j
+
+by re-placing o in P + 
+
+> obj
+
+with o− 
+
+> j
+
+while keeping all other objects unchanged. Thus we obtain one positive phrase P + 
+
+> obj
+
+and four negative phrases P −
+
+> obj ,1
+
+, . . . , P −
+
+> obj ,4
+
+.To build a positive MCQ q+
+
+> multi-obj
+
+, we instantiate the tem-plate by setting 
+
+{X} = P +
+
+> obj
+
+,
+
+{Y } = P +
+
+> obj
+
+,
+
+{Zj } = P − 
+
+> obj ,j
+
+for j = 1 , . . . , 4.
+
+In this case, the question and the “Yes” option both de-scribe the true configuration P +
+
+> obj
+
+, while each “No, but I can see {Zj }” option contains exactly one incorrect object. The option that contains P + 
+
+> obj
+
+is treated as the correct answer. To build a negative MCQ q−
+
+> multi-obj
+
+, we flip the roles of the positive and corrupted phrases in the template. We ran-domly choose one corrupted phrase, say P −
+
+> obj ,1
+
+, and set 
+
+{X} = P −
+
+> obj ,1
+
+,
+
+{Y } = P −
+
+> obj ,1
+
+,
+
+{Z1} = P +
+
+> obj
+
+,
+
+{Zj } = P − 
+
+> obj ,j
+
+for j = 2 , 3, 4.
+
+Now the question asks about the corrupted phrase P −
+
+> obj ,1
+
+,which does not match the image. Consequently, the “Yes” choice becomes a false-positive option, because it incor-rectly confirms the existence of P −
+
+> obj ,1
+
+. The option that says “No, but I can see P + 
+
+> obj
+
+in this image” is now the correct answer, since it both denies the existence of P − 
+
+> obj ,1
+
+and af-firms the true configuration P +
+
+> obj
+
+. Note that we randomly pick which corrupted phrase is used as the query, so each of 
+
+P −
+
+> obj ,1
+
+, . . . , P − 
+
+> obj ,4
+
+has an equal chance to replace {X}.This fixed pattern keeps the surface form of the ques-tions consistent across all MCQs while allowing the under-lying content to vary. The same construction is applied to 
+
+q± 
+
+> multi-attr
+
+and q± 
+
+> multi-rel
+
+by treating attribute phrases and rela-tion phrases as the basic units instead of objects. 
+
+Wh question generation. Wh questions have more flexible 6surface forms than yes/no questions. To construct Wh-style questions, we start from a relation triplet in the scene graph, 
+
+(OBJ 1, REL , OBJ 2),
+
+where OBJ 1 and OBJ 2 are two objects and REL is the relation between them. Each object can have one or more attributes, e.g. A(OBJ 1) for the first object. Given a triplet (OBJ 1, REL , OBJ 2), we randomly choose one of the two objects as the answer target and treat the other as context . Concretely, we either ask about OBJ 1 given  
+
+> OBJ 2
+
+or about OBJ 2 given OBJ 1. We then mask the an-swer target in the textual description and prompt Gemini-2.0-Flash to produce a natural Wh question. For example, for the relation (dog, is standing under, table), Gemini-2.0-Flash can generate questions such as “What is standing under the table?” (ask about the dog) “What is the dog standing under?” (ask about the table). 
+
+Wh MCQ template. Once we fix the Wh question pattern for a given triplet, we turn it into an MCQ by providing five answer options. We represent the question body and the five options using placeholders:       
+
+> Q: {Q}
+> A. {O1}
+> B. {O2}
+> C. {O3}
+> D. {O4}
+> E. {C}
+
+Here, {Q} is the Wh question text, {O1}, . . . , {O4} are object-level answer candidates, and {C} is a full-sentence 
+
+correction option that explicitly talks about the attribute of the target object. In the benchmark, the choices are ran-domly shuffled. 
+
+Construction of q±
+
+> Wh
+
+. We illustrate the construction using the running example with the context object “dog” and the answer target “table”. The dog has a positive attribute A+
+
+(e.g. “with brown fur”) and a sampled negative attribute 
+
+A− (e.g. “with yellow fur”), while the relation and con-text (e.g. “standing under the table”) are fixed by the triplet 
+
+(OBJ 1, REL , OBJ 2).From the positive SG, we select “table” as the target object o⋆. We then randomly pick three negative objects 
+
+o− 
+
+> 1
+
+, o − 
+
+> 2
+
+, o − 
+
+> 3
+
+for this slot from the negative SG (e.g. “chair”, “bench”, “sofa”). Starting from the Wh question “What is the dog standing under?” ,
+
+We insert an attribute phrase for the dog and obtain an attribute-conditional question template 
+
+q(A) ≡ “What is the dog A standing under?” .
+
+Filling this template with A+ or A− gives us a positive or negative Wh question with the same surface pattern. Note that in the FINER benchmarks, a single object can have multiple attributes. In that case, we include all of its at-tributes in the descriptive context, then randomly choose one of them as the target attribute A+ and sample the cor-responding negative attribute as A−.
+
+Positive Wh MCQ. For the positive Wh question q+
+
+> Wh
+
+, we fill the attribute slot with the true attribute A+ and instanti-ate the MCQ template as 
+
+{Q} = q(A+),
+
+{O1} = o⋆,
+
+{Oj } = o− 
+
+> j−1
+
+for j = 2 , 3, 4,
+
+{C} = “The dog is not A+, but is A−.” The question {Q} is now a valid Wh question about the image, and {O1} (the true object o⋆) is the correct answer. The three options {O2}, {O3}, {O4} are incorrect objects, and the correction sentence {C} is also incorrect because it denies the true attribute A+.
+
+Negative Wh MCQ. For the negative Wh question q−
+
+> Wh
+
+,we instead fill the question template with the negative at-tribute A−, which makes the premise of the question par-tially inconsistent with the image. We keep the same four object candidates but flip the correction sentence: 
+
+{Q} = q(A−),
+
+{O1} = o⋆,
+
+{Oj } = o− 
+
+> j−1
+
+for j = 2 , 3, 4,
+
+{C} = “The dog is not A−, but is A+.” Now the question {Q} is incorrect with respect to the im-age, because it attributes A− to the dog. The object-only options {O1}, . . . , {O4} all implicitly accept the wrong at-tribute in the question and are therefore treated as incorrect. The correction option {C} is the unique correct answer: it denies the wrong attribute A− and restores the true attribute 
+
+A+.In summary, q+ 
+
+> Wh
+
+asks a Wh question whose premise matches the image and is answered by the true object o⋆,while q− 
+
+> Wh
+
+asks a Wh question whose premise uses a cor-rupted attribute and is correctly answered only by the ex-plicit correction sentence. This construction mirrors the positive/negative symmetry used for the yes/no-style tem-plates and keeps the Wh MCQs tightly grounded in the un-derlying scene graph. 
+
+Benchmark statistics. As described in Sec. 2.1, our MCQ design constructs both positive and negative questions for four settings: q±
+
+> multi-obj
+
+, q±
+
+> multi-attr
+
+, q±
+
+> multi-rel
+
+, and q±
+
+> wh
+
+. We present the detailed statistics of FINER-C OMPRE CAP and FINER-DOCCI in Tab. 9. 7Table 9. Distribution of MCQ pairs over entity counts in FINER-COMPRE CAP (FINER-C) and FINER-DOCCI (FINER-D). For each setting, we refer the entity counts for Obj/Attr/Rel as k and the corresponding number of pairs nk in matching order. (1 , 6) 
+
+represents that k ranges from 1 to 6. 
+
+Benchmark Setting k # pairs nk
+
+FINER-C 
+
+q± 
+
+> multi-obj
+
+(1 , 6) 560 , 560 , 560 , 558 , 535 , 377 
+
+q± 
+
+> multi-attr
+
+(1 , 3) 966 , 472 , 231 
+
+q± 
+
+> multi-rel
+
+(1 , 3) 1217 , 616 , 307 
+
+q± 
+
+> wh
+
+- 1583 
+
+FINER-D 
+
+q± 
+
+> multi-obj
+
+(1 , 6) 65 , 496 , 909 , 980 , 874 , 1676 
+
+q± 
+
+> multi-attr
+
+(1 , 5) 2451 , 5363 , 3092 , 1575 , 1843 
+
+q± 
+
+> multi-rel
+
+(1 , 3) 4404 , 1168 , 199 
+
+q± 
+
+> wh
+
+- 10472 
+
+Post-hoc correction of MCQs. After constructing the MCQs for FINER-C OMPRE CAP and FINER-DOCCI, humans further corrected a subset of them: 100 MCQs per setting for FINER-C OMPRE CAP and 200 MCQs per setting for FINER-DOCCI. In the 3-relation subset of FINER-DOCCI, we additionally observed cases where multiple relations referred to the same objects. We there-fore performed further human cleaning, resulting in 199 im-proved paired MCQs in this setting. 
+
+C. Training Details 
+
+Sec. 3 explains our training data generation pipeline, on which FINER-Tuning is trained. We also briefly describe the fine-tuning setup in Sec. 4.1. In this section, we first present concrete examples of the training data, and then pro-vide the detailed fine-tuning configuration. 
+
+Training set examples. We apply the training data con-struction pipeline from Fig. 3 to the first 24 shards of Pixmo-caption [11]. As described in Sec. 3, each image 
+
+x can yield up to eight preference tuples (x, q, a +, a −)
+
+across the four subsets {OBJ , ATTR , REL , WH}. Applying the pipeline to 24 shards produces more than 1.6M prefer-ence tuples, which is more than we need for training. In practice, we only use the first 6 shards (about 440K tu-ples) and uniformly subsample at most 160K tuples for DPO training. We visualize representative training exam-ples (x, q, a +, a −) from all four subsets in Fig. 10. 
+
+Finetuning Setup. We summarize the training hyperpa-rameters for FINER-Tuning in Tab. 10. All models are trained with LLaMA-Factory [58], using LoRA [17] as the parameter-efficient fine-tuning method. We apply LoRA adapters only to the projection layers qproj and vproj . We reserve 0.5% of the data as a validation set. Since the val-idation distribution closely matches the training distribu-tion, we observe that training for too long drives the vali-Config Llava-1.6-7B Qwen2.5VL-7B InternVL3.5-8B InternVL3.5-14B Training Data 40K 120K 160K 160K Global BS 64 Optimizer AdamW [29] Learning rate 5 × 10 −6        
+
+> Total epochs 1Warm up ratio 0.1 LR scheduler cosine decay LoRA rank 32 LoRA target qproj ,vproj
+> β0.1 Val. ratio 0.005
+
+Table 10. Fine-tuning hyper-parameters for FINER-Tuning on all baselines. Global BS: global batch size. LR scheduler: learning rate scheduler. β: inverse temperature parameter in the DPO loss, as shown in Eq. 5. Val. ratio: ratio of validation data size. 
+
+dation loss close to zero and brings little or no performance gain, sometimes even degrading downstream results. For DPO training, we therefore limit the number of training samples for each model: LLaVA-1.6 is trained on 40K ex-amples, Qwen2.5-VL on 120K, and the InternVL3.5 series on 160K. For the SFT experiments in Tab. 4, we fine-tune InternVL3.5-8B on 160K examples with a learning rate of 
+
+1 × 10 −4. We use 4 NVIDIA H100 94GB GPUs to train InternVL3.5-14B, and 2 NVIDIA H100 GPUs for the other smaller models. 
+
+D. Evaluation Details 
+
+We detail the evaluation setups for three groups of tasks: the FINER benchmarks, other hallucination benchmarks, and general capabilities. 
+
+FINER benchmarks. Since the FINER benchmarks are multiple-choice (MCQ) benchmarks, we evaluate all models using greedy decoding with temperature 
+
+0, no sampling, and a maximum of 3 output to-kens. Given an image and an MCQ, we append the instruction: ‘‘Please answer with a single capital letter (A, B, C, D, or E).’’ We compute the paired accuracy Acc paired , which counts a pair as correct only if the model answers both q+ and q− cor-rectly, ensuring that the model does not systematically favor either the positive or the negative version. 
+
+Other hallucination benchmarks. We evaluate all models on both discriminative hallucination benchmarks (DASH [3], POPE [22], RePOPE [33], Hallusion-Bench [16], AMBER [44], CRPE R [45]) and genera-tive hallucination benchmarks (MMHal-Bench [40], Halo-Quest [47]). We use VLMEvalKit [14] to evaluate HallusionBench, AMBER, and CRPE R with their default configuration. We report all accuracy (aAcc.) for HallusionBench and aver-aged accuracy for CRPE R. For DASH, POPE, and Re-POPE, we follow their official evaluation protocols and prompt models to answer only with ‘‘yes’’ or ‘‘no’’ .8Rej 
+
+> Acc
+> Query
+
+Multi-obj 
+
+> Rej
+> Acc
+> Query
+
+Multi-obj Does the image include a book, a chair, a castle, a gate and a door? 
+
+No, but the image includes a book, a sofa, a castle, a gate and a door. 
+
+Yes, the image includes a book, a chair, a castle, a gate and a door. 
+
+Can an arrow icon, a box, a circle, an option and a screen be seen in this image? 
+
+Yes, an arrow icon, a box, a circle, an option and a screen can be seen in this image. 
+
+No, but an arrow icon, a box, a circle, a triangle and a screen can be seen in this image. 
+
+> Rej
+> Acc
+> Query
+
+Multi-attr 
+
+> Rej
+> Acc
+> Query
+
+Multi-attr Does the image include a bird with a tufted white breast, with black and white stripes on its head, with a white patch under its chin, with a black beak, and with feathers transitioning into shades of gray and gray streaks on its back and tail? 
+
+No, but the image includes a bird with a tufted white breast, with black and white stripes on its head, with a black patch under its chin, with a black beak, and with feathers transitioning into shades of gray and gray streaks on its back and tail. 
+
+Yes, the image includes a bird with a tufted white breast, with black and white stripes on its head, with a white patch under its chin, with a black beak, and with feathers transitioning into shades of gray and gray streaks on its back and tail. 
+
+Can you see a piece of rare steak, cut open to reveal its pink interior, and topped with scattered chives or scallion bits in this image?" 
+
+Yes, I can see a piece of rare steak, cut open to reveal its pink interior, and topped with scattered chives or scallion bits in this image." 
+
+No, but I can see a piece of common steak, cut open to reveal its gray interior, and topped with scattered chives or scallion bits in this image. 
+
+> Rej
+> Acc
+> Query
+
+Multi-rel Does this image contain the centrally located tick that is near the top middle of the image, is completely hidden by a small leaf, and is on its back? 
+
+No, but this image contains the centrally located tick that is near the top middle of the image, is partially overlapped by a small leaf, and is on its back. 
+
+Yes, this image contains the centrally located tick that is near the top middle of the image, is completely hidden by a small leaf, and is on its back. 
+
+> Rej
+> Acc
+> Query
+
+Multi-rel Does this image contain the wristwatch that is displayed against a backdrop of a newspaper and a black box, has a black leather band, has a silver body with an intricate face, and has an iron cross on its face? 
+
+Yes, this image contains the wristwatch that is displayed against a backdrop of a newspaper and a black box, has a black leather band, has a silver body with an intricate face, and has an iron cross on its face. 
+
+No, but this image contains the wristwatch that is displayed against a backdrop of a newspaper and a black box, has a white leather band, has a silver body with an intricate face, and has an iron cross on its face. 
+
+What 
+
+> Rej
+> Acc
+> Query
+
+Wh 
+
+> Rej
+> Acc
+> Query
+
+Wh Where is the middle-aged man with slightly bald hair, wearing a tan brown suit, a black dress shirt, and a red and gold striped tie, and with a large gold medal on a blue, white, and red striped ribbon? 
+
+The middle-aged man does not have a red and gold striped tie, but he has a black and gold striped tie. 
+
+At a wooden podium with two microphones. 
+
+What is on a wooden table near a black and white box with a white top and black sides? 
+
+A pocket knife with a silver blade showing signs of wear and with a handle featuring detailed tooling and a dark brown wood inlay. 
+
+The black and white box does not have a black top, but it has a white top. Figure 10. Examples from our constructed training set to train FINER-Tuning. Positive queries are in green color, while negative queries are in red color. We show both positive ( (x, q +, a ++, a −
+
++ )) and negative ( (x, q −, a +
+
+−, a −−)) preference tuples across four subsets: Multi-obj, Multi-attr, Multi-rel, Wh. 
+
+We again adopt greedy decoding for this binary setting to keep the setup consistent across models. We report the av-eraged accuracy in Tab. 2 and show the accuracy on each subset in Tab. 13. For MMHal-Bench, we use the original evaluation code but replace the judge model with GPT-4.1-mini [2], since the original judge has been deprecated. For HaloQuest, we similarly follow the released evaluation pipeline but replace the judge with Gemini-2.0-Flash [41], as Gemini-1.5-Pro is no longer accessible. In both generative benchmarks, we 9use temperature 0 to ensure reproducible results. We follow the metrics of both benchmarks, reporting score (max. 6) as well as hallucination rate in MMHal-Bench, as well as the averaged score in HaloQuest. 
+
+General capabilities. We evaluate general capabilities using six benchmarks: MMStar [7] (broad multi-skill evaluation), TextVQA [39] (text understanding from im-ages), ChartQA [32] (chart and figure understanding), MMVP [42] (vision-centric reasoning), NaturalBench [21] (natural, compositional multi-step reasoning), and V ∗ (vi-sual search on high-resolution images). NaturalBench con-tains grouped, real-world questions that require models to jointly use perception, world knowledge, and compositional reasoning, making it a challenging test of robust, general-purpose vision-language ability. We use VLMEvalKit [14] with default settings to eval-uate all models on these six benchmarks. We report over-all accuracy for MMStar, TextVQA, ChartQA, MMVP, and V∗. For NaturalBench, we report group accuracy (G ACC), as it is the most stringent and informative metric. 
+
+E. Additional Experiments 
+
+Despite the main experimental results presented in Sec. 4, we report additional experiments in this section. Specifi-cally, we conduct a positional bias study (Sec. E.1), ana-lyze the impact of training data filtering (Sec. E.2), present more qualitative results from FINER-DOCCI (Sec. E.3), provide per-subset results of three benchmarks (Sec. E.4), provide an extended comparison with additional hallucina-tion reduction methods (Sec. E.5), provide a brief discus-sion of an alternative random guess baseline (Sec. E.6), and show results on the MCQ version of our motivational study (Sec. E.7). 
+
+E.1. Positional bias study 
+
+Both FINER-C OMPRE CAP and FINER-DOCCI contain MCQs that involve multiple objects, attributes, and relations (q±
+
+> multi-obj
+
+, q±
+
+> multi-attr
+
+, and q±
+
+> multi-rel
+
+). When constructing a neg-ative MCQ q−, we choose one entity (object, attribute, or relation) at a random position and replace it with its nega-tive counterpart. A natural question is whether the model’s behavior depends on which position is negated. To test this, for all q±
+
+> multi-obj
+
+, q±
+
+> multi-attr
+
+, and q± 
+
+> multi-rel
+
+with ex-actly three entities, we keep the same triplet but rotate which entity is negated, so that the negative appears once in each of the three positions. We then measure the paired accuracy Acc paired for each position. As shown in Fig. 6, base mod-els exhibit clear positional bias. For example, in q±
+
+> multi-obj
+
+,LLaVA-Next performs much worse when the negative is in the middle position, and Qwen2.5-VL-7B shows a drop of about 15% when the last position is negated compared to the first. In q±
+
+> multi-rel
+
+, the preferred position even differs 
+
+> Table 11. Category statistics for Pixmo-caption [11].
+
+Category Count Percentage natural image 176,881 78.13% screenshot ui 36,701 16.21% chart graph 8,061 3.56% document text 4,739 2.09%                        
+
+> Table 12. Filtering to only keep natural images ablation for FINER-Tuning with InternVL-3.5-8B [46]. Obj/Attr/Rel denote Multi-obj/Multi-attr/Multi-rel for both training and evaluation. The best results are bold.
+> Fitered? FINER-CompreCap Other Obj Attr Rel Wh RePOPE M.S. -74.2 71.9 49.8 25.5 91.5 68.0 Yes 76.8 78.6 62.8 36.1 93.1 68.1 No 76.5 78.3 64.1 36.1 93.1 68.3
+
+across models: InternVL3.5-8B achieves the highest accu-racy when negating the middle entity, while InternVL3.5-14B peaks when the third entity is negated. Fine-tuning with FINER-Tuning consistently improves accuracy at all positions, but the curves are still not flat, indicating that positional bias remains. We suspect this is related to the inherent sequence structure of current MLLM architectures and leave a deeper investigation to future work. We also assume that the current MCQ format is not the best option for testing positional bias, and we are looking forward the community to dive deeper into language positional bias in open-ended generation questions. 
+
+E.2. Ablation: Training Data Filtering 
+
+In Pixmo-caption [11], we observed that certain amount of of images are charts/graphs or screenshots: content outside the evaluation scope of FINER-C OMPRE CAP and FINER-DOCCI (which target natural images). For example, one screenshot image can be found in the upper left corner of Fig. 10. Therefore, we first run Phi-4-14B over all the long captions to classify the images into four categories: “natural images”, “screenshot ui”, “chart graph” and “doc-ument text”. Since FINER benchmarks target only natu-ral images. The statistics are in Tab. 12. Excluding these images resulted in almost no significant difference in per-formance. Therefore, to maintain simplicity and generality, we do not apply any filtering and retain the original dataset composition. 
+
+E.3. Qualitative Results 
+
+Following the qualitative results in Sec. 4.5 on FINER-COMPRE CAP , we provide additional examples from 10 FINER-DOCCI in Fig. 11. These cases cover all four settings: Multi-obj, Multi-attr, Multi-rel, and Wh. We only visualize the negative MCQs here, as they are much more challenging than their positive counterparts. However, some positive MCQs can be found in our human study ex-amples (Fig. 15 and Fig. 14). As shown in Fig. 11, in the Multi-obj setting, only Gemini-2.5-Flash [10] and our FINER-Tuning-tuned InternVL3.5-14B reliably identify the fine-grained concept “macbook”. In the Multi-attr setting, the questions target subtle details such as “the white note on the back driver’s side window” or “the cat with perked-up ears”. In the Multi-rel setting, some models, such as Qwen2.5-VL-7B [4], hal-lucinate the dog as being “behind the fence”, even though it is clearly in front of the fence. Finally, in the Wh set-ting, only Gemini and FINER-Tuning correctly detect the anomalous attributes of the floor and the duck and answer the questions accordingly. 
+
+E.4. Per-subset results 
+
+POPE, RePOPE, AMBER. In Sec. 4.3, we report the averaged performance on POPE [22], RePOPE [33], and AMBER discriminative subset [44] (denoted as AMBER throughout this paper). In Tab. 13, we further break down the results and report the accuracy for each subset of these three benchmarks. Notably, with FINER-Tuning, LLaVA-1.6 achieves a 20.1% absolute improvement on AMBER, further demonstrating the effectiveness of FINER-Tuning. 
+
+HallBench, CRPE R, HaloQuest. Apart from the per-subset results reported in Tab. 13, we further report de-tailed breakdowns for HallBench [16], CRPE R [45] and HaloQuest [47] in Tab. 14. To further probe the caption-ing capabilities of different models, we include the results for AMBER generative subset (AMBER G) and report four metrics: CHAIR (CH.), COVER (CO.), Hal. and Cog. in Tab. 14. On Hallbench, FINER-Tuning improves over all baselines by maximally 6.8% (fAcc. of LLaVA-1.6), showcasing that FINER-Tuning can still work effectively in reducing general halucinations. In HaloQuest, the per-formance gain is mainly in Insufficient Context (IC.) sub-set and false premise (FP.) subset. Some catchy improve-ments are: FINER-Tuning improves LLaVA-1.6 by 19.0% on IC and 31% on FP. FINER-Tuning also improves the latest InternVL-3.5-8B by 15.7% and 15.3% each. Note that HaloQuest is a free-form generative benchmark. This shows that FINER-Tuning can effectively correct the false premise hallucinations or withhold over-confident preidc-tions in free-form generations. 
+
+AMBER G. To further probe the captioning capabilities of different models, we include the results for AMBER gener-ative subset (AMBER G) and report four metrics: CHAIR, COVER, Hal and Cog in Tab. 15. Lastly, FINER-Tuning consistently improves over three baselines (Qwen2.5-VL-7B, InternVL-3.5-8B, InternVL3.5-14B) on AMBER G. We therefore think that when the base models are strong enough, FINER-Tuning can further improve the captioning capabilities of the model. 
+
+E.5. Comparing with more methods 
+
+It is challenging to totally fairly compare hallucination re-duction methods because they are often trained on differ-ent datasets and base models. In this section, we fine-tune LLaVA-1.5-7B [26] with FINER-Tuning using 40K training examples from our dataset. We then evaluate on discrimina-tive hallucination benchmarks (POPE [22], AMBER [44]) and generative benchmarks (MMHal-Bench (MMHal) [40] and HaloQuest [47]). We compare against the state-of-the-art REVERSE [49], as well as DoLA [9], HA-DPO [57], and HALVA [38]. We also compare FINER-Tuning with RLAIF-V-7B [55] on the same LLaVA-1.5-7B base model, resulting in a more direct comparison than Tab. 1 and Tab. 2. The results are in Tab. 16. Using 40K training samples curated by Phi-4-14B [1], FINER-Tuning already achieves comparable performance on discriminative benchmarks to HALVA and HA-DPO, whose training data are curated by Gemini Vision Pro [41] and GPT-4 [2], respectively, while substantially outper-forming them on generative benchmarks. Compared with the SOTA method REVERSE, FINER-Tuning matches or surpasses its performance on discriminative tasks and fur-ther improves HaloQuest by 6.3%, but still lags behind on MMHal-Bench. Overall, these results indicate that FINER-Tuning is effective at reducing hallucinations, and its bene-fits appear more pronounced when applied to stronger, fron-tier MLLMs, as also evidenced in Tab. 2. Compared to RLAIF-V, FINER-Tuning performs better on discriminative benchmarks such as POPE and AMBER (a +5.5% gain on AMBER), but remains weaker on generative benchmarks like MMHal-Bench. 
+
+E.6. Smarter random guess baselines 
+
+In Tab. 1, we report a uniform random-guess baseline of 
+
+4% , which corresponds to independently sampling one out of five answer options for both the positive and negative questions: (1 /5) 2.However, due to the structured answer space in our Multi-obj/Multi-attr/Multi-rel MCQs (one Yes, I can see... option and four No, but I can see... 
+
+options), a stronger no-knowledge baseline is a polarity-aware random guesser. Specifically, it first guesses the po-larity ( Yes vs. No ) uniformly, and if it guesses No , it then uniformly selects one of the four No options. Since each pair consists of one positive question whose ground-truth is always Yes and one negative question whose ground-truth is always one of the four No options, the probability of guessing correctly is 0.5 for a positive 11 Can you see the sedan with a red poster on the front passenger's side window and with a silver color in this image? A. No, but I can see the sedan with a green sign on the front passenger's side window and with a silver color in this image. B. Yes, I can see the sedan with a red poster on the front passenger's side window and with a silver color in this image. C. No, but I can see the sedan with a yellow flyer on the front passenger's side window and with a silver color in this image D. No, but I can see the sedan with a white note on the back driver's side window and with a silver color in this image. E. No, but I can see the sedan with a black advertisement on the front passenger's side window and with a silver color in this image. 
+
+Multi-attr 
+
+NEG 
+
+Multi-rel 
+
+NEG 
+
+Wh 
+
+NEG 
+
+Qwen2.5-VL-7B LLaVA-1.6-7B InternVL3.5-14B InternVL3.5-14B w/ FINER-Tuning 
+
+A ❌ D ✅ B ❌ D ✅D ✅
+
+A ❌ B ❌ E ❌ D ✅D ✅
+
+A ✅ D ❌ C ❌ D ✅D ✅
+
+Gemini-2.5-Flash 
+
+Multi-obj 
+
+NEG 
+
+B ❌ B ❌ B ❌ C ✅C ✅
+
+Multi-attr 
+
+NEG 
+
+Can you see the cat with its tail end in the shadows, with ears missing entirely, and with a seated posture in this image? A. No, but I can see the cat with its tail end in the shadows, with ears drooping down, and with a seated posture in this image. B. No, but I can see the cat with its tail end in the shadows, with ears perked up, and with a seated posture in this image. C.Yes, I can see the cat with its tail end in the shadows, with ears missing entirely, and with a seated posture in this image. D.No, but I can see the cat with its tail end in the shadows, with ears twitching rapidly, and with a seated posture in this image. E.No, but I can see the cat with its tail end in the shadows, with ears folded back, and with a seated posture in this image. 
+
+Can you see wall, croissant, desktop, headphones, and floor in this image? A. No, but I can see wall, croissant, typewriter, headphones, and floor in this image. B. Yes, I can see wall, croissant, desktop, headphones, and floor in this image. C. No, but I can see wall, croissant, macbook, headphones, and floor in this image. D. No, but I can see wall, croissant, calculator, headphones, and floor in this image. E. No, but I can see wall, croissant, tablet, headphones, and floor in this image. 
+
+Can you see cat, door, pillar, floor, puppy, and bag in this image? A. No, but I can see cat, door, archway, floor, puppy, and bag in this image. B. No, but I can see cat, door, baseboard, floor, puppy, and bag in this image. C. Yes, I can see cat, door, pillar, floor, puppy, and bag in this image. D. No, but I can see cat, door, door frame, floor, puppy, and bag in this image. E. No, but I can see cat, door, banister, floor, puppy, and bag in this image. 
+
+Can you see the puppy that is jumping to the left of the chair and is looking upwards at the cat in this image? A. No, but I can see the puppy that is running behind the chair and is looking upwards at the cat in this image. B. No, but I can see the puppy that is standing on the right of the chair and is looking upwards at the cat in this image. C. No, but I can see the puppy that is hanging above the chair and is looking upwards at the cat in this image. D. No, but I can see the puppy that is lying at the base of the chair and is looking upwards at the cat in this image. E. Yes, I can see the puppy that is jumping to the left of the chair and is looking upwards at the cat in this image. 
+
+Can you see the puppy that is to the left of the fence in this image? A. No, but I can see the puppy that is under the fence in this image. B. No, but I can see the puppy that is behind the fence in this image. C. Yes, I can see the puppy that is to the left of the fence in this image. D. No, but I can see the puppy that is to the right of the fence in this image. E. No, but I can see the puppy that is in front of the fence in this image. 
+
+Multi-obj 
+
+NEG 
+
+C ❌ C ❌ C ❌ D ✅D ✅
+
+A ❌ B ✅ C ❌ B ✅B ✅
+
+Multi-rel 
+
+NEG 
+
+C ❌ B ❌ C ❌ E ✅E ✅
+
+Wh 
+
+NEG 
+
+A ❌ C ❌ C ❌ E ✅E ✅
+
+What is laying on the floor with a green metal surface? A. The poodle with a body facing the right side of the image, with a majority of the rest of its body with a black color, and with a collar. B. The chihuahua with a body facing the right side of the image, with a majority of the rest of its body with a black color, and with a collar. C. The Yorkshire Terrier with a body facing the right side of the image, with a majority of the rest of its body with a black color, and with a collar. D. The dachshund with a body facing the right side of the image, with a majority of the rest of its body with a black color, and with a collar. E. The floor is not with a green metal surface, but is with a brown wooden surface. 
+
+What is the duck with a red and green color, with its beak in the water, and with water dripping off it standing on? A. The rocks with a pile formation B. The shells with a pile formation. C. The pebbles with a pile formation D. The duck is not with a red and green color, but is with a black and white color. E. The driftwood with a pile formation Figure 11. Qualitative Results from FINER-DOCCI. 
+
+12 POPE RePOPE AMBER Models Size Ran. ↑ Pop. ↑ Adv. ↑ Ran. ↑ Pop. ↑ Adv. ↑ Exis. ↑ Attr. ↑ Rel. ↑
+
+OmniLMM 12B 89.3 87.8 87.1 95.1 93.2 93.1 85.6 94.2 80.7 +RLAIF-V 12B 89.0 0.3 87.5 0.3 86.8 0.3 95.0 0.1 92.8 0.4 92.6 0.5 86.1 0.5 90.2 4.0 85.7 5.0 
+
+LLaVA-1.6 [27] 7B 89.7 88.4 86.6 93.9 92.1 91.0 82.0 93.6 58.7 +FINER-Tuning 7B 90.4 0.7 88.8 0.4 87.2 0.6 94.9 1.0 92.9 0.8 91.8 0.8 83.5 1.5 92.6 1.0 78.8 20.1 
+
+Qwen2.5-VL [4] 7B 87.0 86.5 85.8 93.6 91.9 91.7 84.1 95.7 75.6 +FINER-Tuning 7B 88.0 1.0 87.0 0.5 86.4 0.6 94.1 0.5 92.2 0.3 91.9 0.2 84.0 0.1 96.2 0.5 77.1 1.5 
+
+InternVL-3.5 [46] 8B 93.3 87.7 85.0 95.4 90.7 88.5 80.4 88.0 80.1 +FINER-Tuning 8B 92.7 0.6 88.7 1.0 86.6 1.6 95.9 0.5 92.6 1.9 90.9 2.4 80.6 0.2 88.2 0.2 80.6 0.5 
+
+InternVL-3.5 [46] 14B 93.4 89.6 85.7 94.7 92.1 88.8 82.6 89.4 81.9 +FINER-Tuning 14B 93.0 0.4 90.2 0.6 87.3 1.6 95.8 1.1 93.6 1.5 91.4 2.6 82.5 0.1 91.0 1.6 81.5 0.4 
+
+Table 13. Per-subset results on POPE [22], RePOPE [33], and AMBER [44]. Rand.: Random; Pop.: Popular; Adv.: Adversarial; Exis.: Existence; Attr.: Attribute; Rel.: Relation HallBench CRPE R HaloQuest Models aAcc. ↑ fAcc. ↑ qAcc. ↑ Sub. ↑ Pred. ↑ Obj. ↑ Tot. ↑ VC. ↑ IC. ↑ FP. ↑
+
+LLaVA-1.6-7B 33.0 10.6 8.3 61.7 52.6 61.6 56.5 50.5 38.0 42.9 +FINER-Tuning 36.3 3.3 17.4 6.8 13.0 4.7 62.6 0.9 51.7 0.9 59.8 1.8 56.0 0.5 50.5 57.0 19.0 73.9 31.0 
+
+Qwen2.5-VL-7B 65.4 35.8 40.0 77.2 66.1 71.7 69.9 66.5 76.0 79.2 +FINER-Tuning 68.5 3.1 40.0 4.2 43.6 3.6 77.9 0.7 67.0 0.9 72.4 0.7 70.7 0.8 65.9 0.6 86.7 10.7 87.5 8.3 
+
+InternVL-3.5-8B 71.0 45.1 47.0 75.6 63.3 70.8 67.7 66.5 51.2 64.4 +FINER-Tuning 73.0 2.0 48.9 3.8 49.3 2.3 76.5 0.9 63.4 0.1 70.9 0.1 68.0 0.3 65.9 0.6 66.9 15.7 80.7 15.3 
+
+InternVL-3.5-14B 69.5 46.8 47.0 77.2 60.7 73.3 67.1 63.7 54.5 70.0 +FINER-Tuning 71.2 1.7 49.2 2.4 49.7 2.7 78.5 1.3 63.1 2.4 73.9 0.6 68.9 1.8 63.7 61.2 6.7 79.2 9.2 
+
+Table 14. Per-subset results on HallBench [16], CRPE relation subset (CRPE R) [45], and HaloQuest [47]. Sub.: Subject; Pred.: Predicate; Obj.:Object; Tot.: Total; VC.::Visually Challenge subset; IC.: Insufficient Context subset; FP.: False Premise subset; AMBER G Models CHAIR ↓ COVER ↑ Hal ↓ Cog ↓
+
+Qwen2.5-VL-7B 5.3 64.0 27.1 1.9 +FINER-Tuning 5.0 0.3 64.7 0.7 25.9 1.2 1.6 0.3 
+
+InternVL-3.5-8B 6.9 61.3 49.9 3.1 +FINER-Tuning 6.3 0.6 61.4 0.1 47.0 2.9 2.5 0.6 
+
+InternVL-3.5-14B 7.9 68.6 57.6 5.4 +FINER-Tuning 7.4 0.5 68.7 0.1 54.4 3.2 4.4 1.0 
+
+Table 15. Extended results on AMBER generative subset (AM-BER G). 
+
+MCQ. For the negative MCQ, it is 0.5 × 0.25 . Therefore, the paired accuracy is 0.5 × (0 .5 × 0.25) = 0 .0625 .
+
+E.7. MCQ Version of the Motivational Study 
+
+Yes/no probing is standard in prior benchmarks such as DASH, POPE, and AMBER for evaluating false-positive hallucinations . In the main paper, we adopt this simple Method POPE AMBER MMHal HaloQuest Acc. ↑ Acc. ↑ HR. ↓ Score ↑
+
+LLaVA-1.5-7B 85.9 74.7 54.0 22.6 +HALVA [38] 84.8 83.4 54.0 23.9 +HA-DPO [57] 86.9 78.1 60.0 -+DoLA [9] 85.7 74.5 56.0 22.9 +RLAIF-V [55] 85.2 76.8 32.3 -+REVERSE [49] 85.9 74.2 30.0 32.3 +FINER-Tuning 86.7 82.3 49.0 38.8 
+
+Table 16. Extended comparison with other hallucination reduction methods on LLaVA-1.5-7B [26]. HR.: Hallucination rate. The best results are bold while the second best results are underlined. 
+
+setup for the motivational study because it is easy to un-derstand. In contrast, our FINER benchmarks are evaluated using multiple-choice questions (MCQs). Using two dif-ferent evaluation protocols may cause confusion for some readers. Therefore, we additionally reformulate the motiva-13 FINER-CompreCap FINER-DOCCI Multi-obj Multi-attr Multi-rel Wh Multi-obj Multi-attr Multi-rel Wh 92.5 92.5 97.5 95.0 92.5 95.0 90.0 90.0  
+
+> Table 17. Human performance in paired accuracy (Acc paired ) on FINER-CompreCap and FINER-DOCCI.
+
+tional study in the same MCQ format as used in our bench-marks. Fig. 12 shows the same trend as the yes/no version in the main paper: accuracy decreases as query granular-ity increases. More specifically, the false-positive (FP) rate is much higher than the false-negative (FN) rate, confirm-ing that false-positive hallucination is the main cause of the performance drop. 
+
+> Figure 12. Left: MCQ version of the motivational study. Right: False-positive (FP) and false-negative (FN) rates at each granular-ity level.
+
+F. Human Study 
+
+Since the FINER benchmarks are text-intensive, we asked human participants to answer a limited number of ques-tions: 20 MCQs per subset. With eight subsets in total (four from FINER-C OMPRE CAP and four from FINER-DOCCI), this yields 160 MCQs. The results are shown in Tab. 17. Unlike models, which answer the positive and negative versions of each MCQ independently, humans could in prin-ciple remember a MCQ and use the correspondence be-tween q+ and q− to make the task easier. To avoid this, we create two versions (A and B) for each setting. For every MCQ pair, the positive and negative versions are randomly assigned to different versions. Each annotator only sees one version (either A or B), so they never see both sides of the same pair. We recruit four human participants for each setting and compute paired accuracy based on their responses. The nu-merical results are reported in Tab. 1. Example survey pages from our human study are shown for Multi-rel and Wh questions from FINER-C OMPRE CAP in Fig. 14, and for Multi-obj and Multi-attr questions from FINER-DOCCI in Fig. 15. As illustrated in these figures, each MCQ has two versions (A and B), corresponding to its positive and nega-tive forms, and no annotator ever answers both versions of the same MCQ. 
+
+Success and failure cases. As Tab. 17 shows, humans achieve over 90% paired accuracy across all settings in FINER-C OMPRE CAP and FINER-DOCCI. Although we can only evaluate human performance on a limited sub-set due to resource constraints, we do observe many cases where humans succeed on MCQs that a model like InternVL-3.5-14B [46] fails on. Notably, there are also MCQs where humans fail but models succeed. Represen-tative success and failure cases are shown in Fig. 13. From Fig. 13, human errors can be grouped into two main types: carelessness and ambiguity. In the upper-right example, the human selects “sleeping behind the win-dow”, likely due to a simple oversight or a “yes” bias, sim-ilar to how InternVL-3.5-14B fails in the lower-right ex-ample. The second type of error arises from subjective or ambiguous visual attributes. In the dog example, the hu-man chooses “with bald ears that flap sideways” instead of “with floppy ears that hang down”. This is partly under-standable, since “flap sideways” describes some of the ob-served motion even though the ears are not truly “bald”. Strictly speaking, “bald ears that flap sideways” should be considered a false attribute (only partially correct), espe-cially when compared to “floppy ears that hang down” (cor-rect). This motivates our choice to design FINER as an MCQ benchmark rather than using simple yes/no questions. By comparing multiple options, both humans and models are encouraged to pick the better description, which reduces ambiguity to some extent. Nevertheless, even with our entropy-based filtering pipeline, additional human verifica-tion, and MCQ design, the scale of FINER means that a certain amount of subjectivity, ambiguity, and annotation errors in the descriptions remains unavoidable. A valid fu-ture direction is to construct FINER benchmarks fully with human annotations, better aligning the evaluation with hu-man subjectivity in assessing hallucinations. In our human studies, participants answer 20 MCQs per subset, which is small relative to the scale of both benchmarks. This is mainly because FINER is highly text-intensive, requiring substantial reading time. Scaling up the human study would likely further reduce human accuracy due to the reading burden and potential noise, since the benchmark is not fully created and validated by humans. We therefore treat the limited scale of the human studies as a limitation, and emphasize that these results only reflect human behavior on a small subset and given ample answer-ing time, rather than serving as a valid measure of overall benchmark quality. 
+
+G. Templates 
+
+To construct training set for FINER-Tuning. Sec. 3 de-scribes how we run Phi-4-14B [1] over captions to extract 14 Wh 
+
+NEG 
+
+C ❌ A ✅
+
+Wh 
+
+NEG 
+
+What is the knife with red and green handle with black logo on? A. The knife is not with red and green handle with black logo, but is with blue and black handle with white logo. B. The bench with light wood grain finish. C. The table with light wood grain finish. D. The stool with light wood grain finish. E. The chair with light wood grain finish. 
+
+Can you see the cat that is sleeping behind the window and is looking at the lizard in this image? A. No, but I can see the cat that is standing on the window and is looking at the lizard in this image. B. No, but I can see the cat that is looking out of the window and is looking at the lizard in this image. C. No, but I can see the cat that is walking towards the window and is looking at the lizard in this image. D. Yes, I can see the cat that is sleeping behind the window and is looking at the lizard in this image. E. No, but I can see the cat that is jumping over the window and is looking at the lizard in this image. 
+
+B ✅ A ❌
+
+NEG 
+
+C ✅ C ✅
+
+Can you see the dog with reddish-brown or golden-brown coat that is relatively long and with stiff ears that stand up in this image? A. No, but I can see the dog with reddish-brown or golden-brown coat that is relatively long and with floppy ears that hang down in this image. B. No, but I can see the dog with reddish-brown or golden-brown coat that is relatively long and with pointed ears that stick up in this image. C. Yes, I can see the dog with reddish-brown or golden-brown coat that is relatively long and with stiff ears that stand up in this image. D. No, but I can see the dog with reddish-brown or golden-brown coat that is relatively long and with bald ears that flap sideways in this image. E.No, but I can see the dog with reddish-brown or golden-brown coat that is relatively long and with rounded ears that fold back in this image. 
+
+Multi-attr 
+
+NEG 
+
+C ❌ D ❌
+
+Can you see the woman that is sitting beside the flower, is sitting beneath the feet of the ground, and is sitting next to the stone flower pot in this image? A. No, but I can see the woman that is sitting beside the flower, is sitting under the ground, and is sitting next to the stone flower pot in this image. B. No, but I can see the woman that is sitting beside the flower, is sitting below the ground, and is sitting next to the stone flower pot in this image. C. No, but I can see the woman that is sitting beside the flower, is sitting on the ground, and is sitting next to the stone flower pot in this image. D. Yes, I can see the woman that is sitting beside the flower, is sitting beneath the feet of the ground, and is sitting next to the stone flower pot in this image. E. No, but I can see the woman that is sitting beside the flower, is sitting beneath the ground, and is sitting next to the stone flower pot in this image. 
+
+Multi-rel 
+
+(model correct, human correct) 
+
+(model incorrect, human correct) (model incorrect, human incorrect) 
+
+(model correct, human incorrect) Figure 13. Success & failure analysis matrix for InternVL3.5-14B [46] (denoted as “model” in the figure) and Human. All MCQs are included in the human study. 
+
+positive phrases 
+
+Ψ+
+
+OBJ , Ψ+
+
+ATTR , Ψ+
+
+REL , Ψ+
+
+WH
+
+and negative phrases 
+
+Ψ−
+
+OBJ , Ψ−
+
+ATTR , Ψ−
+
+REL , Ψ−
+
+WH .
+
+OBJ / ATTR / REL. For OBJ, ATTR, and REL, we first extract positive phrases Ψ+
+
+OBJ , Ψ+
+
+ATTR , Ψ+
+
+REL using the prompts shown in Fig. 16, Fig. 17, and Fig. 18. We then prompt the same LLM to generate the corresponding negative phrases Ψ−
+
+OBJ , Ψ−
+
+ATTR , Ψ−
+
+REL with the prompts in Fig. 20, Fig. 21, and Fig. 22. Given these positive/negative phrase sets, we construct preference tuples 
+
+(q+, a ++, a −
+
++) and (q−, a +
+
+−, a −−)
+
+for each of OBJ, ATTR, and REL via template-based com-position, by using a pool of five templates as below: 
+
+(1) 
+
+Does this image contain {X}?Yes, this image contains {Y}.No, but this image contains {Z}.
+
+(2) 
+
+Does this image show {X}?Yes, this image shows {Y}.No, but this image shows {Z}.
+
+(3) 
+
+Does this image include {X}?Yes, this image includes {Y}.No, but this image includes {Z}.
+
+(4) 
+
+Can you see {X} in this image? Yes, I can see {Y} in this image. No, but I can see {Z} in this image. 
+
+(5) 
+
+Can {X} be seen in this image? Yes, {Y} can be seen in this image. No, but {Z} can be seen in this image. 
+
+To avoid overfitting to a single fixed pattern and to stay consistent with the FINER benchmarks, we randomly choose one of the above five templates for each exam-ple. Each template contains placeholders {X}, {Y }, and 
+
+{Z1}, . . . , {Z4} that are filled with phrases. In the positive configuration (q+, a ++, a −
+
++), the “Yes” an-15 swer will be the accepted response a++ while the “No” an-swer will be the rejected response a−
+
+> +
+
+. The question and the “Yes” answer both use the positive phrase Ψ+, while all “No” answers use the negative phrase Ψ−:
+
+{X} = Ψ +,
+
+{Y } = Ψ +,
+
+{Z} = Ψ −
+
+In the negative configuration (q−, a −
+
+> +
+
+, a −−), the “No” an-swer will be the accepted response a+ 
+
+> −
+
+while the “Yes” an-swer will be the rejected response a−−. The question and all “No” answers use the negative phrase Ψ−, while the “Yes” answer uses the positive phrase Ψ+:
+
+{X} = Ψ −,
+
+{Y } = Ψ +,
+
+{Z} = Ψ −
+
+WH. For W H, the preference tuples 
+
+(q+, a ++, a −
+
+> +
+
+) and (q−, a +
+
+> −
+
+, a −−)
+
+are directly constructed by the LLM, rather than via our fixed templates. We therefore do not apply the above template-based composition to W H, and instead use ded-icated prompts to let the LLM generate the question and its positive/negative answers. The prompts used to con-struct a pair of (q+, a ++) and (q−, a +
+
+> −
+
+) for W H are shown in Fig. 19 and Fig. 23, respectively. Concretely, the LLM first produces two Wh questions about the same underlying scene: a positive question q+, whose premise is consistent with the image and whose accepted response a++ directly answers what the question asks for, and a negative question 
+
+q−, whose premise partially conflicts with the image con-tent so that its accepted response a+ 
+
+> −
+
+explicitly negates the question itself. We then symmetrize this pair by assigning each accepted response as the other question’s rejected re-sponse, i.e., a− 
+
+> +
+
+:= a+ 
+
+> −
+
+and a−− := a++. In this way we obtain the final preference tuples (q+, a ++, a −
+
+> +
+
+) and (q−, a +
+
+> −
+
+, a −−).16 Multi-rel A 
+
+Multi-rel B 
+
+Wh A 
+
+Wh B Figure 14. Examples of our human study survey for FINER-C OMPRE CAP . Example questions from Multi-rel and Wh are shown in the figure. Ticked boxes represent ground-truth choices. We use blue color to represent the questions for version A, while orange representing the questions for version B. 
+
+17 Multi-Attr A 
+
+Multi-Attr B 
+
+Multi-obj A 
+
+Multi-obj B Figure 15. Examples of our human study survey for FINER-DOCCI . Example questions from Multi-attr and Multi-obj. Ticked boxes represent the ground-truth choice. We use blue color to represent the questions for version A, while orange representing the questions for version B. 
+
+18 "You are an information extraction assistant.\n" "From the caption, select up to FIVE main objects. A main object must have at least one descriptive attribute in the caption " "(e.g., color, size, material, possession/with-phrase, appositive, relative clause, or an explicit number).\n" "Rules:\n" "• Output only object names that appear in the caption and are part of the described scene. Never invent or infer.\n" "• Prefer plain object names in the output (omit adjectives), but KEEP explicit numbers/quantifiers if the caption states them ""(e.g., 'two cats', 'five chickens', 'a pair of skis').\n" "• If multiple mentions share the same name and no explicit number is given, output the plural form (e.g., 'dogs'). \n" "• List 1–5 main objects; if only one is present, output just that one.\n" "Do not add quantifiers like 'some' unless present in the caption.\n" "Format:\n" "Return EXACTLY one line:\n" "PHRASE=<comma-separated list with 'and' before the last item, e.g., 'a dog, a cat and two birds'>\n" "No trailing period. No extra text." 
+
+Prompt template for extracting Figure 16. Prompt Template for extracting Ψ+
+
+OBJ Prompt template for extracting 
+
+"You are an information extraction assistant.\n" "Select ONE main object from the caption that has at least one described attribute.\n" "Extract attribute phrases ONLY if they are explicitly stated and are used to describe the chosen main object—never infer or guess.\n" "Then compose a SINGLE noun phrase describing that object with the extracted attribute phrases.\n" "Use ONLY evidence from the caption. Never invent attributes.\n" "Allowed attribute types:\n" "• Appearance, color, pattern, size, shape, material, markings/printed text/numbers, ""condition/state, orientation/pose, and other visible features that describe the main object.\n" "• Accessories physically attached to the main object (e.g., a collar on a dog) count as attributes; unrelated co-occurring objects do not.\n" "Constraints:\n" "• Do NOT include spatial relations to other main objects (e.g., 'to the left of the bus').\n" "• Do NOT include actions involving other main objects (e.g., 'holding a cup').\n" "• The extracted attributes must clearly describe the chosen main object. NEVER invent attributes. NEVER extract attributes for the other objects.\n" "• Extract 1–5 attributes for the chosen main object. If fewer than five are stated, extract fewer. If only one is present, use that one. NEVER invent attributes.\n" "• Optionally, rewrite the original attribute phrase to either a plain adjective phrase (e.g., 'red', 'shiny metal', 'long-tailed'), " "or a 'with ...' phrase (e.g., 'with yellow eyes', 'with its nose pointing to the left', 'with the text \"SALE\"'). The rewriting should not change the original meaning.\n" "• Connect multiple 'with ...' phrases smoothly using commas and 'and' (e.g., 'with yellow eyes, with a striped tail, and with a scar').\n" "Return EXACTLY one line:\n" "PHRASE=<your noun phrase with attributes>\n" "No trailing period. No extra text." 
+
+Figure 17. Prompt Template for extracting Ψ+
+
+ATTR 
+
+19 Prompt template for extracting 
+
+"You are an information extraction assistant.\n" "Select ONE main object from the caption that clearly participates in at least one relation with another object.\n" "Extract relations ONLY if they are explicitly stated in the caption—never infer or guess.\n" "Allowed relation types:\n" "• Spatial: e.g., 'behind X', 'in front of Y', 'on Z', 'under W', 'next to Q', 'between A and B', 'near C', 'inside D', 'at E'.\n" "• Action with a target: verb phrases that take an object, e.g., 'holding a cup', 'biting a bone', 'looking at the door'.\n" "Constraints:\n" "• Every relation must involve the chosen object.\n" "• Refer to other objects with plain nouns; add attributes only to disambiguate same-named objects.\n" "• Use ONLY what the caption states; do NOT invent relations.\n" "• List 1–5 relations; if only one is present, output just that one.\n" "Compose ONE fluent phrase that starts with the object and then lists the relations.\n" "Prefer: 'The <object> is <relation1>, is <relation2>, ... and is <relationN>'.\n" "Return EXACTLY one line:\n" "PHRASE=<your single phrase with relations>\n" "No trailing period. No extra text." Figure 18. Prompt Template for extracting Ψ+
+
+REL Prompt template for generating 
+
+"You create one WH-style QA pair from ONE sentence describing two main objects and their explicit relation, ""optionally with attributes. The sentence has the logical structure:\n" "[obj_a] [attr_a…] [rel] [obj_b] [attr_b…].\n" "\n" "Your task (A-mode):\n" "• Choose [obj_a][attr_a…] as the exact answer span.\n" "• Write ONE natural WH question whose answer is exactly that span.\n" "• In the QUESTION, preserve as much of [rel][obj_b][attr_b…] as natural, quoted verbatim when it fits, "" and DO NOT repeat or paraphrase [obj_a][attr_a…] inside the question.\n" "• Be fluent and grammatical; do not invent details.\n" "Output EXACTLY one line:\n" "Q=<your question> || A=<the exact substring answer>\n" "No extra text." 
+
+"You create one WH-style QA pair from ONE sentence describing two main objects and their explicit relation, ""optionally with attributes. The sentence has the logical structure:\n" "[obj_a] [attr_a…] [rel] [obj_b] [attr_b…].\n" "\n" "Your task (B-mode):\n" "• Choose [obj_b][attr_b…] as the exact answer span.\n" "• Write ONE natural WH question whose answer is exactly that span.\n" "• In the QUESTION, preserve as much of [obj_a][attr_a…] and [rel] as natural, quoted verbatim when it fits, "" and DO NOT repeat or paraphrase [obj_b][attr_b…] inside the question.\n" "• Be fluent and grammatical; do not invent details.\n" "Output EXACTLY one line:\n" "Q=<your question> || A=<the exact substring answer>\n" "No extra text." 
+
+Figure 19. Prompt Template for generating (q+, a ++) for WH setting 
+
+20 Prompt template for generating 
+
+"You are a negative object creator.\n" "You will receive a caption, an object list as PHRASE=..., and REPLACE_INDEX=k (1-based).\n" "Replace EXACTLY the k-th object in PHRASE with a distinctly different NEGATIVE object.\n" "\n" "Keep ALL other objects unchanged and preserve their order and punctuation. Keep the same quantifier/determiner ""for the replaced slot (e.g., 'two cats' -> 'two bicycles').\n" "\n" "Constraints for the NEGATIVE object:\n" "• It must be distinctly different from the replaced object (not a synonym; not just singular/plural).\n" "• It must NOT be a synonym or near-equivalent of ANY object that appears in the caption.\n" "• It must NOT appear anywhere in the caption (as a whole word, singular or plural).\n" "• Do not modify any other items; do not reorder items; do not add or remove items.\n" "\n" "Edge cases (must follow):\n" "• If REPLACE_INDEX is greater than the number of objects in PHRASE, replace the LAST object.\n" "• If REPLACE_INDEX is less than 1, replace the FIRST object.\n" "\n" "Self-check (must hold):\n" "• Same number of items as input; exactly one item (the k-th per the rule above) differs.\n" "\n" "Output EXACTLY one line:\n" "PHRASE=<the new list, same format>\n" "No extra text. No quotes. No trailing period." Figure 20. Prompt Template for generating Ψ−
+
+OBJ Prompt template for generating 
+
+"You are a negative attribute editor.\n" "You will receive an ATTRIBUTE PHRASE: a single noun phrase describing one main object with 1–5 attributes.\n" "Each attribute is one replaceable unit: either (a) a pre-nominal adjective group (e.g., 'long-sleeved red') ""or (b) one entire 'with ...' clause or other forms of clause separated by commas or 'and'.\n" "\n" "Task:\n" "Pick exactly ONE attribute unit at random and replace it with a distinctly different NEGATIVE attribute.\n" "\n" "Randomness:\n" "• Replace the attribute unit at random position. Both pre-nominal adjective group or 'with ...' clause should have a chance to be replaced. \n" "\n" "Definitions & scope of attributes that can be changed:\n" "• Appearance, color, pattern, size, shape, material, texture, markings/printed text/numbers, ""condition/state, orientation/pose, and accessories physically attached to the main object.\n" "\n" "Constraints for the replacement:\n" "• Keep the object head and all other attributes unchanged; preserve order, punctuation, articles, quotes, units, and capitalization.\n" "• Keep the grammatical shape of the replaced unit (adjective group stays an adjective group; a 'with ...' clause stays a 'with ...' clause).\n" "• The replacement must be distinctly different from the original and NOT a synonym, near-synonym, or morphological variant of any attribute in the phrase\n" "• Do not duplicate any existing attribute already present in the phrase.\n" "• Avoid always changing the same type of attribute; consider changing any types of attributes stated in the definitions above.\n" "\n" "Self-check before answering (must be satisfied):\n" "• Exactly one attribute unit differs; all other attribute units are identical.\n" "\n" "Output EXACTLY one line:\n" "PHRASE=<the rewritten noun phrase>\n" "No extra text. No quotes. No trailing period." 
+
+Figure 21. Prompt Template for generating Ψ−
+
+ATTR 
+
+21 Prompt template for generating 
+
+"You are a negative relation editor.\n" "Input format:\n" " CLAUSE_INDEX=<1-based index to edit>\n" " PHRASE=The <HEAD> <clause1>, <clause2>, ... and <clauseN>\n" "Each clause is a relation expressed as a verb + complement, e.g., " "'is on a table', 'are between two cars', 'has a transparent faceplate', ""'holds a bottle', 'wears a red jersey', 'faces left', 'shows a temperature above 50 degrees'.\n" "\n" "Task:\n" "Select and edit EXACTLY the clause with the given CLAUSE_INDEX (1-based) to make it a clearly different (ideally opposite) NEGATIVE relation.\n" "\n" "Style guidance (choose ONE option to edit the selected clause):\n" " (A) If the selected clause encodes a spatial relation via a preposition or comparator ""(e.g., in/on/inside/outside/under/over/above/below/behind/in front of/" "to the left of/to the right of/between/near/at/surrounding/is surrounded by/on top of/at the bottom of, etc.), replace that spatial term with" "opposite or distinctly different spatial relation (e.g., on →inside, in →out of, left →right, above →below, beside →inside). "" (B) If the clause describes an action of the HEAD, replace this action with one distinctly different or opposite. Change the clause’s main lexical verb ""(e.g., holds →drops, wears →removes, shows →hides, opens →closes, runs →stands). You may also adjust adverbs or prepositions if any ""('is standing on' →'is running away from', 'is driving slowly to' →'is flying high from'). Preserve tense/number/aspect and auxiliaries ""(e.g., 'is holding' →'is dropping', 'has opened' →'has closed').\n" " (C) If the selected clause describes possession or properties of the HEAD ""(e.g., has/have…, is/are made of…, shows/displays/reads/contains/wears…), ""replace the complement with something clearly different or opposite (e.g., 'contains two plastic bags' →'contains three paper bags').\n" "\n" "Hard constraints (must follow):\n" "• If the CLAUSE_INDEX is larger than the number of clauses you see, edit the LAST clause.\n" "• Keep the HEAD EXACTLY as in the input.\n" "• Keep ALL other clauses unchanged; preserve separators (commas and the final 'and').\n" "• Do NOT reorder clauses.\n" "• Edit ONLY the selected clause; do NOT add/remove clauses; the edited clause MUST be distinctly different from the original clause.\n" "• Avoid merely inserting 'not'; prefer concrete lexical or complement changes.\n" "• The new clause must not duplicate another clause and should remain grammatical (tense/number agreement intact).\n" "\n" "Output EXACTLY one line:\n" "PHRASE=<rewritten phrase>\n" "No extra text. No trailing period." Figure 22. Prompt Template for generating Ψ−
+
+REL 
+
+22 Prompt template for generating 
+
+"You will convert a POSITIVE wh-question into a counterfactual, NEGATIVE wh-question + answer by replacing EXACTLY ONE ""ATTRIBUTE CLAUSE that describes the main object mentioned in the question.\n" "\n" "DEFINITIONS (apply to the input question):\n" "• Main object: the plain head noun phrase that the attributes modify (e.g., 'a mug', 'the DSLR camera'). If multiple objects present in the question, pick the one with more attributes as the main object.\n" "• Attribute clause: a modifier that directly describes the main object. It can be\n" " – pre-nominal adjectives (color, material, pattern, size, shape, quantity), e.g., 'red', 'ceramic', 'wide'.\n" " – post-nominal phrases (e.g., 'with …', 'featuring …', 'bearing …', 'labeled \"…\"', participial phrases like 'wearing …').\n" " – other short descriptors attached to the object (texture, condition/state, orientation/pose, printed text/numbers).\n" "• Relation clause: the words expressing spatial or action relations that position the main object relative to something else, "" e.g., 'on', 'under', 'next to', 'in front of', 'behind', 'to the left of', 'below', 'above', or light-verb forms like "" 'is on', 'is next to', 'is holding', 'is below'.\n" "\n" "To help you better identify the attribute clauses, the input questions are usually in the following forms:\n" " – WH + [main object + attribute clauses] + [relation clause]?\n" " – WH + [relation clause] + [main object + attribute clauses]?\n" "Note that the attribute clauses can either be pre-nominal (before the main object) or post-nominal (after the main object).\n" "\n" "EDIT RULES:\n" "1) Identify all attribute clauses attached to the main object you pick.\n" "2) Randomly choose ONE attribute clause (denoted as [original attribute]) and replace its content with a CLEARLY DIFFERENT or even OPPOSITE attribute clause (denoted as [new attribute]).\n" " • You may change multiple adjectives INSIDE [original attribute] to increase contrast.\n" " • Do NOT add, remove, or reorder other attribute clauses—only replace the contents of the chosen [original attribute clause].\n" "3) Keep everything else unchanged:\n" " • Do NOT change the main object.\n" " • Do NOT change the relation clause.\n" "4) If the question truly has no attribute clauses for the main object, output exactly: SKIP\n" "\n" "RANDOMNESS:\n" "You MUST choose one attribute clause at random position. Both the attribute clauses before or after the main object should have a chance to be chosen.\n" "\n" "ANSWER FORMAT (pick what fits; ensure correct number agreement and echo the original attribute verbatim):\n" "• The [main object] is not [new attribute], but it is [original attribute].\n" "• The [main object] does not have [new attribute], but it has [original attribute].\n" "• The [main object] contains no [new attribute], but it has/contains [original attribute].\n" "If none fits perfectly, write a brief, natural denial that clearly states the object lacks the [new attribute] and has the [original attribute]." "\n" "OUTPUT:\n" "Return EXACTLY ONE line:\n" "Q=<negative question> || A=<negative answer>\n" "No extra text." Figure 23. Prompt Template for generating (q−, a +
+
+−) for WH setting 
+
+23 Prompt template for Gemini-2.0-Flash extracting objects & attributes 
+
+"You are an expert at information extraction. Your task is to analyze an image description ""and extract all MAIN objects (objects that have at least ONE attribute) and their attributes into a JSON list of dictionaries.\n" "Follow these rules precisely:\n" "1. Your output MUST be a valid JSON list `[]` where each element is a dictionary.\n" "2. Each dictionary must contain two keys: `object` and `attribute`.\n" "3. The value for the `object` key must be a string containing the plain name of the MAIN object in the scene (e.g., 'airplane', 'man', 'bus').\n" "4. The value for the `attribute` key must be a list of strings. Each string must describe a characteristic of the object, such as its appearance, material, color, text, number, size, state, or posture.\n" "5. Every attribute string MUST begin with the word 'with'. If the original description doesn't use 'with', rewrite the attribute to include it while preserving the meaning.\n" "6. Do NOT include attributes that describe spatial relationships ('to the left of', 'behind') with OTHER MAIN objects. However, spatial orientations NOT involving other MAIN OBJECTS should be counted as attributes. ('with its nose facing left').\n" "7. Do NOT include attributes that describe actions with OTHER MAIN objects('holding a black camera with flashy surface'). However, actions NOT involving other MAIN OBJECTS should be counted as attributes ('with hands raising in the air')." "8. Return ONLY the JSON list and nothing else. Do not add explanations or markdown formatting." Figure 24. Prompt Template for extracting objects and attributes using Gemini-2.0-Flash [41] when constructing FINER-DOCCI. Prompt template for Gemini-2.0-Flash extracting relations 
+
+You are an expert at STRICT information extraction. Given (1) a natural-language image description, and (2) a numbered catalog of MAIN objects (each with ALL its attributes), your task is to inspect pairs of objects and extract all **directed** relations that are **explicitly stated in the description text**. You must follow these rules: 1) Use ONLY the integer indices from the catalog for `object_a_idx` and `object_b_idx`. 2) For a pair (object_a, object_b), only output a relation if the caption directly describes how object_a is related to object_b in words. - Do NOT guess, infer, or rely on world knowledge. - If the relation is not explicitly written or is only implied, you MUST NOT output it. 3) The relation phrase `rel` must: - be a spatial or verb phrase, - be lower-case, - be copied verbatim from the description whenever possible, or be a **minimal paraphrase** that preserves exactly the same meaning (e.g., shortening function words). 4) The relation phrase must describe either: - a clear spatial relation (e.g., "is behind the", "is at the intersection of the"), or - a clear action or interaction (e.g., "holds", "moves along the"). 5) The relation phrase must form a grammatical predicate between object_a and object_b: - it either begins with "is"/"are" (e.g., "is behind the", "is on top of the"), OR - it is a finite verb phrase that can directly follow object_a (e.g., "holds", "touches", "moves along the"). 6) Output a JSON list of dictionaries, each of the form: {"object_a_idx": int, "rel": str, "object_b_idx": int} 7) No self-relations and no duplicate entries. If **no** explicit relations are found, return an empty list: []. 
+
+Figure 25. Prompt Template for extracting relations using Gemini-2.0-Flash [41] when constructing FINER-DOCCI. 
+
+24
