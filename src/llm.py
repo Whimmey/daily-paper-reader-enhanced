@@ -196,7 +196,21 @@ class LLMClient:
         request_bases = self._iter_retry_bases(total_attempts=6)
         last_error: Exception | None = None
         for attempt_idx, req_base in enumerate(request_bases, start=1):
-            request_url = f"{req_base.rstrip('/')}/chat/completions"
+            # 智能检测：如果 base_url 已包含完整路径，直接使用；否则追加 /chat/completions
+            # 常见的完整路径格式：/chat/completions, /v1/chat, /v1/chat/completions
+            clean_base = req_base.rstrip('/')
+            has_chat_endpoint = (
+                '/chat/completions' in clean_base or
+                '/v1/chat' in clean_base or
+                '/v4/chat' in clean_base or
+                '/paas/v4/chat' in clean_base or
+                clean_base.endswith('/chat')
+            )
+
+            if has_chat_endpoint:
+                request_url = clean_base
+            else:
+                request_url = f"{clean_base}/chat/completions"
             try:
                 response = requests.post(request_url, headers=headers, json=payload, timeout=120)
                 response.raise_for_status()
