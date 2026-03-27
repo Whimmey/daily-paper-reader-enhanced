@@ -267,7 +267,9 @@ def rerank_by_chat(
 文档列表：
 {doc_list}
 
-请以 JSON 格式返回评分结果，格式如下：
+请直接返回纯 JSON 格式的评分结果，不要使用 markdown 代码块包裹，不要添加任何其他说明文字。
+
+返回格式：
 {{
   "results": [
     {{"index": 0, "relevance_score": 0.95}},
@@ -277,7 +279,8 @@ def rerank_by_chat(
 
 要求：
 1. relevance_score 为 0-1 之间的分数
-2. 只返回 JSON，不要其他说明"""
+2. 只返回 JSON 对象，不要有任何额外文字、markdown 代码块或其他说明
+3. 必须是可直接解析的纯 JSON"""
 
   try:
     response = client.chat(
@@ -290,7 +293,21 @@ def rerank_by_chat(
     # 尝试解析 JSON
     import json as json_lib
     try:
-      result = json_lib.loads(content)
+      # 先尝试清理可能的 markdown 包裹
+      cleaned_content = content.strip()
+      if cleaned_content.startswith("```"):
+        # 移除 markdown 代码块包裹
+        lines = cleaned_content.split('\n')
+        if len(lines) >= 3:
+          # 移除第一行 ```json 和最后一行 ```
+          cleaned_content = '\n'.join(lines[1:-1])
+      elif cleaned_content.startswith('{"'):
+        # 尝试找到 JSON 对象的结束位置
+        last_brace = cleaned_content.rfind('}')
+        if last_brace > 0:
+          cleaned_content = cleaned_content[:last_brace + 1]
+
+      result = json_lib.loads(cleaned_content)
       results = result.get("results", [])
 
       # 补充 document 字段
@@ -305,9 +322,11 @@ def rerank_by_chat(
 
       return {"results": results}
 
-    except json_lib.JSONDecodeError:
-      # JSON 解析失败，回退到简单评分
-      log("[WARN] Rerank JSON 解析失败，回退到原始顺序")
+    except json_lib.JSONDecodeError as je:
+      # JSON 解析失败，记录原始内容用于调试
+      log(f"[WARN] Rerank JSON 解析失败: {je}")
+      log(f"[DEBUG] 模型原始响应（前500字符）: {content[:500]}")
+      # 回退到简单评分
       return {
         "results": [
           {"index": i, "relevance_score": 1.0 - (i * 0.01), "document": doc}
@@ -319,7 +338,22 @@ def rerank_by_chat(
       }
 
   except Exception as e:
-    log(f"[WARN] Chat Rerank 失败: {e}，回退到原始顺序")
+    # 检查是否有 HTTP 错误信息
+    error_detail = str(e)
+    if hasattr(e, "response") and e.response is not None:
+        try:
+            status = e.response.status_code
+            try:
+                error_json = e.response.json()
+                error_detail = f"HTTP {status} - {error_json}"
+            except:
+                error_detail = f"HTTP {status} - {e.response.text[:200]}"
+        except:
+            error_detail = f"HTTP 错误 - {status}"
+    elif hasattr(e, "__cause__") and e.__cause__ is not None:
+        error_detail = f"{e} (caused by: {e.__cause__})"
+
+    log(f"[WARN] Chat Rerank 失败: {error_detail}，回退到原始顺序")
     return {
       "results": [
         {"index": i, "relevance_score": 1.0 - (i * 0.01), "document": doc}
