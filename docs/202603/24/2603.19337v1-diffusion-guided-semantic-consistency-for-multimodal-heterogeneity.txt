@@ -1,0 +1,413 @@
+Title: Diffusion-Guided Semantic Consistency for Multimodal Heterogeneity
+
+URL Source: https://arxiv.org/pdf/2603.19337v1
+
+Published Time: Mon, 23 Mar 2026 00:03:35 GMT
+
+Number of Pages: 6
+
+Markdown Content:
+# Diffusion-Guided Semantic Consistency for Multimodal Heterogeneity 
+
+Jing Liu ∗,†,‡, Zhengliang Guo †, Yan Wang §, Xiaoguang Zhu ¶, Yao Du ∗, Zehua Wang ∗∥ , Victor C. M. Leung ∗,∗∗ ,†† ∗The University of British Columbia, †Fudan University, ‡Duke Kunshan University, §East China Normal University, 
+
+¶University of California, Davis, ∥China University of Mining and Technology, ∗∗ SMBU, †† Shenzhen University 
+
+Abstract —Federated learning (FL) is severely challenged by non-independent and identically distributed (non-IID) client data, a problem that degrades global model performance, especially in multimodal perception settings. Conventional methods often fail to address the underlying semantic discrepancies between clients, leading to suboptimal performance for multimedia systems requiring robust perception. To overcome this, we introduce SemanticFL, a novel framework that leverages the rich semantic representations of pre-trained diffusion models to provide privacy-preserving guidance for local training. Our approach leverages multi-layer semantic representations from the pre-trained Stable Diffusion model (including VAE-encoded latents and U-Net hierarchical features) to create a shared semantic space that aligns heterogeneous clients, facilitated by an efficient client-server architecture that offloads heavy computation to the server. A unified consistency mechanism, employing cross-modal contrastive learning, further stabilizes convergence. We conduct extensive experiments on benchmarks including CIFAR-10, CIFAR-100, and TinyImageNet under diverse heterogeneity scenarios. Our results demonstrate that SemanticFL surpasses existing federated learning approaches, achieving accuracy gains of up to 5.49% over FedAvg, validating its effectiveness in learning robust models from heterogeneous and multimodal data for perception tasks. 
+
+Index Terms —Federated learning, multimedia data heterogene-ity, diffusion models, embodied perception, multimodal learning 
+
+I. I NTRODUCTION 
+
+Federated learning (FL) enables collaborative model training on decentralized data, a critical capability in privacy-sensitive domains such as healthcare, autonomous vehicles, and em-bodied robotics [ 1], [ 2]. As multimedia and embodied AI systems increasingly rely on multimodal sensor fusion for robust perception [ 3 ], the practical deployment of FL becomes fundamentally challenged by data heterogeneity, where clients possess non-independent and identically distributed (non-IID) data [ 4]. In multimodal perception settings, this challenge becomes more severe as clients may hold varying combinations 
+
+This work is supported in part by the Guangdong Pearl River Talents Recruitment Program under Grant No. 2019ZT08X603, the Guangdong Pearl Rivers Talent Plan under Grant No. 2019JC01X235, the National Natural Science Foundation ofChina (No. 62406075), the National Key Research and Development Program of China (2023YFC3604802), the Shanghai Key Technology R&D Program (Grant No. 25511107200), the Natural Sciences and Engineering Research Council (NSERC) of Canada under Grants Nos. RGPIN-2021-02970 and DGECR-202100187, and the Mitacs Project under Grant Nos. IT44479 and QJLI GR037230. (Corresponding author: Yao Du). 
+
+of data modalities, including images and text, with different quality and completeness [5], [6]. A primary technical barrier stemming from data heterogene-ity is client drift, where local models diverge due to differing client data distributions [ 7]. Conventional mitigation strategies enforce parameter-level consistency but often overlook under-lying semantic discrepancies [ 8 ]. Consequently, local models overfit to their biased data distributions, compromising the generalization capability of the aggregated global model [ 9]. For instance, under a non-IID with a small concentration parameter, clients may possess data from only a few classes, making it difficult to learn a globally robust model [10]. Recent approaches to mitigating client drift in federated learning have primarily focused on regularization and repre-sentation alignment. Methods like FedProx [ 11 ] add proximal terms to restrict local updates, while SCAFFOLD [ 1] uses control variates to correct client drift. Representation-based approaches such as MOON [ 12 ] employ model-level contrastive learning, and FedProto [ 13 ] learns global class prototypes for regularization. However, these methods operate within the limited parameter or feature space of client models themselves, constraining their ability to capture rich semantic relationships across heterogeneous data distributions [14], [15]. In multimodal FL settings, contrastive learning has shown promise for aligning representations across missing modalities and heterogeneous feature spaces [ 16 ], [ 17 ]. Simultaneously, the integration of generative models into FL has gained traction, with recent works utilizing diffusion models for data augmentation [ 18 ], [ 5 ] and knowledge distillation [ 19 ]. While these generation-based approaches can be computationally expensive, they highlight the untapped potential of leveraging powerful generative models’ intermediate representations for semantic guidance rather than data generation [20], [21]. The success of diffusion models in generative tasks has revealed their capacity to learn powerful, fine-grained semantic representations that capture complex data distributions and cross-modal correlations [ 22 ]. Leveraging these rich repre-sentations offers a promising avenue to address the semantic heterogeneity challenge in FL [ 23 ]. Although some studies have begun integrating diffusion models into FL for data augmentation or conditional generation [ 18 ], [ 5], their inherent representational power remains underexploited for direct seman-
+
+> arXiv:2603.19337v1 [cs.CV] 19 Mar 2026
+
+tic guidance in heterogeneous, multimodal settings [ 24 ], [ 25 ]. A comprehensive framework is therefore needed to harness these representations for semantic alignment without incurring prohibitive computational costs or violating privacy. To address these challenges, we introduce SemanticFL, a novel framework that fundamentally rethinks how diffusion models can guide federated learning under severe data het-erogeneity [ 26 ], [ 27 ]. Rather than generating synthetic data or performing expensive on-client inference, our approach extracts rich semantic representations offline from a frozen Stable Diffusion model, creating a shared semantic space that serves as a stable anchor for heterogeneous local training. The framework operates through a three-stage pipeline: First, the server performs one-time offline extraction of multi-layer visual features from the diffusion U-Net architecture and textual embeddings from the CLIP encoder, capturing both fine-grained semantic patterns and high-level class concepts. Second, during federated training rounds, the server broadcasts compact pre-computed features alongside model parameters, enabling resource-constrained clients to benefit from powerful generative priors without local diffusion inference. Third, clients optimize their lightweight models through a unified objective that synergistically combines supervised classification, feature-level knowledge distillation from visual representations, and cross-modal contrastive learning between local features and textual semantics. By grounding local updates in a unified multimodal representation space, our design simultaneously addresses computational constraints and establishes semantic consistency across clients, thereby mitigating client drift while preserving privacy through feature-level rather than raw data collaboration. The contributions are summarized as follows:  
+
+> •
+
+We propose a novel FL framework leveraging fine-grained diffusion representations for direct semantic guidance to address multimodal data heterogeneity.  
+
+> •
+
+Our method introduces an efficient client-server archi-tecture that decouples diffusion feature extraction from local training, enabling powerful semantic guidance for resource-constrained clients.  
+
+> •
+
+Experimental validation on benchmark datasets under challenging non-IID settings demonstrates substantial performance improvements over existing approaches. II. R ELATED WORK 
+
+Federated Learning for Data Heterogeneity. Client drift caused by non-IID data remains a central challenge in feder-ated learning. Regularization-based methods address this by constraining local updates: FedProx [ 11 ] adds a proximal term  
+
+> μ
+> 2
+
+∥wk − wr ∥2 to the local loss, whereas SCAFFOLD [ 1 ]employs control variates for drift correction. Representation alignment offers another avenue, with MOON [ 12 ] using model-level contrastive learning and FedProto [ 13 ] learning global class prototypes. Aggregation-level modifications include FedDisco [ 28 ], adjusting weights based on class distribution discrepancies, and layer-wise strategies for personalization [ 9]. Moreover, knowledge distillation aligns client models with global consensus [ 29 ], while classifier post-calibration corrects bias [ 16 ]. However, operating within client model feature spaces limits these approaches, motivating our use of external semantic guidance. 
+
+Multimodal and Contrastive Federated Learning. Multi-modal federated learning faces challenges including missing modalities and heterogeneous feature space alignment [ 30 ]. Contrastive learning enforces representation consistency to address these issues [ 31 ]. Methods like FedRCL [ 17 ] employ supervised contrastive objectives with relaxed losses to prevent collapse and enhance transferability. CreamFL [ 16 ] uses inter-modal and intra-modal contrastive ensembles to regularize training and compensate for absent modalities. Despite their effectiveness in aligning standard client representations, these methods lack access to rich external semantic knowledge, which our pre-trained diffusion model provides for robust alignment across deeply heterogeneous clients. 
+
+Diffusion Models in Federated Learning. Generative models have gained traction for combating data heterogeneity in federated learning. Early approaches used VAEs and GANs to synthesize data for local augmentation or server-side proxy datasets for distillation [ 18 ]. Diffusion models now offer powerful alternatives: some generate synthetic data to augment local datasets [ 5], while others serve as data-free generators for knowledge distillation [ 19 ]. Frameworks like Phoenix [ 32 ] train diffusion models federatedly for privacy-preserving generation. Nevertheless, generation-based approaches incur computational costs and may not directly address semantic drift. Our work instead leverages pre-computed intermediate representations from diffusion models as direct semantic guidance, providing efficient and direct semantic regularization. III. M ETHOD 
+
+A. Method Overview and Problem Formulation 
+
+In federated learning, K clients collaboratively train a global model with parameters w without sharing local data. Each client k possesses a private dataset Dk = {(xi, y i)}nk 
+
+> i=1
+
+with nk
+
+samples, where the federated objective minimizes the weighted global loss F (w) = ∑Kk=1  
+
+> nk
+> N
+
+Fk(w), with N = ∑Kk=1 nk
+
+and Fk(w) = E(x,y )∼D k [ℓ(g(x; w), y )] representing the local empirical risk. Under severe data heterogeneity, non-IID client distributions cause divergent local optima and “client drift” that degrades both convergence and generalization. As illustrated in Fig. 1, SemanticFL addresses heterogeneity through diffusion-guided semantic alignment across three coordinated components. First , during offline initialization, the server extracts semantic features from a frozen Stable Diffusion model [ 33 ]: visual representations Zimg = {zimg ,i }
+
+are computed via VAE encoding EVAE (Eq. 1), controlled noising at timestep t = 150 (Eq. 2), and multi-layer U-Net feature aggregation ϵϕ (Eq. 3), while textual embeddings 
+
+Ztxt = {z(c) 
+
+> txt
+
+}Cc=1 are generated from class prompts via CLIP encoder Tϕ. Second , in each communication round r, the server broadcasts global parameters wr alongside relevant diffusion features to a selected client subset Sr ⊆ { 1, . . . , K }. Third ,(a) Server-side Of fl ine Feature Extraction        
+
+> Images VAE encoder Forward noise process Multi-layer activations Visual feature aggregator (GAP + PCA)
+> Diffusion features
+> Classi fi er Head Image Features
+> Logits
+> Local data
+> Global model
+> Select clients Broadcast parameters Aggregation Collect
+> SGD Update
+> vs (c) Client Local Training
+> Class text prompts
+> (e.g., "a photo of a dog")
+> Text Encoder
+> Feature Storage
+> (b) Server Federated Training Loop
+> Lightweight Model
+> (e.g., ResNet-10)
+> U-Net denoiser
+> Round
+
+Fig. 1: Overview of the SemanticFL framework. More details on components and symbols are described in Sec. III. each client k ∈ Sr performs local optimization by computing features fi = g(xi; wk) and minimizing a unified objective 
+
+Lk (Eq. 7) that combines cross-entropy classification LCE ,knowledge distillation from visual features LKD , and cross-modal contrastive alignment LCON between local features and textual semantics. After local training, updated parameters 
+
+wr+1  
+
+> k
+
+are aggregated via federated averaging (Eq. 8) to produce 
+
+wr+1 , where the entire architecture strategically decouples expensive diffusion inference from client-side training while establishing a shared semantic space for consistent alignment. 
+
+B. Adaptive Multimodal Diffusion Representation 
+
+Robust semantic guidance is provided by features extracted offline from a pre-trained Stable Diffusion v1.5 model [ 33 ], which consists of three key components: a Variational Au-toencoder (VAE) for image-latent conversion, a U-Net for denoising in latent space, and a CLIP-based text encoder for text conditioning. 
+
+Visual Representation. For each image xi in the training set, we extract visual guidance features through the following pipeline. First, the image is encoded into the latent space using the VAE encoder: 
+
+li = EVAE (xi) · γ, (1) where γ = 0 .18215 is the standard SD scaling factor for nu-merical stability. Subsequently, we apply the forward diffusion process to add controlled noise at timestep t = 150 :
+
+li,t = √¯αtli + √1 − ¯αtϵ, ϵ ∼ N (0 , I). (2) Once obtained, the noisy latent representation li,t is fed into the U-Net denoising network ϵϕ, from which we extract intermediate activations from multiple hierarchical layers 
+
+{lj }Jj=1 . Letting h(lj )(li,t , t ) denote the feature map from layer 
+
+lj , these multi-scale features are then aggregated and projected to form the final visual representation: 
+
+zimg ,i = P
+
+(
+
+Concat [{GAP (h(lj )(li,t , t )) }Jj=1 ]
+
+)
+
+, (3) where GAP denotes global average pooling and P is a PCA-based dimensionality reduction to d = 512 dimensions. 
+
+Textual Representation. For each class j with text prompt cj
+
+(e.g., “a photo of a dog”), the CLIP-based text encoder Tϕ in SD generates semantic embeddings ej = Tϕ(cj ). For class y,the positive feature is defined as z+ 
+
+> txt ,y
+
+= ey , while negative features are z− 
+
+> txt ,y
+
+= {ej }j̸ =y , providing cross-modal semantic guidance for the contrastive loss in Sec. III-D. 
+
+C. Efficient Client-Server Feature Extraction 
+
+Large diffusion models incur substantial computational over-head, which poses a significant barrier for resource-constrained clients. To address this issue, we design an efficient client-server architecture that partitions the workload by offloading all heavy computations to the server. 
+
+Server-Side Feature Generation. The server performs a one-time, offline extraction of all diffusion features before federated training begins, leveraging the complete Stable Diffusion v1.5 pipeline. For visual features, the process follows three stages: 
+
+Stage 1: Latent Encoding. Each image xi is first encoded into the latent space using the pre-trained VAE encoder (Eq. 1), thereby reducing the spatial resolution from 32 × 32 (CIFAR) to 4 × 4 in latent space while maintaining semantic information. 
+
+Stage 2: Controlled Noising. The forward diffusion process (Eq. 2) adds Gaussian noise to the latent representation at timestep t = 150 , creating a partially noisy version li,t that retains sufficient semantic structure for feature extraction. 
+
+Stage 3: Multi-layer Feature Extraction. The noisy latent 
+
+li,t is passed through the U-Net denoising network, where intermediate activations from hierarchical layers (encoder, bottleneck, and decoder) are extracted using Eq. 3 to capture multi-scale semantic information. For textual features, class-specific prompts are processed through the CLIP text encoder 
+
+Tϕ to generate C semantic embeddings. All computed features 
+
+Zimg and Ztxt are stored on the server for distribution to clients. 
+
+Client-Side Lightweight Training. During each communi-cation round, the server distributes only the compact, pre-computed features relevant to each client’s local data [ 34 ]. Since feature extraction is decoupled from training, clients perform only the forward and backward passes of their smaller local models (e.g., ResNet-10 [ 35 ]). Let fi = g(xi; wk) denote the feature representation computed by client k’s model. The client then aligns fi with the received diffusion features zimg ,i 
+
+and ztxt using the unified loss function (Eq. 7). As a result, clients benefit from rich semantic guidance without incurring the computational cost of running the diffusion model locally. 
+
+D. Unified Multimodal Consistency Mechanism 
+
+During local training on client k, model parameters wk are optimized using a unified loss function Lk with three terms: classification loss LCE , knowledge distillation loss LKD , and cross-modal contrastive loss LCON .For local data batch {(xi, y i)}Bi=1 , the model produces logits 
+
+oi and L2-normalized features fi. The cross-entropy loss is: 
+
+LCE = − 1
+
+B
+
+> B
+
+∑
+
+> i=1
+
+log 
+
+(
+
+exp( oi,y i )
+
+∑Cc=1 exp( oi,c )
+
+)
+
+. (4) The knowledge distillation loss aligns local features with diffusion representations: 
+
+LKD = 1
+
+B
+
+> B
+
+∑
+
+> i=1
+
+DKL (softmax (zimg ,i ) ∥ softmax (fi)) . (5) The cross-modal contrastive loss aligns visual features fi with textual semantics using InfoNCE: 
+
+LCON = − 1
+
+B
+
+> B
+
+∑
+
+> i=1
+
+log exp( s+ 
+
+> i
+
+/τ )exp( s+ 
+
+> i
+
+/τ ) + ∑ 
+
+> j
+
+exp( s− 
+
+> i,j
+
+/τ ) , (6) where s+ 
+
+> i
+
+= sim (fi, z+ 
+
+> txt ,y i
+
+) and s− 
+
+> i,j
+
+= sim (fi, z− 
+
+> j
+
+).
+
+E. Federated Optimization and Training 
+
+The final objective for each client k is to minimize the weighted sum of the three loss components over its local dataset Dk:
+
+min 
+
+> wk
+
+Lk(wk) = E(x,y )∼D k [LCE + λKD LKD + λCON LCON ] ,
+
+(7) where λKD and λCON are hyperparameters. After local training, the server aggregates the updated client models wr+1  
+
+> k
+
+from a subset of clients Sr to produce the new global model wr+1 
+
+via federated averaging: 
+
+wr+1 ← ∑
+
+> k∈Sr
+
+nk
+
+∑ 
+
+> j∈Sr
+
+nj
+
+wr+1  
+
+> k
+
+. (8) IV. E XPERIMENTS 
+
+A. Experimental Setup 
+
+Datasets and Heterogeneity Scenarios. Evaluation is con-ducted on several benchmark datasets. For standard classifi-cation, CIFAR-10, CIFAR-100 [ 36 ], and TinyImageNet [ 37 ]are used. Two heterogeneity scenarios are modeled: (1) Label Shift: Data is partitioned using a Dirichlet distribution with concentration parameter α ∈ { 0.05 , 0.2, 0.5}, plus an extreme case (NID2). (2) Imbalance Shift: Long-tailed distributions are created with imbalance ratios ρ ∈ { 10 , 50 , 100 }.
+
+Implementation Details. All experiments are implemented in PyTorch on an NVIDIA RTX 4090 GPU. Our FL setup consists of K = 10 total clients over R = 100 communication rounds, with 5 clients randomly selected per round. Local training runs for E = 10 epochs using an SGD optimizer (batch size 64, momentum 0.9, learning rate 0.01). Weight decay is 10 −5 for CIFAR-10 and 10 −4 for other datasets. For network architecture, the backbone model is ResNet-10 for CIFAR datasets and MobileNetV2 for TinyImageNet. For the proposed method, we leverage pre-trained Stable Diffusion v1.5 [ 33 ] to extract multi-layer visual features from noisy latents ( t = 150 ) via denoising U-Net and class-specific textual embeddings via CLIP encoder, serving as semantic anchors for heterogeneity mitigation. The diffusion timestep is fixed at t = 150 , the feature dimension is d = 512 , the temperature is τ = 0 .05 , and loss balance hyperparameters are λKD = 1 .0
+
+and λCON = 0 .01 . Evaluation metric is top-1 accuracy. 
+
+B. Results 
+
+Main Results. Performance comparison between SemanticFL and state-of-the-art FL baselines is presented in Table I. We evaluate against comprehensive baselines including standard methods FedAvg [ 38 ] and FedProx [ 11 ], contrastive-based approaches MOON [ 12 ] and FedRCL [ 17 ], aggregation-based methods FedDisco [ 28 ] and FedCDA [ 39 ], and recent diffusion-based approach FedDifRC [ 18 ]. Across three datasets and under challenging non-IID settings, SemanticFL consistently achieves superior accuracy. For instance, on CIFAR-10 with moderate heterogeneity ( α = 0 .2), it achieves 88.94% accuracy, outperforming the next best method, FedDifRC [ 18 ], by 0.67%. Moreover, the performance gains are even more pronounced in highly heterogeneous settings; on CIFAR-100 under the extreme NID2 scenario, it achieves 54.58%, a improvement of 0.71% over FedDifRC [ 18 ]. Overall, these results validate the effectiveness of leveraging diffusion-based semantic guidance to mitigate client drift. 
+
+Ablation Study. An ablation study, presented in Table II, dissects the contribution of each core component. Initially, the baseline model (FedAvg) achieves an average accuracy of 78.37% on CIFAR-10, while integrating Adaptive Multimodal Diffusion Aggregation (AMDA) alone improves accuracy to 81.34% (+2.97%) and Server-side Feature Extraction (SFE) alone yields 80.60% (+2.23%). Notably, the complete frame-work combining both components achieves an average accuracy of 83.27%, demonstrating a strong synergistic effect between the diffusion-based semantic guidance and the efficient feature extraction mechanism. 
+
+Parameter Analysis. The impact of key federated learning parameters on SemanticFL is analyzed in Fig. 2, where the Fig. 2(a) examines client number K ∈ { 10 , 30 , 50 }, showing that performance degrades with increasing clients due to heightened heterogeneity. Fig. 2(b) studies local epochs E ∈ { 5, 10 , 20 },demonstrating optimal performance at E = 10 , balancing local convergence and client drift. Notably, SemanticFL maintains consistent performance advantages across all parameter settings, with relative improvements ranging from 2.11% to 4.47%, TABLE I: Comparison of top-1 accuracy (%) on CIFAR-10, CIFAR-100, and TinyImageNet across various non-IID scenarios. 
+
+Method CIFAR-10 CIFAR-100 TinyImageNet 
+
+NID1 0.05 NID1 0.2 NID2 NID1 0.05 NID1 0.2 NID2 NID1 0.05 NID1 0.2 NID2 FedAvg [38] 78.27 84.65 72.60 55.97 60.08 50.56 40.41 42.84 35.15 FedProx [11] 78.42 84.59 72.81 56.27 60.21 50.29 40.20 42.16 35.62 MOON [12] 80.79 86.10 73.35 56.79 61.48 51.81 40.79 43.63 36.11 FedDisco [28] 81.35 86.63 74.72 57.34 61.79 52.05 40.83 43.92 37.69 FedCDA [39] 81.70 86.89 75.07 57.76 62.17 52.35 41.18 44.09 38.24 FedRCL [17] 82.02 87.11 75.13 57.98 62.05 52.49 41.33 44.21 38.86 FedDifRC [18] 83.14 88.27 76.45 59.22 63.32 53.87 42.63 45.28 40.05 
+
+SemanticFL 83.76 88.94 77.12 59.85 64.05 54.58 43.25 45.93 40.89 
+
+TABLE II: Ablation study of components on CIFAR-10. 
+
+AMDA SFE NID1 0.05 NID1 0.2 NID2 Average 
+
+77.91 84.12 73.08 78.37 
+
+✓ 82.15 85.67 76.21 81.34 
+
+✓ 81.02 85.93 74.85 80.60 
+
+✓ ✓ 83.76 88.94 77.12 83.27 K=10 K=30 K=50       
+
+> 75.0
+> 77.5
+> 80.0
+> 82.5
+> 85.0
+> 87.5
+> 90.0
+> Accuracy (%)
+> 83.76
+> 79.88
+> 77.67
+> 88.94
+> 84.35
+> 81.15
+> (a) Clients K
+> FedAvg
+> SemanticFL
+> E=5 E=10 E=20
+> 80
+> 82
+> 84
+> 86
+> 88
+> 90
+> Accuracy (%)
+> 83.21 83.76 83.37
+> 85.32
+> 88.94
+> 88.19
+> (b) Local epochs E
+> FedAvg
+> SemanticFL
+
+Fig. 2: Results of client number K and local epochs E.indicating the robustness of our diffusion-based semantic guidance mechanism. 
+
+Temperature Sensitivity. We further investigate the sensi-tivity of contrastive temperature τ in Fig. 3. On CIFAR-10 (NID1 0.2), SemanticFL achieves peak accuracy of 88.94% at 
+
+τ = 0 .05 , with performance varying within a 2.10% range across τ ∈ [0 .02 , 0.12] , whereas on CIFAR-100 (NID1 0.2), the optimal accuracy of 64.05% is similarly attained at τ = 0 .05 ,with a smaller variation of 0.93% due to the lower baseline accuracy. Importantly, SemanticFL consistently outperforms FedAvg (84.65% on CIFAR-10, 60.08% on CIFAR-100) across all tested temperature values, demonstrating robustness to hyperparameter selection and validating our default choice as both datasets exhibit similar trends where performance peaks at τ = 0 .05 and gradually declines for smaller or larger values. 
+
+Analysis of Learned Representations. Fig. 4 provides a t-SNE visualization of the feature representations learned on CIFAR-10, offering qualitative evidence for the quantitative results by showing that in settings with higher accuracy, such as NID1 0.2 (88.94%), the feature clusters are more compact and well-separated. Even in challenging scenarios like the long-tailed setting with ρ = 100 (56.89%), SemanticFL still learns discriminative features albeit with more overlap, thereby supporting the claim that diffusion-based guidance 0.02 0.04 0.05 0.06 0.08 0.10 0.12       
+
+> 83
+> 84
+> 85
+> 86
+> 87
+> 88
+> 89
+> 90
+> Accuracy (%)
+> 88.94
+> 84.65
+> (a) CIFAR-10
+> FedAvg
+> SemanticFL
+> 0.02 0.04 0.05 0.06 0.08 0.10 0.12
+> 59
+> 60
+> 61
+> 62
+> 63
+> 64
+> 65
+> Accuracy (%)
+> 64.05
+> 60.08
+> (b) CIFAR-100
+> FedAvg
+> SemanticFL
+
+Fig. 3: Effect of temperature τ on CIFAR-10 and CIFAR-100. (a) NID1 0.05 (83.76%) (b) NID1 0.2 (88.94%) (c) NID2 (77.12%)      
+
+> (d) =10 (78.62%) (e) =50 (66.15%) (f) =100 (56.89%)
+
+Fig. 4: t-SNE visualization of learned feature representations. helps the model learn a unified feature space resilient to data heterogeneity. 
+
+Discussion. Collective results demonstrate that SemanticFL provides a robust solution to data heterogeneity in distributed multimodal perception. By leveraging semantic guidance from pre-trained diffusion models, it consistently achieves state-of-the-art performance across supervised and self-supervised scenarios. A limitation is the reliance on a powerful server for the initial offline feature extraction, which may not be available in all scenarios. Additionally, while key hyperpa-rameters show robustness, their optimal values may vary across datasets and heterogeneity levels, warranting further investigation into adaptive tuning methods. Looking forward, the proposed semantic alignment mechanism has significant potential for embodied AI applications, where multi-systems must collaboratively process and understand diverse visual and textual content [ 40 ]. In particular, the framework’s ability to handle heterogeneous multimodal data makes it well-suited for distributed visual content analysis and interactive multimedia systems that require consistent semantic understanding across diverse sensing modalities. V. C ONCLUSIONS 
+
+In this paper, we introduce SemanticFL, a novel framework to mitigate data heterogeneity in federated learning by leveraging rich semantic guidance from pre-trained diffusion models. The approach demonstrates superior performance across three publicly available benchmarks under challenging non-IID conditions, opening new avenues for integrating large gen-erative models into privacy-preserving distributed learning. Our semantic alignment mechanism shows particular promise for visual recognition and multimedia retrieval systems that require consistent cross-modal understanding across heterogeneous data sources. Future work will extend the framework to more complex multimedia modalities including video and audio content and investigate theoretical convergence guarantees under diverse heterogeneity scenarios. REFERENCES [1] S. P. Karimireddy, S. Kale, M. Mohri, S. Reddi, S. Stich, and A. T. Suresh, “Scaffold: Stochastic controlled averaging for federated learning,” 
+
+ICML , pp. 5132–5143, 2020. [2] Y. Du, Z. Wang, C. Leung, and V. C. Leung, “Accelerating and securing blockchain-enabled distributed machine learning,” IEEE Trans. Mobile Comput. , vol. 23, no. 6, pp. 1–18, 2023. [3] Y. Liu, W. Chen, Y. Bai, X. Liang, G. Li, W. Gao, and L. Lin, “Aligning cyber space with physical world: A comprehensive survey on embodied ai,” IEEE/ASME Trans. Mechatron. , pp. 1–22, 2025. [4] Y. Liu, S. Wang, Z. Qu, X. Li, S. Kan, and J. Wang, “Fedgca: Global consistent augmentation based single-source federated domain generalization,” in IEEE ICME , 2024, pp. 1–6. [5] T. Yoon, M. Hwang, and E. Yang, “Vq-feddiff: Federated learning algorithm of diffusion models with client-specific vector-quantized conditioning,” IEEE Trans. Pattern Anal. Mach. Intell. , pp. 1–11, 2025. [6] Y. Liu, J. Liu, K. Yang, B. Ju, S. Liu, Y. Wang, D. Yang, P. Sun, and L. Song, “Amp-net: Appearance-motion prototype network assisted automatic video anomaly detection system,” IEEE Trans. Ind. Informat. ,vol. 20, no. 2, pp. 2843–2855, Feb. 2024. [7] H. Chen, H. Li, Y. Zhang, J. Bi, G. Zhang, Y. Zhang, P. Torr, J. Gu, D. Krompass, and V. Tresp, “Fedbip: Heterogeneous one-shot federated learning with personalized latent diffusion models,” in CVPR , 2025, pp. 30 440–30 450. [8] L. Yuan, Z. Wang, L. Sun, P. S. Yu, and C. G. Brinton, “Decentralized federated learning: A survey and perspective,” IEEE Internet Things J. ,vol. 11, no. 21, pp. 34 617–34 638, 2024. [9] X. Ma, J. Zhu, Z. Lin, S. Chen, and Y. Qin, “Layer-wised model aggregation for personalized federated learning,” CVPR , pp. 10 092– 10 101, 2022. [10] Y. Du, C. Leung, Z. Wang, X. Li, and V. Leung, “Decentralized model selection for test-time adaptation in heterogeneous connected systems,” 
+
+ACM Transactions on the Web , vol. 20, no. 1, pp. 7:1–7:26, 2026. [11] T. Li, A. K. Sahu, M. Zaheer, M. Sanjabi, A. Talwalkar, and V. Smith, “Federated optimization in heterogeneous networks,” MLSys , vol. 2, pp. 429–450, 2020. [12] Q. Li, B. He, and D. Song, “Model-contrastive federated learning,” CVPR ,pp. 10 713–10 722, 2021. [13] Y. Tan, G. Long, L. Liu, T. Zhou, Q. Lu, J. Jiang, and C. Zhang, “Fedproto: Federated prototype learning across heterogeneous clients,” 
+
+AAAI , vol. 36, pp. 8432–8440, 2022. [14] Y. Wang, W. Song, W. Tao, A. Liotta, D. Yang, X. Li, S. Gao, Y. Sun, W. Ge, W. Zhang, and W. Zhang, “A systematic review on affective computing: Emotion models, databases, and recent advances,” Inf. Fusion ,vol. 83–84, pp. 19–52, 2022. [15] Y. Wang, S. Yan, W. Song, A. Liotta, J. Liu, D. Yang, S. Gao, and W. Zhang, “Mgr 3 net: Multigranularity region relation representation network for facial expression recognition in affective robots,” IEEE Trans. Ind. Informat. , vol. 20, no. 5, pp. 7216–7226, 2024. [16] T. Yu, E. Bagdasaryan, and V. Shmatikov, “Multimodal federated learning,” 
+
+NeurIPS , vol. 36, pp. 23 456–23 470, 2023. [17] S. Seo, J. Lee, and G. Kim, “Relaxed contrastive learning for federated learning,” ICLR , 2024. [18] H. Wang, H. Li, H. Chen, J. Yan, J. Shi, and J. Shen, “Feddifrc: Unlocking the potential of text-to-image diffusion models in heterogeneous federated learning,” in ICCV , 2025. [19] A. Najafi, J. Smith, and E. Johnson, “Enhancing generative models in federated learning,” ICML , pp. 12 345–12 356, 2024. [20] Y. Liu, J. Liu, C. Li, R. Xi, W. Li, L. Cao, J. Wang, L. T. Yang, J. Yuan, and W. Zhou, “Anomaly detection and generation with diffusion models: A survey,” arXiv:2506.09368 , 2025. [21] J. Liu, Z. Ma, Z. Wang, Y. Liu, Z. Wang, P. Sun, L. Song, B. Hu, and V. C. M. Leung, “A survey on diffusion models for anomaly detection,” 
+
+arXiv:2501.11430 , 2025. [22] H. Gu, X. Zhang, J. Li, H. Wei, B. Li, and X. Huang, “Federated learning vulnerabilities: Privacy attacks with denoising diffusion probabilistic models,” in ACM WebConf , 2024, pp. 1149–1157. [23] H. Wang, H. Li, H. Chen, J. Yan, J. Shi, and J. Shen, “Fedsc: Federated learning with semantic-aware collaboration,” in ACM KDD , 2025, pp. 2938–2949. [24] J. Liu, Y. Du, K. Yang, J. Wu, Y. Wang, X. Hu, Z. Wang, Y. Liu, P. Sun, A. Boukerche, and V. C. Leung, “Edge-cloud collaborative computing on distributed intelligence and model optimization: A survey,” IEEE Commun. Surveys Tuts. , pp. 1–1, 2026. [25] J. Wu, J. Liu, Y. Liu, L. Wang, Z. Wang, W. Chen, Z. Tian, R. Yu, and V. C. M. Leung, “A survey on cloud-edge-terminal collaborative intelligence in aiot networks,” arXiv.2508.18803 , 2025. [26] J. Liu, L. Gong, J. Guo, J. Wu, L. Sun, Y. Bi, K. Patwari, B. Chen, L. Zhang, W. Zhou, Y. Liu, X. Zhu, C.-N. Chuah, and B. Rajaratnam, “Multimodal large language models in medicine and nursing: A survey,” 
+
+techrxiv.175623882.21520632/v1 , 2025. [27] J. Liu, G. Fang, L. Teng, L. Qian, B. Hu, and P. Sun, “Enhancing collaborative learning efficiency via control-theoretic merit gating in federated networks,” in IEEE ICC , 2026. [28] R. Ye, M. Xu, J. Wang, C. Xu, W. Chen, and Q. Li, “Feddisco: Federated learning with discrepancy-aware collaboration,” ICML , pp. 40 663–40 683, 2023. [29] J. Dong, L. Wang, Z. Fang, G. Sun, S. Xu, X. Wang, and Q. Zhu, “Federated class-incremental learning,” CVPR , pp. 10 164–10 173, 2022. [30] W. Feng, X. Zuo, R. Zhang, Y. Zhu, C. Wang, J. Guo, and C. Sun, “Federated deep reinforcement learning for multimodal content caching in edge-cloud networks,” IEEE Trans. Netw. Sci. Eng. , vol. 12, no. 3, pp. 2188–2201, 2025. [31] X. Kong, W. Zhang, H. Wang, M. Hou, X. Chen, X. Yan, and S. K. Das, “Federated graph anomaly detection via contrastive self-supervised learning,” IEEE Trans. Neural Netw. Learn. Syst. , vol. 36, no. 5, pp. 7931–7944, 2025. [32] S. Jothiraj, R. Patel, and A. Kumar, “Phoenix: A federated learning framework for training diffusion models,” NeurIPS , vol. 36, pp. 34 567– 34 578, 2023. [33] R. Rombach, A. Blattmann, D. Lorenz, P. Esser, and B. Ommer, “High-resolution image synthesis with latent diffusion models,” in CVPR , 2022, pp. 10 684–10 695. [34] J. Liu, Y. Du, Y. Liu, Z. Wang, P. Sun, and V. C. M. Leung, “Projecting to consensus: Communication-efficient collaborative learning across heterogeneous networks,” in IEEE ICC , 2026. [35] S. K. Roy, S. Manna, T. Song, and L. Bruzzone, “Attention-based adaptive spectral–spatial kernel resnet for hyperspectral image classification,” IEEE Trans. Geosci. Remote Sens. , vol. 59, no. 9, pp. 7831–7843, 2021. [36] A. Krizhevsky, G. Hinton et al. , “Convolutional deep belief networks on cifar-10,” vol. 40, no. 7, pp. 1–9, 2010. [37] Y. Le and X. Yang, “Tiny imagenet visual recognition challenge,” CS 231N , vol. 7, no. 7, p. 3, 2015. [38] B. McMahan, E. Moore, D. Ramage, S. Hampson, and B. A. y Arcas, “Communication-efficient learning of deep networks from decentralized data,” AISTATS , vol. 54, pp. 1273–1282, 2017. [39] M. Lanza, S. Rodriguez, and M. Brown, “Joint client assignment and aggregation for federated learning,” ICLR , 2025. [40] Z. Feng, R. Xue, L. Yuan, Y. Yu, N. Ding, M. Liu, B. Gao, J. Sun, X. Zheng, and G. Wang, “Multi-agent embodied ai: Advances and future directions,” arXiv:2505.05108 , 2025.

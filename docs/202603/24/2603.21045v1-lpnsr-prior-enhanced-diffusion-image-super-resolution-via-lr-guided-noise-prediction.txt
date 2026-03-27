@@ -1,0 +1,503 @@
+Title: LPNSR: Prior-Enhanced Diffusion Image Super-Resolution via LR-Guided Noise Prediction
+
+URL Source: https://arxiv.org/pdf/2603.21045v1
+
+Published Time: Tue, 24 Mar 2026 01:04:27 GMT
+
+Number of Pages: 18
+
+Markdown Content:
+# LPNSR: Prior-Enhanced Diffusion Image Super-Resolution via LR-Guided Noise Prediction 
+
+Shuwei Huang, Shizhuo Liu, Zijun Wei 
+
+Huazhong University of Science and Technology 
+
+{frozen2001, shizhuol}@hust.edu.cn , weiiizong1001@gmail.com 
+
+# ABSTRACT 
+
+Diffusion-based image super-resolution (SR), which aims to reconstruct high-resolution (HR) images from corresponding low-resolution (LR) observations, faces a fundamental trade-off between infer-ence efficiency and reconstruction quality. The state-of-the-art residual-shifting diffusion framework achieves efficient 4-step inference, yet suffers from severe performance degradation in compact sampling trajectories. This is mainly attributed to two core limitations: the inherent suboptimality of unconstrained random Gaussian noise in intermediate steps, which leads to error accumulation and insufficient LR prior guidance, and the initialization bias caused by naive bicubic upsampling. In this paper, we propose LPNSR, a prior-enhanced efficient diffusion framework to address these issues. We first mathematically derive the closed-form analytical solution of the optimal intermediate noise for the residual-shifting diffusion paradigm, and accordingly design an LR-guided multi-input-aware noise predictor to replace random Gaussian noise, embedding LR structural priors into the reverse process while fully preserving the framework’s core efficient residual-shifting mechanism. We further mitigate initial bias with a high-quality pre-upsampling network to optimize the diffusion starting point. With a compact 4-step trajectory, LPNSR can be optimized in an end-to-end manner. Extensive experiments demonstrate that LPNSR achieves state-of-the-art perceptual performance on both synthetic and real-world datasets, without relying on any large-scale text-to-image priors. The source code of our method can be found at https://github.com/Faze-Hsw/LPNSR. 
+
+# 1 Introduction 
+
+Image super-resolution (SR) aims to recover high-resolution (HR) images from low-resolution (LR) observations, a severely ill-posed problem due to unknown real-world degradations. Recently, diffusion models[ 1, 2, 3, 4, 5, 6, 7, 8 , 9 ,10 ] have demonstrated unprecedented potential in SR tasks, achieving remarkable breakthroughs in both pixel-level fidelity and perceptual realism. However, diffusion-based SR methods face a fundamental and critical trade-off between inference efficiency and reconstruction performance, especially in limited-step sampling scenarios that are essential for practical deployment. To break this trade-off, the residual-shifting diffusion framework (ResShift[ 2]) has emerged as the state-of-the-art (SOTA) efficient solution, achieving SR inference with only 4 sampling steps while retaining a lightweight denoising network. However, due to the compression of sampling steps, the generation quality of the 4-step sampling version suffers from a severe degradation compared with its original 15-step sampling counterpart. A common solution to this problem is to enhance and reconstruct the intermediate representations of the diffusion process. Current mainstream SR methods that exploit diffusion priors typically seek to adjust the intermediate representations of the diffusion backbone, either via optimization[ 6, 5, 4] or fine-tuning[ 11 , 12 ], so as to better match the provided LR inputs. A major limitation of these approaches lies in their computational overhead: each diffusion step requires solving a complex optimization problem, which severely hampers inference speed. Moreover, these methods typically rely on manually defined degradation models and therefore cannot address blind super-resolution in real-world scenarios. Common advanced diffusion models[ 2, 13 , 14 , 15 , 10 ] typically sample noise maps from random Gaussian distributions during the intermediate sampling steps, where this stochastic noise is incorporated into the reverse diffusion process to iteratively refine the generated image. However, this practice of using random Gaussian noise in intermediate 
+
+> arXiv:2603.21045v1 [cs.CV] 22 Mar 2026
+
+steps entails notable drawbacks: First, the noise map lacks task-specific prior guidance, meaning each sampling step relies on unconstrained stochasticity rather than meaningful constraints, forcing the model to spend excessive iterations correcting deviations from the target data manifold. Second, the cumulative effect of random noise maps across multiple steps amplifies prediction uncertainties and errors, which can degrade the quality of the final output. For the residual-shifting diffusion framework, it can be proven that the random Gaussian noise used in intermediate sampling steps is inherently suboptimal (see Section A.1 in Appendix). To address these limitations, diffusion inversion techniques[ 16 , 17 , 18 , 19 , 20 , 21 ] have garnered increasing attention: these methods solve an optimization problem at each intermediate sampling step, ensuring each intermediate step is aligned with the target task requirements and thus reducing redundant iterations while enhancing result reliability. Another alternative complementary solution to alleviate the performance degradation of few-step diffusion SR is to optimize the initial sampling point of the reverse diffusion process. The core insight is that initial state quality fundamentally determines the final reconstruction performance in compact few-step trajectories, as the model lacks sufficient denoising iterations to correct for initialization-induced bias. Prior works[ 2, 4, 6, 5] have fully verified the critical role of initialization optimization in improving diffusion SR efficiency and performance. These existing methods mainly focus on calibrating the initial noise distribution. However, for the residual-shifting diffusion framework, a more straightforward and direct approach is to perform pixel-level regression-based super-resolution on the LR image to generate higher-quality initialization before the diffusion process starts. An additional benefit of this strategy is that it can alleviate the deviation caused by the unavailability of the HR image during the reverse initialization process to a certain extent (see Section 3.2 for further discussion). In this work, we introduce LPNSR (LR-Guided Noise Prediction for SR), which refines ResShift’s[ 2] diffusion inversion process with a prior-guided noise map sampling mechanism. Leveraging its compact 4-step reverse sampling and lightweight denoising network, we can directly optimize the generation results end-to-end over a complete sampling chain. Our method achieves performance comparable to or even superior to that of current SOTA methods, without leveraging any prior knowledge from large-scale text-to-image (T2I) models. The main contributions of this work are as follows: • We derive the conditional dependence of the optimal intermediate noise, and accordingly propose a multi-input-aware noise predictor for the residual-shifting diffusion equation to enhance prior guidance, and integrate this noise predictor into the original pipeline without modifying the denoising network,thus retaining the core residual-shifting mechanism and analytical marginal distribution for efficient inference. • We introduce a pretrained pre-upsampling network into the initial process to replace bicubic interpolation upsampling, which is designed to mitigate the errors induced by the unavailability of the ground-truth image during initial sampling. We find that this design exerts a significant impact on the few-step inference performance. (see Section 4.2 for detailed results). • We conduct comprehensive experiments on both synthetic and real-world datasets, which demonstrate that our proposed method achieves performance comparable to, or even surpassing, current SOTA approaches. 
+
+# 2 Related Work 
+
+Image Super-Resolution. Along with the proliferation of deep learning, deep learning-driven approaches have progressively emerged as the dominant paradigm for SR[ 22 , 23 ]. Early prominent works primarily focused on training regression models using paired LR-HR data[ 24 , 25 , 26 ]. Though these models effectively capture the expectation of the posterior distribution, they inherently suffer from over-smoothing artifacts in generated results[ 27 , 28 , 29 ]. To enhance the perceptual quality of reconstructed HR images, generative SR models have garnered growing interest—including autoregressive architectures[ 30 , 31 , 32 , 33 ]. Despite notable gains in perceptual performance, autoregressive models typically incur substantial computational overhead. Additionally, GAN-based SR methods have attained remarkable success in perceptual quality[ 34 , 35 , 27 , 28 , 29 ], yet the training process remains notoriously unstable. More recently, diffusion-based models have become a focal point of SR research[ 36 , 6, 5, 7, 1]. These methods generally fall into two categories: those that concatenate the LR image to the denoiser’s input[ 7, 1], and those that adapt the backward process of a pre-trained diffusion model[ 36 , 6, 5]. While these diffusion-based approaches yield promising performance, their methods still introduce unconstrained random Gaussian noise in each step of the reverse diffusion process, rather than meaningful noise maps. 
+
+Diffusion Inversion. This paradigm centers on identifying the optimal set of noise maps that, when fed through a diffusion model, enable the reconstruction of a specified target image. Recent works[ 37 , 38 ] optimized text embeddings for better textual alignment. Recent works refined these strategies, covering textual or visual prompts[ 39 , 40 ] and intermediate noise maps[ 41 , 42 , 43 , 44 ], boosting inversion quality. However, existing diffusion inversion methods are 2Figure 1: Qualitative comparison of our PreSet-A and PreSet-B methods under different sampling steps for ×4 image super-resolution. (a) Zoomed patch of the input LR image; (b)-(e) Results of PreSet-A with 4, 3, 2, and 1 sampling steps, respectively; (f)-(i) Results of PreSet-B with 4, 3, 2, and 1 sampling steps, respectively. Two representative samples are provided to demonstrate the visual performance of different configurations. (Zoom in for best view) primarily tailored for image editing tasks. InvSR[ 4] extended diffusion inversion to SR, but constrained by DDPM’s[ 10 ]inference step and efficiency limitations, it only optimized the noise map for initialization and failed to optimize the noise predictor via the full reverse sampling chain for the intermediate steps. In this work, we propose LPNSR, a LR-prior-enhanced diffusion framework. LPNSR replaces random Gaussian noise with a multi-input-aware LR-guided noise predictor while preserving ResShift’s[ 2 ] core efficiency. Leveraging its 4-step compact trajectory, we enable end-to-end training across the full reverse chain without step-skipping strategies, ensuring training-inference consistency. In addition, to address the bias induced by the unavailability of the ground-truth image during the initialization phase, we replace the simple bicubic interpolation upsampling with a pre-trained SR network, enabling arbitrary-step inference ranging from 1 to 4 steps without retraining the pre-trained denoising network. 
+
+# 3 Methodology 
+
+We adhere to ResShift’s[ 2] notation: y0 as LR image, x0 as HR image. LPNSR retains the latent space compression (VQGAN[45], 4× spatial reduction) and residual-shifting Markov chain. 
+
+3.1 Motivation 
+
+Our design is centered around two unresolved core bottlenecks of the residual shifting diffusion framework: 
+
+High-Quality Upsampling for Better Initialization. The original residual-shifting diffusion framework typically assumes that y0 and x0 have identical spatial dimensions, a prerequisite for computing the initial residual e0 = y0 − x0.To satisfy this constraint, y0 is first upsampled via bicubic interpolation to match the size of x0 before the diffusion process commences. However, this naive bicubic interpolation can further degrade the quality of y0, increasing the difficulty of subsequent denoising and refinement. A straightforward yet effective solution is to introduce a pre-trained 3Figure 2: Visualization of the intermediate noise maps generated by our proposed noise predictor during the 4-step reverse diffusion process. From left to right: the input LR image, and the predicted noise maps at step 4, step 3, and step 2 of the reverse sampling process, respectively. SR network for high-quality upsampling, which provides the diffusion process with a more robust starting point. This not only elevates the quality of the final generated output but also enables further compression of sampling steps (see Table 1 for detailed results). The detailed inference process can be found in Algorithm 2. 
+
+Compact Sampling Trajectory Enables End-to-End Optimization . For the residual-shifting diffusion framework, we mathematically prove that unconstrained random Gaussian noise in intermediate reverse sampling steps is inherently suboptimal. The theoretically optimal intermediate noise, which maximizes the likelihood of the ground-truth HR image, exhibits explicit conditional dependence on multiple task-related variables (see Appendix A.1). To approximate this optimal noise, we need to model its conditional mapping across the entire reverse diffusion chain. Notably, the residual-shifting framework only requires 4 reverse sampling steps, forming a sufficiently compact trajectory to support full-process training. Unlike traditional diffusion models with hundreds of steps, this brevity allows us to train the noise predictor across the full reverse chain. We can directly optimize the predictor via end-to-end loss on the final HR output, ensuring training-inference alignment (detailed training procedure is provided in Algorithm 1). 
+
+3.2 Diffusion Framework 
+
+Building on the above motivations, we first revisit the core formulation of the residual-shifting diffusion framework, and then introduce our proposed LPNSR framework with two targeted optimizations. 
+
+Forward Process. The forward process corrupts x0 toward y0 via residual shifting through a Markov chain with length 
+
+T . The transition distribution is as follows: 
+
+q(xt|xt−1, y 0) = N  xt; xt−1 + αte0, κ 2αtI , t = 1 , 2, . . . , T, (1) where {ηt}Tt=1 is a monotonically increasing shifting sequence(for the chain of length T , satisfying η1 → 0 and 
+
+ηT → 1), αt = ηt − ηt−1 for t > 1 (with α1 = η1), and κ is a hyper-parameter controlling the noise variance. y0 is first pre-upsampled to the same spatial resolution with x0, and e0 = y0 − x0 is the residual between the LR and HR images. The marginal distribution at timestep t is analytically tractable: 
+
+q(xt|x0, y 0) = N  xt; x0 + ηte0, κ 2ηtI , t = 1 , 2, . . . , T. (2) At t = T , xT converges to N (y0, κ 2I), a perturbation of the LR image,preserving structural prior information. However, since the x0 is not directly accessible during inference, an approximate sampling strategy is designed for the initialization of arbitrary-step inference: we can directly replace x0 in Eq. (2) with y0:
+
+xt = y0 + κ√ηt · zt, t = 1 , 2, . . . , T, (3) 4where zt is a random noise map which is sampled from N (0 , I ). This allows us to initialize the sampling process from any desired step. The intuition behind this design is that if y0 is sufficiently close to x0 before the diffusion process starts, this approximation can be valid. Moreover, as noted in [ 4], the gap between y0 and x0 can be further narrowed with the addition of random noise perturbations. However, simple bicubic interpolation upsampling alone is clearly insufficient to achieve this level of proximity. To address this, we use a SR regression network to pre-upsample y0
+
+before the diffusion process begins, thereby reducing the distance between y0 and x0.
+
+Reverse Process. The reverse process infers pθ (xt−1|xt, y 0) as a Gaussian distribution: 
+
+pθ (xt−1|xt, y 0) = N (xt−1; μθ (xt, y 0, t ), Σθ (xt, y 0, t )) . (4) Given a pretrained deep neural network fθ that predicts x0 from xt and y0, the mean μθ is reparameterized as 
+
+μθ (xt, y 0, t ) = ηt−1
+
+ηt
+
+xt + αt
+
+ηt
+
+fθ (xt, y 0, t ). (5) And the variance is fixed as 
+
+Σθ (xt, y 0, t ) = κ2 ηt−1
+
+ηt
+
+αtI. (6) Performing one step of reverse denoising on xt yields xt−1, we have 
+
+xt−1 = μθ (xt, y 0, t ) + pΣθ (xt, y 0, t ) · zt−1, (7) where zt satisfies z0 = 0 and zt ∼ N (0, I) for t = 1 , . . . , T − 1. Starting from the initialization state xt defined in Eq. (3) , we perform iterative denoising by repeatedly executing the reverse denoising operation described in Eq. (7) until predicted output x′ 
+
+> 0
+
+is obtained. The final HR output is uniquely determined by the noise maps at intermediate timesteps S = {z1, z 2, . . . , z T −1}.Following the maximum likelihood estimation (MLE) paradigm widely used in diffusion model optimization, we define the optimal intermediate-step noise as the noise that maximizes the conditional log-likelihood of the ground-truth HR image, which is expressed as 
+
+z∗ 
+
+> t−1
+
+= arg max 
+
+> zt−1
+
+log pθ (x0|xt−1(zt−1), y 0). (8) Solving this optimization problem yields the closed-form analytical expression of the optimal intermediate noise: 
+
+z∗ 
+
+> t−1
+
+= (1 − ηt−1)x0 + ηt−1y0 − μθ (xt, y 0, t )
+
+pΣθ (xt, y 0, t ) . (9) The complete mathematical derivation of this closed-form solution is elaborated in Appendix A.1. This expression confirms that the optimal intermediate noise follows a deterministic mapping, rather than the unconstrained random Gaussian noise adopted in conventional diffusion SR pipelines, proving the inherent suboptimality of the original framework. 
+
+3.3 LPNSR: Reverse Process with Noise Prediction Modified Reverse Sampling. As demonstrated in Section 3.2, the optimal intermediate noise exhibits explicit conditional dependence rather than conforming to an independent random Gaussian distribution. Furthermore, it can be proven that injecting optimal noise given in Eq. (9) at all intermediate steps guarantees an exact recovery of the original HR image in the reverse diffusion process. However, since the HR image x0 is unavailable during the inference phase, we design a multi-input-aware noise predictor to approximate this optimal noise. We denote the input set of the noise predictor as ψ and its parameters as ω, and its core optimization objective is to directly minimize the discrepancy between the final generated SR image x′ 
+
+> 0
+
+and the HR image x0 in an end-to-end manner: 
+
+ω∗ = arg min  
+
+> ω
+
+Ex0,y 0∼D [L(x′
+
+> 0
+
+(ω, ψ, y 0), x 0)] , (10) where D denotes the dataset composed of paired LR and HR images. The core modification is substituting random noise maps with predicted noise in Eq. (7). Specifically, for intermediate steps, Eq. (7) is re-formulated as 
+
+xt−1 = μθ (xt, y 0, t ) + pΣθ (xt, y 0, t ) · gw(xt, x ′
+
+> 0
+
+, y 0, t ), (11) where gw are the multi-input-aware neural networks parameterized by w that aims to estimate the optimal noise map for each intermediate step, and x′ 
+
+> 0
+
+is the clean image predicted by fθ at each diffusion step. The input design of our noise predictor is theoretically grounded: as derived in Section A.1, the theoretically optimal intermediate noise that maximizes the conditional log-likelihood of the HR image is determined by these four core variables. 5Figure 3: Visual results of different methods on three typical real-world examples. (Zoom in for best view) 
+
+Model Training. We optimize our LPNSR framework via end-to-end training of the LR-guided noise predictor, ensuring training-inference consistency. The predictor is trained to generate task-aligned noise maps with LR structural priors to replace unguided random noise in the reverse diffusion process. For better generalization to diverse initialization inputs independent of the pretrained regression network, we use bicubic interpolation upsampling during training, enabling robust high-quality generation even under harsh initialization conditions. Following recent SR approaches[ 1, 4, 46 ], the training objective is a combination of L1 loss L1, LPIPS[ 47 ] loss Ll, and GAN[48] loss Lg :
+
+L = λ1L1(x′
+
+> 0
+
+, x 0) + λlLl(x′
+
+> 0
+
+, x 0) + λg Lg (x′
+
+> 0
+
+, x 0), (12) where λ1, λl, and λg are hyperparameters balancing the contributions of each loss component. 
+
+Model Architecture. Our noise predictor is built upon a UNet[ 49 ] framework used in ResShift[ 2 ] to facilitate multi-scale feature fusion. At each diffusion step,it takes the intermediate state xt, the predicted clean image x′
+
+> 0
+
+, the LR image y0, and the current timestep t as input, and outputs the sampling noise for the posterior distribution. Furthermore, during inference, we employ the official pre-trained SwinIR-GAN[ 50 ] to perform pre-upsampling on the LR image, replacing the bicubic interpolation upsampling used during training. 
+
+# 4 Experiments 
+
+In this section, we conduct extensive experiments to evaluate the performance of our proposed LPNSR framework on both synthetic and real-world SR tasks. We compare our method against some of the recent state-of-the-art diffusion-based SR approaches, analyze the effectiveness of our LR-guided noise predictor, and perform ablation studies to understand the contributions of different components in our model. Our experiments mainly focus on the ×4 SR task. 
+
+4.1 Experimental Setup Training Details. We train the noise predictor on the LSDIR[ 53 ] dataset and the first 10k face images from the FFHQ[ 54 ] dataset for over 200k iterations, randomly cropping an image patch with a resolution of 256 × 256 from the 6Table 1: Quantitative comparison results between our proposed methods (denoted as PreSet-A, PreSet-B) and the original ResShift on the ImageNet-Test dataset (sampling steps range from 1 to 4), where PreSet-A uses only the noise predictor, and PreSet-B employs SwinIR-GAN to do pre-upsampling. The Runtime metric denotes the average inference time per image, which is tested on a single NVIDIA RTX 3090 Ti GPU. (Notably, the noise predictor is not activated during single-step inference, thus PreSet-A yields identical inference results to ResShift.) Steps Methods Metrics PSNR ↑ SSIM ↑ LPIPS ↓ NIQE ↓ PI ↓ CLIPIQA ↑ MUSIQ ↑ Runtime(s) 
+
+T = 1 
+
+ResShift 28.96 0.7886 0.4183 7.7442 7.1397 0.2929 30.2567 0.64 PreSet-A 28.96 0.7886 0.4183 7.7442 7.1397 0.2929 30.2567 0.64 PreSet-B 27.11 0.7566 0.2185 5.2409 4.2176 0.5776 66.0646 0.81 
+
+T = 2 
+
+ResShift 28.48 0.7823 0.3335 7.1880 6.7002 0.3392 38.8335 0.69 PreSet-A 28.01 0.7629 0.2861 5.9066 5.7823 0.3812 44.2488 0.71 PreSet-B 25.94 0.7244 0.2214 4.2463 3.2883 0.6341 70.7036 0.89 
+
+T = 3 
+
+ResShift 28.62 0.7816 0.2487 6.1413 5.7854 0.4601 52.4232 0.74 PreSet-A 26.68 0.7065 0.2561 4.4798 3.2974 0.6557 66.7649 0.77 PreSet-B 25.99 0.7001 0.2575 4.4535 3.2303 0.6858 71.5964 0.98 
+
+T = 4 
+
+ResShift 27.33 0.7530 0.1998 5.8700 4.3643 0.6147 65.5860 0.81 PreSet-A 26.35 0.7151 0.2324 4.4127 3.2834 0.6689 71.2560 0.90 PreSet-B 26.11 0.7054 0.2424 4.3807 3.1995 0.6921 71.7105 1.09 Table 2: Quantitative comparisons of different methods on ImageNet-Test and RealSR datasets. The best and second-best results are highlighted in red and blue. Metrics Datasets Methods PSNR ↑ SSIM ↑ LPIPS ↓ NIQE ↓ PI ↓ CLIPIQA ↑ MUSIQ ↑
+
+ImageNet-Test 
+
+BSRGAN[51] 27.05 0.7453 0.2437 4.5345 3.7111 0.5703 67.7195 RealESRGAN[46] 26.62 0.7523 0.2303 4.4909 3.7234 0.5090 64.8186 DiffBIR[12] 25.72 0.6695 0.2795 4.5875 3.2260 0.6900 69.7089 SeeSR[9] 26.69 0.7422 0.2187 4.3825 3.4742 0.5868 71.2412 ResShift[2] 27.33 0.7530 0.1998 5.8700 4.3643 0.6147 65.5860 SinSR[52] 26.98 0.7304 0.2209 5.2623 3.8189 0.6618 67.7593 OSEDiff[8] 23.95 0.6756 0.2624 4.7157 3.3775 0.6818 70.3928 InvSR[4] 24.14 0.6789 0.2517 4.3815 3.0866 0.7093 72.2900 LPNSR(Ours) 26.11 0.7054 0.2424 4.3807 3.1995 0.6921 71.7105 
+
+RealSR 
+
+BSRGAN[51] 26.51 0.7746 0.2685 4.6501 4.4644 0.5439 63.5869 RealESRGAN[46] 25.85 0.7734 0.2728 4.6766 4.4881 0.4898 59.6803 DiffBIR[12] 24.83 0.6642 0.3864 3.7366 3.3661 0.6857 65.3934 SeeSR[9] 26.20 0.7555 0.2806 4.5358 4.1464 0.6824 66.3757 ResShift[2] 25.77 0.7453 0.3395 6.9113 5.4013 0.5994 57.5536 SinSR[52] 26.02 0.7097 0.3993 6.2547 4.7183 0.6634 59.2981 OSEDiff[8] 23.89 0.7030 0.3288 5.3310 4.3584 0.7008 65.4806 InvSR[4] 24.50 0.7262 0.2872 4.2189 3.7779 0.6918 67.4586 LPNSR(Ours) 24.62 0.7003 0.3229 4.2175 3.6963 0.7180 67.5634 source image and synthesizing the LR image using the pipeline of RealESRGAN[ 46 ] at each iteration. We adopt the AdamW[ 55 ] optimizer with a learning rate of 5 × 10 −5 and a batch size of 16, while using the CosineAnnealing[ 56 ]scheduler with a minimum learning rate of 1 × 10 −5. The hyperparameters for the loss function are set as λ1 = 1 .0,
+
+λl = 1 .0, and λg = 0 .1. During training, we set T = 4 to remain consistent with ResShift[ 2 ],and the noise variance hyperparameter κ = 2 .0 as well as the shifting sequence {ηt}Tt=1 also follow the identical settings. The denoising network fθ is frozen during training, only the noise predictor is optimized. 
+
+Testing Datasets and Metrics. To facilitate fair and direct comparison with the latest SOTA methods, we follow the experimental setup of InvSR[ 4] by adopting its testing datasets and evaluation metrics. Specifically, our experiments 7Table 3: Quantitative comparisons of various methods on RealSet80 dataset. The best and second-best results are highlighted in red and blue. Method NIQE ↓ PI ↓ CLIPIQA ↑ MUSIQ ↑
+
+BSRGAN[51] 4.4408 4.0276 0.6263 66.6288 RealESRGAN[46] 4.1568 3.8852 0.6189 64.4957 DiffBIR[12] 3.8630 3.2117 0.7404 67.9806 SeeSR[9] 4.3678 3.7429 0.7114 69.7658 ResShift[2] 5.9866 4.8318 0.6515 61.7967 SinSR[52] 5.6243 4.2830 0.7228 64.0573 OSEDiff[8] 4.3457 3.8219 0.7093 68.8202 InvSR[4] 4.0284 3.4666 0.7291 69.8055 LPNSR(Ours) 4.3066 3.5845 0.7316 70.2184 are conducted on the three datasets: the synthetic dataset ImageNet-Test[ 57 ] used in [ 4], the real-world datasets RealSR[ 58 ] and RealSet80[ 2]. For evaluation metrics, we retain the same configuration:seven metrics (three reference metrics: PSNR, SSIM[ 59 ], LPIPS[ 47 ]; four non-reference metrics: NIQE[ 60 ], PI[ 61 ], MUSIQ[ 62 ], CLIPIQA[ 63 ]) are employed for ImageNet-Test and RealSR,while only non-reference metrics are used for RealSet80. PSNR and SSIM are calculated on the luminance (Y) channel of YCbCr space, and other metrics are computed in the standard sRGB space. 
+
+Compared Methods . To benchmark our model, we compare it against eight recent methods: 2 GAN-based methods (BSRGAN[ 51 ], RealESRGAN[ 46 ]) and 6 diffusion-based methods (DiffBIR[ 12 ], SeeSR[ 9], ResShift[ 2], SinSR[ 52 ], OSEDiff[8], InvSR[4]). The presets of all methods follow the official default guidelines. 
+
+4.2 Experimental Results Inference Steps. We compare ResShift [ 2] with our methods across 1 to 4 sampling steps, with quantitative results summarized in Table 1. Key observations are as follows: First, the impact of initialization on generation quality becomes more pronounced as the number of inference steps decreases. Specifically, PreSet-B (with regression pre-upsampling) significantly outperforms PreSet-A (with only the noise predictor) under 1- and 2-step settings, while the performance gap between the two narrows drastically at 3 or 4 steps. Second, the perceptual performance of all methods consistently improves with more inference steps. Third, our noise predictor stably enhances perceptual performance across all step settings with negligible computational overhead, as all its operations are performed in the latent space. In contrast, the image-space pre-upsampling module introduces a notable increase in inference time, and can be optionally omitted for 3-4 step scenarios, since sufficient denoising iterations can correct initialization bias. Visual results in Figure 1 further verify that PreSet-A and PreSet-B achieve comparable quality with more than 2 steps, while PreSet-A suffers from noticeable blurriness with fewer than 2 steps, and PreSet-B still maintains favorable generation quality. For all subsequent experiments, we fix the inference steps of LPNSR to 4. 
+
+Performance Comparison. Table 2 and 3 presents a comprehensive comparison of our LPNSR against recent SOTA methods on the ImageNet-Test, RealSR and RealSet80 datasets. Compared to the baseline ResShift[ 2], our LPNSR achieves remarkable improvements in perceptual metrics (e.g., NIQE, CLIPIQA, MUSIQ) while maintaining competitive fidelity. Against T2I-utilizing models such as OSEDiff[ 8 ], InvSR[ 4], and DiffBIR[ 12 ], LPNSR delivers comparable or better perceptual quality without leveraging any pre-trained text-to-image priors. It also outperforms multi-step diffusion methods (e.g., StableSR[ 3], SeeSR[ 9]) on core perceptual metrics. On real-world datasets, LPNSR ranks among the top-tier SOTA methods. It achieves leading perception-oriented metrics, such as NIQE, PI, CLIPIQA and MUSIQ on RealSR. On RealSet80, LPNSR attains the best MUSIQ and top-2 CLIPIQA. Qualitatively, Figure 3 shows LPNSR generates sharper textures and more consistent structures than other methods, free from spurious details or over-smoothing (see Appendix for more visual comparisons). LPNSR generates SR images with sharp details, intact structural consistency, and no noticeable artifacts. It effectively restores natural textures and clear edge contours that align with the input LR structure, delivering visually coherent and realistic results. 
+
+Intermediate Noise Prediction. Within the 4-step coarse-to-fine reverse denoising trajectory of the residual-shifting framework, our LR-guided noise predictor implements progressive prior guidance aligned with the denoising logic. As shown in Figure 2, the predicted noise maps are highly aligned with the LR image’s structure and texture, presenting a hierarchical guidance pattern: the step 4 noise map anchors the global structure to avoid initial sampling deviation; the step 3 map focuses on mid-frequency texture refinement to suppress cumulative error; the step 2 map targets local fine-grained details to optimize perceptual quality. Statistical distribution analysis in Figure 4 further validates this mechanism: the step 4 noise follows a moderately dispersed Gaussian-like distribution for stable global generation; the step 3 noise has a narrowed spread to avoid excessive perturbation; the step 2 noise presents a sharp-peak long-tail distribution for targeted high-frequency enhancement. This LR-aligned progressive guidance provides consistent constraints for the entire few-step denoising process, eliminating the defects of random Gaussian noise. 8Table 4: Ablation study results of our noise predictor at each intermediate step on the RealSR dataset. We evaluate the performance of LPNSR when replacing the noise predictor with random Gaussian noise at t = 4 , t = 3 , and t = 2 
+
+individually, under the 4-step sampling setting. Method PSNR ↑ SSIM ↑ LPIPS ↓ NIQE ↓ PI ↓ CLIPIQA ↑ MUSIQ ↑
+
+LPNSR w/o Predictor at t = 4 24.53 0.6898 0.3434 4.3864 3.7770 0.7090 66.7373 LPNSR w/o Predictor at t = 3 24.05 0.6848 0.3404 4.3860 3.7553 0.7374 67.3563 LPNSR w/o Predictor at t = 2 24.86 0.7308 0.3117 5.8530 4.7332 0.7041 63.5838 LPNSR 24.62 0.7003 0.3229 4.2175 3.6963 0.7180 67.5634 
+
+Step-Wise Ablation Study. We conduct a step-wise ablation study on the RealSR dataset as shown in Table 4 to quantitatively verify the independent contribution of each step’s noise predictor. The full LPNSR model achieves the best overall performance, validating the effectiveness of our full-stage prior guidance. Specifically, removing the step 4 predictor degrades both fidelity and perceptual quality, confirming its critical role in global structural anchoring; disabling the step 3 predictor causes the most severe PSNR drop, highlighting its core function in error mitigation and texture transition; replacing the step 2 predictor with random noise leads to a sharp decline in perceptual metrics despite high SSIM, verifying its indispensable role in fine-grained detail enhancement. The ablation results are fully consistent with the qualitative and statistical observations, forming a complete verification of our noise predictor’s working mechanism. 
+
+Figure 4: Statistical distribution analysis of the outputs from our LR-guided noise predictor. From left to right: the input LR image, the final SR image generated by LPNSR, the probability density distributions of the predicted noise maps at each intermediate reverse step ( t = 4 , t = 3 , and t = 2 ), and the distribution of the final SR output in latent space. The mean ( μ) and standard deviation ( σ) of the noise/latent values are provided for each distribution. 
+
+# 5 Conclusion and Discussion 
+
+In this paper, we propose LPNSR, an efficient prior-enhanced diffusion super-resolution framework. We first derive the closed-form optimal intermediate noise for the residual-shifting diffusion paradigm, and address its two critical limitations that cause severe few-step performance degradation: the suboptimality of unconstrained random Gaussian noise, and initialization bias from naive bicubic upsampling. Specifically, we design an LR-guided multi-input noise predictor to approximate the theoretical optimal noise, mitigating error accumulation while fully preserving its efficient core mechanism, and further optimize diffusion initialization with a pre-trained regression network to boost perceptual performance. Extensive experiments show that our 4-step LPNSR achieves superior perceptual performance, outperforming the original diffusion framework on all non-reference metrics and matching or surpassing T2I-based methods without external priors. Furthermore, our method supports arbitrary-step inference from 1 to 4 sampling steps without noticeable performance degradation. In addition to SR task, the residual-shifting framework is applicable to diverse low-level vision tasks including image deblurring, inpainting and face restoration, and the core idea of our noise predictor can be generalized to these scenarios, which is a key direction of our future research. Beyond low-level vision tasks, the theoretical derivation paradigm we established for optimal intermediate noise can be extended to other mainstream diffusion frameworks, such as DDPM[ 10 ]. However, conventional DDPM[ 10 ] and its variants typically require more than 50 inference steps to achieve stable high-quality generation, making the end-to-end training strategy adopted in this work computationally prohibitive and practically infeasible. Accordingly, developing more efficient and scalable training schemes for intermediate noise optimization in long-trajectory diffusion models is a highly promising research direction. 9References 
+
+[1] Chitwan Saharia, Jonathan Ho, William Chan, Tim Salimans, David J. Fleet, and Mohammad Norouzi. Image super-resolution via iterative refinement. IEEE Transactions on Pattern Analysis and Machine Intelligence ,45(4):4713–4726, 2023. [2] Zongsheng Yue, Jianyi Wang, and Chen Change Loy. Resshift: Efficient diffusion model for image super-resolution by residual shifting. In A. Oh, T. Naumann, A. Globerson, K. Saenko, M. Hardt, and S. Levine, editors, 
+
+Advances in Neural Information Processing Systems , volume 36, pages 13294–13307. Curran Associates, Inc., 2023. [3] Jianyi Wang, Zongsheng Yue, Shangchen Zhou, Kelvin CK Chan, and Chen Change Loy. Exploiting diffusion prior for real-world image super-resolution. International Journal of Computer Vision , 132(12):5929–5949, 2024. [4] Zongsheng Yue, Kang Liao, and Chen Change Loy. Arbitrary-steps image super-resolution via diffusion inversion. In Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition (CVPR) , pages 23153–23163, June 2025. [5] Bahjat Kawar, Michael Elad, Stefano Ermon, and Jiaming Song. Denoising diffusion restoration models. In S. Koyejo, S. Mohamed, A. Agarwal, D. Belgrave, K. Cho, and A. Oh, editors, Advances in Neural Information Processing Systems , volume 35, pages 23593–23606. Curran Associates, Inc., 2022. [6] Hyungjin Chung, Byeongsu Sim, and Jong Chul Ye. Come-closer-diffuse-faster: Accelerating conditional diffusion models for inverse problems through stochastic contraction. In Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition (CVPR) , pages 12413–12422, June 2022. [7] Robin Rombach, Andreas Blattmann, Dominik Lorenz, Patrick Esser, and Björn Ommer. High-resolution image synthesis with latent diffusion models. In Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition (CVPR) , pages 10684–10695, June 2022. [8] Rongyuan Wu, Lingchen Sun, Zhiyuan Ma, and Lei Zhang. One-step effective diffusion network for real-world image super-resolution. Advances in Neural Information Processing Systems , 37:92529–92553, 2024. [9] Rongyuan Wu, Tao Yang, Lingchen Sun, Zhengqiang Zhang, Shuai Li, and Lei Zhang. Seesr: Towards semantics-aware real-world image super-resolution. In Proceedings of the IEEE/CVF conference on computer vision and pattern recognition , pages 25456–25467, 2024. [10] Jonathan Ho, Ajay Jain, and Pieter Abbeel. Denoising diffusion probabilistic models. In H. Larochelle, M. Ranzato, R. Hadsell, M.F. Balcan, and H. Lin, editors, Advances in Neural Information Processing Systems , volume 33, pages 6840–6851. Curran Associates, Inc., 2020. [11] Yinhuai Wang, Jiwen Yu, and Jian Zhang. Zero-shot image restoration using denoising diffusion null-space model, 2022. [12] Xinqi Lin, Jingwen He, Ziyan Chen, Zhaoyang Lyu, Bo Dai, Fanghua Yu, Yu Qiao, Wanli Ouyang, and Chao Dong. Diffbir: Toward blind image restoration with generative diffusion prior. In European conference on computer vision , pages 430–448. Springer, 2024. [13] Cheng Lu, Yuhao Zhou, Fan Bao, Jianfei Chen, Chongxuan Li, and Jun Zhu. Dpm-solver: A fast ode solver for diffusion probabilistic model sampling in around 10 steps. Advances in neural information processing systems ,35:5775–5787, 2022. [14] Alexander Quinn Nichol and Prafulla Dhariwal. Improved denoising diffusion probabilistic models. In Interna-tional conference on machine learning , pages 8162–8171. PMLR, 2021. [15] Jiaming Song, Chenlin Meng, and Stefano Ermon. Denoising diffusion implicit models. arXiv preprint arXiv:2010.02502 , 2020. [16] Hyungjin Chung, Byeongsu Sim, Dohoon Ryu, and Jong Chul Ye. Improving diffusion models for inverse problems using manifold constraints. Advances in Neural Information Processing Systems , 35:25683–25696, 2022. [17] Hyungjin Chung, Jeongsol Kim, Michael T Mccann, Marc L Klasky, and Jong Chul Ye. Diffusion posterior sampling for general noisy inverse problems. arXiv preprint arXiv:2209.14687 , 2022. [18] Ben Fei, Zhaoyang Lyu, Liang Pan, Junzhe Zhang, Weidong Yang, Tianyue Luo, Bo Zhang, and Bo Dai. Generative diffusion prior for unified image restoration and enhancement. In Proceedings of the IEEE/CVF conference on computer vision and pattern recognition , pages 9935–9946, 2023. [19] Jiaming Song, Arash Vahdat, Morteza Mardani, and Jan Kautz. Pseudoinverse-guided diffusion models for inverse problems. In International Conference on Learning Representations , 2023. 10 [20] Jie Xiao, Ruili Feng, Han Zhang, Zhiheng Liu, Zhantao Yang, Yurui Zhu, Xueyang Fu, Kai Zhu, Yu Liu, and Zheng-Jun Zha. Dreamclean: Restoring clean image using deep diffusion prior. In The Twelfth International Conference on Learning Representations , 2024. [21] Zongsheng Yue and Chen Change Loy. Difface: Blind face restoration with diffused error contraction. IEEE Transactions on Pattern Analysis and Machine Intelligence , 46(12):9991–10004, 2024. [22] Chao Dong, Chen Change Loy, Kaiming He, and Xiaoou Tang. Image super-resolution using deep convolutional networks. IEEE transactions on pattern analysis and machine intelligence , 38(2):295–307, 2015. [23] Pablo Rojas Sedó. Deep learning for image super resolution. B.S. thesis, Universitat Politècnica de Catalunya, 2022. [24] Namhyuk Ahn, Byungkon Kang, and Kyung-Ah Sohn. Image super-resolution via progressive cascading residual network. In Proceedings of the IEEE Conference on Computer Vision and Pattern Recognition Workshops , pages 791–799, 2018. [25] Jiwon Kim, Jung Kwon Lee, and Kyoung Mu Lee. Accurate image super-resolution using very deep convolutional networks. In Proceedings of the IEEE conference on computer vision and pattern recognition , pages 1646–1654, 2016. [26] Zhaowen Wang, Ding Liu, Jianchao Yang, Wei Han, and Thomas Huang. Deep networks for image super-resolution with sparse prior. In Proceedings of the IEEE international conference on computer vision , pages 370–378, 2015. [27] Christian Ledig, Lucas Theis, Ferenc Huszár, Jose Caballero, Andrew Cunningham, Alejandro Acosta, Andrew Aitken, Alykhan Tejani, Johannes Totz, Zehan Wang, et al. Photo-realistic single image super-resolution using a generative adversarial network. In Proceedings of the IEEE conference on computer vision and pattern recognition ,pages 4681–4690, 2017. [28] Sachit Menon, Alexandru Damian, Shijia Hu, Nikhil Ravi, and Cynthia Rudin. Pulse: Self-supervised photo upsampling via latent space exploration of generative models. In Proceedings of the ieee/cvf conference on computer vision and pattern recognition , pages 2437–2445, 2020. [29] Mehdi SM Sajjadi, Bernhard Scholkopf, and Michael Hirsch. Enhancenet: Single image super-resolution through automated texture synthesis. In Proceedings of the IEEE international conference on computer vision , pages 4491–4500, 2017. [30] Ryan Dahl, Mohammad Norouzi, and Jonathon Shlens. Pixel recursive super resolution. In Proceedings of the IEEE international conference on computer vision , pages 5439–5448, 2017. [31] Jacob Menick and Nal Kalchbrenner. Generating high fidelity images with subscale pixel networks and multidi-mensional upscaling. arXiv preprint arXiv:1812.01608 , 2018. [32] Aaron Van den Oord, Nal Kalchbrenner, Lasse Espeholt, Oriol Vinyals, Alex Graves, et al. Conditional image generation with pixelcnn decoders. Advances in neural information processing systems , 29, 2016. [33] Niki Parmar, Ashish Vaswani, Jakob Uszkoreit, Lukasz Kaiser, Noam Shazeer, Alexander Ku, and Dustin Tran. Image transformer. In International conference on machine learning , pages 4055–4064. PMLR, 2018. [34] Baisong Guo, Xiaoyun Zhang, Haoning Wu, Yu Wang, Ya Zhang, and Yan-Feng Wang. Lar-sr: A local autoregressive model for image super-resolution. In Proceedings of the IEEE/CVF conference on computer vision and pattern recognition , pages 1909–1918, 2022. [35] Tero Karras, Timo Aila, Samuli Laine, and Jaakko Lehtinen. Progressive growing of gans for improved quality, stability, and variation. arXiv preprint arXiv:1710.10196 , 2017. [36] Jooyoung Choi, Sungwon Kim, Yonghyun Jeong, Youngjune Gwon, and Sungroh Yoon. Ilvr: Conditioning method for denoising diffusion probabilistic models. arXiv preprint arXiv:2108.02938 , 2021. [37] Rinon Gal, Yuval Alaluf, Yuval Atzmon, Or Patashnik, Amit H Bermano, Gal Chechik, and Daniel Cohen-Or. An image is worth one word: Personalizing text-to-image generation using textual inversion. arXiv preprint arXiv:2208.01618 , 2022. [38] Ron Mokady, Amir Hertz, Kfir Aberman, Yael Pritch, and Daniel Cohen-Or. Null-text inversion for editing real images using guided diffusion models. In Proceedings of the IEEE/CVF conference on computer vision and pattern recognition , pages 6038–6047, 2023. [39] Daiki Miyake, Akihiro Iohara, Yu Saito, and Toshiyuki Tanaka. Negative-prompt inversion: Fast image inversion for editing with text-guided diffusion models. In 2025 IEEE/CVF Winter Conference on Applications of Computer Vision (WACV) , pages 2063–2072. IEEE, 2025. 11 [40] Thao Nguyen, Yuheng Li, Utkarsh Ojha, and Yong Jae Lee. Visual instruction inversion: Image editing via image prompting. Advances in Neural Information Processing Systems , 36:9598–9613, 2023. [41] Xuan Ju, Ailing Zeng, Yuxuan Bian, Shaoteng Liu, and Qiang Xu. Direct inversion: Boosting diffusion-based editing with 3 lines of code. arXiv preprint arXiv:2310.01506 , 2023. [42] Wonjun Kang, Kevin Galim, and Hyung Il Koo. Eta inversion: Designing an optimal eta function for diffusion-based real image editing. In European Conference on Computer Vision , pages 90–106. Springer, 2024. [43] Barak Meiri, Dvir Samuel, Nir Darshan, Gal Chechik, Shai Avidan, and Rami Ben-Ari. Fixed-point inversion for text-to-image diffusion models. CoRR , 2023. [44] Bram Wallace, Akash Gokul, and Nikhil Naik. Edict: Exact diffusion inversion via coupled transformations. In 
+
+Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition , pages 22532–22541, 2023. [45] Patrick Esser, Robin Rombach, and Bjorn Ommer. Taming transformers for high-resolution image synthesis. In Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition (CVPR) , pages 12873–12883, June 2021. [46] Xintao Wang, Liangbin Xie, Chao Dong, and Ying Shan. Real-esrgan: Training real-world blind super-resolution with pure synthetic data. In Proceedings of the IEEE/CVF international conference on computer vision , pages 1905–1914, 2021. [47] Richard Zhang, Phillip Isola, Alexei A Efros, Eli Shechtman, and Oliver Wang. The unreasonable effectiveness of deep features as a perceptual metric. In Proceedings of the IEEE conference on computer vision and pattern recognition , pages 586–595, 2018. [48] Ian Goodfellow, Jean Pouget-Abadie, Mehdi Mirza, Bing Xu, David Warde-Farley, Sherjil Ozair, Aaron Courville, and Yoshua Bengio. Generative adversarial nets. In Advances in Neural Information Processing Systems , pages 2672–2680, 2014. [49] Olaf Ronneberger, Philipp Fischer, and Thomas Brox. U-net: Convolutional networks for biomedical image segmentation. In International Conference on Medical image computing and computer-assisted intervention ,pages 234–241. Springer, 2015. [50] Jingyun Liang, Jiezhang Cao, Guolei Sun, Kai Zhang, Luc Van Gool, and Radu Timofte. Swinir: Image restoration using swin transformer. In Proceedings of the IEEE/CVF international conference on computer vision , pages 1833–1844, 2021. [51] Kai Zhang, Jingyun Liang, Luc Van Gool, and Radu Timofte. Designing a practical degradation model for deep blind image super-resolution. In Proceedings of the IEEE/CVF international conference on computer vision ,pages 4791–4800, 2021. [52] Yufei Wang, Wenhan Yang, Xinyuan Chen, Yaohui Wang, Lanqing Guo, Lap-Pui Chau, Ziwei Liu, Yu Qiao, Alex C Kot, and Bihan Wen. Sinsr: diffusion-based image super-resolution in a single step. In Proceedings of the IEEE/CVF conference on computer vision and pattern recognition , pages 25796–25805, 2024. [53] Yawei Li, Kai Zhang, Jingyun Liang, Jiezhang Cao, Ce Liu, Rui Gong, Yulun Zhang, Hao Tang, Yun Liu, Denis Demandolx, et al. Lsdir: A large scale dataset for image restoration. In Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition , pages 1775–1787, 2023. [54] Tero Karras, Samuli Laine, and Timo Aila. A style-based generator architecture for generative adversarial networks. In Proceedings of the IEEE/CVF conference on computer vision and pattern recognition , pages 4401–4410, 2019. [55] Ilya Loshchilov and Frank Hutter. Decoupled weight decay regularization. arXiv preprint arXiv:1711.05101 ,2017. [56] Ilya Loshchilov and Frank Hutter. Sgdr: Stochastic gradient descent with warm restarts. arXiv preprint arXiv:1608.03983 , 2016. [57] Jia Deng, Wei Dong, Richard Socher, Li-Jia Li, Kai Li, and Li Fei-Fei. Imagenet: A large-scale hierarchical image database. In 2009 IEEE conference on computer vision and pattern recognition , pages 248–255. Ieee, 2009. [58] Jianrui Cai, Hui Zeng, Hongwei Yong, Zisheng Cao, and Lei Zhang. Toward real-world single image super-resolution: A new benchmark and a new model. In Proceedings of the IEEE/CVF international conference on computer vision , pages 3086–3095, 2019. [59] Zhou Wang, Alan C Bovik, Hamid R Sheikh, and Eero P Simoncelli. Image quality assessment: from error visibility to structural similarity. IEEE transactions on image processing , 13(4):600–612, 2004. [60] Anish Mittal, Rajiv Soundararajan, and Alan C Bovik. Making a “completely blind” image quality analyzer. IEEE Signal processing letters , 20(3):209–212, 2012. 12 [61] Yochai Blau, Roey Mechrez, Radu Timofte, Tomer Michaeli, and Lihi Zelnik-Manor. The 2018 pirm challenge on perceptual image super-resolution. In Proceedings of the European conference on computer vision (ECCV) workshops , pages 0–0, 2018. [62] Junjie Ke, Qifei Wang, Yilin Wang, Peyman Milanfar, and Feng Yang. Musiq: Multi-scale image quality transformer. In Proceedings of the IEEE/CVF international conference on computer vision , pages 5148–5157, 2021. [63] Jianyi Wang, Kelvin CK Chan, and Chen Change Loy. Exploring clip for assessing the look and feel of images. In 
+
+Proceedings of the AAAI conference on artificial intelligence , volume 37, pages 2555–2563, 2023. [64] Yiyang Ma, Huan Yang, Wenhan Yang, Jianlong Fu, and Jiaying Liu. Solving diffusion odes with optimal boundary conditions for better image super-resolution. arXiv preprint arXiv:2305.15357 , 2023. 13 A Appendix 
+
+In the appendix, we provide the following materials: • Mathematical derivation of conditional dependence for the optimal intermediate noise. • The complete training and inference algorithms of our LPNSR framework. • More qualitative comparisons with state-of-the-art methods. • Ablation study on the loss function. • Different pre-upsampling backbones for the 4-step diffusion SR. 
+
+A.1 Optimality Criterion for Intermediate Noise 
+
+Following the MLE paradigm for diffusion model optimization in [ 64 ], we define the optimal intermediate noise z∗ 
+
+> t
+
+as the noise that maximizes the conditional log-likelihood of the ground-truth HR image x0 given the generated state xt
+
+and LR condition y0. This criterion is theoretically grounded: maximizing the log-likelihood of the ground-truth sample is equivalent to minimizing the KL divergence between the model-generated distribution and the real data distribution, which is the ultimate goal of generative models. 
+
+z∗ 
+
+> t
+
+= arg max 
+
+> zt
+
+log pθ (x0|xt(zt), y 0), (13) where xt(zt) denotes that the state xt is uniquely determined by the injected noise zt via the reverse iteration Eq. (7) ,and pθ (x0|xt, y 0) is the conditional likelihood of the ground-truth HR image. According to Bayes’ rule, we have 
+
+pθ (x0|xt, y 0) = q(xt|x0, y 0) · pθ (x0|y0)
+
+pθ (xt|y0) , (14) where pθ (x0|y0) is the prior distribution of the HR image. Following the standard practice in diffusion model posterior derivation, we adopt a non-informative prior pθ (x0|y0) ∝ 1, which is independent of x0 and can be absorbed into the constant term. And pθ (xt|y0) is the marginal likelihood, obtained by integrating over x0. It is a normalization constant independent of x0, and thus does not affect the form of the posterior distribution. Therefore, Eq. (14) can be simplified as 
+
+pθ (x0|xt, y 0) ∝ q(xt|x0, y 0). (15) Substitute the analytical marginal Gaussian distribution of the forward process in Eq. (2) and take the log-likelihood, we have 
+
+log pθ (x0|xt, y 0) ∝ − 12 · κ2ηt
+
+> 1−ηt
+
+x0 − xt − ηty0
+
+1 − ηt
+
+> 2
+
+. (16) Match the standard Gaussian form and read out the mean and variance: 
+
+μ = xt − ηty0
+
+1 − ηt
+
+, σ2 = κ2ηt
+
+1 − ηt
+
+. (17) We then derive the closed-form expression of the posterior distribution: 
+
+pθ (x0|xt, y 0) = N
+
+
+
+x0; xt − ηty0
+
+1 − ηt
+
+, κ2ηt
+
+1 − ηt
+
+I
+
+
+
+. (18) From the optimality criterion in Eq. (13) , maximizing the conditional log-likelihood of x0 is equivalent to minimizing the ℓ2 norm term in Eq. (16). We rewrite the optimization objective as 
+
+z∗ 
+
+> t
+
+= arg min 
+
+> zt
+
+x0 − xt(zt) − ηty0
+
+1 − ηt
+
+> 2
+
+, (19) where xt(zt) is the state generated by injecting noise zt via the reverse iteration formula Eq. (7) in the main paper. Solving Eq. (19) gives us the optimal noise injection z∗ 
+
+> t
+
+:
+
+z∗ 
+
+> t
+
+= (1 − ηt)x0 + ηty0 − μθ (xt+1 , y 0, t + 1) 
+
+pΣθ (xt+1 , y 0, t + 1) . (20) This solution proves that the optimal noise z∗ 
+
+> t
+
+is a deterministic mapping, rather than an independent random Gaussian variable, making the original random sampling strategy inherently suboptimal for few-step inference. We decompose 14 Table 5: Quantitative ablation studies on the loss function, wherein the hyper-parameters λl and λg control the weight importance of the LPIPS loss and the GAN loss, respectively. The results are evaluated on the ImageNet-Test dataset under the 4-step sampling setting. Methods Hyper-parameters Metrics                                               
+
+> λl(LPIPS loss) λg(GAN loss) PSNR ↑SSIM ↑LPIPS ↓NIQE ↓PI ↓CLIPIQA ↑MUSIQ ↑
+> Baseline1 0.0 0.0 27.20 0.7265 0.2823 5.2234 3.8354 0.6268 66.6248 Baseline2 1.0 0.0 26.70 0.7158 0.2643 4.7588 3.5213 0.6621 69.5726 Baseline3 0.0 0.1 25.95 0.7003 0.2513 4.4315 3.2229 0.7044 72.1065 LPNSR 1.0 0.1 26.11 0.7054 0.2424 4.3807 3.1995 0.6921 71.7105
+
+Eq. (20) to analyze the dependency of z∗ 
+
+> t−1
+
+in Eq. (7) . The reverse mean μθ (xt, y 0, t ) = ηt−1 
+
+> ηt
+
+xt + αt 
+
+> ηt
+
+fθ (xt, y 0, t ) is explicitly determined by four core variables: current noisy state xt, LR condition y0, current step t, and clean image prediction x′ 
+
+> 0
+
+= fθ (xt, y 0, t ) from the pre-trained denoiser. The denominator pΣθ (xt, y 0, t ) is also a function of current noisy state xt, LR condition y0 and current step t. This gives the core conditional dependence property: the optimal noise z∗ 
+
+> t−1
+
+is uniquely determined by the four variables above. Our LR-guided noise predictor takes exactly these variables as input, which aligns with the theoretical optimal mapping. Substituting the optimal noise z∗ 
+
+> t−1
+
+into Eq. (7), we have 
+
+xt−1 = (1 − ηt−1)x0 + ηt−1y0. (21) Notably, this expression constitutes the exact conditional mean of the forward marginal distribution q(xt−1|x0, y 0).For a well-trained denoiser fθ that perfectly fits the forward diffusion process, the final predicted clean image x′ 
+
+> 0
+
+=
+
+fθ (x1, y 0, t = 1) will be strictly equal to the HR image x0. This theoretical conclusion further provides a mathematical justification for the end-to-end training strategy adopted in the main paper. By optimizing the noise predictor in an end-to-end manner, we can enforce the reverse diffusion trajectory to align with the HR-guided deterministic recurrence defined in Eq. (21). 
+
+A.2 Training and Inference Algorithms 
+
+The pseudo-code of the LPNSR framework training and inference algorithms is summarized in Algorithms 1 and 2. 
+
+A.3 More Qualitative Comparisons 
+
+Figure 5 and Figure 6 presents more qualitative comparisons of our methods against recent SOTA methods. One can see that our LPNSR achieves comparable or superior visual quality to T2I-utilizing methods such as OSEDiff[ 8] and InvSR[4], without relying on any external priors. 
+
+A.4 Ablation Study On Loss Functions 
+
+Table 5 presents the ablation results of our loss function on the ImageNet-Test dataset. The L1 loss alone ensures optimal pixel fidelity but leads to poor perceptual quality; the LPIPS loss balances fidelity and visual similarity, while the GAN loss significantly enhances image realism. Our final combined loss achieves the best trade-off between pixel-level fidelity and perceptual realism, which is the core reason for adopting this configuration in our study. 
+
+A.5 Pre-Upsampling Backbones 
+
+We evaluate the performance of our 4-step diffusion SR framework equipped with different pre-upsampling backbones, with quantitative results presented in Table 6. All three tested networks (BSRGAN[ 51 ], RealESRGAN[ 46 ], SwinIR-GAN[ 50 ]) deliver comparable fidelity performance on both ImageNet-Test and RealSR datasets, verifying the good compatibility of our framework. Among them, SwinIR-GAN achieves superior perceptual performance on all non-reference metrics across both datasets, while maintaining competitive PSNR and SSIM. This validates the superiority of SwinIR-GAN in balancing fidelity and visual realism for our diffusion SR pipeline, and we thus adopt it as the default pre-upsampling initialization network in our framework. 15 Table 6: Quantitative comparison of different pre-upsampling networks for the 4-step diffusion SR on ImageNet-Test and RealSR. Datasets Method PSNR ↑ SSIM ↑ LPIPS ↓ NIQE ↓ PI ↓ CLIPIQA ↑ MUSIQ ↑
+
+ImageNet-Test 
+
+BSRGAN[51] 26.08 0.7052 0.2439 4.4115 3.2022 0.6837 71.7541 RealESRGAN[46] 26.14 0.7066 0.2411 4.4835 3.2214 0.6774 71.4783 SwinIR-GAN[50] 26.11 0.7054 0.2424 4.3807 3.1995 0.6921 71.7105 
+
+RealSR 
+
+BSRGAN[51] 24.66 0.7009 0.3243 4.2239 3.6954 0.7159 67.5517 RealESRGAN[46] 24.59 0.7001 0.3256 4.2375 3.7023 0.7123 67.4834 SwinIR-GAN[50] 24.62 0.7003 0.3229 4.2175 3.6963 0.7180 67.5634 
+
+Figure 5: More visualization comparisons of different models. (Zoom in for best view) 16 Figure 6: More visualization comparisons of different models. (Zoom in for best view) 17 Algorithm 1 Noise Predictor Training 
+
+Require: HR/LR image pairs D, pretrained UNet denoiser(frozen), optimizer O, loss L, Initialize gw,sampling steps T
+
+Ensure: Trained noise predictor gw
+
+1: while not converged do 
+
+2: Sample x0, y 0 ∼ D 
+
+3: Sample zT ∼ N (0 , I ), ˆy0 = Bicubic (y0)
+
+4: xT = ˆ y0 + κ√ηT zT
+
+5: for t = T, T − 1, . . . , 1 do 
+
+6: if t > 1 then 
+
+7: x′ 
+
+> 0
+
+= UNet (xt, y 0, t )
+
+8: μ = ηt−1 
+
+> ηt
+
+xt + αt 
+
+> ηt
+
+x′
+
+> 0
+
+9: xt−1 = μ + √Σθ · gw(xt, x ′
+
+> 0
+
+, y 0, t )
+
+10: else 
+
+11: x′ 
+
+> 0
+
+= UNet (xt, y 0, t )
+
+12: end if 
+
+13: end for 
+
+14: Compute loss L(x′
+
+> 0
+
+, x 0), O.step (L)
+
+15: end while 
+
+16: return gw
+
+Algorithm 2 Inference 
+
+Require: LR image y0, pretrained UNet denoiser, noise predictor gw, pretrained SR regression network, sampling steps T
+
+Ensure: Generated HR image x′
+
+> 0
+
+1: Sample zT ∼ N (0 , I ), ˆy0 = Regression (y0)
+
+2: xT = ˆ y0 + κ√ηT zT
+
+3: for t = T, T − 1, . . . , 1 do 
+
+4: if t > 1 then 
+
+5: x′ 
+
+> 0
+
+= UNet (xt, y 0, t )
+
+6: μ = ηt−1 
+
+> ηt
+
+xt + αt 
+
+> ηt
+
+x′
+
+> 0
+
+7: xt−1 = μ + √Σθ · gw(xt, x ′
+
+> 0
+
+, y 0, t )
+
+8: else 
+
+9: x′ 
+
+> 0
+
+= UNet (xt, y 0, t )
+
+10: end if 
+
+11: end for 
+
+12: return x′
+
+> 0
+
+18

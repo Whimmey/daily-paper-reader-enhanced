@@ -1,0 +1,703 @@
+Title: Work Sharing and Offloading for Efficient Approximate Threshold-based Vector Join
+
+URL Source: https://arxiv.org/pdf/2603.16360v1
+
+Published Time: Wed, 18 Mar 2026 01:09:47 GMT
+
+Number of Pages: 13
+
+Markdown Content:
+# Work Sharing and Offloading for Efficient Approximate Threshold-based Vector Join 
+
+# Kyoungmin Kim 
+
+EPFL kyoung-min.kim@epfl.ch 
+
+# Lennart Roth 
+
+EPFL lennart.roth@epfl.ch 
+
+# Liang Liang 
+
+EPFL liang.liang@epfl.ch 
+
+# Anastasia Ailamaki 
+
+EPFL anastasia.ailamaki@epfl.ch 
+
+## ABSTRACT 
+
+Vector joins – finding all vector pairs between a set of query and data vectors whose distances are below a given threshold – are fundamental to modern vector and vector-relational database sys-tems that power multimodal retrieval and semantic analytics. Exist-ing state-of-the-art approach exploits work sharing among similar queries but still suffers from redundant index traversals and exces-sive distance computations. We propose a unified framework for efficient approximate vector joins that (1) introduces soft work sharing to reuse traversal results beyond the join results of previous queries, (2) builds a merged index over both query and data vectors to further speedup graph explorations, and (3) improves robustness for out-of-distribution queries through an adaptive hybrid search strategy. Experiments on eight datasets demonstrate substantial improvements in efficiency-recall trade-off over the state of the art. 
+
+PVLDB Reference Format: 
+
+Kyoungmin Kim, Lennart Roth, Liang Liang, and Anastasia Ailamaki. Work Sharing and Offloading for Efficient Approximate Threshold-based Vector Join. PVLDB, 14(1): XXX-XXX, 2020. doi:XX.XX/XXX.XX 
+
+PVLDB Artifact Availability: 
+
+The source code, data, and/or other artifacts have been made available at https://github.com/user-c49lj/VectorJoin. 
+
+## 1 INTRODUCTION 
+
+Similarity joins over embeddings are a fundamental operation in modern AI-driven data management and analytics. Many real-world applications require identifying all pairs of semantically similar ob-jects across two large collections, rather than retrieving only the top-𝑘 nearest neighbors for each query. For example, near-duplicate detection in image, video, or document collections relies on self-joins to find all items whose embeddings fall within a small distance threshold [ 36 ]. In data integration and record linkage, embedding-based joins are used to match entities across heterogeneous sources, such as joining product descriptions, customer profiles, or scientific 
+
+> This work is licensed under the Creative Commons BY-NC-ND 4.0 International License. Visit https://creativecommons.org/licenses/by-nc-nd/4.0/ to view a copy of this license. For any use beyond those covered by this license, obtain permission by emailing info@vldb.org. Copyright is held by the owner/author(s). Publication rights licensed to the VLDB Endowment. Proceedings of the VLDB Endowment, Vol. 14, No. 1 ISSN 2150-8097. doi:XX.XX/XXX.XX
+
+records based on semantic similarity [13, 37]. In recommendation, fraud detection, and security analytics, vector joins enable discov-ering clusters of closely related behaviors or anomalously similar activity patterns [ 36 ]. They also underlie hybrid vector-relational queries, enabling filters, joins, and aggregations over both symbolic and semantic attributes [1, 9, 12, 31, 39]. Given two sets of vectors 𝑋 and 𝑌 (assume |𝑋 | ≤ | 𝑌 |) and a dis-tance threshold 𝜃 , the goal of threshold-based vector join is to find all similar vector pairs (𝑥, 𝑦 ) such that 𝑥 ∈ 𝑋, 𝑦 ∈ 𝑌, 𝑑𝑖𝑠𝑡 (𝑥, 𝑦 ) < 𝜃 
+
+for a distance function 𝑑𝑖𝑠𝑡 (· , ·) .While approximate nearest-neighbor (ANN) indexes, especially graph-based ones such as HNSW [ 28 ] and NSG [ 16 ], achieve im-pressive performance for individual queries, extending them to set-based joins is nontrivial. Each (query) vector 𝑥 ∈ 𝑋 traverses the index on (data) 𝑌 independently starting from a fixed index node, resulting in redundant computations when queries are similar, a common case in embedding workloads [38]. Work sharing, the idea of reusing computation in similar queries, has recently emerged as a promising solution. SimJoin [ 38 ] first builds a tree over queries, defines a processing order of queries where any parent query is always processed before its children. Once a parent is processed, its join results can be reused as the starting nodes for child vectors, which often shorten their index traversals. Here, a tree edge is labeled with the distance between a pair of parent-child vectors, indicating how effective such a reuse is. The tree is constructed over a pre-built query-side vector index and the distances between queries. However, SimJoin still suffers from the followings. 
+
+C1. Limited reuse scope: Only in-range data points are cached whose distance to the query is lower than the threshold 𝜃 , ignoring traversal efforts for out-range (distance to the query larger than the threshold) but nearest points to the query. 
+
+C2. Traversal overheads in finding an in-range data point: 
+
+Even after starting from the cached results of a similar query (parent in the tree), there is no guarantee that these results are also in-range to a child query, as the query-to-data distance is query-dependent. Then the child has to do further traversal to find its in-range data points. 
+
+C3. Limited reachability to multiple in-range regions: In-dexes are built assuming strong locality that nearby data points are connected in the index, and all nearest points for a query are concentrated in a single region [ 10 , 28 ]. When this assumption does not hold, especially when queries lie far from data points, index 
+
+> arXiv:2603.16360v1 [cs.DB] 17 Mar 2026
+
+traversal can miss some of multiple in-range regions which leads to low recalls. 
+
+C4. Persistent distance computation bottleneck: Despite shared traversals, each query must recompute its distance to ev-ery candidate data vector, as the distance is query-dependent and cannot be shared between queries. Distance computation is the pri-mary bottleneck in vector searches due to the high-dimensionality of vectors [26]. This last issue – the per-query distance bottleneck – fundamen-tally limits the benefits of work sharing. Even if multiple queries visit the same data point 𝑦 ∈ 𝑌 , each query 𝑥 must compute 
+
+𝑑𝑖𝑠𝑡 (𝑥, 𝑦 ) independently and compare with the threshold. Hence, any practical vector join algorithm needs to also minimize the num-ber of distance computations, by traversing the necessary candidate data points only. This paper proposes work sharing and offloading techniques to mitigate the above challenges, generalizing work sharing beyond 
+
+SimJoin through the following ideas. For C1, we propose soft work sharing which further reuses the traversal results of out-range but top-1 nearest neighbors to queries, yielding up to 3.16 x faster join processing. This also reduces mem-ory footprint compared to SimJoin by not storing redundant in-range points when threshold is large. For C2, we propose merged index that, instead of using a sepa-rate (pre-built) vector index on queries to construct the tree and a vector index on data for traversal, we use a single unified index that eliminates the tree construction and offloads finding an in-range point for queries to the offline index construction phase, providing up to 32 .6x faster join processing without adding much indexing overhead. By leveraging the relative-neighborhood property in [ 34 ], this guarantees that each query’s nearest neighbor is contained in its neighborhood in the index, enabling theoretically minimal search paths. For C3, we propose hybrid search that relaxes the strict threshold-based search in SimJoin by combining it with the non-threshold-based k-nearest neighbor search to traverse from one in-range region to another. The k-nearest neighbor search enables jumping over out-range points and navigating disconnected in-range regions. Our hybrid search improves recall by up to 43% .For C4, to further reduce the number of distance computations, other than the soft work sharing and merged index, we use a simple early stopping mechanism during the index traversal to reduce unnecessary traversals. We adaptively enable the hybrid search only when the query is far from the data and it is likely to have multiple in-range regions, since the hybrid search allows traversing out-range points and increases the latency compared to the default threshold-based search. In summary, our contributions are as follows. 
+
+• We generalize the work sharing in approximate threshold-based vector join and reuse the traversal efforts of out-range but nearest points to queries, which speedups vector processing and reduces memory footprint. 
+
+• We propose work offloading that offloads the overhead of find-ing in-range regions to offline index construction phase, which enables constant-time finding an in-range point in the online join phase. 
+
+• We detect out-of-distribution queries that are likely to have multiple in-range regions, and perform hybrid search to traverse those regions and prevent low recalls. 
+
+• We provide extensive experiments to show the benefits of our work sharing and offloading methods above compared to the state-of-the-art baseline, SimJoin .In the remainder of the paper, Section 2 explains our back-ground. Section 3 describes our vector join framework also captur-ing SimJoin . Section 4 proposes our work sharing and offloading techniques. Section 5 presents experimental study. Section 6 ex-plains related work. Section 7 concludes the paper. 
+
+## 2 BACKGROUND 
+
+This section defines the threshold-based vector join problem and necessary background information. 
+
+## 2.1 Problem Definition 
+
+Definition 1. [38 ] (Vector Join) Given two sets of vectors 𝑋 
+
+and 𝑌 in R𝑛 , a distance function 𝑑𝑖𝑠𝑡 (· , ·) between a pair of vectors, and a distance threshold 𝜃 , the vector join is to find the set of all similar vector pairs whose distances are within the threshold, i.e., 
+
+𝑋 Z𝑑𝑖𝑠𝑡 <𝜃 𝑌 = {( 𝑥, 𝑦 )| 𝑥 ∈ 𝑋, 𝑦 ∈ 𝑌, 𝑑𝑖𝑠𝑡 (𝑥, 𝑦 ) < 𝜃 }.
+
+Here, often the smaller set is called query set/vectors and the larger set is called data set/vectors. Without loss of generality, we assume |𝑋 | ≤ | 𝑌 | (so 𝑋 is the query set, 𝑌 is the data set). The queries here are not ad-hoc or continuously arriving as in typical vector search systems/indexes [ 28 , 39 ]. The query set is in fact similar to a join key column in relational joins. Hence, it is natural to assume a predefined index on queries as in [ 38 ]. We often call a vector as a point in a vector space. In practice, vector joins are often executed in batch mode over large query sets, such as historical query logs, offline analytics pipelines, or periodic data cleaning jobs. Unlike the typical top-𝑘 
+
+search, where only a small number of nearest neighbors are re-quired, threshold-based joins aim to enumerate all neighbors within a distance bound. This makes the problem more sensitive to data skew and local density: in dense regions, many neighbors may fall within the threshold, while in sparse regions, very few may exist. Fixed-𝑘 retrieval does not reflect such an intrinsic structure of data, either missing important matches ( 𝑘 too small for dense regions) or producing unnecessary results ( 𝑘 too large for sparse regions), which requires additional search with increased 𝑘 or discarding some results [ 38 , 39 ]. Threshold-based vector joins, in contrast, directly reflect semantic proximity and are better suited for appli-cations that require completeness and consistency across varying data distributions. This vector join operator also fits existing vector-relational data-base systems [ 9, 30 , 39 ] where users can join two predefined vector sets, and each set corresponds to a vector column of a table. Each vector is an attribute value, with other non-vector columns corre-spond to the structured metadata of vectors. As in top-𝑘 vector search, an exact vector join algorithm can be extremely inefficient (Section 2.2). Using ANN indexes [ 16 , 28 ] can significantly improve efficiency while losing (tolerable) accuracy. The following states this approximate vector join problem. 
+
+> 2
+
+Definition 2. [ 38 ] (Approximate Vector Join) Approximate vector join is to find all similar vector pairs whose distances are within the threshold in an approximate way to achieve a higher efficiency. 
+
+Instead of using query-wise accuracy, we use global recall to assess the accuracy of an approximate algorithm, i.e., the ratio of found join pairs compared to the ground truth, 𝑋 Z𝑑𝑖𝑠𝑡 <𝜃 𝑌 .Approximate algorithms are typically implemented using ANN indexes (Section 6). In this paper, we focus on graph-based vector indexes as in the state-of-the-art vector join method [ 38 ] because they show superior efficiency-recall trade-off compared to other types of indexes (e.g., cluster-based, hash-based) [ 16 , 28 ]. We use 
+
+𝐺 𝐴 to denote a pre-built index on a vector set 𝐴 .
+
+Definition 3. (Graph-based Index and Search) A graph-based index 𝐺 is a triple (𝑉 , 𝐸, 𝑠 ) where 𝑉 is the set of nodes that represent vectors (one node per vector), 𝐸 is the set of directed edges that con-nect each node to its close vectors in the vector space, and 𝑠 is the starting/navigating point for the vector search. 
+
+We use (𝑢, 𝑣 ) to denote a directed edge from a node 𝑢 to a node 𝑣 
+
+and 𝑁 𝑢 to denote 𝑢 ’s neighbors (connected via outgoing edges from 
+
+𝑢 ) in the index. Given a query vector 𝑥 , the vector search starts the graph traversal from 𝑠 and finds nodes in 𝑉 that are reachable from 𝑠 and close to the query vector, computing the distances to the query. We explain the details of vector search algorithm in Section 3. The underlying graph structure is called proximity graph .
+
+## 2.2 Vector Join Methods 
+
+This section explains basic vector join algorithms. 
+
+2.2.1 Nested Loop Join (NLJ). This naive baseline computes all pair-wise distances with 𝑂 (| 𝑋 || 𝑌 |𝑛 ) complexity for two 𝑛 -dimensional vector sets 𝑋 and 𝑌 , and is an exact vector join algorithm that obtains the ground truth join pairs. However, it is prohibitive for large-scale datasets and high-dimensional vectors ( 𝑛 is typically more than hundreds [6]). 
+
+2.2.2 Index Nested Loop Join (INLJ). Each query 𝑥 ∈ 𝑋 indepen-dently performs a vector search over an ANN index 𝐺 𝑌 built on the data 𝑌 . While much faster than NLJ, INLJ still repeats traversals for similar queries, always starting from the fixed starting point. 
+
+2.2.3 INLJ with Work Sharing (WS). The state-of-the-art approxi-mate vector join method, SimJoin [ 38 ], introduces a work-sharing mechanism by caching the join results of executed query vectors and reusing them as new starting points for similar queries, not strictly using the fixed starting point of the index. It first constructs a Minimum Spanning Tree (MST) over the graph 𝐺 𝑋 on the query set 𝑋 , and uses this MST to order queries starting from its root. Once a parent query 𝑝 finishes, its (approx-imate) join results, 𝑝 Z𝑑𝑖𝑠𝑡 <𝜃 𝑌 , are cached and used as starting points for its child queries in the MST. Here, SimJoin models the benefits of reusing the parent 𝑝 ’s join results for its child 𝑥 based on the distance 𝑑𝑖𝑠𝑡 (𝑥, 𝑝 ), from the insight that more similar queries (smaller distance) have more sim-ilar join results (larger benefits). Since the MST over the queries minimizes the sum of such inter-query distances, it maximizes the total benefits from work sharing among possible query orderings. While this MST-based sharing reduces some redundant explo-ration by starting from closer data points than the fixed starting point of the index, its benefit is limited. It caches only the result of the join, which we call the in-range data vectors, but does not cache the out-range vectors that are farther than the distance threshold (𝜃 ) of the query. Therefore, no data vectors are cached when the threshold is small, missing all the traversal efforts of the executed queries. Furthermore, it caches redundant in-range points for large thresholds when a large portion of data vectors are in range, not achieving a better efficiency than using the original starting point but rather increasing the memory footprint. 
+
+## 2.3 Why Not Hash Joins for Vectors? 
+
+Although query ordering and work sharing can reduce index traver-sal overhead, the distance computation remains query-specific (C4 in Section 1). This is the most critical bottleneck in vector search due to the high dimensional vectors. Each query 𝑥 must compute 
+
+𝑑𝑖𝑠𝑡 (𝑥, 𝑦 ) for every candidate 𝑦 it visits, regardless of whether 𝑦 
+
+is in the join results (i.e., an in-range point) in another query 𝑥 ′.Even if multiple queries reach the same 𝑦 , their distances differ, and this is the primary reason why approaches similar to index nested loop joins are prevalent, treating each query independently, not the ones similar to hash joins that could offer 𝑂 (1) (or 𝑂 (𝑛 ))search complexity once the build-side table is processed. Section 6 explains some early hash-based indexes but are not effective for high-dimensional vectors due to curse of dimensionality [ 7 ]; errors in hashing similar vectors into the same bucket increase with the dimension. However, in Section 4, we explain that our merged index in fact behaves similarly to hash joins for vectors, offering constant lookup times to any in-range point if it exists. 
+
+## 3 VECTOR JOIN FRAMEWORK 
+
+This section introduces an approximate vector join framework based on vector indexes, which generalizes an existing state-of-the-art method [ 38 ]. 1 We build our ideas on top of this framework in subsequent sections. Algorithm 1 shows our framework for joining queries 𝑋 and data 𝑌 , with an approximate graph-based vector index represented by 𝐺 𝐴 for a set of vectors 𝐴 , and a given distance threshold 𝜃 . It first obtains the fixed starting point 𝑠 𝑌 from the data index 𝐺 𝑌 (Line 1). Then, it orders query vectors using the query index 𝐺 𝑋 and 𝑠 𝑌 
+
+(Line 2), if the MST-based ordering for work sharing in Section 2.2 is enabled. Here, in addition to the edges in 𝐺 𝑋 , [ 38 ] adds 𝑠 𝑌 as a node in 𝐺 𝑋 and an edge between 𝑠 𝑌 and every 𝑥 ∈ 𝑋 to build an MST. This 1) re-ensures the connectivity of MST (covering all nodes in 𝐺 𝑋 ), while graph-based indexes typically guarantee connectivity already [ 16 ], and 2) allows starting from 𝑠 𝑌 if a query is far from any of executed queries and 𝑠 𝑌 is rather closer. Then, for each query 𝑥 ∈ 𝑋 and its parent 𝑝 in the MST that has already been processed (Line 5), if 𝑝 is 𝑠 𝑌 in the MST or there are   
+
+> 1We referred to the algorithms in the paper [ 38 ] but with several modifications for clarity and correctness. For example, their algorithms were incorrectly and inefficiently checking the duplicate distance computations for the same data point, which actually resulted in duplicate computations. The authors refused to disclose their code or even index parameters and distance thresholds they used. Still, we were able to achieve a similar query-wise latency (around 1ms per query) with [ 38 ] on the datasets we used and under small thresholds.
+> 3
+
+no cached data points for 𝑝 (Line 6), 𝑠 𝑌 is used as the starting point for 𝑥 . Otherwise, the cached points for 𝑝 are used as the starting points for 𝑥 (Line 9). The main join search (Line 10) returns the found join pairs 𝐽 and the new points to cache for 𝑥 .Figure 1 illustrates this approximate vector search for a single query. Algorithm 2 explains in detail. The search consists of two phases: greedy search (Lines 5-28), and breadth-first search (BFS, Lines 29-42), following [38]. 
+
+Algorithm 1. VectorJoin (𝑋 , 𝑌 , 𝐺 , 𝜃 )
+
+Input: Query vectors 𝑋 , data vectors 𝑌 , index retriever 𝐺 , distance threshold 𝜃 , max search queue size 𝐿 
+
+Output: Join pairs 𝑅  
+
+> 1:
+
+𝑠 𝑌 ← GetSeed (𝐺 𝑌 ) 
+
+> 2:
+
+𝑂 ← OrderQueries (𝑋 , 𝐺 𝑋 , 𝑠 𝑌 ) 
+
+> 3:
+
+𝐶 ← ∅ /* cached data vectors per query */  
+
+> 4:
+
+𝑅 ← ∅ /* join pairs */  
+
+> 5:
+
+foreach ((𝑥, 𝑝 ) ∈ 𝑂 ) do 
+
+/* 𝑝 shares its work with 𝑥 */  
+
+> 6:
+
+if (𝑝 = 𝑠 𝑌 or 𝐶 [𝑝 ] = ∅) then  
+
+> 7:
+
+𝑆 ← { 𝑠 𝑌 } /* seeds */  
+
+> 8:
+
+else  
+
+> 9:
+
+𝑆 ← 𝐶 [𝑝 ] 
+
+> 10:
+
+𝐽 , 𝐶 [𝑥 ] ← JoinSingleQuery (𝑥, 𝑌 , 𝐺, 𝜃, 𝑆, 𝐿 ) 
+
+> 11:
+
+𝑅 ← 𝑅 ∪ 𝐽  
+
+> 12:
+
+return 𝑅 Data vector  
+
+> Query vector
+> Seed
+> Greedy search path
+> BFS pat h
+> Join boundary
+> (radius = join threshold)
+
+Figure 1: Vector join procedure for a single query vector. The search starts from the starting point of a graph-based index. 1) Greedy search navigates closer to the query to find an in-range point. 2) Once found, breadth-first search (BFS) seeks for all reachable in-range points. 
+
+The greedy search, often called the best-first search [ 29 ], is to find any in-range point. It first probes each seed in the given seeds 
+
+𝑆 , computes its distance to the query 𝑥 , and populates the queue 𝑄 
+
+with data vectors sorted w.r.t. the distances to the query. Lines 10-11 stop probing seed if we find any in-range point whose distance-to-query is smaller than the threshold 𝜃 .If no such in-range point is found, the queue 𝑄 is used to traverse closer to the query (Line 12); 𝑄.𝑡𝑜𝑝 () keeps the closest data point found so far, and the search stops if we find any in-range point (Lines 14-15). For the closest point 𝑢 in the queue (Line 16), we traverse its neighbors 𝑁 𝑢 using the outgoing edges from 𝑢 in the index 𝐺 𝑌 (Line 17), skip any visited neighbor to avoid duplicate distance computations (Lines 18-19), and greedily push the closer 
+
+neighbors than 𝑢 to the query (Lines 24-25). The queue is cropped to a given maximum queue size, 𝐿 (e.g., 256, Line 26). If this fails to find any in-range point through index traversal (Line 27), it returns empty join results ( 𝐽 = ∅) and data points to cache for this query 𝑥 
+
+(possibly non-empty, Line 28). We explain how we determine the cached points in subsequent sections. 
+
+Algorithm 2. JoinSingleQuery (𝑥 , 𝑌 , 𝐺 , 𝜃 , 𝑆 , 𝐿 )
+
+Input: Query vector 𝑥 , data vectors 𝑌 , index retriever 𝐺 , distance threshold 𝜃 , seeds 𝑆 , max search queue size 𝐿 
+
+Output: Join pairs 𝐽 , data vectors to cache  
+
+> 1:
+
+𝐽 ← ∅  
+
+> 2:
+
+𝑄 ← ∅ /* priority queue of data vectors ordered by the distances to 𝑥 */  
+
+> 3:
+
+𝑣𝑖𝑠𝑖𝑡𝑒𝑑 ← ∅  
+
+> 4:
+
+𝑐𝑙𝑜𝑠𝑒𝑠𝑡 ← (∞ , 𝑁 𝐼 𝐿 )
+
+/* greedy search phase */  
+
+> 5:
+
+foreach (𝑠 ∈ 𝑆 ) do  
+
+> 6:
+
+𝑑 ← 𝑑𝑖𝑠𝑡 (𝑥, 𝑠 ) 
+
+> 7:
+
+𝑄.𝑝𝑢𝑠ℎ ( ( 𝑑, 𝑠 ) )  
+
+> 8:
+
+if (𝑑 < 𝑐𝑙𝑜𝑠𝑒𝑠𝑡 .𝑓 𝑖𝑟𝑠𝑡 ) then  
+
+> 9:
+
+𝑐𝑙𝑜𝑠𝑒𝑠𝑡 ← ( 𝑑, 𝑠 ) 
+
+> 10:
+
+if (𝑑 < 𝜃 ) then  
+
+> 11:
+
+break  
+
+> 12:
+
+if (𝑄.𝑡𝑜𝑝 () .𝑓 𝑖𝑟𝑠𝑡 ≥ 𝜃 ) then  
+
+> 13:
+
+while (𝑄 ≠ ∅) do  
+
+> 14:
+
+if (𝑄.𝑡𝑜𝑝 () .𝑓 𝑖𝑟𝑠𝑡 < 𝜃 ) then  
+
+> 15:
+
+break  
+
+> 16:
+
+(𝑑, 𝑢 ) ← 𝑄.𝑝𝑜𝑝 ()  
+
+> 17:
+
+foreach (𝑣 ∈ GetNeighbors (𝐺 𝑌 , 𝑢 )) do  
+
+> 18:
+
+if (𝑣𝑖𝑠𝑖𝑡𝑒𝑑 [𝑣 ]) then  
+
+> 19:
+
+continue  
+
+> 20:
+
+𝑑 𝑣 ← 𝑑𝑖𝑠𝑡 (𝑥, 𝑣 ) 
+
+> 21:
+
+𝑣𝑖𝑠𝑖𝑡𝑒𝑑 [𝑣 ] ← true  
+
+> 22:
+
+if (𝑑 𝑣 < 𝑐𝑙𝑜𝑠𝑒𝑠𝑡 .𝑓 𝑖𝑟𝑠𝑡 ) then  
+
+> 23:
+
+𝑐𝑙𝑜𝑠𝑒𝑠𝑡 ← ( 𝑑 𝑣 , 𝑣 ) 
+
+> 24:
+
+if (𝑑 𝑣 < 𝑑 ) then  
+
+> 25:
+
+𝑄.𝑝𝑢𝑠ℎ ( ( 𝑑 𝑣 , 𝑣 ) )  
+
+> 26:
+
+𝑄 ← FilterOutBySize (𝑄, 𝐿 ) 
+
+> 27:
+
+if (𝑄 = ∅) then  
+
+> 28:
+
+return 𝐽 , SelectDataToCache (𝐽 , 𝑐𝑙𝑜𝑠𝑒𝑠𝑡 )
+
+/* BFS phase */  
+
+> 29:
+
+𝐵 ← FilterOutByThreshold (𝑄, 𝜃 ) /* list of in-range points */  
+
+> 30:
+
+𝐽 ← { ( 𝑥, 𝑦 ) | ( 𝑑, 𝑦 ) ∈ 𝐵 } 
+
+> 31:
+
+while (𝑄 ≠ ∅) do  
+
+> 32:
+
+𝑢 ← 𝐵.𝑝𝑜𝑝 ()  
+
+> 33:
+
+foreach (𝑣 ∈ GetNeighbors (𝐺 𝑌 , 𝑢 )) do  
+
+> 34:
+
+if (𝑣𝑖𝑠𝑖𝑡𝑒𝑑 [𝑣 ]) then  
+
+> 35:
+
+continue  
+
+> 36:
+
+𝑑 𝑣 ← 𝑑𝑖𝑠𝑡 (𝑥, 𝑣 ) 
+
+> 37:
+
+𝑣𝑖𝑠𝑖𝑡𝑒𝑑 [𝑣 ] ← true  
+
+> 38:
+
+if (𝑑 𝑣 < 𝑐𝑙𝑜𝑠𝑒𝑠𝑡 .𝑓 𝑖𝑟𝑠𝑡 ) then  
+
+> 39:
+
+𝑐𝑙𝑜𝑠𝑒𝑠𝑡 ← ( 𝑑 𝑣 , 𝑣 ) 
+
+> 40:
+
+if (𝑑 𝑣 < 𝜃 ) then  
+
+> 41:
+
+𝐽 ← 𝐽 ∪ { ( 𝑥, 𝑣 ) }  
+
+> 42:
+
+𝐵.𝑝𝑢𝑠ℎ (𝑣 ) 
+
+> 43:
+
+return 𝐽 , SelectDataToCache (𝐽 , 𝑐𝑙𝑜𝑠𝑒𝑠𝑡 )
+
+This greedy search is similar to the typical top-𝑘 vector search [ 16 , 28 ] but has a different purpose, finding a single in-range point 
+
+> 4
+
+instead of finding and ordering 𝑘 closest data points among all data points. In top-𝑘 search, the greedy search phase completes when the queue stabilizes, and the top-𝑘 points in the queue are returned. Therefore, the maximum queue size should be set longer than 𝑘 , and larger queues lead to more accurate top-𝑘 results with the trade-off of traversing more nodes and taking longer time to stabilize. However, when finding a single in-range point, the queue size does not matter much as it is akin to the top-1 search. The BFS phase starts with populating the BFS queue 𝐵 with in-range points in 𝑄 only (Line 29). Then, the remaining part is similar to the greedy search but the focus is on finding all in-range points (Lines 40-42), and the queue may expand unlimited. Note that the 
+
+𝑣𝑖𝑠𝑖𝑡𝑒𝑑 variable is shared between the greedy and BFS phases to avoid duplicate distance computations for the same node during the whole algorithm. One caveat is that the BFS only keeps the in-range points in its queue, which may miss further in-range points blocked by out-range points (Figure 2), leading to low recall. In Section 5, we show that this depends on the query and data distributions, especially occurring when a query is very far from data points (called out-of-distribution query [10]). 
+
+Figure 2: Vector join procedure for two queries, one in-distribution query (left) and one out-of-distribution query (right). Same legend with Figure 1. 
+
+## 4 WORK SHARING AND OFFLOADING 
+
+This section explains the details to implement the state-of-the-art and our work-sharing mechanisms, as well as our early-stopping and work-offloading polices in our framework. Given a naive imple-mentation of our framework in Section 3, we progressively refine it by introducing a set of simple yet effective algorithms that push the boundaries in work sharing and offloading in vector joins, and may facilitate further extensions due to their simplicity. 
+
+## 4.1 Early Stopping (ES) 
+
+We observed that, when the distance threshold ( 𝜃 ) is small, a naive implementation of algorithms in Section 3 suffers from extreme slowdowns, even showing higher latencies than the nested loop join (NLJ) without using an index. This is because, the greedy search phase in Algorithm 2 fails to find any in-range point after traversing a large portion of the data. Given the same amount of data points visited, this can have a higher latency than NLJ due to the random memory accesses and complex control flows in the graph traversal, while NLJ simply performs a sequential scan over the data. This is similar to the relational context [32]. To mitigate the wasteful traversals that end up finding no in-range point, we first apply an early-stopping (ES) policy, terminat-ing greedy search once the best distance plateaus, i.e., once the smallest distance observed in the greedy search fails to decrease for certain number of iterations (e.g., 10) at Line 16 of Algorithm 2. Empirically, ES alone yields several orders of magnitude speedups for small thresholds, which we show in Section 5. While DARTH [8] also proposes an early-stopping policy, it requires a supervised ML model to determine when to stop and continue the search based on the predicted recall, and the model is trained over a fixed starting point in the index. In contrast, our policy does not rely on ML models and delivers significant latency reductions without high recall loss, and naturally fits work-sharing scenarios where starting points differ for queries (cached results of previously executed queries). 
+
+## 4.2 Hard Work Sharing (HWS) 
+
+We call the work sharing in [ 38 ] as hard work sharing (HWS) as it caches all in-range points but not any out-range point (Figure 3(a)). In Algorithm 2, SelectDataToCache (Lines 28, 43) returns the found in-range points so far. Lines 1-2 in Algorithm 3 show this. However, this may return an empty set for small distance thresholds where the search finds no in-range points at all, losing all traversal efforts. On the other hand, it caches a large set for large thresholds, which are redundant as the greedy search for another query just needs to find a single in-range point, and the distances need to be computed again (distance is query-specific, Section 2.3). Threshold 
+
+> Distance
+> 𝑞 !
+> 𝑞 "
+> (a) Hard work sharing. 𝑞 !
+> 𝑞 "
+> (b) Soft work sharing.
+
+Figure 3: Work sharing examples for two queries 𝑞 1 and 
+
+𝑞 2. Blue circles are data points ordered by the distances to queries. Dashed boxes represent cached results per query. Algorithm 3. SelectDataToCache (𝐽 , (𝑑, 𝑣 ))                     
+
+> Input: Join results 𝐽 , closest node 𝑣 visited so far with distance 𝑑
+> Output: Data points to cache
+> 1: if (hard work sharing) then
+> 2: return 𝐽
+> 3: else if (soft work sharing) then
+> 4: return 𝑣
+> 5: return ∅/* no work sharing */
+
+## 4.3 Soft Work Sharing (SWS) 
+
+Hard work sharing caches only in-range points, losing information about explored out-range points. Instead, we propose soft work 
+
+> 5
+
+sharing (SWS) that retains the top-1 closest data point even if it is out-range, to further reuse the traversal efforts while keep-ing the cache size small (Figure 3(b)). That is, in Algorithm 2, 
+
+SelectDataToCache returns the closest point in 𝑄 , as illustrated in Lines 3-4 in Algorithm 3. In Section 5, we show that our soft work sharing achieves a better efficiency than hard work sharing by reducing the greedy search overheads while preserving recall. 
+
+## 4.4 Work Offloading with Merged Index (MI) 
+
+While the soft work sharing caches the top-1 closest data points and reduces the greedy search efforts for similar queries, there is still no guarantee that such points are always in-range to other similar but different queries, as distances are query-specific (Section 2.3). This naturally leads to a question: What is the optimal approach that can minimize the greedy search overheads in finding an in-range point, hopefully down to 𝑂 (1)? Here, we ignore the dimension 𝑛 of vectors in the complexity which is inevitable in distance computations. If we can achieve this 𝑂 (1) time complexity, we can regard it as a counterpart of the relational hash join that seeks the first matching entry in 𝑂 (1) but for vectors. We propose to simply maintain the query and data vectors ( 𝑋 
+
+and 𝑌 ) in a single merged index, 𝐺 𝑋 ∪𝑌 , based on the assumption that we already use indexes on the both sets for work sharing: 𝐺 𝑋 
+
+and 𝐺 𝑌 (Section 2.1). Then, for a given query 𝑥 ∈ 𝑋 , we can readily retrieve its neighbors 𝑁 𝑥 in 𝐺 𝑋 ∪𝑌 and filter the data points in 𝑌 ,which are likely to be close to 𝑥 from the nature of the graph-based indexes [ 16 , 28 ]. This takes 𝑂 (𝑚 ) where 𝑚 is the neighborhood size of 𝑥 , i.e., |𝑁 𝑥 |, in the index. This size is bounded by index hyperparameters that can be regarded as constants (e.g., up to few hundreds) [ 16 ]. Figure 4 illustrates the difference between using separate query/data indexes and merged index.  
+
+> (a) Separate indexes. (b) Merged index.
+
+Figure 4: Vector join procedures for two types of indexes. Among multiple queries, the procedure for the bottom-right one is shown. 
+
+This merged index construction is simple, index-agnostic, and offline; we can use an existing graph-based index before any vector joins with distance thresholds are specified. Therefore, we ‘offload’ the top-1 searches that aid the greedy search phase in arbitrary vector joins on query 𝑋 and data 𝑌 , to our merged index as a form of close neighborhoods in the index. From the maintenance side, it is also simple as we can use existing index update mechanisms [28, 33]. We explain that the neighborhood 𝑁 𝑢 of any point 𝑢 in the index includes the top-1 closest point to 𝑢 . This can be derived from the property of the relative-neighborhood graph (RNG) [ 34 ], that connects a vector 𝑢 to another 𝑣 with an edge only if there is no other vector 𝑤 that is simultaneously closer to both 𝑢 and 𝑣 than they are to each other, i.e., 𝑑𝑖𝑠𝑡 (𝑢, 𝑤 ) < 𝑑𝑖𝑠𝑡 (𝑢, 𝑣 ) and 𝑑𝑖𝑠𝑡 (𝑣, 𝑤 ) < 𝑑𝑖𝑠𝑡 (𝑣, 𝑢 ).In other words, if there is no 𝑤 in the lune (shaded area) in Figure 5, 
+
+𝑢 and 𝑣 are connected through an edge. If 𝑣 is the closest point to 𝑢 ,then there should be no such 𝑤 (otherwise, 𝑑𝑖𝑠𝑡 (𝑢, 𝑤 ) < 𝑑𝑖𝑠𝑡 (𝑢, 𝑣 ),so 𝑤 is closer to 𝑢 than 𝑣 , violating the assumption). Thus, 𝑢 and 𝑣 are connected with an edge. Therefore, simply probing the neighbors of a query 𝑥 , it is highly likely to obtain the top-1 closest data point. Still, constructing a graph satisfying this property for every 
+
+(𝑢, 𝑣 ) pair takes quadratic complexity, which is prohibitive for a large number of vectors [ 16 ]. Recent graph-based indexes, such as HNSW [ 28 ], Vamana [ 24 ], and NSG [ 16 ], are approximations to RNG, i.e., connecting each point to its approximate top-1 closest point under practical indexing efficiency. We also use NSG as our index following [38]. 𝑢 𝑣 𝑤 
+
+Figure 5: Illustration of a common pruning rule used in graph-based indexes [ 34 ]. 𝑢 , 𝑣 , and 𝑤 are vectors, and cir-cles are centered at 𝑢 and 𝑣 with radius 𝑑𝑖𝑠𝑡 (𝑢, 𝑣 ). 𝑢 and 𝑣 are connected if and only if there is no 𝑤 in the shaded region such that 𝑑𝑖𝑠𝑡 (𝑢, 𝑤 ) < 𝑑𝑖𝑠𝑡 (𝑢, 𝑣 ) and 𝑑𝑖𝑠𝑡 (𝑣, 𝑤 ) < 𝑑𝑖𝑠𝑡 (𝑣, 𝑢 ).
+
+We note that this merged index also eliminates the need to build an MST for each 𝑋 ′ ⊆ 𝑋 in the work-sharing approaches when a user wants to specify 𝑋 ′, a subset of 𝑋 as queries (e.g., after filtering 
+
+𝑋 with selection predicates over metadata [12]). Lastly, we explain how the algorithms in Section 3 capture this merged index. We skip Line 2 in Algorithm 1 since we do not need to build an MST. Line 5 iterates over queries in any order, and 𝑆 = {𝑥 }
+
+(i.e., query itself) in Line 10 without caching the join results in 𝐶 in Line 10 ( SelectDataToCache returns an empty set). We skip the greedy search phase in Algorithm 2 since we start from the query itself with distance 0 already smaller than the threshold 𝜃 . During the BFS phase, only the data points in 𝑌 are pushed to the BFS queue 𝐵 . We do not differentiate traversing query and data points during the greedy search phase since a close data point might be reachable after following query points. 
+
+## 4.5 Hybrid Search for Out-of-Distribution Queries 
+
+The previous sections have focused on optimizing the efficiency of greedy search phase, finding a single in-range data point given a query and distance threshold. This section focuses on optimizing the accuracy for the BFS phase, where our goal is to find all in-range points and have high recall. We explain the challenges in supporting out-of-distribution (OOD) queries that lie far from the data nodes, resulting in in-range regions separated by out-range nodes. We then propose our hybrid search algorithm to mitigate this, by combining the typical best-first search (BestFS) algorithm for top-𝑘 search and BFS. 
+
+4.5.1 BFS and Challenges in OOD Queries. The BFS phase in Al-gorithm 2 is designed for threshold search: once we have found at least one in-range point, we want to enumerate all in-range points reachable through the index. This naturally motivates a BFS-style 
+
+> 6
+
+expansion that keeps growing from discovered in-range points until no new in-range points are found [ 38 ]. However, vanilla BFS in Algorithm 2 has an important caveat: it assumes strong locality between in-range points, thereby enqueuing in-range points only. The traversal can be blocked by out-range walls, i.e., additional in-range regions exist nearby but are separated by intermediate out-range nodes (Figure 2). This failure mode becomes pronounced for OOD queries, where the query lies far from the data manifold and the in-range neighbors can be spatially scattered, making it unlikely that a purely in-range frontier can “bridge” across regions. This phenomenon has been observed for top-𝑘 searches [ 10 , 23 ] that OOD queries’ nearest data points are not close to each other, but are distant by multiple hops in the proximity graphs. This can significantly degrade search recall and efficiency. 
+
+4.5.2 BestFS. As briefly explained in Section 3, best-first search (BestFS) is a widely used graph traversal strategy for top-𝑘 search [29], which is essentially the greedy search in Algorithm 1. Instead of the BFS queue, BestFS maintains a priority queue ordered by distance to the query and always expands the cur-rently closest unexplored node. By continuously exploring the most promising candidates, BestFS can efficiently approach the true near-est data points, and its search depth and latency can be controlled via the maximum queue size (increasing this improves recall, but it takes longer for the queue to stabilize). However, as mentioned in Section 2, BestFS is not designed for the threshold search, primarily because the result size 𝑘 is unknown and hard to estimate for a given query and threshold [ 27 ], so the proper queue size cannot be chosen in advance. Figure 6 shows that 𝑘 varies significantly across queries and thresholds even for a single dataset. 
+
+Figure 6: Cumulative distributions of number of data vectors that are closer than the distance thresholds to queries, one line per sampled query. SIFT dataset with 1M data vectors is used [6]. 
+
+4.5.3 Hybrid BBFS for OOD Queries. While BestFS alone is not a suitable solution for threshold queries, it allows traversing out-range nodes. We take this property into account in BFS and propose hybrid BFS-BestFS (simply BBFS) that preserves exhaustive in-range expansion while allowing bounded traversal through out-range nodes to bridge disconnected in-rage regions, without modifying the index structure. Algorithm 4 shows our BBFS mechanism that extends Algo-rithm 2. Compared to the BFS in Algorithm 2, we allow traversing out-range points and adding them to the queue to jump over the out-range walls between in-range regions, while limiting the queue size to avoid traversing too many such out-range points to preserve efficiency. As before, in-range points are added to the queue re-gardless of the queue size to find all in-range points, where only the out-range points are capped. Similar to the early stopping in Section 4.1, the main loop in Algorithm 4 early terminates if there is no in-range point in the queue and the max distance of the queue has not decreased for 1 iteration. 
+
+Algorithm 4. JoinSingleQueryHybrid (𝑥 , 𝑌 , 𝐺 , 𝜃 , 𝑆 , 𝐿 )                                                                                         
+
+> Input: Query vector 𝑥 , data vectors 𝑌 , index retriever 𝐺 , distance threshold 𝜃 , seeds 𝑆 , max search queue size 𝐿
+> Output: Join pairs 𝐽 , data vectors to cache
+> /* ...same as Lines 1-28 in Algorithm 2... */
+> 1: 𝐽 ← { ( 𝑥, 𝑦 ) | ( 𝑑, 𝑦 ) ∈ 𝑄 ∧𝑑 <𝜃 }
+> 2: while (𝑄 ≠∅)do
+> 3: (𝑑 𝑢 , 𝑢 ) ← 𝑄.𝑝𝑜𝑝 ()
+> 4: foreach (𝑣 ∈GetNeighbors (𝐺 𝑌 , 𝑢 ))do
+> 5: if (𝑣𝑖𝑠𝑖𝑡𝑒𝑑 [𝑣 ])then
+> 6: continue
+> 7: 𝑑 𝑣 ←𝑑𝑖𝑠𝑡 (𝑥, 𝑣 )
+> 8: 𝑣𝑖𝑠𝑖𝑡𝑒𝑑 [𝑣 ] ← true
+> /* Add in-range points regardless of the queue size */
+> 9: if (𝑑 𝑣 <𝜃 )then
+> 10: 𝑄.𝑝𝑢𝑠ℎ ( ( 𝑑 𝑣 , 𝑣 ) )
+> 11: 𝐽 ←𝐽 ∪ { ( 𝑥, 𝑣 ) }
+> /* Add out-range points regarding the queue size */
+> 12: else if (𝑄.𝑠𝑖𝑧𝑒 () <𝐿 )then
+> 13: 𝑄.𝑝𝑢𝑠ℎ ( ( 𝑑 𝑣 , 𝑣 ) )
+> 14: else if (𝑑 𝑣 <𝑄.𝑏𝑎𝑐𝑘 () .𝑑 )then
+> 15: 𝑄.𝑒𝑟𝑎𝑠𝑒 (𝑄.𝑏𝑎𝑐𝑘 () )
+> 16: 𝑄.𝑝𝑢𝑠ℎ ( ( 𝑑 𝑣 , 𝑣 ) )
+> 17: return 𝐽 , SelectDataToCache (𝐽 , 𝑐𝑙𝑜𝑠𝑒𝑠𝑡 )
+
+Note that our BBFS only modifies the online search algorithm without changing the index structure, in contrast to existing ap-proaches that tackle the challenge in OOD queries by building specialized indexes [ 10 , 23 ]. These indexes heuristically add bridges between nearest data points that are multi-hop away from each other, complicating the maintenance. While they were proposed for top-𝑘 searches only, it is an interesting future work to apply our online methods on those indexes for threshold searches. Still, in Sec-tion 5 we show that our BBFS already improves recall substantially for OOD queries under threshold semantics. Finally, to avoid unnecessary overhead of seeking multiple in-range regions and traversing out-range nodes for in-distribution (ID) queries, where it is highly likely to have a single in-range region, we predict whether a query is ID or OOD, and use BFS for ID queries and BBFS for OOD queries. To predict OOD queries, we use a simple heuristic that utilizes the fact that OOD queries lie far from data points. Since the notion of far-ness depends on the dataset and data density, we compare the average distance from each query to its neighboring data points in the index (say 𝑑 1, see Figure 7) with the average distance from such neighboring data points to their neighboring data points that are 2-hop away from the query (say 𝑑 2). If 𝑑 1 > 1.5 × 𝑑 2, we regard that this query lies 
+
+> 7
+
+farther from its neighboring data points and is OOD. To reduce the classification time, for each node we store the average distance to its neighbors after the index construction, which adds only negligible (< 1%) size and time overheads to index construction. Note that this still does not change the index structure but only makes our online hybrid search work in an adaptive manner. 𝑑 !
+
+> 𝑑 "
+
+Figure 7: Illustration of predicting whether a query is OOD. If the avg. distance to its neighboring data points ( 𝑑 1) is more than 1.5x larger than the avg. distance between them and their neighboring points ( 𝑑 2), the query is predicted OOD. 
+
+## 5 EXPERIMENTS 
+
+This section evaluates the performance of vector join methods implemented on our framework and answers the following research questions. 
+
+• Q1: Which work-sharing and work-offloading mechanism shows the best performance in terms of vector join execution time and recall? 
+
+• Q2: How do index parameters affect performance? 
+
+• Q3: How large is the overhead in offline index construction? 
+
+• Q4: How well does a method scale to large data? 
+
+• Q5: How does the proximity graph affect performance? 
+
+## 5.1 Experimental Setup 
+
+5.1.1 Datasets. We evaluate our methods on eight widely used vector datasets (Table 1) that cover diverse modalities, dimensional-ities, and data distributions, including vision, text, and multimodal representations. Datasets are taken from the ANN-Benchmarks [ 6]and VIBE [ 21 ] suites, which provide standardized query-data splits and evaluation protocols for approximate nearest neighbor search. 
+
+Table 1: Statistics of datasets used (number of query vectors 
+
+|𝑋 |, number of data vectors |𝑌 |, dimension, mode of the de-gree distribution of data index 𝐺 𝑌 , and the ratio of queries that are predicted as OOD by using our heuristic). The last three datasets are taken from an OOD benchmark [21]. Dataset |𝑋 | |𝑌 | Dimension Mode OOD-Ratio                                         
+
+> SIFT 10,000 1,000,000 128 28 0.00%
+> GIST 1,000 1,000,000 960 81.10%
+> GloVe 10,000 1,183,514 200 70 0.00%
+> NYTimes 10,000 290,000 256 63.46%
+> FMNIST 10,000 60,000 784 13 3.03%
+> COCO 1,000 282,360 768 15 97.3%
+> ImageNet 1,000 1,281,167 640 19 97.4%
+> LAION 1,000 1,000,448 512 22 95.1%
+
+SIFT and GIST consist of image descriptors commonly used for evaluating large-scale vector search systems. GloVe contains word embeddings trained on large text corpora, capturing seman-tic similarity in natural language. NYTimes represents document embeddings derived from news articles, reflecting real-world text retrieval workloads. FMNIST consists of Fashion-MNIST image embeddings, representing dense visual feature vectors. COCO uses multimodal image-text embeddings from the MS-COCO dataset, capturing cross-modal semantic similarity. ImageNet contains deep visual embeddings extracted from the ImageNet dataset, represent-ing large-scale image retrieval scenarios. LAION contains CLIP-based multimodal embeddings from the LAION dataset, reflecting modern web-scale vision-language representations. Among these, 
+
+COCO , ImageNet , and LAION have mostly OOD queries [ 21 ]. Fig-ure 8 confirms that in-range regions are separated for such cases as we illustrated in Figure 2. These datasets collectively span low to high dimensional spaces, small to million-scale data sizes, and both unimodal and multimodal embeddings, enabling a comprehensive evaluation of vector join behavior across different distributions. For each dataset, we use the standard query-data splits provided by the benchmarks. Queries are spread across the data manifold rather than being clustered in a single region. To evaluate threshold-based joins under varying selectivities, we use seven evenly spaced distance thresholds per dataset. The thresholds are chosen to cover a wide spectrum of join result sizes, from sparse joins with very few matches to dense joins where a large fraction of data vectors fall within the threshold. Table 2 reports the exact threshold values used for each dataset. Figure 9 shows the join sizes, illustrating the high variance in join sizes across both datasets and thresholds. Note that large thresholds with large join sizes are less likely to be used in practice, similar to using small 𝑘 values (e.g., 5, 10, or 100) in typical top-𝑘 nearest neighbor searches [ 28 , 29 ]. Therefore, we mainly focus on small thresholds (e.g., 𝜃 1 to 𝜃 3) and show the results for large thresholds for completeness. When the threshold is large, it is often enough to estimate the join size and approximate the results as in approximate query processing [ 4, 19 ] or LIMIT the number of outputs as in exploratory data analytics [ 20 , 40 ], and full sequential scans or nested loop joins may be more efficient than index scans or index nested loop joins, as the selectivity increases in the relational context (Section 4.1). 
+
+Figure 8: T-SNE visualization of SIFT (left) and LAION (right), highlighting an example query (red) and it’s in-range data points (blue). 
+
+5.1.2 Baselines. We implemented all baselines within our unified vector join framework (Section 3) to ensure a fair comparison and isolate the effects of work sharing and work offloading. We also im-plemented the state-of-the-art threshold-based vector join baseline, 
+
+> 8
+
+Table 2: Evenly-spaced distance thresholds ( 𝜃 ) per dataset. We omit 𝜃 when the context is clear. Dataset 𝜃 1 𝜃 2 𝜃 3 𝜃 4 𝜃 5 𝜃 6 𝜃 7                                                        
+
+> SIFT 50 100 150 200 250 300 350
+> GIST 0.3 0.5 0.7 0.9 1.1 1.3 1.5
+> GloVe 0.6 0.7 0.8 0.9 1.0 1.1 1.2
+> NYTimes 0.1 0.3 0.5 0.7 0.9 1.1 1.3
+> FMNIST 500 750 1000 1250 1500 1750 2000
+> COCO 1.33 1.335 1.34 1.345 1.35 1.355 1.36
+> ImageNet 1.19 1.21 1.23 1.25 1.27 1.29 1.31
+> LAION 1.12 1.14 1.16 1.18 1.2 1.22 1.24
+
+Figure 9: Join size per dataset and threshold. 
+
+SimJoin [ 38 ], inside our framework and achieved similar efficiency with their paper. This allows us to fairly assess how our techniques improve over state-of-the-art work sharing. 
+
+• Naive (NLJ): A nested-loop join that computes all pairwise distances between queries 𝑋 and data 𝑌 , serving as the exact but impractical baseline. 
+
+• Index : Index nested-loop join (INLJ), where each query inde-pendently performs an approximate search over the data index. 
+
+• ES : Index with early stopping enabled (Section 4.1). 
+
+• ES+HWS : Early stopping with hard work sharing (Section 4.2), corresponding to our implementation of SimJoin [38]. 
+
+• ES+SWS : Early stopping with our soft work sharing (Section 4.3). 
+
+• ES+MI : Early stopping with our merged index (Section 4.4). 
+
+• ES+MI+Adapt : Early stopping with merged index with our adaptive hybrid BBFS for OOD queries (Section 4.5). We use the NSG graph-based index [ 16 ], following SimJoin [38 ], due to its strong efficiency-recall trade-off and fast convergence. Index parameters (e.g., graph degree and max queue size) are kept consistent across all methods to ensure comparability. We use the default parameters provided in [ 41 ] with max neighborhood size of 70 and max queue size of 256. We do not extensively tune the underlying index search algo-rithms beyond standard parameter settings, such as applying vector quantizations or aggressive SIMD optimizations, as our goal is to evaluate join-level optimizations rather than single-query ANN performance. 
+
+5.1.3 Metrics. We measure the latency of join execution, recall, and memory usage for the online join processing. We measure indexing time and index size for the offline phase. 
+
+5.1.4 System Configuration. For all our experiments, we use a server with Intel(R) Xeon(R) Gold 5118 CPUs and 376 GB memory. We use a single thread for evaluating vector join. 
+
+## 5.2 Experimental Results 
+
+5.2.1 Overall Results. Figure 10 reports the vector join latency, global recall, and memory usage across seven distance thresholds for all eight datasets. Overall, our proposed techniques – Soft Work Sharing (SWS), Merged Index (MI), and Adaptive Hybrid BBFS (MI+Adapt) – consistently outperform the state-of-the-art base-line Hard Work Sharing (HWS, SimJoin ) in both efficiency and robustness, while preserving high recall. 
+
+Naive. As expected, the nested loop join, Naive , shows consistent latency across all thresholds and gives perfect recall. 
+
+Index. The index nested loop join, Index , is significantly faster than Naive , but still exhibits high latency even for small thresholds. This is because, when threshold is small, the greedy search without early stopping traverses a large portion of index and fails to find a single in-range point. As the threshold increases, this is mitigated but the overhead of BFS increases due to the increased join size. Using the index may drop the recall noticeably for certain datasets. For NYTimes and GIST , the greedy search cannot find an in-range point due to weak data locality. The index is weakly connected (node degrees much smaller than the other datasets, Table 1) and does not effectively navigates to existing in-range points. This also occurs for OOD scenarios ( COCO , ImageNet , and LAION ). 
+
+Early Stopping. ES substantially reduces the inefficiency of Index 
+
+by terminating the greedy search once the best distance plateaus. 
+
+ES consistently achieves orders-of-magnitude lower latency than 
+
+Index at small thresholds, while maintaining comparable recall. However, ES still processes each query independently and does not reuse any traversal results across queries. As a result, its efficiency remains worse than methods that exploit work sharing. 
+
+Work Sharing. Across all datasets, ES+SWS achieves lower la-tency than ES+HWS , especially for small thresholds ( 𝜃 1-𝜃 3), where 
+
+ES+HWS often caches no points at all and thus fails to reuse traver-sal efforts. By caching the closest out-range point, SWS significantly reduces the greedy search overhead for similar queries. This im-provement is most visible on SIFT , GIST , GloVe , and FMNIST ,where ES+SWS consistently reduces execution time by up to 3.16x compared to ES+HWS , while maintaining similar recall. For large thresholds, SWS significantly reduces the memory usage of HWS by caching the closest data node per query, not all in-range nodes. 
+
+Merged Index. ES+MI further improves performance by offload-ing the task of finding an initial in-range point to the offline index construction. As shown in Figure 10, MI achieves the lowest latency among all baselines across most thresholds and datasets. This ef-fect is particularly strong for small thresholds, where the greedy search in Index , ES , ES+HWS , and ES+SWS often traverses many nodes before finding the first in-range point. With MI, the search frequently starts directly from a close data neighbor, reducing tra-versal overheads. Consequently, MI approaches constant-time be-havior for finding an in-range point, yielding substantial speedups over ES+HWS and ES+SWS by up to 56.3x and 32.6x without sacri-ficing recall. Furthermore, enabling direct search from close data points often increases recall by a large margin, such as for GIST 
+
+and NYTimes . Still, it often shows low recall (while higher than using separate indexes) for OOD queries. The memory usage only slightly increases compared to using separate indexes (< 1%). 
+
+> 9
+
+For datasets with a significant fraction of OOD queries ( COCO ,
+
+ImageNet , and LAION ), ES+MI+Adapt substantially improves re-call by up to 43%. While vanilla BFS-based expansion can miss disconnected in-range regions for OOD queries, ES+MI+Adapt 
+
+selectively activates the hybrid BBFS strategy to bridge out-range walls. As a result, ES+MI+Adapt consistently achieves higher recall than the others on these datasets with a trade-off of higher latency. Still, the latency is lower than using separate indexes ( ES+SWS and 
+
+ES+HWS ). For the non-OOD datasets, ES+MI+Adapt achieves sim-ilar latency with ES+MI by adaptively disabling the hybrid search and falls back to the BFS (Table 1). This confirms that adaptive hybrid traversal is crucial for maintaining recall under challenging query distributions while preserving efficiency. 
+
+5.2.2 Latency-recall Trade-off. Figure 11 presents the latency–recall trade-off when varying the maximum queue size for the smallest threshold on all eight datasets. The queue size corresponds to the parameter 𝐿 for Algorithms 2 and 4. For Index , ES , ES+HWS , and 
+
+ES+SWS , the queue size controls the greedy search phase, while for ES+MI+Adapt , it affects the hybrid search phase. It does not affect ES+MI since the greedy phase is skipped (Section 4.4) and only performs BFS whose queue is not limited by 𝐿 .
+
+Index is sensitive to the queue size, where both latency and recall increase as the queue size increases. The ES baselines other than ES+MI+Adapt are insensitive to the queue size as they utilize early stopping to terminate unnecessary greedy search when the minimum distance plateaus. While ES+MI and ES+MI+Adapt to-gether form the best Pareto curves, ES+MI+Adapt shows a clear latency-recall trade-off by controlling the hybrid queue size. This improves recall for OOD-heavy datasets by allowing controlled traversal through out-range nodes. 
+
+5.2.3 Latency Breakdown. Figure 12 breaks down the total join latency into three parts: greedy search, BFS (or hybrid BBFS), and other. As expected, Index , ES , ES+HWS , and ES+SWS are bottle-necked by the greedy search for small thresholds, finding a single in-range point, and the main goal of ES and work sharing has been to reduce the traversal effort in the greedy search in Section 4. MI avoids such overheads. BFS dominates runtime for large thresholds due to large join sizes, seeking for all in-range points. 
+
+5.2.4 Offline Overhead. Figure 13 compares the index size and build time of using two separate indexes – one for queries 𝐺 𝑋 and one for data 𝐺 𝑌 – against merged index 𝐺 𝑋 ∪𝑌 . Across all datasets, merged index does not introduce much overheads compared to separate indexes, because the merged index shares the same graph structure, sharing the same hyperparameters (e.g., max neighbor-hood size), and the total number of vectors is the same as |𝑋 | + | 𝑌 |.Since index construction is an offline process performed once per dataset, small additional overhead is negligible relative to the sub-stantial runtime improvements achieved during online vector joins. 
+
+## 5.3 Scalability Test 
+
+To assess baselines under varying data scales, we vary the num-ber of data vectors |𝑌 | using the SIFT1B dataset 2 and the smallest threshold 𝜃 1, while keeping the number of queries at 10K. We vary 
+
+> 2http://corpus-texmex.irisa.fr
+
+|𝑌 | from 10K to 10M and sample |𝑌 | vectors from SIFT1B. 10M is the maximum data size we can process in memory. We leave supporting billion-scale data using multiple servers or disks as a future work. Figure 14 reports join latency as |𝑌 | increases. Recall is near 1.0 for all baselines. 
+
+Naive scales linearly with |𝑌 |, as expected, since it computes all pairwise distances. Index also shows near-linear growth, be-cause each query independently traverses a larger graph as the dataset grows. ES scales better than Index , but still exhibits no-ticeable growth due to repeated greedy searches. ES+HWS reduces some redundancy, but its performance degrades for large |𝑌 | due to increasing cache sizes and BFS expansion costs. ES+SWS shows improved scalability by further reducing redundant greedy search across similar queries by caching closest out-range points. ES+MI 
+
+and ES+MI+Adapt achieve the best scalability, with sub-linear growth in latency by avoiding greedy search. 
+
+## 5.4 Varying Index Type 
+
+So far, our experiments have used the NSG graph index [ 16 ] fol-lowing [ 38 ]. In this section, we evaluate whether our techniques generalize to a different index structure, HNSW [ 28 ], which is also widely used in modern vector search systems [15, 35]. Figure 15 compares the performance of all methods using HNSW graphs instead of NSG, on two in-distribution and out-of-distribution datasets, FMNIST and ImageNet . The relative ordering of methods remains consistent: ES+MI and ES+MI+Adapt achieve the best latency-recall trade-offs, followed by ES+SWS , ES+HWS , ES , and 
+
+Index . This shows that our work-sharing and offloading techniques are index-agnostic and not tailored specifically to NSG. While we set the HNSW index sizes similar to the NSG indexes we used, in general HNSW gives lower performance (especially recall) than NSG. This supports the choice of using NSG by default in [38]. 
+
+## 6 RELATED WORK 6.1 Approximate Vector Index 
+
+A wide range of index structures has been developed for single-vector queries. Early research was dominated by Locality-Sensitive Hashing (LSH) [ 14 ], which maps similar vectors into hash buckets with high probability, so queries only probe a few buckets instead of scanning all data [ 22 ]. Variants such as E2LSH [ 14 ] and C2LSH [ 17 ] trade recall for lower memory consumption and faster search. Inverted file (IVF) and quantization-based approaches cluster the vector space into many buckets and search only a few relevant buckets per query [5, 18, 25]. Graph-based ANN methods, such as HNSW [ 28 ], Vamana [ 24 ], and NSG [ 16 ], represent data points as nodes in a proximity graph and perform best-first search to find nearest data points, enjoying the superior efficiency-recall trade-off than the other types of indexes [ 15 , 16 , 28 ]. Our online algorithms operate on graph-based indexes but are agnostic to the specific index design. The ANN indexes are highly optimized for single-query retrieval and are incorporated into many vector processing systems and libraries (e.g., FAISS [ 15 ] and Milvus [ 35 ]). We explore work-sharing and work-offloading mechanisms for joins in this paper that are orthogonal to such single-query optimizations, and our hybrid 
+
+> 10
+
+Figure 10: Vector join performance (latency, recall, and memory usage) on seven thresholds and eight datasets. 
+
+Figure 11: Latency-recall curves for varying queue sizes from 8 to 512. Smallest threshold, 𝜃 1, is used. The queue size is defined for the greedy search phase for non-MI baselines and hybrid search phase for ES+MI+Adapt .
+
+Figure 12: Latency breakdown for FMNIST into three phases: greedy search, BFS (or hybrid BBFS), and the others. Similar results observed for the other datasets. 
+
+search only affects the online phase, thus is also orthogonal to designing new index structures. Recently, DARTH [8] proposed an early stopping mechanism for best-first search based on estimated recall using an ML model that predicts when further traversal yields diminishing returns. While effective for single-query ANN search, DARTH assumes a fixed starting point and pre-trained recall model. Such assumptions fail in the work-sharing setting, where starting points differ dynami-cally across queries due to reused parent results. Furthermore, it is nontrivial to apply it to our threshold-based search including BFS. 
+
+## 6.2 Vector Join 
+
+Early approaches for vector similarity joins act as repeated ANN selections, whereas recent research introduces join-aware optimiza-tions. A straightforward solution is selection-based, which indexes one set for similarity search and issues queries from the other 
+
+> 11
+
+Figure 13: Offline overheads (index size and indexing time) for separate query and data indexes vs. merged index. 
+
+Figure 14: Scalability analysis on subsets of SIFT1B dataset with varying number of data vectors. The smallest threshold (𝜃 1) is used. 
+
+Figure 15: Vector join performance (latency, recall, and mem-ory usage) using HNSW index [ 28 ] on FMNIST and Ima-geNet .
+
+set, collecting all pairwise matches. The selection-based strategy is implicitly deployed in many systems, such as VBase [ 39 ] and SingleStore-V [ 9 ], but it suffers from heavy redundant work since each query traverses the index independently, even if query vectors are similar. To avoid brute-force selection, XJoin [ 37 ] reduces need-less queries by skipping query vectors without neighbors within the join radius. However, XJoin still fundamentally performs a separate ANN search per query, leading to redundant computation. Recognizing the inefficiency of per-vector searches, SimJoin [ 38 ]allows work sharing: it orders the queries along a Minimum Span-ning Tree so that each query can reuse its parent’s index search path. DiskJoin [ 11 ] targets billion-scale joins on SSD-resident data, batching index accesses and orchestrating the join order to max-imize data reuse from disk pages. Our method also falls into this category. Compared to SimJoin ’s hard reuse (in-range only) and DiskJoin’s I/O orchestration for disk-resident self-joins, our work advances the approximate in-memory cross-join setting with soft work sharing and a merged index. There are distributed and parallel solutions for similarity joins. MAPSS [ 36 ] and ClusterJoin [ 13 ] are MapReduce-based approxi-mate join frameworks; specifically, MAPSS uses clustering to assign vectors to partitions and prunes comparisons via LSH, while Clus-terJoin balances load and filters candidates per partition. It would be an interesting future work to extend our work sharing and of-floading to disk-based, distributed, and parallel environments. 
+
+## 6.3 Vector Systems 
+
+Recent years have seen rapid growth of vector-native database sys-tems that extend analytical capabilities. Milvus [ 35 ], Weaviate [ 35 ], Pinecone [ 2], and Qdrant [ 3] expose vectors as first-class data types and support top-𝑘 similarity queries with integrated ANN libraries. These engines internally treat vector similarity search as a selection operator: each query vector is processed independently against an index, and multi-query workloads are executed as repeated ANN lookups. Hybrid vector-relational systems are emerging within analyt-ical engines. PostgreSQL extensions such as pgvector [ 1] allow ANN queries directly in SQL. DuckDB [ 30 ] is a lightweight in-process analytical database that includes a vector search extension. SingleStore-V [ 9] integrates a vector index into its distributed re-lational engine and pushes similarity search to the storage nodes. While beyond the scope of this paper, one of our next steps is to deploy our ideas to such systems and measure the impact on hybrid query plans. 
+
+## 7 CONCLUSION 
+
+This paper presented a unified framework for approximate threshold-based vector joins that advances work sharing and work offloading over graph-based ANN indexes. With our soft work sharing, merged indexing, and adaptive hybrid search, the proposed techniques re-duce redundant traversal and improve robustness across diverse query distributions. Extensive experimental results show signifi-cant gains in efficiency and recall compared to the state-of-the-art method, SimJoin , highlighting the importance of systematic work sharing and offloading in high-dimensional vector join processing. Future work includes extending these techniques to billion-scale datasets, adapting them to non-graph-based vector indexes, support-ing streaming data, deploying them into vector or vector-relational systems, and supporting vector-relational joins with filters on the query or data side. 
+
+## REFERENCES         
+
+> [1] [n.d.]. pgvector: Open-source vector similarity search for PostgreSQL. https: //github.com/pgvector. Accessed: 2025-10-16. [2] [n.d.]. Pinecone: a vector database. https://www.pinecone.io/. Accessed: 2025-10-16. [3] [n.d.]. Qdrant: Vector Database. https://qdrant.tech/. Accessed: 2025-10-16. [4] Sameer Agarwal, Barzan Mozafari, Aurojit Panda, Henry Milner, Samuel Madden, and Ion Stoica. 2013. BlinkDB: queries with bounded errors and bounded response times on very large data. In Proceedings of the 8th ACM European conference on computer systems . 29–42. [5] Dmitry Baranchuk, Artem Babenko, and Yury Malkov. 2018. Revisiting the inverted indices for billion-scale approximate nearest neighbors. In Proceedings of the European Conference on Computer Vision (ECCV) . 202–216.
+> 12
+
+[6] Erik Bernhardsson, Martin Aumüller, and Alexander Faithfull. 2025. ANN-Benchmarks: Benchmarks of Approximate Nearest Neighbor Libraries in Python. https://github.com/erikbern/ann-benchmarks/. Accessed: 2025-10-15. [7] Christian Böhm, Stefan Berchtold, and Daniel A Keim. 2001. Searching in high-dimensional spaces: Index structures for improving the performance of multime-dia databases. ACM Computing Surveys (CSUR) 33, 3 (2001), 322–373. [8] Manos Chatzakis, Yannis Papakonstantinou, and Themis Palpanas. 2025. DARTH: Declarative Recall Through Early Termination for Approximate Nearest Neighbor Search. Proceedings of the ACM on Management of Data 3, 4 (2025), 1–26. [9] Cheng Chen, Chenzhe Jin, Yunan Zhang, Sasha Podolsky, Chun Wu, Szu-Po Wang, Eric Hanson, Zhou Sun, Robert Walzer, and Jianguo Wang. 2024. Singlestore-v: An integrated vector database system in singlestore. Proceedings of the VLDB Endowment 17, 12 (2024), 3772–3785. [10] Meng Chen, Kai Zhang, Zhenying He, Yinan Jing, and X Sean Wang. 2024. RoarGraph: A Projected Bipartite Graph for Efficient Cross-Modal Approximate Nearest Neighbor Search. Proceedings of the VLDB Endowment 17, 11 (2024), 2735–2749. [11] Yanqi Chen, Xiao Yan, Alexandra Meliou, and Eric Lo. 2025. DiskJoin: Large-scale Vector Similarity Join with SSD. arXiv preprint arXiv:2508.18494 (2025). [12] Yannis Chronis, Helena Caminal, Yannis Papakonstantinou, Fatma Özcan, and Anastasia Ailamaki. 2025. Filtered vector search: State-of-the-art and research opportunities. Proceedings of the VLDB Endowment 18, 12 (2025), 5488–5492. [13] Akash Das Sarma, Yeye He, and Surajit Chaudhuri. 2014. Clusterjoin: A similarity joins framework using map-reduce. Proceedings of the VLDB Endowment 7, 12 (2014), 1059–1070. [14] Mayur Datar, Nicole Immorlica, Piotr Indyk, and Vahab S Mirrokni. 2004. Locality-sensitive hashing scheme based on p-stable distributions. In Proceedings of the twentieth annual symposium on Computational geometry . 253–262. [15] Matthijs Douze, Alexandr Guzhva, Chengqi Deng, Jeff Johnson, Gergely Szilvasy, Pierre-Emmanuel Mazaré, Maria Lomeli, Lucas Hosseini, and Hervé Jégou. 2024. The faiss library. arXiv preprint arXiv:2401.08281 (2024). [16] Cong Fu, Chao Xiang, Changxu Wang, and Deng Cai. 2017. Fast approximate nearest neighbor search with the navigating spreading-out graph. arXiv preprint arXiv:1707.00143 (2017). [17] Junhao Gan, Jianlin Feng, Qiong Fang, and Wilfred Ng. 2012. Locality-sensitive hashing scheme based on dynamic collision counting. In Proceedings of the 2012 ACM SIGMOD international conference on management of data . 541–552. [18] Ruiqi Guo, Philip Sun, Erik Lindgren, Quan Geng, David Simcha, Felix Chern, and Sanjiv Kumar. 2020. Accelerating large-scale inference with anisotropic vector quantization. In International Conference on Machine Learning . PMLR, 3887–3896. [19] Joseph M Hellerstein, Peter J Haas, and Helen J Wang. 1997. Online aggregation. In Proceedings of the 1997 ACM SIGMOD international conference on Management of data . 171–182. [20] Stratos Idreos, Olga Papaemmanouil, and Surajit Chaudhuri. 2015. Overview of data exploration techniques. In Proceedings of the 2015 ACM SIGMOD international conference on management of data . 277–281. [21] Elias Jääsaari, Ville Hyvönen, Matteo Ceccarello, Teemu Roos, and Martin Aumüller. 2025. VIBE: Vector Index Benchmark for Embeddings. arXiv preprint arXiv:2505.17810 (2025). [22] Omid Jafari, Preeti Maurya, Parth Nagarkar, Khandker Mushfiqul Islam, and Chidambaram Crushev. 2021. A survey on locality sensitive hashing algorithms and their applications. arXiv preprint arXiv:2102.08942 (2021). [23] Shikhar Jaiswal, Ravishankar Krishnaswamy, Ankit Garg, Harsha Vardhan Simhadri, and Sheshansh Agrawal. 2022. Ood-diskann: Efficient and scalable graph anns for out-of-distribution queries. arXiv preprint arXiv:2211.12850 (2022). [24] Suhas Jayaram Subramanya, Fnu Devvrit, Harsha Vardhan Simhadri, Ravishankar Krishnawamy, and Rohan Kadekodi. 2019. Diskann: Fast accurate billion-point nearest neighbor search on a single node. Advances in neural information pro-cessing Systems 32 (2019). [25] Herve Jegou, Matthijs Douze, and Cordelia Schmid. 2010. Product quantization for nearest neighbor search. IEEE transactions on pattern analysis and machine intelligence 33, 1 (2010), 117–128. [26] Jeff Johnson, Matthijs Douze, and Hervé Jégou. 2019. Billion-scale similarity search with GPUs. IEEE Transactions on Big Data 7, 3 (2019), 535–547. [27] Hai Lan, Shixun Huang, Zhifeng Bao, and Renata Borovica-Gajic. 2024. Cardi-nality estimation for similarity search on high-dimensional data objects: The impact of reference objects. Proceedings of the VLDB Endowment 18, 3 (2024), 544–556. [28] Yu A Malkov and Dmitry A Yashunin. 2018. Efficient and robust approximate nearest neighbor search using hierarchical navigable small world graphs. IEEE transactions on pattern analysis and machine intelligence 42, 4 (2018), 824–836. [29] Hiroyuki Ootomo, Akira Naruse, Corey Nolet, Ray Wang, Tamas Feher, and Yong Wang. 2024. Cagra: Highly parallel graph construction and approximate nearest neighbor search for gpus. In 2024 IEEE 40th International Conference on Data Engineering (ICDE) . IEEE, 4236–4247. [30] Mark Raasveldt and Hannes Mühleisen. 2019. Duckdb: an embeddable analytical database. In Proceedings of the 2019 international conference on management of data . 1981–1984. [31] Viktor Sanca and Anastasia Ailamaki. 2024. Efficient Data Access Paths for Mixed Vector-Relational Search. In Proceedings of the 20th International Workshop on Data Management on New Hardware . 1–9. [32] P Griffiths Selinger, Morton M Astrahan, Donald D Chamberlin, Raymond A Lorie, and Thomas G Price. 1979. Access path selection in a relational database management system. In Proceedings of the 1979 ACM SIGMOD international conference on Management of data . 23–34. [33] Aditi Singh, Suhas Jayaram Subramanya, Ravishankar Krishnaswamy, and Har-sha Vardhan Simhadri. 2021. Freshdiskann: A fast and accurate graph-based ann index for streaming similarity search. arXiv preprint arXiv:2105.09613 (2021). [34] Godfried T Toussaint. 1980. The relative neighbourhood graph of a finite planar set. Pattern recognition 12, 4 (1980), 261–268. [35] Jianguo Wang, Xiaomeng Yi, Rentong Guo, Hai Jin, Peng Xu, Shengjun Li, Xi-angyu Wang, Xiangzhou Guo, Chengming Li, Xiaohai Xu, et al . 2021. Milvus: A purpose-built vector data management system. In Proceedings of the 2021 international conference on management of data . 2614–2627. [36] Ye Wang, Ahmed Metwally, and Srinivasan Parthasarathy. 2013. Scalable all-pairs similarity search in metric spaces. In Proceedings of the 19th ACM SIGKDD international conference on knowledge discovery and data mining . 829–837. [37] Yifan Wang, Vyom Pathak, and Daisy Zhe Wang. 2024. Xling: A Learned Filter Framework for Accelerating High-Dimensional Approximate Similarity Join. 
+
+arXiv preprint arXiv:2402.13397 (2024). [38] Jiadong Xie, Jeffrey Xu Yu, and Yingfan Liu. 2025. Fast Approximate Similarity Join in Vector Databases. Proceedings of the ACM on Management of Data 3, 3 (2025), 1–26. [39] Qianxi Zhang, Shuotao Xu, Qi Chen, Guoxin Sui, Jiadong Xie, Zhizhen Cai, Yaoqi Chen, Yinxuan He, Yuqing Yang, Fan Yang, et al . 2023. {VBASE }: Unifying online vector similarity search and relational queries via relaxed monotonicity. In 17th USENIX Symposium on Operating Systems Design and Implementation (OSDI 23) . 377–395. [40] Andreas Zimmerer, Damien Dam, Jan Kossmann, Juliane Waack, Ismail Oukid, and Andreas Kipf. 2025. Pruning in Snowflake: Working Smarter, Not Harder. In 
+
+Companion of the 2025 International Conference on Management of Data . 757–770. [41] ZJULearning. 2019. NSG: Navigating Spreading-out Graph For Approximate Nearest Neighbor Search. https://github.com/ZJULearning/nsg. https://doi.org/ 10.14778/3303753.3303754 Accessed: 2026-01-XX.

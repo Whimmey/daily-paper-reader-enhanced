@@ -1,0 +1,613 @@
+Title: V-Co: A Closer Look at Visual Representation Alignment via Co-Denoising
+
+URL Source: https://arxiv.org/pdf/2603.16792v1
+
+Published Time: Wed, 18 Mar 2026 01:45:06 GMT
+
+Number of Pages: 20
+
+Markdown Content:
+# V-Co: A Closer Look at Visual Representation Alignment via Co-Denoising 
+
+## Han Lin 1 Xichen Pan 2 Zun Wang 1 Yue Zhang 1 Chu Wang 3 Jaemin Cho 4 Mohit Bansal 11UNC Chapel Hill 2NYU 3Meta 4AI2 
+
+## https://github.com/HL-hanlin/V-Co 
+
+## Abstract 
+
+Pixel-space diffusion has recently re-emerged as a strong alternative to latent diffusion, enabling high-quality gen-eration without pretrained autoencoders. However, stan-dard pixel-space diffusion models receive relatively weak semantic supervision and are not explicitly designed to capture high-level visual structure. Recent representation-alignment methods ( e.g ., REPA) suggest that pretrained vi-sual features can substantially improve diffusion training, and visual co-denoising has emerged as a promising di-rection for incorporating such features into the generative process. However, existing co-denoising approaches often entangle multiple design choices, making it unclear which design choices are truly essential. Therefore, we present 
+
+V-Co , a systematic study of visual co-denoising in a uni-fied JiT-based framework. This controlled setting allows us to isolate the ingredients that make visual co-denoising ef-fective. Our study reveals four key ingredients for effec-tive visual co-denoising. First, preserving feature-specific computation while enabling flexible cross-stream interac-tion motivates a fully dual-stream architecture. Second, effective classifier-free guidance (CFG) requires a struc-turally defined unconditional prediction. Third, stronger se-mantic supervision is best provided by a perceptual-drifting hybrid loss. Fourth, stable co-denoising further requires proper cross-stream calibration, which we realize through RMS-based feature rescaling. Together, these findings yield a simple recipe for visual co-denoising. Experiments on ImageNet-256 show that, at comparable model sizes, V-Co outperforms the underlying pixel-space diffusion base-line and strong prior pixel-diffusion methods while using fewer training epochs, offering practical guidance for fu-ture representation-aligned generative models. 
+
+## 1. Introduction 
+
+Diffusion models [13, 29, 33] have achieved remarkable success in image generation. While much recent progress has been driven by latent diffusion models [34] (LDMs), 2.52 
+
+> 2.93
+> 15.15
+> 8.86
+
+A Recipe for Visual Co-Denoising      
+
+> Starting Ingredients:
+> Pixel Diffusion Model
+> DINOv2 Encoder Images
+> Images
+> Calculate pixel RMS Pixels
+> DINOv2 Features
+> Calculate DINOv2 RMS
+> Dual-Stream Pixel Diffusion Model
+> Pixel Diffusion Model
+> Pixels
+> Pixels
+> Pixels
+> Pixels
+> DINOv2
+> DINOv2
+> Pixel Q
+> DINOv2 Q
+> Pixel K & V
+> DINOv2 K & V
+> Dual-Stream Pixel Diffusion Model
+> Attn. Mask
+> Dual-Stream Pixel Diffusion Model
+> Gen. Images
+> Real Images
+> DINOv2 Encoder
+> DINOv2 Encoder
+> Perceptual-Drifting Hybrid Loss
+> Feature Calibration: RMS-based scaling of semantic features
+> Architecture: Dual-stream architecture for pixel-semantic co-denoising
+> CFG: Structural semantic-to-pixel masking for unguided generation
+> Auxiliary Loss: Perceptual-drifting hybrid loss
+> Single-stream
+> Dual-stream
+> 6.69 Input dropout
+> 3.18 Structural masking
+> 3.14 REPA loss
+> 2.52 Hybrid loss
+> Noise-schedule shifting
+> RMS-based scaling
+> FID ↓
+
+Figure 1. An overview of V-Co and its recipe. Starting from a pixel diffusion model, a pretrained DINOv2 encoder, and train-ing images, we identify four key ingredients for effective visual co-denoising: a fully dual-stream architecture, semantic-to-pixel masking for classifier-free guidance, a perceptual-drifting hybrid loss for stronger semantic supervision, and RMS-based feature rescaling for cross-stream calibration. Together, they form a sim-ple and effective recipe for visual co-denoising. 
+
+which denoise in compressed autoencoder spaces [23, 34], an increasingly compelling alternative is pixel-space diffu-sion with scalable Transformer-based denoisers [6, 26, 28, 31, 48]. Recent systems such as JiT [26] show that di-rect pixel-space denoising can be competitive while avoid-ing autoencoder-induced biases and bottlenecks. However, 1
+
+> arXiv:2603.16792v1 [cs.CV] 17 Mar 2026
+
+pixel-level denoising objectives are not explicitly designed to enforce high-level semantic structure, making semantic representation learning less sample-efficient. In parallel, a growing body of work has explored how to inject external visual knowledge from strong pre-trained encoders into diffusion training. One line of re-search adds representation-alignment losses that encour-age diffusion features to match pretrained visual represen-tations [35, 36, 39, 42, 49, 51]. Another performs denois-ing directly in a representation latent space , rather than in pixel or VAE latent space [3, 18, 37, 50]. A third line of work explores joint generation or co-denoising architec-tures, in which image latents are generated together with semantic features or other modalities so that the streams can exchange information throughout the denoising trajec-tory [1, 2, 4, 8, 9, 14, 19, 24, 43, 45, 52]. Among these direc-tions, visual co-denoising provides a deeper form of integra-tion by incorporating pretrained semantic representations directly into the denoising process, rather than using them only as supervision or as an alternative latent space. How-ever, existing co-denoising systems typically entangle mul-tiple design choices, spanning architecture, guidance strat-egy, auxiliary supervision, and feature calibration, which obscures the principles that govern effective pixel–semantic interaction. This lack of understanding makes current de-signs largely ad hoc, and leaves open how to combine these components into a robust and scalable recipe. In this paper, we study visual co-denoising as a mecha-nism for visual representation alignment. Rather than treat-ing co-denoising as a fixed end-to-end design, we investi-gate the factors that makes it effective. To this end, we build a unified pixel-space testbed on top of JiT [26], where an image stream is jointly denoised with patch-level semantic features from a frozen pretrained visual encoder ( e.g ., DI-NOv2 [32]). Within this controlled framework, we investi-gate four key questions: (i) what architecture best balances feature-specific processing and cross-stream interaction; (ii) 
+
+how to define the unconditional branch for classifier-free guidance; (iii) which auxiliary objectives provide the most effective complementary supervision; and (iv) how to cal-ibrate semantic features relative to pixels during diffusion training. Our goal is not only to improve performance, but also to distill general principles for effective co-denoising. Based on this study, we derive a simple yet effective 
+
+Visual Co -Denoising ( V-Co ) recipe, illustrated in Fig. 1. First, from the perspective of model architecture, we show that effective visual co-denoising requires preserv-ing feature-specific computation while enabling flexible cross-stream interaction. Among a broad range of shared-backbone and fusion-based variants, a fully dual-stream JiT consistently delivers the strongest performance (Sec. 3.2). Second, for classifier-free guidance (CFG), we introduce a novel structural masking formulation, where unconditional prediction is defined by explicitly masking the semantic-to-pixel pathway rather than by input-level corruption alone. This simple design proves substantially more effective than standard dropout-based alternatives in co-denoising (Sec. 3.3). Third, we observe that instance-level semantic alignment and distribution-level regularization play com-plementary roles, and leverage this insight to propose a novel perceptual-drifting hybrid loss that combines both within a unified objective, yielding the best generation qual-ity in our study (Sec. 3.4). Finally, we show that RMS-based feature rescaling admits an equivalent interpretation as a semantic-stream noise-schedule shift via signal-to-noise ra-tio (SNR) matching, providing a simple and principled cal-ibration rule for cross-stream co-denoising (Sec. 3.5). To-gether, these findings transform visual co-denoising into a concrete recipe for visual representation alignment. Empirically, V-Co yields strong gains on ImageNet-256 under the standard JiT [26] training protocol. Starting from a pixel-space JiT-B/16 backbone, our progressively improved recipe substantially outperforms both the origi-nal JiT baseline and prior co-denoising baselines (see Ta-ble 5), and achieves strong guided generation quality. No-tably, V-Co-B/16 with only 260M parameters, matches JiT-L/16 with 459M parameters (FID 2.33 vs . 2.36). V-Co-L/16 and V-Co-H/16, trained for 500 and 300 epochs respec-tively, outperform JiT-G/16 with 2B parameters (FID 1.71 
+
+vs . 1.82) and other strong pixel-diffusion methods. In summary, our contributions are three-fold: • We present a principled study of visual representation alignment via co-denoising ( V-Co ) in pixel-space diffu-sion, systematically isolating the effects of architecture, CFG design, auxiliary losses, and feature calibration. • We introduce an effective recipe for visual co-denoising with two key innovations: structural masking for un-conditional CFG prediction and a perceptual-drifting hy-brid loss that combines instance-level alignment with distribution-level regularization. Our study further iden-tifies a fully dual-stream architecture and RMS-based feature calibration as the preferred design choices. • We show that these designs yield strong improvements on ImageNet-256 [10], outperforming the underlying pixel-space diffusion baseline ( i.e ., JiT [26]) as well as prior pixel-space diffusion methods. 
+
+## 2. Related Work 
+
+Pixel-space diffusion generation. Recent work has shown that, with suitable architectural and optimization choices, diffusion models trained directly in pixel space can ap-proach latent diffusion performance [34]. JiT [26] demon-strates that competitive pixel-space generation is possible with a minimalist Transformer design, while Simple Dif-fusion [16], PixelDiT [48], and HDiT [7] improve training and scalability. Other methods add stronger inductive bi-2(1) Single-Stream JiT Blocks (2) Dual-Stream JiT Blocks (Default)    
+
+> DINOv2 Features
+> Pixels
+> Pixel Head DINOv2 Head
+> Linear / JiT Blocks
+> Linear / JiT Blocks
+> DINOv2 Features
+> Pixels
+> Pixel Head DINOv2 Head
+> Linear / JiT Blocks
+> Linear / JiT Blocks
+> MLP
+> QKV
+> Norm
+> MLP
+> QKV
+> Norm
+> Joint Attention
+> Dual-Stream JiT Blocks
+> Noise Noise Noise Noise
+> C
+> MLP
+> QKV
+> Norm
+> Single-Stream JiT Blocks
+> Element-wise Addition
+> Channel Concat
+> Token Concat
+> DINOv2 K & V
+> Pixel K & V
+> Semantic-to-Pixel Masking
+> Pixel Q
+> DINOv2 Q
+
+Figure 2. Single-stream and dual-stream architectures for visual co-denoising. In the single-stream design (left), noised pixels and DINOv2 features are fused after lightweight stream-specific preprocessing and then processed by shared JiT blocks. We study direct addition, channel concatenation, and token concatenation (see Sec. 3.2). In the dual-stream design (right), the two streams use separate normalization, MLP, and attention projections, while interacting through joint self-attention. A semantic-to-pixel attention mask is used to define the unconditional prediction for CFG (see Sec. 3.3). Both designs use separate output heads for pixel and DINOv2 prediction. 
+
+ases, such as decomposition in DeCo [30] and perceptual supervision in PixelGen [31]. We adopt pixel-space diffu-sion rather than VAE-latent diffusion because it avoids au-toencoder bottlenecks and learned latent-space biases, pro-viding a cleaner setting for studying co-denoising and rep-resentation alignment. 
+
+Representation alignment for diffusion training. Agrowing line of work studies how pretrained visual rep-resentations can improve diffusion training. Recent anal-yses [35, 42] show that diffusion models learn meaning-ful internal features, but these are often weaker or less structured than those of strong self-supervised vision en-coders. REPA [42] aligns intermediate diffusion features with pretrained representations such as DINOv2 [32], im-proving convergence and sample quality. Follow-up work studies which teacher properties matter most: iREPA [35] highlights spatial structure, while REPA-E [25] extends REPA-style supervision to end-to-end latent diffusion train-ing with the VAE. Recent results also suggest that REPA-style alignment is most beneficial early in training and may over-constrain the representation space if applied too rigidly [42]. Motivated by this, we study representation alignment through co-denoising, compare auxiliary losses beyond REPA, and introduce a stronger hybrid alternative. 
+
+Visual co-denoising and joint generation across modal-ities. Recent work has increasingly explored joint denois-ing or joint generation of multiple signals to improve infor-mation transfer, controllability, and structural consistency. In image generation, Latent Forcing [1] and ReDi [24] jointly model image latents and semantic features. In video generation, VideoJAM [4], UDPDiff [44], and Uni-tyVideo [19] jointly generate video with structured signals such as segmentation, depth, or flow. Similar ideas extend to audio–visual generation [43], robotics and world mod-eling [2, 8, 9, 45, 52], and multimodal sequence model-ing [14]. In contrast to these task-specific end-to-end de-signs, we provide a controlled study of visual co-denoising itself, isolating the architectural, guidance, loss, and calibra-tion choices that make it effective and distilling them into a practical recipe for visual representation alignment. 
+
+## 3. A Closer Look at Visual Co-Denoising 
+
+In this section, we first formalize visual co-denoising in Sec. 3.1, then conduct a systematic study of the key de-sign choices that govern its effectiveness, including model architecture (Sec. 3.2), unconditional prediction for CFG (Sec. 3.3), auxiliary training objectives (Sec. 3.4), and fea-ture calibration via rescaling (Sec. 3.5). Starting from a standard pixel-space diffusion baseline ( e.g ., JiT [26]), we use controlled ablations to isolate each component’s con-3tribution and derive a practical recipe, introducing new de-signs tailored for visual co-denoising along the way. Exper-iment setup details and additional ablations are deferred to Appendix Sec. A and Sec. B respectively. 
+
+3.1. Co-Denoising Formulation 
+
+We formalize visual co-denoising within a unified frame-work. Unlike standard pixel-space diffusion, which de-noises only the image stream, co-denoising introduces an additional semantic feature stream from a pretrained visual encoder ( e.g ., DINOv2 [32]). The core idea is to jointly de-noise the pixel and semantic streams under a shared diffu-sion process, allowing the semantic stream to provide com-plementary supervision for semantically richer generation. Unless otherwise specified, all experiments in this sec-tion follow the JiT [26] ablation protocol on ImageNet 256 ×256 [10], using a JiT-B/16 backbone trained for 200 epochs. We adopt the original JiT training configuration without additional hyperparameter tuning. Concretely, we extend the x-prediction and v-loss formulation of JiT to jointly denoise pixels and pretrained semantic features. Let 
+
+x denote the clean image and d denote its encoded patch-level semantic features. We sample independent Gaussian noise ϵx, ϵd ∼ N (0, I) for the two streams. At diffusion time t ∈ [0 , 1] , the corresponding noised inputs are 
+
+zxt = t x + (1 − t) ϵx, zdt = t d + (1 − t) ϵd. (1) Given (zxt , zdt , t, c ), where c denotes the class condition, the co-denoising model jointly predicts the clean targets for the pixel and semantic streams: 
+
+( ˆ x, ˆd) = fθ (zxt , zdt , t, c ), (2) where fθ denotes the co-denoising model, which could be implemented as either a shared-backbone or dual-stream ar-chitecture depending on the design variant. Following JiT, we convert these clean predictions into velocity predictions, 
+
+ˆvx = ( ˆ x − zxt )/(1 − t), ˆvd = ( ˆd − zdt )/(1 − t), (3) and supervise them with the ground-truth velocities, 
+
+vx = x − ϵx = ( x − zxt )/(1 − t) (4) 
+
+vd = d − ϵd = ( d − zdt )/(1 − t). (5) The final objective is a weighted sum of the pixels and se-mantic features v-losses: 
+
+Lv-co = E
+
+h
+
+∥ˆvx − vx∥22 + λd ∥ˆvd − vd∥22
+
+i
+
+, (6) where λd controls the weight of the semantic stream. This formulation provides a unified testbed for studying the ef-fects of architecture, guidance, auxiliary losses, and feature calibration on representation alignment in co-denoising. 
+
+3.2. What Architecture Best Supports Visual Co-Denoising? 
+
+We begin by studying how semantic features should be integrated into a pixel-space diffusion backbone for co-denoising. Our goal is to identify the architectural design that most effectively transfers information from pretrained semantic visual encoders to pixel features without limiting the expressiveness of the diffusion model . To this end, we compare lightweight fusion within a largely shared back-bone against more expressive designs that preserve feature-specific processing while enabling controlled cross-stream interaction. Fig. 2 illustrates the architectural variants, and Table 1 summarizes the corresponding results. 
+
+Baselines. We first report results for the original JiT-B/16 backbone [26] and a widened variant that increases the hid-den dimension from 768 to 1088 to match the parameter count of the dual-stream models introduced later. We also include Latent Forcing [1] as a representative co-denoising baseline. For fair comparison, we keep the number of JiT blocks traversed by the pixel stream fixed across all vari-ants, and maintain this setting throughout this subsection. 
+
+Single-stream variants. We consider a shared-backbone setting (Fig. 2, left) where pixel tokens x and semantic to-kens d share most parameters. Within this setting, we com-pare three fusion strategies with model architectures derived from Latent Forcing [1]: • Direct Addition (row (d)): Pixel tokens x ∈ Rn×d1 and semantic features d ∈ Rn×d2 are first projected into a shared hidden space Rn×d via lightweight linear layers, then fused by element-wise addition and passed through shared JiT blocks. The pixel and semantic streams have two separate output heads. Our experiments in the main paper use d1 = d2 = 768 and a patch count of n = 256 .• Channel-concatenation fusion (row (e)): Pixel tokens 
+
+x and semantic features d are concatenated along the channel dimension Rn×(d1+d2), and then linearly pro-jected to the hidden dimension Rn×d of JiT blocks. • Token-concatenation fusion (rows (f-i)): Instead of concatenating along the channel dimension, we concate-nate x and d along the sequence dimension R2n×d and input the combined token sequence into the JiT blocks. 
+
+Dual-stream variants. Motivated by the limitations of heavily shared backbones, we further introduce a dual-stream JiT architecture, illustrated on the right of Fig. 2, in which the pixel and semantic streams maintain separate normalization layers, MLPs, and attention projections ( i.e ., Q/K/V), while interacting through joint self-attention. This design allows the model to adaptively determine where and 
+
+how the two streams interact, while preserving dedicated processing pathways for each stream. 
+
+Analysis. As shown in Table 1, token-concatenation fu-sion outperforms direct addition and channel concatenation among the single-stream variants (rows (d)–(f)), suggesting 4Table 1. Comparison of architectural designs for visual co-denoising. We compare baseline backbones, single-stream fusion strategies, and dual-stream fusion variants with different allocations of feature-specific and shared/dual-stream blocks. All variants keep the pixel stream depth fixed at 12 JiT blocks for fair comparison. JiT-B/16 ‡ and JiT-B/16 † denote widened variants with hidden dimensions increased from 768 to 1024 and 1088, respectively, to match the parameter counts of the dual-stream models. Blue rows mark the stronger variants used in subsequent analysis. Following previous works [1, 26], we mainly use FID as reference. We highlight the rows corresponding to the design with the best overall FID score in light blue . 
+
+Model Backbone #Params #Feature-Specific #Shared/Dual- CFG=1.0 Blocks Stream Blocks FID ↓ IS ↑
+
+Baselines (a) JiT-B/16 [26] JiT-B/16 133M - - 32.54 49.5 (b) JiT-B/16 [26] JiT-B/16 † 261M - - 22.67 69.9 (c) LatentForcing [1] JiT-B/16 156M 2 10 13.06 102.2 Single-Stream JiT Architecture (d) DirectAddition JiT-B/16 156M 2 10 15.15 103.4 (e) ChannelConcat JiT-B/16 157M 2 10 14.33 107.7 (f) TokenConcat JiT-B/16 156M 2 10 14.70 103.8 (g) TokenConcat JiT-B/16 177M 4 8 12.59 112.8 (h) TokenConcat JiT-B/16 198M 6 6 12.35 116.7 (i) TokenConcat JiT-B/16 ‡ 265M 6 6 9.74 129.45 Dual-Stream JiT Architecture (j) TokenConcat JiT-B/16 260M 6 6 11.78 115.4 (k) TokenConcat JiT-B/16 260M 4 8 11.40 118.3 (l) TokenConcat JiT-B/16 260M 2 10 10.24 124.5 (m) TokenConcat JiT-B/16 260M 0 12 8.86 132.8 
+
+that preserving feature-specific representations before inter-action is preferable to early fusion in a shared space. More-over, within token-concatenation, allocating more blocks to feature-specific processing consistently improves perfor-mance (rows (f)–(h)), indicating that excessive parameter sharing limits the model’s ability to preserve semantic infor-mation. Finally, among the dual-stream variants, the fully dual-stream architecture (row (m)) achieves the best FID of 8.86 under a comparable number of trainable parameters (row (i) and rows (j)–(l)), showing that allowing the model to dynamically learn cross-stream interaction at each block is more effective than imposing a fixed interaction pattern through a largely shared backbone. Therefore, we adopt the fully dual-stream architecture as the default model design in the remaining analysis. A more comprehensive comparison with additional single-stream variants is given in Table 7. 
+
+Finding 1: Effective visual feature alignment requires preserving feature-specific processing while enabling flexible cross-stream interaction. Token concatenation and a fully dual-stream model architecture emerge as the preferred designs. 
+
+3.3. How to Define Unconditional Prediction for CFG? 
+
+To enable classifier-free guidance (CFG), the model must define an unconditional prediction, i.e ., a prediction in which the conditioning signals are removed. In our co-denoising setting, this is nontrivial because the model is conditioned on both class labels and semantic features. Guided sampling combines the conditional and uncondi-tional predictions in the pixel and semantic streams as 
+
+ˆvx = ˆ vuncond  
+
+> x
+
++ s  ˆvcond  
+
+> x
+
+− ˆvuncond 
+
+> x
+
+ (7) 
+
+ˆvd = ˆ vuncond  
+
+> d
+
++ s  ˆvcond  
+
+> d
+
+− ˆvuncond 
+
+> d
+
+ (8) where s denotes the CFG scale. Since guided generation de-pends critically on the quality of the unconditional branch, we next investigate how to define an effective unconditional prediction for CFG in the co-denoising setting .
+
+Input-dropout baselines. Following prior work [1, 24], we first consider baseline unconditional predictions that drop conditioning inputs (semantic features and class labels) dur-ing training. Specifically, for semantic feature dropping, we use either (1) zeros or (2) a learnable [null] token to re-place the semantic features. For each choice, we compare independent dropout of the class label and semantic features (rows (a)–(b)) against joint dropout (rows (e)–(f)). 
+
+Attention mask between pixel and semantic features. 
+
+Beyond input-level dropout, we leverage the dual-stream architecture to define a structurally unconditional path-way. For unconditional samples, we apply semantic-to-pixel masking (see Fig. 3), which blocks cross-stream atten-tion from the semantic stream to the pixel stream so that the pixel branch receives no semantic conditioning signal (rows 5Table 2. Comparison of unconditional prediction designs for classifier-free guidance under co-denoising . We report unguided results at CFG = 1 .0 and guided results at CFG = 2 .9, which is the default guided evaluation setting in JiT [26]. We highlight the rows corre-sponding to the design with the best overall FID score in light blue . 
+
+Uncond. Type Cond. Pred. Uncond. Pred. CFG=1.0 CFG=2.9 FID ↓ IS ↑ FID ↓ IS ↑
+
+Independently Drop Labels & Semantic Features (a) Zero Embedding fθ ([ xt, dt], y, t ) fθ ([ xt, 0], ∅, t ) 9.17 126.3 6.69 165.6 (b) Learnable [null] Token fθ ([ xt, dt], y, t ) fθ ([ xt, [null] ], ∅, t ) 9.37 126.7 6.64 165.7 (c) Bidirectional Cross-Stream Mask fθ ([ xt, dt], y, t ) fθ ([ xt, dt], ∅, t ) 11.08 101.9 7.17 143.5 (d) Semantic-to-Pixel Mask fθ ([ xt, dt], y, t ) fθ ([ xt, dt], ∅, t ) 7.28 136.8 3.59 189.6 
+
+Jointly Drop Labels & Semantic Features (e) Zero Embedding fθ ([ xt, dt], y, t ) fθ ([ xt, 0], ∅, t ) 15.58 98.8 24.75 82.4 (f) Learnable [null] Token fθ ([ xt, dt], y, t ) fθ ([ xt, [null] ], ∅, t ) 10.80 118.3 25.2 88.3 (g) Bidirectional Cross-Stream Mask fθ ([ xt, dt], y, t ) fθ ([ xt, dt], ∅, t ) 7.53 129.1 5.66 173.6 (h) Semantic-to-Pixel Mask fθ ([ xt, dt], y, t ) fθ ([ xt, dt], ∅, t ) 5.62 158.5 3.18 219.4 
+
+(d) and (h)). We also study a symmetric variant, bidirec-tional cross-stream masking , which blocks attention in both directions (rows (c) and (g)). These variants test whether unconditional prediction is better defined via explicit con-trol of information flow rather than input-level corruption. 
+
+Analysis. Table 2 first shows that under the baseline input-dropout strategy, independently dropping the class label and semantic features (rows (a)–(b)) performs substantially bet-ter than jointly dropping them (rows (e)–(f)). We hypothe-size that jointly dropping both conditions makes the pixel-space guidance direction, ∆x = ˆ vcond  
+
+> x
+
+− ˆvuncond  
+
+> x
+
+, a poorly calibrated estimate of the desired conditional guidance sig-nal, which is then amplified by CFG scaling. In contrast, independent dropout exposes the model to partially condi-tioned cases and thus appears to improve the robustness of the learned guidance direction. More importantly, explicitly defining the unconditional pathway through structural masking (rows (c)–(d)) is markedly more effective than input-level dropout (rows (a)– (b)) under independent dropout, suggesting that blocking semantic information from reaching the pixel branch yields a more reliable unconditional prediction. Among the struc-tural variants, masking only the semantic-to-pixel pathway (row (d)) performs best, indicating that unconditional gen-eration only requires removing semantic influence on the pixel output, while preserving the reverse pixel-to-semantic interaction remains beneficial. For structural masking, jointly dropping labels and semantic features (rows (g)– (h)) outperforms independent dropout (rows (c)–(d)), sug-gesting that once the unconditional branch is defined struc-turally, removing all conditioning sources during training better matches inference-time behavior. Pixel Q DINOv2 Q 
+
+> DINOv2 K / V Pixel K / V
+> Pixel Q DINOv2 Q
+> DINOv2 K / V Pixel K / V
+> Semantic-to-Pixel Masking Bidirectional Masking
+
+Figure 3. Comparison of two attention-masking strategies. Yellow tokens indicate the corresponding query and attended key/value to-kens, while white tokens indicate positions whose attention scores are masked out. 
+
+Finding 2: For CFG under co-denoising, the most ef-fective unconditional design is structural semantic-to-pixel masking with joint dropout of conditioning sig-nals during training. 
+
+3.4. Which Auxiliary Loss Best Improves Co-Denoising? 
+
+The default V-Co objective in Eq. (6) supervises both streams through the co-denoising v-loss, but it mainly en-forces local target matching and may not fully capture higher-level semantic alignment. We therefore study which auxiliary objectives provide the most effective complemen-tary supervision in representation space , and ultimately de-sign a hybrid loss that better combines their strengths. 
+
+Balancing pixel and semantic losses. Before exploring additional auxiliary objectives, we first tune the relative weight of the semantic-stream loss through λd in Eq. (6). As shown in Fig. 4, λd ∈ { 0.01 , 0.1} gives the best FID. Under these settings, the average parameter-gradient norm in the pixel branch is approximately 4× and 2× that of the 6Table 3. Comparison of auxiliary losses applied to V-Co. We report unguided results at CFG = 1 .0 and guided results at the best CFG selected from a sweep over [1 .5, 5.5] for each method (2.5 for (a) REPA loss, 2.1 for (b) perceptual loss, 2.4 for (c) drifting loss, and 2.0 for (d) the perceptual-drifting hybrid loss). All results here are obtained after 300 epochs of training. We highlight the row with the best guided FID score in light blue . 
+
+Aux. Loss Type Unguided (CFG=1.0) Guided (Best CFG > 1.0)FID ↓ IS ↑ FID ↓ IS ↑
+
+Baseline: V-Co w/ default V-Pred Loss 5.38 153.6 2.96 206.6 (a) V-Co + REPA Loss 5.63 149.4 2.91 (0 .05 ↓) 202.8 (b) V-Co + Perceptual Loss 4.28 177.6 2.73 (0 .23 ↓) 228.5 (c) V-Co + Drifting Loss 4.86 164.3 2.85 (0 .11 ↓) 211.5 (d) V-Co + Perceptual-Drifting Hybrid Loss 4.44 189.0 2.44 (0 .52 ↓) 249.9 0.001 0.01 0.1 0.333 1    
+
+> d
+> 0
+> 5
+> 10
+> 15
+> FID
+> FID=7.20
+> FID=3.13
+> CFG=1.0
+> CFG=2.9
+> 0.001 0.01 0.1 0.333 1
+> d
+> 0
+> 1
+> 2
+> 3
+> 4
+> 5
+> Pixel / DINOv2
+> Grad Norm Ratio  Ratio: 4.30
+> Ratio: 2.15
+
+Figure 4. Influence of the DINO diffusion loss coefficient λd.See Sec. 3.4 for details. 
+
+semantic branch, respectively. This suggests that semantic supervision is most effective when it provides meaningful guidance while remaining secondary to the primary pixel-space objective. 
+
+REPA loss [25]. On top of the co-denoising objective, we further consider a REPA-style representation alignment loss on the pixel branch. Concretely, let hxℓ denote the inter-mediate hidden representation of the pixel branch at layer 
+
+ℓ. We align this hidden state to the representation of the ground-truth image x extracted by a frozen pretrained DI-NOv2 visual encoder ϕ(·). The auxiliary objective is de-fined as LREPA = g(hxℓ ) − ϕ(x) 22, where g(·) denotes a lightweight MLP projector used to map the intermediate hidden state to the encoder feature space. Empirically, we find that applying the REPA loss to the fourth block in JiT-Base yields the best performance, consistent with the con-figuration used in the original REPA paper, which adopts SiT-Base [29] as the backbone. 
+
+Perceptual loss in semantic feature space. We also con-sider a perceptual loss [21, 31] in the pretrained seman-tic feature space. Given the predicted clean image ˆx and the ground-truth image x, we extract their features using a frozen pretrained DINOv2 encoder ϕ(·) and minimize their discrepancy: Lperc = ∥ϕ( ˆ x) − ϕ(x)∥22. Unlike REPA, which aligns intermediate hidden states, this loss directly supervises the predicted image in semantic feature space. 
+
+Drifting loss in semantic feature space. Drifting loss [11] 40 60 80 100 120 140 160 180 200 220 240 260 280 300 
+
+> Epochs
+> 3
+> 4
+> 5
+> 6
+> 8
+> 10
+> FID
+> V-Co
+> V-Co + REPA
+> V-Co + Perceptual Loss
+> V-Co + Drifting Loss
+> V-Co + Hybrid Loss (Ours)
+
+Figure 5. Comparison of guided FID ( i.e ., FID computed from samples generated with CFG). 
+
+was recently proposed for single-step image generation to move the generated distribution toward the real one. Un-like diffusion v-prediction, REPA, and perceptual losses, which impose pairwise supervision between generated and real samples, drifting loss operates at the distribution level. To study its effectiveness in multi-step diffusion, we imple-ment it in DINO feature space. Let ϕ(·) denote a frozen DINOv2 encoder, let ˆx be the predicted clean image from the pixel branch, and define u = ϕ( ˆ x). We construct a drifting field as follows: 
+
+V (u) = V +(u) − V −(u), (9) 
+
+V +(u) = 1
+
+Z+(u) Ex+∼pdata 
+
+k(u, ϕ (x+))( ϕ(x+) − u),
+
+(10) 
+
+V −(u) = 1
+
+Z−(u) Ex−∼pgen 
+
+k(u, ϕ (x−))( ϕ(x−) − u),
+
+(11) where pdata and pgen denote the real and generated image distributions respectively. k(a, b) = exp( −∥ a−b∥22/τ ) is a similarity kernel and Z+, Z − normalize the kernel weights. The drifting loss is defined as Ldrift = ∥u − sg( u +
+
+V (u)) ∥22, where sg( ·) denotes stop-gradient. 7Table 4. Feature rescaling vs . noise-schedule shifting in V-Co. We compare our default V-Co model with RMS scaling against variants       
+
+> without RMS scaling and with noise-schedule shifting . We report unguided results at CFG = 1 .0and guided results at the best CFG selected from a sweep over [1 .5,5.5] for each method. We highlight the row with the best guided FID score in light blue .
+
+Model Unguided (CFG=1.0) Guided (Best CFG > 1.0)FID ↓ IS ↑ FID ↓ IS ↑
+
+(a) V-Co w/o rms scaling 9.12 188.6 5.28 150.4 (b) V-Co w/o rms scaling + noise schedule shifting 4.81 205.6 2.93 272.4 
+
+(c) V-Co w/ rms scaling (default) 5.38 177.0 2.52 242.6 
+
+Perceptual-Drifting Hybrid loss. Perceptual loss and drifting loss provide two complementary forms of super-vision. Perceptual loss encourages instance-level semantic fidelity by pulling each generated image toward the seman-tic feature of its paired ground-truth target, while drifting loss promotes distributional coverage by discouraging gen-erated features from collapsing toward dense regions of the generated distribution. Motivated by this complementarity, we propose a hybrid objective that formulates perceptual alignment as a positive vector field and drifting-based re-pulsion as a negative correction. Unlike the original drifting loss, we replace its positive real-distribution term with the current sample’s paired per-ceptual field while retaining the generated-distribution term as a negative correction. This is better suited to multi-step denoising, where each noisy input is paired with a specific ground-truth image. Specifically, we define the positive perceptual field as: 
+
+V +(ui) = ϕ(xi) − ϕ( ˆ xi), (12) which pulls the generated sample toward the semantic fea-ture of its paired ground-truth target. The negative field computes repulsion from nearby generated samples within the same class. For each sample i, we compute normalized kernel weights over other samples j̸ = i of the same class: 
+
+αij = exp  −∥ ϕ( ˆ xi) − ϕ( ˆ xj )∥2/τ rep 
+
+P  
+
+> k̸=i
+
+exp ( −∥ ϕ( ˆ xi) − ϕ( ˆ xk)∥2/τ rep ) , (13) where τrep is the repulsion temperature. Note that P  
+
+> j̸=i
+
+αij = 1 . The repulsion direction points from sam-ple i toward the weighted centroid of its neighbors: 
+
+V −(ui) = X 
+
+> j̸=i
+
+αij ϕ( ˆ xj ) − ϕ( ˆ xi). (14) To adaptively balance attraction and repulsion, we introduce a similarity-based gating mechanism based on how close the generated feature is to its target: 
+
+si = exp 
+
+
+
+− ∥ϕ( ˆ xi) − ϕ(xi)∥2
+
+τgate 
+
+
+
+, (15) where τgate is a temperature parameter controlling the sen-sitivity of the gate. We then combine the two fields into a hybrid field: 
+
+Vhyb (ui) = si · V +(ui) − (1 − si) · V −(ui). (16) Intuitively, when the generated feature is far from the target (si ≈ 0), repulsion dominates to prevent mode collapse; when the generated feature is close to the target ( si ≈ 1), pure attraction ensures clean convergence. The final objective is: 
+
+L = Lv-co + λhyb Lhyb (17) 
+
+= Lv-co + λhyb ui − sg  ui + Vhyb (ui) 22 . (18) 
+
+Analysis. Table 3 and Fig. 5 quantify the impact of differ-ent auxiliary objectives on co-denoising. REPA provides only a marginal guided improvement over the default V-Co objective (FID 2.91 vs. 2.96 for CFG > 1), suggest-ing limited benefit from intermediate alignment and po-tential constraints on model’s expressiveness [42]. Per-ceptual loss yields a larger gain (FID 2.73), indicating ef-fective instance-level semantic alignment, while drifting loss provides a smaller improvement (FID 2.85) but con-tributes distribution-level supervision. Combining these complementary signals, our hybrid objective achieves the best guided result (FID 2.44), suggesting that instance-level alignment is most effective when paired with explicit distribution-level correction. 
+
+Finding 3: For visual co-denoising, auxiliary losses work best when combining instance-level alignment with distribution-level regularization. 
+
+3.5. How Should Semantic Features Be Calibrated for Co-Denoising? 
+
+Before concluding the recipe, we consider how to calibrate the semantic stream relative to the pixel stream during co-denoising . Since the two inputs lie in different represen-tation spaces and can have very different signal scales, ap-plying the same diffusion timestep to both streams may re-sult in mismatched denoising difficulty and thus imbalanced 8Table 5. Reference results on ImageNet 256 ×256. FID and IS of 50K samples are evaluated. The “pre-training” columns list the external models required to obtain the results. The #Params column reports the parameter count of the denoising model and the decoder (if used). Following previous works [1, 26], we mainly use FID as reference. 
+
+ImageNet 256 × 256 Pre-training #Params #Epochs FID ↓ IS ↑
+
+Tokenizer SSL Encoder 
+
+Latent-space Diffusion DiT-XL/2 [33] SD-VAE - 675+49M 1400 2.27 278.2 SiT-XL/2 [29] SD-VAE - 675+49M 1400 2.06 277.5 REPA [42], SiT-XL/2 SD-VAE DINOv2 675+49M 800 1.42 305.7 LightningDiT-XL/2 [46] VA-VAE DINOv2 675+49M 800 1.35 295.3 DDT-XL/2 [41] SD-VAE DINOv2 675+49M 400 1.26 310.6 RAE [50], DiT DH -XL/2 RAE DINOv2 839+415M 800 1.13 262.6 Pixel-space (non-diffusion) JetFormer [38] - - 2.8B - 6.64 -FractalMAR-H [27] - - 848M 600 6.15 348.9 
+
+Pixel-space Diffusion ADM-G [12] - - 554M 400 4.59 186.7 RIN [20] - - 410M - 3.42 182.0 SiD [16], UViT/2 - - 2B 800 2.44 256.3 VDM++, UViT/2 - - 2B 800 2.12 267.7 SiD2 [17], UViT/2 - - N/A - 1.73 -SiD2 [17], UViT/1 - - N/A - 1.38 -PixelFlow [5], XL/4 - - 677M 320 1.98 282.1 PixNerd [40], XL/16 - DINOv2 700M 160 2.15 297.0 DeCo-XL/16 [30] - DINOv2 682M 600 1.69 304.0 PixelGen-XL/16 [31] - DINOv2 676M 160 1.83 293.6 ReDi [24], SiT-XL/2 - DINOv2 675M 350 1.72 278.7 ReDi [24], SiT-XL/2 - DINOv2 675M 800 1.61 295.1 Latent Forcing [1], JiT-B/16 - DINOv2 465M 200 2.48 -JiT-B/16 [26] - - 131M 600 3.66 275.1 JiT-L/16 [26] - - 459M 600 2.36 298.5 JiT-H/16 [26] - - 953M 600 1.86 303.4 JiT-G/16 [26] - - 2B 600 1.82 292.6 V-Co-B/16 - DINOv2 260M 200 2.52 242.6 V-Co-L/16 - DINOv2 918M 200 2.10 243.0 V-Co-H/16 - DINOv2 1.9B 200 1.85 246.5 V-Co-B/16 - DINOv2 260M 600 2.33 250.1 V-Co-L/16 - DINOv2 918M 500 1.72 245.3 V-Co-H/16 - DINOv2 1.9B 300 1.71 263.3 
+
+optimization. Related co-denoising work has addressed this issue by shifting the semantic-stream diffusion schedule [1]. Here, we study two natural calibration strategies: rescal-ing the semantic features to match the pixel-space signal level, or equivalently shifting the semantic-stream diffusion schedule. As we show below, the two can be formulated to achieve the same signal-to-noise ratio (SNR). 
+
+SNR matching via feature rescaling. As defined in Eq. (1), pixels and semantic features share the same timestep t ∈ [0 , 1] . Under this flow-matching parameteri-zation, the noised input takes the form 
+
+zt = t s + (1 − t) ϵ, (19) where s denotes the clean signal and ϵ ∼ N (0, I) is the injected noise. We define the signal-to-noise ratio (SNR) at time t as the ratio between the signal power and the noise power: 
+
+SNR( t) = E∥t s∥2
+
+E∥(1 − t) ϵ∥2 = t2 E∥s∥2
+
+(1 − t)2 E∥ϵ∥2 . (20) Since t is shared across streams and the noise scale is fixed, matching denoising difficulty reduces to matching signal 9magnitude. Let d denote the original semantic feature and 
+
+d′ its rescaled version. We therefore rescale the semantic features as 
+
+d′ = αd, α =
+
+pE[x2]
+
+pE[d2] , (21) so that the semantic features have the same RMS magnitude as the pixel signal. 
+
+Equivalent SNR matching via timestep shifting. Equiv-alently, one can keep the semantic feature d fixed and in-stead shift its timestep from t to t′ such that SNR d(t′) = SNR d′ (t). Using Eq. (20), this gives t′ 
+
+> 1−t′
+
+= α t 
+
+> 1−t
+
+, and 
+
+t′ = αt 
+
+1 + ( α − 1) t . (22) Therefore, rescaling the semantic features by α is SNR-equivalent to applying a shifted diffusion schedule to the unscaled semantic stream. 
+
+Analysis. In Table 4, we compare our default V-Co model against variants without RMS scaling and with noise-schedule shifting in place of RMS scaling. Removing RMS scaling substantially worsens performance relative to our default setting (guided FID: 5.28 vs . 2.52). Replacing RMS scaling with noise-schedule shifting gives broadly compa-rable overall results, but yields worse guided FID (2.93 vs .2.52), consistent with the SNR-based equivalence discussed above. In practice, we adopt RMS-based feature scaling be-cause of its simplicity and strong performance. 
+
+Finding 4: Effective co-denoising requires calibrating the semantic and pixel streams to comparable denois-ing difficulty. RMS-based feature rescaling provides a simple and practical solution. 
+
+## 4. Full Recipe and SoTA Comparison 
+
+We combine the best-performing ablation choices into a practical visual co-denoising ( V-Co ) recipe: a fully dual-stream JiT backbone (Sec. 3.2), structural semantic-to-pixel masking with joint dropout for CFG (Sec. 3.3), a perceptual-drifting hybrid loss (Sec. 3.4), and RMS-based feature rescaling (Sec. 3.5). These components are com-plementary: the architecture determines where streams in-teract, masking defines how guidance is formed, the hybrid loss specifies what semantic supervision to apply, and RMS scaling matches denoising difficulty. We next evaluate this full recipe against prior SoTA methods on ImageNet [10] 256 × 256 , including latent-space diffusion models, and pixel-space methods. As shown in Table 5, V-Co achieves strong performance among pixel-space diffusion models. Notably, V-Co-B/16 with only 260M parameters, matches JiT-L/16 with 459M parameters (FID 2.33 vs . 2.36). V-Co-L/16 and V-Co-H/16, trained for 500 and 300 epochs respectively, outperform JiT-G/16 with 2B parameters (FID 1.71 vs . 1.82) and other strong pixel-diffusion methods. In addition, our method with simple RMS scaling matches or outperforms Latent Forcing [1], which relies on separate noise schedules for pixels and DI-NOv2 features. These results demonstrate that a carefully designed co-denoising recipe is both effective and scalable for representation-aligned pixel-space generation. 
+
+## 5. Conclusion 
+
+We presented V-Co, a visual co-denoising framework for representation-aligned pixel-space generation. We identify four key ingredients for effective co-denoising: a fully dual-stream backbone, structural semantic-to-pixel masking for classifier-free guidance, a perceptual-drifting hybrid loss, and RMS-based feature rescaling. Together, they form a simple and scalable recipe that improves semantic align-ment and generative quality, with strong ImageNet results and clear scalability with model size and training dura-tion. We hope this work can inspire future research on co-denoising and representation-aligned generative modeling. 
+
+## 6. Acknowledgments 
+
+This work was supported by ONR Grant N00014-23-1-2356, ARO Award W911NF2110220, DARPA ECOLE Program No. HR00112390060, and NSF-AI Engage Insti-tute DRL-2112635. The views contained in this article are those of the authors and not of the funding agency. 
+
+## References         
+
+> [1] Alan Baade, Eric Ryan Chan, Kyle Sargent, Changan Chen, Justin Johnson, Ehsan Adeli, and Li Fei-Fei. Latent forc-ing: Reordering the diffusion trajectory for pixel-space im-age generation. arXiv preprint arXiv:2602.11401 , 2026. 2, 3, 4, 5, 9, 10, 14 [2] Hongzhe Bi, Hengkai Tan, Shenghao Xie, Zeyuan Wang, Shuhe Huang, Haitian Liu, Ruowen Zhao, Yao Feng, Chen-dong Xiang, Yinze Rong, et al. Motus: A unified latent ac-tion world model. arXiv preprint arXiv:2512.13030 , 2025. 2, 3 [3] Hun Chang, Byunghee Cha, and Jong Chul Ye. Dino-sae: Dino spherical autoencoder for high-fidelity image recon-struction and generation. arXiv preprint arXiv:2601.22904 ,2026. 2 [4] Hila Chefer, Uriel Singer, Amit Zohar, Yuval Kirstain, Adam Polyak, Yaniv Taigman, Lior Wolf, and Shelly Sheynin. Videojam: Joint appearance-motion representations for en-hanced motion generation in video models. In Forty-second International Conference on Machine Learning , 2025. 2, 3 [5] Shoufa Chen, Chongjian Ge, Shilong Zhang, Peize Sun, and Ping Luo. Pixelflow: Pixel-space generative models with flow. arXiv preprint arXiv:2504.07963 , 2025. 9
+
+10 [6] Zhennan Chen, Junwei Zhu, Xu Chen, Jiangning Zhang, Xi-aobin Hu, Hanzhen Zhao, Chengjie Wang, Jian Yang, and Ying Tai. Dip: Taming diffusion models in pixel space. arXiv preprint arXiv:2511.18822 , 2025. 1 [7] Katherine Crowson, Stefan Andreas Baumann, Alex Birch, Tanishq Mathew Abraham, Daniel Z Kaplan, and Enrico Shippole. Scalable high-resolution pixel-space image syn-thesis with hourglass diffusion transformers. In Forty-first International Conference on Machine Learning , 2024. 2 [8] Lingwei Dang, Zonghan Li, Juntong Li, Hongwen Zhang, Liang An, Yebin Liu, and Qingyao Wu. Syncmv4d: Syn-chronized multi-view joint diffusion of appearance and mo-tion for hand-object interaction synthesis. arXiv preprint arXiv:2511.19319 , 2025. 2, 3 [9] Lingwei Dang, Ruizhi Shao, Hongwen Zhang, Wei MIN, Yebin Liu, and Qingyao Wu. Svimo: Synchronized diffu-sion for video and motion generation in hand-object inter-action scenarios. In The Thirty-ninth Annual Conference on Neural Information Processing Systems , 2025. 2, 3 [10] Jia Deng, Wei Dong, Richard Socher, Li-Jia Li, Kai Li, and Li Fei-Fei. Imagenet: A large-scale hierarchical image database. In 2009 IEEE conference on computer vision and pattern recognition , pages 248–255. Ieee, 2009. 2, 4, 10 [11] Mingyang Deng, He Li, Tianhong Li, Yilun Du, and Kaim-ing He. Generative modeling via drifting. arXiv preprint arXiv:2602.04770 , 2026. 7 [12] Prafulla Dhariwal and Alexander Nichol. Diffusion models beat gans on image synthesis. Advances in neural informa-tion processing systems , 34:8780–8794, 2021. 9 [13] Patrick Esser, Sumith Kulal, Andreas Blattmann, Rahim Entezari, Jonas M¨ uller, Harry Saini, Yam Levi, Dominik Lorenz, Axel Sauer, Frederic Boesel, et al. Scaling recti-fied flow transformers for high-resolution image synthesis. In Forty-first international conference on machine learning ,2024. 1 [14] Xiaochuang Han, Youssef Emad, Melissa Hall, John Nguyen, Karthik Padthe, Liam Robbins, Amir Bar, Delong Chen, Michal Drozdzal, Maha Elbayad, et al. Tv2tv: A uni-fied framework for interleaved language and video genera-tion. arXiv preprint arXiv:2512.05103 , 2025. 2, 3 [15] Karl Heun et al. Neue methoden zur approximativen integration der differentialgleichungen einer unabh¨ angigen ver¨ anderlichen. Z. Math. Phys , 45(23-38):7, 1900. 13 [16] Emiel Hoogeboom, Jonathan Heek, and Tim Salimans. sim-ple diffusion: End-to-end diffusion for high resolution im-ages. In International Conference on Machine Learning ,pages 13213–13232. PMLR, 2023. 2, 9 [17] Emiel Hoogeboom, Thomas Mensink, Jonathan Heek, Kay Lamerigts, Ruiqi Gao, and Tim Salimans. Simpler diffu-sion: 1.5 fid on imagenet512 with pixel-space diffusion. In 
+
+Proceedings of the Computer Vision and Pattern Recognition Conference , pages 18062–18071, 2025. 9 [18] Zheyuan Hu, Chieh-Hsin Lai, Ge Wu, Yuki Mitsufuji, and Stefano Ermon. Meanflow transformers with representation autoencoders. arXiv preprint arXiv:2511.13019 , 2025. 2 [19] Jiehui Huang, Yuechen Zhang, Xu He, Yuan Gao, Zhi Cen, Bin Xia, Yan Zhou, Xin Tao, Pengfei Wan, and Jiaya Jia. Unityvideo: Unified multi-modal multi-task learning for enhancing world-aware video generation. arXiv preprint arXiv:2512.07831 , 2025. 2, 3 [20] Allan Jabri, David J Fleet, and Ting Chen. Scalable adaptive computation for iterative generation. In International Con-ference on Machine Learning , pages 14569–14589. PMLR, 2023. 9 [21] Justin Johnson, Alexandre Alahi, and Li Fei-Fei. Perceptual losses for real-time style transfer and super-resolution. In 
+
+European conference on computer vision , pages 694–711. Springer, 2016. 7 [22] Diederik P Kingma and Jimmy Ba. Adam: A method for stochastic optimization. arXiv preprint arXiv:1412.6980 ,2014. 13 [23] Diederik P Kingma and Max Welling. Auto-encoding varia-tional bayes. arXiv preprint arXiv:1312.6114 , 2013. 1 [24] Theodoros Kouzelis, Efstathios Karypidis, Ioannis Kakoge-orgiou, Spyros Gidaris, and Nikos Komodakis. Boosting generative image modeling via joint image-feature synthesis. In The Thirty-ninth Annual Conference on Neural Informa-tion Processing Systems , 2025. 2, 3, 5, 9 [25] Xingjian Leng, Jaskirat Singh, Yunzhong Hou, Zhenchang Xing, Saining Xie, and Liang Zheng. Repa-e: Unlocking vae for end-to-end tuning of latent diffusion transformers. In 
+
+Proceedings of the IEEE/CVF International Conference on Computer Vision , pages 18262–18272, 2025. 3, 7 [26] Tianhong Li and Kaiming He. Back to basics: Let denoising generative models denoise. arXiv preprint arXiv:2511.13720 , 2025. 1, 2, 3, 4, 5, 6, 9, 13, 14 [27] Tianhong Li, Qinyi Sun, Lijie Fan, and Kaiming He. Fractal generative models. arXiv preprint arXiv:2502.17437 , 2025. 9[28] Yiyang Lu, Susie Lu, Qiao Sun, Hanhong Zhao, Zhicheng Jiang, Xianbang Wang, Tianhong Li, Zhengyang Geng, and Kaiming He. One-step latent-free image generation with pixel mean flows. arXiv preprint arXiv:2601.22158 , 2026. 1[29] Nanye Ma, Mark Goldstein, Michael S Albergo, Nicholas M Boffi, Eric Vanden-Eijnden, and Saining Xie. Sit: Explor-ing flow and diffusion-based generative models with scalable interpolant transformers. In European Conference on Com-puter Vision , pages 23–40. Springer, 2024. 1, 7, 9 [30] Zehong Ma, Longhui Wei, Shuai Wang, Shiliang Zhang, and Qi Tian. Deco: Frequency-decoupled pixel diffusion for end-to-end image generation. arXiv preprint arXiv:2511.19365 ,2025. 3, 9 [31] Zehong Ma, Ruihan Xu, and Shiliang Zhang. Pixelgen: Pixel diffusion beats latent diffusion with perceptual loss. arXiv preprint arXiv:2602.02493 , 2026. 1, 3, 7, 9 [32] Maxime Oquab, Timoth´ ee Darcet, Th´ eo Moutakanni, Huy Vo, Marc Szafraniec, Vasil Khalidov, Pierre Fernandez, Daniel Haziza, Francisco Massa, Alaaeldin El-Nouby, et al. Dinov2: Learning robust visual features without supervision. 
+
+arXiv preprint arXiv:2304.07193 , 2023. 2, 3, 4, 13 [33] William Peebles and Saining Xie. Scalable diffusion models with transformers. In Proceedings of the IEEE/CVF inter-national conference on computer vision , pages 4195–4205, 2023. 1, 9 
+
+11 [34] Robin Rombach, Andreas Blattmann, Dominik Lorenz, Patrick Esser, and Bj¨ orn Ommer. High-resolution image synthesis with latent diffusion models. In Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition (CVPR) , pages 10684–10695, 2022. 1, 2 [35] Jaskirat Singh, Xingjian Leng, Zongze Wu, Liang Zheng, Richard Zhang, Eli Shechtman, and Saining Xie. What Mat-ters for Representation Alignment: Global Information or Spatial Structure? arXiv preprint arXiv:2512.10794 , 2025. 2, 3, 16 [36] Yuchuan Tian, Hanting Chen, Mengyu Zheng, Yuchen Liang, Chao Xu, and Yunhe Wang. U-repa: Aligning diffu-sion u-nets to vits. arXiv preprint arXiv:2503.18414 , 2025. 2[37] Shengbang Tong, Boyang Zheng, Ziteng Wang, Bingda Tang, Nanye Ma, Ellis Brown, Jihan Yang, Rob Fergus, Yann LeCun, and Saining Xie. Scaling text-to-image dif-fusion transformers with representation autoencoders. arXiv preprint arXiv:2601.16208 , 2026. 2 [38] Michael Tschannen, Andr´ e Susano Pinto, and Alexander Kolesnikov. Jetformer: An autoregressive generative model of raw images and text. In The Thirteenth International Con-ference on Learning Representations , 2025. 9 [39] Mengmeng Wang, Dengyang Jiang, Liuzhuozheng Li, Yucheng Lin, Guojiang Shen, Xiangjie Kong, Yong Liu, Guang Dai, and Jingdong Wang. Vae-repa: Variational autoencoder representation alignment for efficient diffusion training. arXiv preprint arXiv:2601.17830 , 2026. 2 [40] Shuai Wang, Ziteng Gao, Chenhui Zhu, Weilin Huang, and Limin Wang. Pixnerd: Pixel neural field diffusion. arXiv preprint arXiv:2507.23268 , 2025. 9 [41] Shuai Wang, Zhi Tian, Weilin Huang, and Limin Wang. Ddt: Decoupled diffusion transformer. arXiv preprint arXiv:2504.05741 , 2025. 9 [42] Ziqiao Wang, Wangbo Zhao, Yuhao Zhou, Zekai Li, Zhiyuan Liang, Mingjia Shi, Xuanlei Zhao, Pengfei Zhou, Kaipeng Zhang, Zhangyang Wang, et al. Repa works until it doesn’t: Early-stopped, holistic alignment supercharges dif-fusion training. arXiv preprint arXiv:2505.16792 , 2025. 2, 3, 8, 9 [43] Jianzong Wu, Hao Lian, Dachao Hao, Ye Tian, Qingyu Shi, Biaolong Chen, Hao Jiang, and Yunhai Tong. Does hearing help seeing? investigating audio-video joint denoising for video generation. arXiv preprint arXiv:2512.02457 , 2025. 2, 3 [44] Lehan Yang, Lu Qi, Xiangtai Li, Sheng Li, Varun Jampani, and Ming-Hsuan Yang. Unified dense prediction of video diffusion. In Proceedings of the Computer Vision and Pattern Recognition Conference , pages 28963–28973, 2025. 3 [45] Yuxiao Yang, Hualian Sheng, Sijia Cai, Jing Lin, Jiahao Wang, Bing Deng, Junzhe Lu, Haoqian Wang, and Jieping Ye. Echomotion: Unified human video and motion genera-tion via dual-modality diffusion transformer. arXiv preprint arXiv:2512.18814 , 2025. 2, 3 [46] Jingfeng Yao, Bin Yang, and Xinggang Wang. Reconstruc-tion vs. generation: Taming optimization dilemma in latent diffusion models. In Proceedings of the IEEE/CVF Confer-ence on Computer Vision and Pattern Recognition , 2025. 9 [47] Sihyun Yu, Sangkyung Kwak, Huiwon Jang, Jongheon Jeong, Jonathan Huang, Jinwoo Shin, and Saining Xie. Representation alignment for generation: Training diffusion transformers is easier than you think. In The Thirteenth In-ternational Conference on Learning Representations , 2025. 16 [48] Yongsheng Yu, Wei Xiong, Weili Nie, Yichen Sheng, Shiqiu Liu, and Jiebo Luo. Pixeldit: Pixel diffusion transformers for image generation. arXiv preprint arXiv:2511.20645 , 2025. 1, 2 [49] Xiangdong Zhang, Jiaqi Liao, Shaofeng Zhang, Fanqing Meng, Xiangpeng Wan, Junchi Yan, and Yu Cheng. Vide-orepa: Learning physics for video generation through re-lational alignment with foundation models. arXiv preprint arXiv:2505.23656 , 2025. 2 [50] Boyang Zheng, Nanye Ma, Shengbang Tong, and Saining Xie. Diffusion transformers with representation autoen-coders. arXiv preprint arXiv:2510.11690 , 2025. 2, 9, 13, 16 [51] Ruijie Zheng, Jing Wang, Scott Reed, Johan Bjorck, Yu Fang, Fengyuan Hu, Joel Jang, Kaushil Kundalia, Zongyu Lin, Loic Magne, et al. Flare: Robot learning with implicit world modeling. arXiv preprint arXiv:2505.15659 , 2025. 2 [52] Zhide Zhong, Haodong Yan, Junfeng Li, Xiangchen Liu, Xin Gong, Tianran Zhang, Wenxuan Song, Jiayi Chen, Xinhu Zheng, Hesheng Wang, et al. Flowvla: Visual chain of thought-based motion reasoning for vision-language-action models. arXiv preprint arXiv:2508.18269 , 2025. 2, 3 
+
+12 Appendix A. Experiment Setup Details 
+
+We report the hyper-parameters of the final model used for evaluation in Table 6. Throughout Sec. 3, these design choices are introduced progressively and tuned step by step toward the final configuration.   
+
+> Table 6. Configurations of experiments. Architecture, feature pre-processing, training, and sampling settings for V-Co-B/L/H. We color the newly added hyper-parameters on top of JIT [26] codebase in light blue .
+
+V-Co-B V-Co-L V-Co-H 
+
+Architecture Depth 12 24 32 Hidden dim 768 1024 1280 Heads 12 16 16 Image size 256 Patch size 16 
+
+Bottleneck 128 128 256 Dropout 0In-context class tokens 32 (if used) In-context start block 4 8 10 Feature Pre-Processing Pixels [−1, 1] linear min-max rescaling DINOv2 Patch-level scaling following RAE [50] Training Epochs 200 (ablation), 600 Warmup epochs [26] 5Optimizer Adam [22], β1, β 2 = 0 .9, 0.95 
+
+Batch size 1024 Learning rate 2e-4 LR schedule constant Weight decay 0EMA decay {0.9996 , 0.9998 , 0.9999 }
+
+Time sampler logit (t) ∼ N (μ, σ 2), μ = −0.8, σ = 0 .8
+
+Noise scale 1.0 Clip of (1 − t) in division 0.05 Class & DINOv2 tokens joint dropout (for CFG) 0.1 Attention mask when dropout (for CFG) Semantic-to-pixel mask 
+
+λd 0.1 
+
+λhyb 10.0 
+
+τgate 10.0 
+
+τrep 0.2 Sampling ODE solver Heun [15] ODE steps 50 Time steps linear in [0 .0, 1.0] 
+
+CFG scale sweep range [1 .0, 4.0] 
+
+CFG interval [0 .1, 1] (if used) 
+
+Specifically, in Sec. 3.2, we start from a minimal co-denoising setup. At this stage, the only additional component is the DINOv2 [32] branch in the feature preprocessing stage, where DINOv2-Base features are normalized using the dataset-level statistics computed in RAE [50]. For conditioning dropout, we adopt the standard independent dropout strategy, with class-label dropout set to 0.1 and DINOv2 feature dropout set to 0.2, applied separately rather than jointly. No attention 13 Table 7. Comparison of architectural designs for visual co-denoising. We compare baseline backbones, single-stream fusion strategies, and dual-stream fusion variants with different allocations of feature-specific and shared/dual-stream blocks. All variants keep the pixel stream depth fixed at 12 JiT blocks for fair comparison. JiT-B/16 ‡ and JiT-B/16 † denote widened variants with hidden dimensions increased from 768 to 1024 and 1088, respectively, to match the parameter counts of the dual-stream models. Blue rows mark the stronger variants used in subsequent analysis. Following previous works [1, 26], we mainly use FID as reference. We highlight the default setting of the dual-stream model architecture in V-Co in light blue . 
+
+Model Backbone #Params #Feature-Specific #Shared/Dual- CFG=1.0 Blocks Stream Blocks FID ↓ IS ↑
+
+Baselines (a) JiT-B/16 [26] JiT-B/16 133M - - 32.54 49.5 (b) JiT-B/16 [26] JiT-B/16 † 261M - - 22.67 69.9 (c) LatentForcing [1] JiT-B/16 156M 2 10 13.06 102.2 Single-Stream JiT Architecture (d) DirectAddition JiT-B/16 156M 2 10 15.15 103.4 (e) DirectAddition JiT-B/16 177M 4 8 12.90 112.7 (f) DirectAddition JiT-B/16 198M 6 6 11.77 116.2 (g) DirectAddition JiT-B/16 220M 8 4 14.20 104.1 (h) DirectAddition JiT-B/16 241M 10 2 14.43 99.4 (i) ChannelConcat JiT-B/16 157M 2 10 14.33 107.7 (j) ChannelConcat JiT-B/16 178M 4 8 11.93 117.3 (k) ChannelConcat JiT-B/16 200M 6 6 11.23 119.0 (l) ChannelConcat JiT-B/16 221M 8 4 13.73 104.6 (m) ChannelConcat JiT-B/16 242M 10 2 14.60 99.7 (n) TokenConcat JiT-B/16 156M 2 10 14.70 103.8 (o) TokenConcat JiT-B/16 177M 4 8 12.59 112.8 (p) TokenConcat JiT-B/16 198M 6 6 12.35 116.7 (q) TokenConcat JiT-B/16 220M 8 4 14.31 104.4 (r) TokenConcat JiT-B/16 241M 10 2 14.97 99.4 (s) TokenConcat JiT-B/16 ‡ 265M 6 6 9.74 129.4 (t) TokenConcat JiT-B/16 ‡ 274M 8 4 11.43 118.1 (u) TokenConcat JiT-B/16 ‡ 284M 10 2 12.90 109.4 Dual-Stream JiT Architecture (v) TokenConcat JiT-B/16 260M 6 6 11.78 115.4 (w) TokenConcat JiT-B/16 260M 4 8 11.40 118.3 (x) TokenConcat JiT-B/16 260M 2 10 10.24 124.5 (y) TokenConcat JiT-B/16 260M 0 12 8.86 132.8 
+
+mask is used in this section. The DINOv2 denoising loss coefficient ( i.e ., λd) is set to 0.1 from this stage onward. Starting from Sec. 3.3, we further refine the conditioning design. As shown in Tables 2 and 8, jointly dropping class labels and DINOv2 features yields the best performance, and we therefore adopt a joint dropout probability of 0.1 from this section onward. Moreover, the semantic-to-pixel attention mask achieves the strongest results in Table 2, and is thus used as the default setting in the subsequent experiments. In Sec. 3.4, we further introduce the perceptual-drifting hybrid loss to improve feature alignment during co-denoising. The corresponding hyper-parameters, including λhyb , τgate , and τrep , are introduced from this section onward. Finally, in Sec. 3.5, we compare noise-schedule shifting and RMS scaling for feature calibration. Since RMS scaling performs best in our ablation, we adopt it as the default calibration strategy in the final model. 
+
+## B. Additional Ablations 
+
+Extended ablation of single-stream fusion strategies. In Table 7, we present additional quantitative results that comple-ment Table 1 in the main paper. Specifically, we study different allocations of feature-specific and shared blocks under three interaction strategies: direct addition, channel concatenation, and token concatenation. Overall, we observe that a balanced design, with 6 feature-specific blocks and 6 shared blocks out of 12 total blocks, generally yields the best performance. For 14 Table 8. Comparison of different label/DINO dropout strategies under unguided ( i.e ., CFG=1.0) and guided ( i.e ., CFG=2.9) gener-ation. The best and second best numbers are bolded and underlined. We highlight the default setting of joint dropout of class labels and DINOv2 features in V-Co in light blue . 
+
+Label Dropout Ratio DINO Dropout Ratio CFG=1.0 CFG=2.9 FID ↓ IS ↑ FID ↓ IS ↑
+
+Independent Dropout 0.1 0.1 7.01 136.37 3.77 189.38 0.1 0.2 7.28 136.84 3.59 189.69 0.1 0.3 7.78 129.55 3.73 188.38 0.2 0.1 7.50 128.84 4.11 175.04 0.2 0.2 7.47 131.44 3.98 180.24 0.2 0.3 9.04 117.94 4.11 173.21 0.3 0.1 8.80 117.98 4.38 165.06 0.3 0.2 8.40 122.23 4.09 172.15 0.3 0.3 9.57 114.64 4.52 165.55 Joint Dropout 0.1 0.1 5.38 161.4 3.55 214.39 0.2 0.2 5.62 158.51 3.18 219.60 
+
+0.3 0.3 5.17 159.92 3.17 219.41         
+
+> Table 9. Ablation of the similarity-based gating siin Eq. (15). We conduct an ablation using a simplified version of si, where the gate is replaced with a scalar value sinstead of being dependent on real and generated samples. We report both unguided and guided FID and IS scores while sweeping the scalar s. Row with the best guided FID score is highlighted in light blue .
+
+s Unguided (CFG=1.0) Guided (Best CFG > 1.0)FID ↓ IS ↑ FID ↓ IS ↑
+
+Scalar gate s
+
+0 15.72 80.1 8.13 114.4 0.001 11.24 114.7 4.24 171.7 0.01 11.81 109.9 4.46 165.6 0.1 13.22 99.2 5.35 151.6 0.5 10.40 186.0 5.68 253.3 
+
+0.9 5.48 174.7 2.75 233.9 0.99 5.33 183.4 2.83 246.7 0.999 5.41 182.6 2.76 249.8 Similarity-Based Gating si (Default in V-Co) 
+
+si 5.17 181.6 2.61 243.9 
+
+the token-concatenation strategy, we further examine widened variants by increasing the hidden dimension from 768 to 1024, resulting in models with 265M to 284M parameters. Nevertheless, none of these variants surpasses our default dual-stream co-denoising design, which achieves the best performance with 260M parameters. 
+
+Extended ablation of label and DINOv2 dropout strategies. In Table 8, we provide additional quantitative results comple-menting Table 2 in the main paper. Specifically, we evaluate different dropout ratios for labels and DINOv2 features, applied either independently or jointly. The results indicate that independently dropping labels or DINOv2 features generally under-performs joint dropout. As discussed in the main paper, once the unconditional prediction is structurally defined through semantic-to-pixel masking, removing all conditioning inputs from the pixel branch during training leads to better alignment with inference-time behavior. 
+
+Ablation of the similarity-based gating si in Eq. (15). To evaluate the effectiveness of the proposed similarity-based gating mechanism, we conduct an ablation where the adaptive gate si is replaced with a scalar value s, removing its dependence on real and generated samples. Under this simplification, the hybrid potential becomes Vhyb (ui) = s · Vpos (ui) − (1 −
+
+15 Table 10. Comparison of different repulsion temperatures τrep . We report both unguided and guided FID and IS scores by sweeping the repulsion temperature τrep . We highlight the rows with the best guided FID scores in light blue . 
+
+τrep 
+
+Unguided (CFG=1.0) Guided (Best CFG > 1.0)FID ↓ IS ↑ FID ↓ IS ↑
+
+2e-3 4.97 186.4 2.72 251.3 2e-2 4.92 186.7 2.66 251.7 
+
+2e-1 5.17 181.6 2.61 243.9 2 5.33 180.1 2.64 244.8 2e1 5.30 180.7 2.67 247.7     
+
+> Table 11. Comparison of different gate temperatures τgate .We report both unguided and guided FID and IS scores by sweeping the gate temperature τgate . We highlight the rows with the best guided FID scores in light blue .
+
+τgate 
+
+Unguided (CFG=1.0) Guided (Best CFG > 1.0)FID ↓ IS ↑ FID ↓ IS ↑
+
+1e-2 11.66 112.2 4.01 173.5 1e-1 10.96 114.6 4.06 173.6 1 7.34 136.9 3.10 189.6 1e1 5.41 108.8 2.75 247.7 1e2 5.17 181.6 2.61 243.9 1e3 5.11 185.8 2.77 252.2     
+
+> Table 12. Comparison of different hybrid loss coefficients λhyb .We report both unguided and guided FID and IS scores by sweeping the hybrid loss coefficients λhyb . We highlight the rows with the best guided FID scores in light blue .
+
+λhyb 
+
+Unguided (CFG=1.0) Guided (Best CFG > 1.0)FID ↓ IS ↑ FID ↓ IS ↑
+
+1e-2 7.10 139.6 3.30 187.0 1e-1 6.72 142.5 3.17 189.9 1 5.23 162.5 2.74 214.0 1e1 5.17 181.6 2.61 243.9 
+
+1e2 13.61 133.4 4.49 221.4 1e3 31.30 79.3 17.90 124.4 1e4 65.84 41.8 58.04 56.0 
+
+s) · Vneg (ui). We report both unguided and guided FID and IS scores while sweeping the scalar s. As shown in Table 9, the default similarity-based gating in V-Co achieves the best guided FID score compared with the simplified scalar gate s,demonstrating the effectiveness of our design. 
+
+Hyper-parameter tuning for the perceptual-drifting hybrid loss. In Tables 10 to 12, we perform hyper-parameter sweeps over the three key hyper-parameters in the perceptual-drifting hybrid loss: the repulsion temperature τrep , the gate temperature 
+
+τgate , and the hybrid loss coefficient λhyb . The default hyper-parameters used in V-Co are selected from these settings based on the best guided FID scores. 
+
+Comparison of different DINOv2 model sizes. In Table 13, we compare V-Co trained with DINOv2 features of different model sizes as semantic representations for co-denoising with pixels. For each DINOv2 model, we re-compute the feature scaling factor based on its RMS value to ensure that the SNR ratio between the DINOv2 features and pixels remains consis-tent. We also sweep over different DINOv2 diffusion loss coefficients λd, as different encoder sizes may perform best under different loss scales. The results show that even relatively small representation encoders preserve sufficient low-level detail for co-denoising. A similar trend has also been reported in Table 15(b) of RAE [50], Figure 3(b) of iREPA [35], and Table 2 of REPA [47]. REPA [47] attributes this behavior to the fact that all DINOv2 models are distilled from DINOv2-g and therefore share similar representations. 16 Table 13. Comparison of different DINOv2 model sizes. We report both unguided and guided FID and IS scores while sweeping the DINOv2 diffusion loss coefficient λd over {1e −3, 1e −2, 1e −1, 1}. We highlight the rows with the best guided FID scores in light blue for each DINOv2 model size. 
+
+Model λd #Params Unguided (CFG=1.0) Guided (Best CFG > 1.0)FID ↓ IS ↑ FID ↓ IS ↑
+
+DINOv2-Small 1e-3 22M 9.04 118.2 5.06 156.4 DINOv2-Small 1e-2 22M 6.70 134.4 3.67 176.2 
+
+DINOv2-Small 1e-1 22M 6.35 140.0 4.11 174.8 DINOv2-Small 1 22M 9.05 126.0 7.97 145.3 DINOv2-Base 1e-3 86M 12.27 107.7 6.45 151.9 DINOv2-Base 1e-2 86M 9.81 118.2 5.16 163.2 
+
+DINOv2-Base 1e-1 86M 8.83 120.6 5.54 154.8 DINOv2-Base 1 86M 16.77 95.1 16.48 106.9 DINOv2-Large 1e-3 304M 13.92 96.3 6.59 143.1 DINOv2-Large 1e-2 304M 9.19 119.9 4.20 173.8 DINOv2-Large 1e-1 304M 8.70 124.3 4.57 174.7 
+
+DINOv2-Large 1 304M 32.28 82.2 25.32 94.0 DINOv2-Giant 1e-3 1.1B 13.15 99.3 7.46 143.4 DINOv2-Giant 1e-2 1.1B 10.41 112.1 5.42 160.5 DINOv2-Giant 1e-1 1.1B 8.91 120.1 5.00 166.7 
+
+DINOv2-Giant 1 1.1B 23.02 83.4 24.18 95.9 
+
+## C. Generated Samples 
+
+In Figs. 6 to 8, we present uncurated ImageNet 256 ×256 samples generated by V-Co-H/16 after 300 epochs of training, conditioned on the specified classes. Unlike the common practice of using a larger CFG value for visualization, we instead show samples generated with the same CFG value (1.5) used to obtain the reported FID of 1.71. 
+
+## D. Limitation and Future Work 
+
+While V-Co provides a clear and effective recipe for visual co-denoising in pixel-space diffusion, several limitations remain. First, our study focuses on class-conditional generation on ImageNet-256, which offers a controlled setting for isolating the effects of architecture, CFG design, auxiliary objectives, and feature calibration, but does not capture the full diversity of generation settings such as open-ended text-to-image synthesis or more structured multimodal tasks. Extending the proposed recipe beyond ImageNet-style class conditioning is therefore an important direction for future work. Second, V-Co relies on pretrained semantic features from a strong external visual encoder ( i.e ., DINOv2). While this design is well aligned with our representation-alignment perspective and substantially improves semantic supervision in pixel-space generation, the resulting co-denoising dynamics may still depend on the quality, inductive biases, and spatial granularity of the teacher representation. Exploring alternative semantic feature sources is another promising direction. Finally, our method is intentionally minimalist and does not incorporate stronger auxiliary supervision, such as combining REPA-style objectives with our perceptual-drifting hybrid loss. This keeps the empirical conclusions clean, but future works may explore how the V-Co recipe interacts with richer objectives and stronger supervision. 17 class 012: house finch, linnet, Carpodacus mexicanus class 014: indigo bunting, indigo finch, indigo bird, Passerina cyanea 
+
+class 042: agama class 081: ptarmigan 
+
+class 107: jellyfish class 108: sea anemone, anemone 
+
+class 110: flatworm, platyhelminth class 117: chambered nautilus, pearly nautilus, nautilus 
+
+class 130: flamingo class 279: Arctic fox, white fox, Alopex lagopus Figure 6. Uncurated samples on ImageNet 256 ×256 using V-Co-H/16 conditioned on the specified classes. Unlike the common practice of visualizing with a higher CFG, here we show images using the CFG value (1.5) that achieves the reported FID of 1.71. 
+
+18 class 288: leopard, Panthera pardus class 309: bee 
+
+class 349: bighorn, bighorn sheep, cimarron, Rocky Mountain bighorn class 397: puffer, pufferfish, blowfish, globefish 
+
+class 425: barn class 448: birdhouse 
+
+class 453: bookcase class 458: brass, memorial tablet, plaque 
+
+class 495: china cabinet, china closet class 500: cliff dwelling Figure 7. Uncurated samples on ImageNet 256 ×256 using V-Co-H/16 conditioned on the specified classes. Unlike the common practice of visualizing with a higher CFG, here we show images using the CFG value (1.5) that achieves the reported FID of 1.71. 
+
+19 class 658: mitten class 661: Model T 
+
+class 718: pier class 724: pirate, pirate ship 
+
+class 725: pitcher, ewer class 757: recreational vehicle, RV, R.V. 
+
+class 779: school bus class 780: schooner 
+
+class 829: streetcar, tram, tramcar, trolley, trolley car class 853: thatch, thatched roof Figure 8. Uncurated samples on ImageNet 256 ×256 using V-Co-H/16 conditioned on the specified classes. Unlike the common practice of visualizing with a higher CFG, here we show images using the CFG value (1.5) that achieves the reported FID of 1.71. 
+
+20
