@@ -37,15 +37,26 @@ window.PrivateDiscussionChat = (function () {
   // 从 secret.private 解密结果中生成可用的 Chat 模型列表
   const getChatLLMConfig = () => {
     const secret = window.decoded_secret_private || {};
+    console.log('[DPR CHAT] decoded_secret_private:', secret);
     const chatList = Array.isArray(secret.chatLLMs) ? secret.chatLLMs : [];
+    console.log('[DPR CHAT] chatLLMs from config:', chatList);
     const models = [];
-    chatList.forEach((item) => {
-      if (!item || !item.models || !Array.isArray(item.models)) return;
+    chatList.forEach((item, idx) => {
+      console.log(`[DPR CHAT] chatLLMs[${idx}]:`, item);
+      if (!item || !item.models || !Array.isArray(item.models)) {
+        console.log(`[DPR CHAT] chatLLMs[${idx}] skipped: invalid structure`);
+        return;
+      }
       const baseUrl = (item.baseUrl || '').trim();
       const apiKey = (item.apiKey || '').trim();
+      console.log(`[DPR CHAT] chatLLMs[${idx}] baseUrl=${baseUrl}, apiKey=${apiKey ? '***' : '(empty)'}'`);
       item.models.forEach((m) => {
         const name = (m || '').trim();
-        if (!name || !apiKey || !baseUrl) return;
+        console.log(`[DPR CHAT] chatLLMs[${idx}] model: ${name}`);
+        if (!name || !apiKey || !baseUrl) {
+          console.log(`[DPR CHAT] chatLLMs[${idx}] model ${name} skipped: name=${name}, hasApiKey=${!!apiKey}, hasBaseUrl=${!!baseUrl}`);
+          return;
+        }
         models.push({
           name,
           apiKey,
@@ -53,6 +64,7 @@ window.PrivateDiscussionChat = (function () {
         });
       });
     });
+    console.log('[DPR CHAT] Final chat models:', models);
     return models;
   };
 
