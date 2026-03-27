@@ -4,12 +4,59 @@ window.PrivateDiscussionChat = (function () {
   const CHAT_DB_NAME = 'dpr_chat_db_v1';
   const CHAT_STORE_NAME = 'paper_chats';
   const CHAT_MODEL_PREF_KEY = 'dpr_chat_model_preference_v1';
+  const CHAT_CUSTOM_MODELS_KEY = 'dpr_chat_custom_models_v1'; // 用户手动添加的模型
 
   // 最近提问记录（仅本机 localStorage，从现在开始记录，不回溯历史聊天内容）
   const QUESTION_RECENT_KEY = 'dpr_chat_recent_questions_v1';
   const QUESTION_PINNED_KEY = 'dpr_chat_pinned_questions_v1';
   const MAX_RECENT_QUESTIONS = 10; // 展示与保存都只保留最近 10 个（用户诉求）
   const MAX_PINNED_QUESTIONS = 50; // 防止无限增长
+
+  // 加载用户手动添加的模型列表
+  const loadCustomModels = () => {
+    try {
+      if (!window.localStorage) return [];
+      const raw = window.localStorage.getItem(CHAT_CUSTOM_MODELS_KEY);
+      if (!raw) return [];
+      const parsed = JSON.parse(raw);
+      return Array.isArray(parsed) ? parsed : [];
+    } catch {
+      return [];
+    }
+  };
+
+  // 保存用户手动添加的模型列表
+  const saveCustomModels = (models) => {
+    try {
+      if (!window.localStorage) return;
+      window.localStorage.setItem(CHAT_CUSTOM_MODELS_KEY, JSON.stringify(models || []));
+    } catch {
+      // ignore
+    }
+  };
+
+  // 添加自定义模型
+  const addCustomModel = (modelName) => {
+    const name = (modelName || '').trim();
+    if (!name) return false;
+    const models = loadCustomModels();
+    if (models.includes(name)) return false; // 已存在
+    models.push(name);
+    saveCustomModels(models);
+    return true;
+  };
+
+  // 删除自定义模型
+  const removeCustomModel = (modelName) => {
+    const name = (modelName || '').trim();
+    if (!name) return false;
+    const models = loadCustomModels();
+    const idx = models.indexOf(name);
+    if (idx === -1) return false;
+    models.splice(idx, 1);
+    saveCustomModels(models);
+    return true;
+  };
 
   // 读取用户偏好的 Chat 模型名称（跨页面生效）
   const loadPreferredModelName = () => {
@@ -41,6 +88,9 @@ window.PrivateDiscussionChat = (function () {
     const chatList = Array.isArray(secret.chatLLMs) ? secret.chatLLMs : [];
     console.log('[DPR CHAT] chatLLMs from config:', chatList);
     const models = [];
+    let firstBaseUrl = '';
+    let firstApiKey = '';
+
     chatList.forEach((item, idx) => {
       console.log(`[DPR CHAT] chatLLMs[${idx}]:`, item);
       if (!item || !item.models || !Array.isArray(item.models)) {
@@ -50,6 +100,11 @@ window.PrivateDiscussionChat = (function () {
       const baseUrl = (item.baseUrl || '').trim();
       const apiKey = (item.apiKey || '').trim();
       console.log(`[DPR CHAT] chatLLMs[${idx}] baseUrl=${baseUrl}, apiKey=${apiKey ? '***' : '(empty)'}'`);
+
+      // 保存第一个可用的 baseUrl 和 apiKey，供自定义模型使用
+      if (!firstBaseUrl && baseUrl) firstBaseUrl = baseUrl;
+      if (!firstApiKey && apiKey) firstApiKey = apiKey;
+
       item.models.forEach((m) => {
         const name = (m || '').trim();
         console.log(`[DPR CHAT] chatLLMs[${idx}] model: ${name}`);
@@ -64,6 +119,24 @@ window.PrivateDiscussionChat = (function () {
         });
       });
     });
+
+    // 合并用户手动添加的模型（使用第一个可用的 baseUrl 和 apiKey）
+    const customModels = loadCustomModels();
+    console.log('[DPR CHAT] Custom models from localStorage:', customModels);
+    if (customModels.length && firstBaseUrl && firstApiKey) {
+      const existingNames = new Set(models.map(m => m.name));
+      customModels.forEach(name => {
+        if (!existingNames.has(name)) {
+          models.push({
+            name,
+            apiKey: firstApiKey,
+            baseUrl: firstBaseUrl,
+          });
+          existingNames.add(name);
+        }
+      });
+    }
+
     console.log('[DPR CHAT] Final chat models:', models);
     return models;
   };
@@ -223,7 +296,37 @@ window.PrivateDiscussionChat = (function () {
               </div>
             </div>
           </div>
-          <select id="chat-llm-model-select" class="chat-model-select"></select>
+          <!-- 模型管理弹窗 -->
+          <div id="chat-model-manage-modal" class="chat-quick-run-modal" aria-hidden="true">
+            <div class="chat-quick-run-modal-panel" style="max-width:400px;">
+              <div class="chat-quick-run-modal-head">
+                <div class="chat-quick-run-title">管理模型</div>
+                <button id="chat-model-manage-close-btn" class="chat-quick-run-close-btn" type="button" aria-label="关闭">✕</button>
+              </div>
+              <div style="padding:12px;">
+                <div style="margin-bottom:12px;">
+                  <label style="display:block; margin-bottom:4px; font-size:0.9rem;">添加新模型</label>
+                  <div style="display:flex; gap:8px;">
+                    <input id="chat-model-add-input" type="text" placeholder="模型名称，如 glm-4.7" style="flex:1; padding:6px 10px; border:1px solid #ddd; border-radius:4px; font-size:0.9rem;">
+                    <button id="chat-model-add-confirm-btn" type="button" style="padding:6px 12px; background:#4CAF50; color:#fff; border:none; border-radius:4px; cursor:pointer;">添加</button>
+                  </div>
+                </div>
+                <div>
+                  <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+                    <label style="font-size:0.9rem;">已添加的模型</label>
+                    <span id="chat-model-count" style="font-size:0.8rem; color:#666;"></span>
+                  </div>
+                  <div id="chat-model-list" style="max-height:200px; overflow-y:auto; border:1px solid #eee; border-radius:4px; padding:8px;">
+                    <div style="text-align:center; color:#999; padding:20px;">暂无自定义模型</div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div class="chat-model-wrapper">
+            <select id="chat-llm-model-select" class="chat-model-select"></select>
+            <button id="chat-model-add-btn" class="chat-model-add-btn" type="button" title="管理模型">+</button>
+          </div>
           <span id="chat-status" class="chat-status"></span>
         </div>
       </div>
@@ -307,6 +410,96 @@ window.PrivateDiscussionChat = (function () {
   };
 
   const getQuickRunModal = () => document.getElementById('chat-quick-run-modal');
+  const getModelManageModal = () => document.getElementById('chat-model-manage-modal');
+
+  // 渲染模型管理列表
+  const renderModelList = () => {
+    const listEl = document.getElementById('chat-model-list');
+    const countEl = document.getElementById('chat-model-count');
+    if (!listEl) return;
+
+    const customModels = loadCustomModels();
+    const configModels = getChatLLMConfig();
+    const configNames = new Set();
+
+    // 获取配置中的模型名称
+    (window.decoded_secret_private?.chatLLMs || []).forEach(item => {
+      if (item?.models) {
+        item.models.forEach(m => configNames.add((m || '').trim()));
+      }
+    });
+
+    // 自定义模型（不在配置中的）
+    const onlyCustomModels = customModels.filter(name => !configNames.has(name));
+
+    if (countEl) {
+      countEl.textContent = `共 ${onlyCustomModels.length} 个自定义模型`;
+    }
+
+    if (onlyCustomModels.length === 0) {
+      listEl.innerHTML = '<div style="text-align:center; color:#999; padding:20px; font-size:0.9rem;">暂无自定义模型</div>';
+      return;
+    }
+
+    listEl.innerHTML = '';
+    onlyCustomModels.forEach(name => {
+      const item = document.createElement('div');
+      item.style.cssText = 'display:flex; justify-content:space-between; align-items:center; padding:8px; border-bottom:1px solid #f0f0f0;';
+      item.innerHTML = `
+        <span style="font-size:0.9rem;">${name}</span>
+        <button class="chat-model-delete-btn" data-model="${name}" style="padding:4px 8px; background:#f44336; color:#fff; border:none; border-radius:3px; cursor:pointer; font-size:0.8rem;">删除</button>
+      `;
+      listEl.appendChild(item);
+    });
+
+    // 绑定删除按钮事件
+    listEl.querySelectorAll('.chat-model-delete-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const modelName = btn.getAttribute('data-model');
+        if (confirm(`确定删除模型 "${modelName}" 吗？`)) {
+          removeCustomModel(modelName);
+          renderModelList();
+          // 刷新主模型选择框
+          const select = document.getElementById('chat-llm-model-select');
+          if (select) {
+            const chatModels = getChatLLMConfig();
+            const names = Array.from(new Set(chatModels.map(m => (m.name || '').trim()).filter(Boolean)));
+            select.innerHTML = '';
+            names.forEach(n => {
+              const opt = document.createElement('option');
+              opt.value = n;
+              opt.textContent = n;
+              select.appendChild(opt);
+            });
+          }
+        }
+      });
+    });
+  };
+
+  const closeModelManagePopover = () => {
+    const modal = getModelManageModal();
+    if (!modal) return;
+    modal.classList.remove('is-open');
+    modal.setAttribute('aria-hidden', 'true');
+    setTimeout(() => {
+      if (modal.classList.contains('is-open')) return;
+      modal.style.display = 'none';
+    }, 300);
+  };
+
+  const openModelManagePopover = () => {
+    const modal = getModelManageModal();
+    if (!modal) return;
+    modal.setAttribute('aria-hidden', 'false');
+    modal.style.display = 'flex';
+    renderModelList();
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        modal.classList.add('is-open');
+      });
+    });
+  };
 
   const safeLoadList = (key) => {
     try {
@@ -1364,6 +1557,16 @@ window.PrivateDiscussionChat = (function () {
     }
     fillQuickRunOptions(chatQuickRunYearSelect, chatQuickRunConferenceSelect);
 
+    // 模型管理相关元素
+    const chatModelAddBtn = document.getElementById('chat-model-add-btn');
+    const chatModelManageCloseBtn = document.getElementById('chat-model-manage-close-btn');
+    const chatModelAddInput = document.getElementById('chat-model-add-input');
+    const chatModelAddConfirmBtn = document.getElementById('chat-model-add-confirm-btn');
+    const modelManageModal = getModelManageModal();
+    if (modelManageModal && modelManageModal.parentElement !== document.body) {
+      document.body.appendChild(modelManageModal);
+    }
+
     const inGuestMode =
       window.DPR_ACCESS_MODE === 'guest' || window.DPR_ACCESS_MODE === 'locked';
 
@@ -1514,6 +1717,82 @@ window.PrivateDiscussionChat = (function () {
             });
           }
         }, 100);
+      });
+    }
+
+    // 模型管理按钮事件
+    if (chatModelAddBtn && !chatModelAddBtn._bound) {
+      chatModelAddBtn._bound = true;
+      chatModelAddBtn.addEventListener('click', () => {
+        openModelManagePopover();
+      });
+    }
+
+    if (chatModelManageCloseBtn && !chatModelManageCloseBtn._bound) {
+      chatModelManageCloseBtn._bound = true;
+      chatModelManageCloseBtn.addEventListener('click', () => {
+        closeModelManagePopover();
+      });
+    }
+
+    // 添加模型确认按钮
+    if (chatModelAddConfirmBtn && !chatModelAddConfirmBtn._bound) {
+      chatModelAddConfirmBtn._bound = true;
+      chatModelAddConfirmBtn.addEventListener('click', () => {
+        const input = chatModelAddInput;
+        if (!input) return;
+        const modelName = input.value.trim();
+        if (!modelName) {
+          alert('请输入模型名称');
+          return;
+        }
+        if (addCustomModel(modelName)) {
+          input.value = '';
+          renderModelList();
+          // 刷新主模型选择框
+          const select = document.getElementById('chat-llm-model-select');
+          if (select) {
+            const chatModels = getChatLLMConfig();
+            const names = Array.from(new Set(chatModels.map(m => (m.name || '').trim()).filter(Boolean)));
+            select.innerHTML = '';
+            names.forEach(n => {
+              const opt = document.createElement('option');
+              opt.value = n;
+              opt.textContent = n;
+              select.appendChild(opt);
+            });
+            // 选中新添加的模型
+            select.value = modelName;
+            savePreferredModelName(modelName);
+          }
+        } else {
+          alert('模型已存在或添加失败');
+        }
+      });
+    }
+
+    // 输入框回车添加
+    if (chatModelAddInput && !chatModelAddInput._bound) {
+      chatModelAddInput._bound = true;
+      chatModelAddInput.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') {
+          e.preventDefault();
+          if (chatModelAddConfirmBtn) {
+            chatModelAddConfirmBtn.click();
+          }
+        }
+      });
+    }
+
+    // 点击弹窗外部关闭
+    if (!document._dprModelManagePopoverBound) {
+      document._dprModelManagePopoverBound = true;
+      document.addEventListener('click', (e) => {
+        const modal = getModelManageModal();
+        if (!modal || !modal.classList.contains('is-open')) return;
+        if (e.target === modal || !modal.contains(e.target)) {
+          closeModelManagePopover();
+        }
       });
     }
 
