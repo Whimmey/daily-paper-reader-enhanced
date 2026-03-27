@@ -992,7 +992,7 @@
 
       // LLM 配置验证（通用方式）
       llmVerifyBtn.addEventListener('click', async () => {
-        const baseUrl = llmBaseUrlInput.value.trim();
+        let baseUrl = llmBaseUrlInput.value.trim();
         const model = llmModelInput.value.trim();
         const apiKey = llmApiKeyInput.value.trim();
 
@@ -1003,13 +1003,18 @@
           return;
         }
 
+        // 确保 base_url 包含 /chat/completions 后缀（用于验证）
+        const verificationUrl = baseUrl.endsWith('/chat/completions')
+          ? baseUrl
+          : baseUrl.replace(/\/$/, '') + '/chat/completions';
+
         llmVerifyBtn.disabled = true;
         llmStatusEl.textContent = '正在验证 LLM 配置...';
         llmStatusEl.style.color = '#666';
 
         try {
           // 通用验证：发送一个简单的聊天请求
-          const resp = await fetch(baseUrl, {
+          const resp = await fetch(verificationUrl, {
             method: 'POST',
             headers: {
               'Authorization': `Bearer ${apiKey}`,
@@ -1105,10 +1110,14 @@
 
         genBtn.addEventListener('click', async () => {
           const githubToken = githubInput.value.trim();
-          const llmBaseUrl = llmBaseUrlInput.value.trim();
+          let llmBaseUrl = llmBaseUrlInput.value.trim();
           const llmModel = llmModelInput.value.trim();
           const llmApiKey = llmApiKeyInput.value.trim();
           const rerankEnabled = rerankEnabledCheckbox ? rerankEnabledCheckbox.checked : false;
+
+          // 自动移除 base_url 末尾的 /chat/completions 后缀（避免重复）
+          llmBaseUrl = llmBaseUrl.replace(/\/chat\/completions\/?$/, '');
+          llmBaseUrl = llmBaseUrl.replace(/\/v\d+\/chat\/completions\/?$/, '');
 
           // 获取 Rerank 模型配置
           let rerankModel = llmModel;  // 默认使用与 LLM 相同的模型
