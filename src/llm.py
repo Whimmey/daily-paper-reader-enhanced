@@ -64,12 +64,19 @@ class LLMClient:
 
         :param api_key: API 密钥
         :param model: 模型名称
-        :param base_url: API 的基础 URL
+        :param base_url: API 的基础 URL（会自动移除末尾的 /chat/completions）
         """
+        # 自动移除 base_url 末尾的 /chat/completions 避免重复
+        clean_base_url = base_url
+        # 移除 /chat/completions 或 /v1/chat/completions 等后缀
+        import re
+        clean_base_url = re.sub(r'/chat/completions/?$', '', clean_base_url)
+        clean_base_url = re.sub(r'/v\d+/chat/completions/?$', '', clean_base_url)
+
         self.api_key = api_key
         self.model = model
-        self.base_url = base_url
-        self._base_urls = self._normalize_base_urls([base_url])
+        self.base_url = clean_base_url
+        self._base_urls = self._normalize_base_urls([clean_base_url])
         # 实例级别的累计统计（无需显式 reset；通常每个实验构造一个 client）
         self._call_index = 0
         self._cum_tokens = {
@@ -365,7 +372,7 @@ class GLMClient(LLMClient):
     建议环境变量：GLM_API_KEY
     """
     # def __init__(self, api_key: str, model: str, base_url: str = "https://open.bigmodel.cn/api/paas/v4"):
-    def __init__(self, api_key: str, model: str, base_url: str = "https://open.bigmodel.cn/api/paas/v4/chat/completions"):
+    def __init__(self, api_key: str, model: str, base_url: str = "https://open.bigmodel.cn/api/paas/v4"):
         super().__init__(api_key=api_key, model=model, base_url=base_url)
 
 
@@ -639,7 +646,7 @@ class CustomClient:
     配置格式（简化版，兼容任何 OpenAI Chat Completions 格式的服务）：
     {
       "llm": {
-        "base_url": "https://api.example.com/v1/chat/completions",
+        "base_url": "https://api.example.com/v1",
         "model": "model-name",
         "api_key": "your-api-key"
       },
