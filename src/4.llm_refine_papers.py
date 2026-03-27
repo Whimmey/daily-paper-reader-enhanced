@@ -21,8 +21,10 @@ RANKED_DIR = os.path.join(ARCHIVE_DIR, "rank")
 CONFIG_FILE = os.path.join(ROOT_DIR, "config.yaml")
 
 DEFAULT_FILTER_MODEL = os.getenv("LLM_MODEL") or os.getenv("BLT_FILTER_MODEL") or "glm-4-flash"
-DEFAULT_FILTER_CONCURRENCY = 4
+DEFAULT_FILTER_CONCURRENCY = 2  # 降低并发数避免触发速率限制
 MAX_FILTER_RETRIES = 3
+# API 速率限制配置：批次之间添加延迟避免触发 QPS 限制
+REQUEST_DELAY_SECONDS = 1  # 每个请求之间延迟 1 秒
 
 
 def log(message: str) -> None:
@@ -445,7 +447,11 @@ def call_filter(
         "additionalProperties": False,
     }
 
-    use_json_object = "gemini" in (client.model or "").lower()
+    # 智谱 GLM 和 Gemini 使用 json_object，其他使用 json_schema
+    use_json_object = (
+        "gemini" in (client.model or "").lower() or
+        "glm" in (client.model or "").lower()
+    )
     if use_json_object:
         response_format = {"type": "json_object"}
     else:
@@ -528,7 +534,9 @@ def call_filter(
             {
                 "role": "user",
                 "content": repeated_user_prompt
-                + "\n\nOutput must be strict JSON only, no markdown, no fences, no extra text.",
+                + "\n\nCRITICAL: Output must be strict JSON only. "
+                "Do NOT use markdown code blocks (```json). Do NOT add any extra text. "
+                "Return a single-line pure JSON string.",
             },
         ],
         response_format=response_format,
@@ -903,6 +911,9 @@ def process_file(
                 max_output_tokens,
                 debug_dir,
             )] = (idx, batch)
+            # 请求之间添加延迟，避免触发速率限制
+            if idx < len(batches):
+                time.sleep(REQUEST_DELAY_SECONDS)
         for future in as_completed(pending):
             idx, batch = pending[future]
             try:
