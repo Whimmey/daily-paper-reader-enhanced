@@ -1158,13 +1158,17 @@ window.PrivateDiscussionChat = (function () {
     } else if (chatModels.length) {
       selectedModelName = chatModels[0].name;
     }
+    console.log('[DPR CHAT] Selected model name from dropdown:', selectedModelName);
+    console.log('[DPR CHAT] All available models:', chatModels.map(m => ({ name: m.name, hasKey: !!m.apiKey, baseUrl: m.baseUrl })));
     const modelEntry =
       chatModels.find((m) => m.name === selectedModelName) ||
       chatModels[0] ||
       null;
+    console.log('[DPR CHAT] Found model entry:', modelEntry ? { name: modelEntry.name, baseUrl: modelEntry.baseUrl } : 'null');
 
     const apiKey = modelEntry ? (modelEntry.apiKey || '').trim() : '';
     const model = modelEntry ? modelEntry.name : '';
+    console.log('[DPR CHAT] Final model to use:', model);
 
     if (!apiKey) {
       aiAnswerDiv.textContent =
