@@ -8,7 +8,7 @@ import random
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional, Tuple
 
-from llm import BltClient
+from llm import LLMClient
 
 SCRIPT_DIR = os.path.dirname(__file__)
 ROOT_DIR = os.path.abspath(os.path.join(SCRIPT_DIR, ".."))
@@ -237,8 +237,99 @@ def rrf_merge(scores: Dict[int, float], rank_idx: int, orig_idx: int) -> None:
   scores[orig_idx] = scores.get(orig_idx, 0.0) + 1.0 / (RRF_K + rank_idx)
 
 
+def rerank_by_chat(
+  client: LLMClient,
+  query: str,
+  documents: List[str],
+  top_n: Optional[int] = None,
+) -> dict:
+  """
+  使用 Chat 接口实现重排序（让模型对每个文档打分）。
+
+  返回格式与 BLT Rerank API 兼容：
+  {
+    "results": [
+      {"index": 0, "relevance_score": 0.95, "document": "..."},
+      {"index": 2, "relevance_score": 0.87, "document": "..."},
+      ...
+    ]
+  }
+  """
+  if not documents:
+    return {"results": []}
+
+  # 构建评分提示
+  doc_list = "\n\n".join([f"[{i}] {doc[:500]}" for i, doc in enumerate(documents)])
+  prompt = f"""请根据查询对以下文档进行相关性评分。
+
+查询：{query}
+
+文档列表：
+{doc_list}
+
+请以 JSON 格式返回评分结果，格式如下：
+{{
+  "results": [
+    {{"index": 0, "relevance_score": 0.95}},
+    {{"index": 1, "relevance_score": 0.75}}
+  ]
+}}
+
+要求：
+1. relevance_score 为 0-1 之间的分数
+2. 只返回 JSON，不要其他说明"""
+
+  try:
+    response = client.chat(
+      messages=[{"role": "user", "content": prompt}],
+      response_format={"type": "json_object"}
+    )
+
+    content = response.get("content", "")
+
+    # 尝试解析 JSON
+    import json as json_lib
+    try:
+      result = json_lib.loads(content)
+      results = result.get("results", [])
+
+      # 补充 document 字段
+      for item in results:
+        idx = item.get("index")
+        if isinstance(idx, int) and 0 <= idx < len(documents):
+          item["document"] = documents[idx]
+
+      # 应用 top_n 截断
+      if top_n is not None and top_n > 0:
+        results = results[:top_n]
+
+      return {"results": results}
+
+    except json_lib.JSONDecodeError:
+      # JSON 解析失败，回退到简单评分
+      log("[WARN] Rerank JSON 解析失败，回退到原始顺序")
+      return {
+        "results": [
+          {"index": i, "relevance_score": 1.0 - (i * 0.01), "document": doc}
+          for i, doc in enumerate(documents)
+        ][:top_n] if top_n else [
+          {"index": i, "relevance_score": 1.0 - (i * 0.01), "document": doc}
+          for i, doc in enumerate(documents)
+        ]
+      }
+
+  except Exception as e:
+    log(f"[WARN] Chat Rerank 失败: {e}，回退到原始顺序")
+    return {
+      "results": [
+        {"index": i, "relevance_score": 1.0 - (i * 0.01), "document": doc}
+        for i, doc in enumerate(documents)
+      ]
+    }
+
+
 def process_file(
-  reranker: BltClient,
+  reranker: LLMClient,
   input_path: str,
   output_path: str,
   top_n: Optional[int],
@@ -322,16 +413,13 @@ def process_file(
         log(
           f"[INFO] 发送批次 {batch_idx}/{len(batches)} | docs={len(batch_docs)}"
         )
-        response = reranker.rerank(
+        response = rerank_by_chat(
+          client=reranker,
           query=q_text,
           documents=batch_docs,
           top_n=len(batch_docs),
-          model=rerank_model,
         )
-        if isinstance(response, dict) and "output" in response:
-          results = response.get("output", {}).get("results", [])
-        else:
-          results = response.get("results", [])
+        results = response.get("results", [])
 
         ranked = sorted(
           results or [],
@@ -388,7 +476,7 @@ def process_file(
 
 def main() -> None:
   parser = argparse.ArgumentParser(
-    description="步骤 3：使用 BLT Rerank API 对候选论文做重排序（简化版）。",
+    description="步骤 3：使用 LLM Chat 接口对候选论文做重排序。",
   )
   parser.add_argument(
     "--input",
@@ -411,8 +499,8 @@ def main() -> None:
   parser.add_argument(
     "--rerank-model",
     type=str,
-    default=os.getenv("BLT_RERANK_MODEL") or os.getenv("RERANK_MODEL") or "qwen3-reranker-4b",
-    help="BLT Rerank 模型名称（默认 qwen3-reranker-4b）。",
+    default=os.getenv("LLM_MODEL") or os.getenv("BLT_RERANK_MODEL") or os.getenv("RERANK_MODEL") or "glm-4-flash",
+    help="LLM 模型名称（用于 Chat 接口 Rerank）。",
   )
 
   args = parser.parse_args()
@@ -429,17 +517,26 @@ def main() -> None:
     log(f"[WARN] 输入文件不存在（今天可能没有新论文）：{input_path}，将跳过 Step 3。")
     return
 
-  api_key = os.getenv("BLT_API_KEY")
-  if not api_key:
-    raise RuntimeError("缺少 BLT_API_KEY 环境变量，无法调用 BLT Rerank API。")
+  # 从环境变量读取 LLM 配置
+  api_key = os.getenv("LLM_API_KEY") or os.getenv("BLT_API_KEY")
+  base_url = os.getenv("LLM_BASE_URL") or os.getenv("BLT_BASE_URL")
+  model = os.getenv("LLM_MODEL") or args.rerank_model
 
-  reranker = BltClient(api_key=api_key, model=args.rerank_model)
+  if not api_key:
+    raise RuntimeError("缺少 LLM_API_KEY 环境变量，无法调用 LLM API。")
+
+  if not base_url:
+    raise RuntimeError("缺少 LLM_BASE_URL 环境变量，无法调用 LLM API。")
+
+  log(f"[INFO] 使用 LLM 配置：model={model}, base_url={base_url}")
+
+  reranker = LLMClient(api_key=api_key, model=model, base_url=base_url)
   process_file(
     reranker=reranker,
     input_path=input_path,
     output_path=output_path,
     top_n=args.top_n,
-    rerank_model=args.rerank_model,
+    rerank_model=model,
   )
 
 
