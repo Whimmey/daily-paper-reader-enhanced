@@ -46,8 +46,6 @@ window.PrivateDiscussionChat = (function () {
       item.models.forEach((m) => {
         const name = (m || '').trim();
         if (!name || !apiKey || !baseUrl) return;
-        // 仅保留 Gemini 系列模型，其他模型不出现在私人研讨区下拉列表中
-        if (!name.toLowerCase().startsWith('gemini-')) return;
         models.push({
           name,
           apiKey,
