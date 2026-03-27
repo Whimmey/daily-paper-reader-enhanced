@@ -15,9 +15,11 @@ from urllib.parse import quote_plus
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Tuple
 
-import fitz  # PyMuPDF
 import requests
 from llm import LLMClient
+
+# PyMuPDF (fitz) 延迟导入，只在需要处理 PDF 时才导入
+# 这样 glance_only 模式不需要安装 PyMuPDF
 
 SCRIPT_DIR = os.path.dirname(__file__)
 ROOT_DIR = os.path.abspath(os.path.join(SCRIPT_DIR, ".."))
@@ -195,6 +197,15 @@ def slugify(title: str) -> str:
 
 
 def extract_pdf_text(pdf_path: str) -> str:
+    # 延迟导入 PyMuPDF，只在需要时才导入
+    try:
+        import fitz
+    except ImportError:
+        raise RuntimeError(
+            "需要 PyMuPDF 来处理 PDF 文件。请安装: pip install PyMuPDF\n"
+            "或者使用 --glance-only 模式跳过 PDF 处理。"
+        )
+
     doc = fitz.open(pdf_path)
     texts = []
     try:
