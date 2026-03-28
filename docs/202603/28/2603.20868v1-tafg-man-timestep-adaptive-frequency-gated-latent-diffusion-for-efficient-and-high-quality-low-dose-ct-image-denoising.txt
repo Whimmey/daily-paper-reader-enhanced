@@ -1,0 +1,291 @@
+Title: TAFG-MAN: Timestep-Adaptive Frequency-Gated Latent Diffusion for Efficient and High-Quality Low-Dose CT Image Denoising
+
+URL Source: https://arxiv.org/pdf/2603.20868v1
+
+Published Time: Tue, 24 Mar 2026 00:51:45 GMT
+
+Number of Pages: 12
+
+Markdown Content:
+# TAFG-MAN: Timestep-Adaptive Frequency-Gated Latent Diffusion for Efficient and High-Quality Low-Dose CT Image Denoising 
+
+Tangtangfang Fang 1∗, Yang Jiao 1∗, Xiangjian He 1†, Jingxi Hu 1†, and Jiaqi Yang 1
+
+University of Nottingham Ningbo China, Ningbo, Zhejiang, China 
+
+tangtangfang_fang@brown.edu, bixyj13@nottingham.edu.cn, Sean.He@nottingham.edu.cn, Jingxi.HU@nottingham.edu.cn, Jiaqi.YANG2@nottingham.edu.cn  
+
+> ∗
+
+These authors contributed equally. † Corresponding author. 
+
+Abstract. Low-dose computed tomography (LDCT) reduces radiation exposure but also introduces substantial noise and structural degrada-tion, making it difficult to suppress noise without erasing subtle anatom-ical details. In this paper, we present TAFG-MAN , a latent diffu-sion framework for efficient and high-quality LDCT image denoising. The framework combines a perceptually optimized autoencoder, con-ditional latent diffusion restoration in a compact latent space, and a lightweight Timestep-Adaptive Frequency-Gated (TAFG) conditioning design. TAFG decomposes condition features into low- and high-frequency components, predicts timestep-adaptive gates from the current denois-ing feature and timestep embedding, and progressively releases high-frequency guidance in later denoising stages before cross-attention. In this way, the model relies more on stable structural guidance at early reverse steps and introduces fine details more cautiously as denoising proceeds, improving the balance between noise suppression and detail preservation. Experiments show that TAFG-MAN achieves a favorable quality-efficiency trade-off against representative baselines. Compared with its base variant without TAFG, it further improves detail preserva-tion and perceptual quality while maintaining essentially the same infer-ence cost, and ablation results confirm the effectiveness of the proposed conditioning mechanism. 
+
+Keywords: Low-Dose CT Denoising · Latent Diffusion · Medical Im-age Restoration · Frequency-Gated Conditioning · Timestep-Adaptive Modulation 
+
+## 1 Introduction 
+
+Computed tomography (CT) is widely used in clinical practice, but its diagnostic benefits come with patient exposure to ionizing radiation. Low-dose CT (LDCT) reduces this burden, yet dose reduction inevitably lowers the signal-to-noise ra-tio and introduces noise and structural corruption, especially in anatomically  
+
+> arXiv:2603.20868v1 [cs.CV] 21 Mar 2026 2T. Fang, Y. Jiao et al.
+
+complex regions [24]. LDCT denoising therefore faces a core contradiction: in-sufficient denoising leaves distracting artifacts, whereas excessive denoising can erase subtle but clinically meaningful structures [12]. Existing LDCT restoration methods approach this trade-off from different angles. LDCT denoising has progressed from model-based filtering and itera-tive reconstruction to CNN-based, GAN-based, and diffusion-based restoration. CNN-based and GAN-based denoisers are computationally efficient and have substantially improved fidelity and inference speed over earlier approaches, but they may still over-smooth fine detail or introduce unstable texture under severe corruption [1,3,4,26,8]. Diffusion models often preserve structure and perceptual quality better by modeling restoration as gradual denoising, yet most current methods operate directly in pixel space and remain expensive on high-resolution CT images, even when sampling is accelerated [6,15,27,10]. Latent diffusion is therefore an appealing direction because it can move restoration into a com-pact domain and improve efficiency, but generic latent diffusion is not directly optimized for CT-specific detail preservation or efficient conditional restoration [20,11,9]. Recent work further suggests that restoration quality depends not only on the backbone but also on how conditional information is injected and modu-lated. Feature-wise conditioning and lightweight gating methods such as FiLM, SE, and UCDIR show that condition integration is an important design choice in restoration and diffusion networks [19,7,29]. In parallel, frequency-aware restora-tion methods distinguish stable low-frequency structure from more fragile high-frequency detail, and diffusion studies indicate that higher-frequency guidance may be more effective when introduced progressively across denoising stages [13,17,23,14,25]. These observations suggest that efficient latent restoration alone may not be sufficient for LDCT denoising if conditional guidance is not intro-duced in a detail-aware and timestep-aware manner. To address these issues, we propose TAFG-MAN , a latent diffusion frame-work for efficient and high-quality LDCT denoising. The framework uses a per-ceptually optimized autoencoder to learn a compact latent representation, re-stores clean latents with a conditional diffusion model, and adopts determinis-tic DDIM-style sampling [22] for efficient inference. To further improve condi-tion utilization during reverse diffusion, we introduce a lightweight Timestep-
+
+Adaptive Frequency-Gated (TAFG) module in the conditioning pathway of the conditional diffusion U-Net. TAFG separates low- and high-frequency condition cues and modulates their contributions according to both the current denoising state and the timestep, while leaving the autoencoder, latent diffusion backbone, and sampler unchanged. A preliminary version of the latent diffusion backbone, termed MAN , has appeared as an arXiv preprint [5]. In the present paper, we treat MAN as the base variant of the full framework without TAFG and focus on the complete 
+
+TAFG-MAN model as the main method. This presentation makes the rela-tionship between the two configurations explicit: MAN provides the shared la-tent restoration backbone, while TAFG-MAN extends it with timestep-adaptive TAFG-MAN 3
+
+frequency-gated conditioning. In the experiments, the comparison between MAN and TAFG-MAN therefore serves as a controlled evaluation of the proposed con-ditioning mechanism. The main contributions of this work are as follows. First, we propose TAFG-MAN , a latent diffusion framework for LDCT denoising that combines compact perceptual latent modeling, conditional restoration, and efficient deterministic sampling. Second, we design TAFG , a lightweight timestep-adaptive frequency-gated conditioning mechanism that improves how low- and high-frequency con-dition cues are injected into the latent diffusion U-Net. Third, we provide ex-periments and ablation studies showing that TAFG-MAN consistently improves over its base variant MAN and offers a favorable balance between restoration quality and inference efficiency compared with representative LDCT denoising baselines. 
+
+## 2 Method 
+
+Our goal is to recover a high-quality CT slice x from its low-dose counterpart 
+
+y. Let E(·) and D(·) denote the encoder and decoder of the latent autoencoder, respectively. Rather than performing denoising directly in pixel space, MAN formulates restoration in a compact latent space. Given the LDCT input y, the encoder E(·) extracts latent representation zy as conditioning information, and the conditional latent diffusion model samples a clean latent representation z0
+
+under this condition. The restored CT image is then reconstructed as x = D(z0).In practice, the input resolution is 512 × 512 , the latent tensor is compressed to 32 × 32 × 16 , and the observed LDCT image is encoded into both a latent condition and multi-scale condition features that are injected into the latent U-Net through cross-attention. The overall TAFG-MAN framework retains the original two-stage MAN pipeline: (1) a perceptually-optimized autoencoder that maps CT images between pixel and latent domains, and (2) a conditional latent diffusion model that restores clean latent representations using an efficient deter-ministic sampler. On top of this backbone, TAFG is introduced as a lightweight conditioning upgrade inside the conditional latent diffusion stage. The overall architecture is shown in Figure 1. 
+
+2.1 Perceptually-optimized autoencoder 
+
+The first stage of MAN is a customized autoencoder that maps an input image 
+
+x ∈ RH×W ×1 to a compressed latent representation z = E(x) ∈ Rh×w×c and reconstructs it back to ˜x = D(z). The aim is to build a latent space that is simultaneously compact, informative, and well regularized for diffusion. Architecturally, the encoder follows a U-Net-like design with three downsam-pling stages that progressively reduce spatial resolution while increasing channel capacity. Each stage contains residual layers with Group Normalization and SiLU activation. To capture longer-range dependencies that are difficult to express with local convolutions alone, self-attention blocks are inserted at the deeper 4 T. Fang, Y. Jiao et al. Encoder Decoder     
+
+> LDCT Denoised CT
+> zr
+> zy
+> Reverse Diffusion
+> T0T1Tn-1Tn
+> Timestep
+> condition
+> Latent Condition
+
+Pixel to Latent Latent to Pixel Latent Space   
+
+> Sample
+> Step
+> Attention U-Net
+> Cross
+> Attn
+> HG
+> Fusion
+> LG TAFG
+> Freq Split
+
+Fig. 1. Overview of the proposed TAFG-MAN framework for LDCT denoising, LG/HG denote low-/high-frequency gates. 
+
+two stages and in the bottleneck. The bottleneck adopts a VAE-like parame-terization, producing the latent statistics required for KL regularization. The decoder mirrors the encoder with upsampling and residual refinement blocks, reconstructing the image from latent space while preserving as much local struc-ture as possible. The autoencoder training objective combines reconstruction accuracy, latent regularity, and perceptual fidelity. We use a weighted combination of pixel-wise MSE and L1 losses to anchor the reconstruction to the original image. Since the latent diffusion stage assumes a reasonably regular latent distribution, we introduce the KL divergence term 
+
+LKL = 12
+
+> d
+
+X
+
+> i=1
+
+(μ2 
+
+> i
+
++ σ2 
+
+> i
+
+− log( σ2 
+
+> i
+
+) − 1) , (1) which encourages the posterior induced by the encoder to remain close to a standard normal distribution [20]. Compared with an aggressively constrained variational formulation, we use KL regularization in a broad and stabilizing manner so that structural detail is not sacrificed for excessive latent smoothness. To encourage visually faithful reconstructions, we further add a perceptual loss computed from feature activations extracted by a pre-trained VGG-16 net-work [21]. Denoting the feature map at layer l by ϕl(·), the perceptual loss is defined as 
+
+LPL = X
+
+> l∈L
+
+∥ϕl(x) − ϕl(˜ x)∥1. (2) Although VGG-16 was trained on natural images, previous medical restoration studies have shown that VGG-based feature loss remains useful for preserving structure and texture in medical images [26]. In our case, this term is particularly important because the latent representation will later serve as the domain on which diffusion operates; if the encoder loses fine structural cues, the subsequent diffusion stage may have limited ability to recover them faithfully. TAFG-MAN 5
+
+The overall autoencoder objective is therefore 
+
+LAE = Lpixel + λKL (t)LKL + λPL (t)LPL , (3) where Lpixel = λ1LMSE + λ2LL1 . Rather than activating all terms equally from the beginning, we use a linear warm-up schedule during the first half of autoen-coder training, 
+
+λKL (t) = λmax  
+
+> KL
+
+min 
+
+ tTw
+
+, 1
+
+
+
+, λPL (t) = λmax  
+
+> PL
+
+min 
+
+ tTw
+
+, 1
+
+
+
+, (4) where Tw denotes the warm-up horizon. Early training therefore focuses on stable reconstruction, after which the regularization and perceptual terms are gradu-ally introduced. This curriculum reduces optimization instability and empirically produces sharper reconstructions with better latent regularity. 
+
+2.2 Conditional latent diffusion 
+
+Once the autoencoder has established a suitable latent space, denoising is per-formed by a conditional latent diffusion model. The noise prediction network is an attention-enhanced latent U-Net, written as ϵθ (zt, t, c ), where zt is the noisy latent at timestep t and c is the conditioning context derived from the LDCT slice y. The network consists of residual blocks and deeper spatial transformer blocks equipped with self-attention and cross-attention. Timestep information is encoded through sinusoidal embeddings, and the multi-scale condition features extracted from the LDCT encoder are fused into the denoising trajectory through cross-attention so that restoration remains guided by the observed content. For the forward process, we adopt the standard diffusion formulation in latent space but use a cosine noise schedule rather than the original linear schedule. Specifically, 
+
+¯αt =cos 2
+
+ (t/T +ϵ)1+ ϵ · π
+
+> 2
+
+
+
+cos 2
+
+ ϵ 
+
+> 1+ ϵ
+
+· π
+
+> 2
+
+ , with ϵ = 0 .008 , (5) 
+
+βt = 1 − ¯αt
+
+¯αt−1
+
+. (6) We set the total diffusion horizon to T = 500 during training. This schedule al-locates noise more smoothly across timesteps and is commonly found to improve denoising stability in diffusion training [18]. The reverse process is where MAN departs from conventional latent diffu-sion most clearly. Instead of the stochastic DDPM-style sampler, we adopt a deterministic DDIM-style sampler [22]. For restoration tasks, this choice is de-sirable because the target output for a given input is not arbitrary: different runs should ideally converge to the same clean solution. The DDIM-style update used in MAN is 
+
+zt−1 = √¯αt−1
+
+ zt − √1 − ¯αtϵθ (zt, t, c )
+
+√¯αt
+
+
+
++ p1 − ¯αt−1ϵθ (zt, t, c ).
+
+(7) 6 T. Fang, Y. Jiao et al. 
+
+At inference time, we use a reduced DDIM step budget (30 steps in our main setting), which is a small fraction of the full training horizon. Compared with stochastic reverse diffusion, this deterministic path substantially shortens infer-ence and yields more stable outputs. The latent U-Net is trained with the standard noise-prediction objective 
+
+LLDM = Ez0,ϵ,t 
+
+∥ϵ − ϵθ (√¯αtz0 + √1 − ¯αtϵ, t, c )∥2 , (8) where t is sampled uniformly from {1, . . . , T }. Here, the model learns to pre-dict the synthetic Gaussian noise added during forward diffusion. After reverse denoising produces ˜z0, the decoder reconstructs the final image ˜x = D(˜ z0).
+
+2.3 Timestep-Adaptive Frequency-Gated Conditioning 
+
+While the MAN backbone already uses multi-scale conditioning features to guide latent diffusion, the original condition injection remains relatively uniform across diffusion steps. Recent restoration studies suggest that the way condition in-formation is integrated can significantly affect the final reconstruction quality rather than serving as a minor architectural detail [19,7,29]. In LDCT denoising, however, the condition feature at a given scale may simultaneously contain sta-ble low-frequency structure, useful high-frequency edges, and noise-contaminated high-frequency responses. Injecting these components with the same strength can make it harder to balance aggressive denoising against fine-detail preservation. To address this issue, we introduce a lightweight Timestep-Adaptive Frequency-
+
+Gated (TAFG) conditioning module that operates only on the condition path before cross-attention. Consider a condition feature map cl ∈ RHl×Wl×Cl at a selected latent U-Net scale l. We first decompose it into low- and high-frequency components: 
+
+clow  
+
+> l
+
+= P (cl), chigh  
+
+> l
+
+= cl − clow  
+
+> l
+
+, (9) where P (·) is a lightweight learnable low-pass operator. This decomposition is motivated by prior frequency-aware restoration studies showing that low- and high-frequency components often contribute differently to structure preservation and detail recovery [13,17]. In our implementation, P (·) is realized by a depth-wise low-pass convolution, which provides a simple local frequency split without introducing a heavy FFT- or wavelet-based branch. To modulate these two components according to the current denoising state, TAFG predicts separate low- and high-frequency gates from the current U-Net feature fl and timestep embedding et. This design follows the general intuition of lightweight feature-wise modulation and channel gating, but specializes it to frequency-aware conditional guidance in latent diffusion [19,7]. Specifically, we first apply global average pooling to fl, concatenate the pooled feature with et,and feed the result into a lightweight MLP: 
+
+h
+
+glow  
+
+> l
+
+, g high 
+
+> l
+
+i
+
+= σ(MLP ([GAP( fl), e t])) , (10) TAFG-MAN 7
+
+where σ(·) denotes the sigmoid function. The two gates control how strongly the low- and high-frequency condition components should be injected at the current denoising step. We further introduce a timestep-dependent release factor for the high-frequency branch. Let ˆt = t/ (T − 1) denote the normalized timestep, where ˆt = 1 corre-sponds to the noisiest state and ˆt = 0 to the cleanest state. The release factor is defined as 
+
+r(t) = (1 − ˆt)γ , (11) where γ is a nonnegative exponent controlling how gradually high-frequency guidance is released. This design is inspired by recent diffusion restoration stud-ies suggesting that higher-frequency information can be introduced more ef-fectively in a progressive, timestep-dependent manner [23,14,25]. It suppresses overly aggressive high-frequency injection at early denoising stages and progres-sively allows more detail-oriented guidance as reverse diffusion approaches the clean image manifold. The final modulated condition feature is therefore 
+
+˜cl = glow  
+
+> l
+
+⊙ clow  
+
+> l
+
++ r(t) ghigh  
+
+> l
+
+⊙ chigh  
+
+> l
+
+, (12) where ⊙ denotes element-wise multiplication. The modulated feature ˜cl is then reshaped into context tokens and fed into the original cross-attention layers. In this way, TAFG improves the conditioning pathway without changing the pre-trained autoencoder, the latent diffusion backbone, or the DDIM-style sampler. In our implementation, the module is inserted at selected scales of the latent U-Net, allowing the model to combine stable structural guidance at earlier stages with progressively released high-frequency detail in later stages of denoising. 
+
+## 3 Experiments 
+
+3.1 Experimental setup 
+
+We evaluate MAN on a subset of the LDCT and Projection dataset [16]. Fol-lowing prior LDCT studies [1,3,15,10], we use 1 mm abdominal and chest CT slices of size 512 × 512 with D45 kernel. Data are split in 70%/10%/20% train-ing/validation/test set in a patient-wise split following the split protocol of LDCT-Bench[3]. Performance is assessed using PSNR, SSIM, and LPIPS [28]; for LPIPS, each single-channel CT slice is replicated to three channels after identical clipping and normalization to [−1, 1] . We compare against BM3D [2], RED-CNN [1], Q-AE [4], WGAN-VGG [26], DU-GAN [8], DDPM [6], Fast-DDPM [10], and Dn-Dp [15], covering conventional, CNN-based, GAN-based, and diffusion-based LDCT denoisers. Our method is implemented in PyTorch 2.8 with CUDA 12.8 and trained on two NVIDIA RTX 4080 Super GPUs. The autoencoder is pre-trained for 180000 iterations with a simulated batch size of 16, after which its weights are frozen and the latent diffusion model is trained for 240000 iterations on the learned latent 8 T. Fang, Y. Jiao et al. 
+
+space using mixed precision. The latent representation has size 32 × 32 × 16 ;diffusion uses a cosine schedule with T = 500 during training [18], and inference uses a deterministic 30-step DDIM-style [22] quick sampler. We use Adam with learning rate 10 −4 and pixel reconstruction weights λ1 = 1 and λ2 = 0 .5, while the perceptual and KL terms are warmed up gradually during early autoencoder training [20,10]. To keep comparisons as fair as possible, all methods are evaluated under the same HU clipping range, patient-wise test split, and metric pipeline whenever unified reproduction is feasible, and runtime is measured as end-to-end denoising time on the same hardware platform. Since BM3D [2] is a CPU-based method, its inference time is reported on the same CPU, while all learning-based methods are evaluated on the same GPU. 
+
+3.2 Quantitative comparison 
+
+The main quantitative results are summarized in Table 1. The evaluation is per-formed at each method’s native output resolution to avoid interpolation-induced bias. Fast-DDPM natively produces 256 ×256 outputs, so its metrics are com-puted against ground truth at the same resolution, whereas all other methods are evaluated at their native 512 ×512 resolution. Overall, both MAN and TAFG-MAN are highly competitive across distortion, structure, perceptual quality, and efficiency, showing the benefit of combining a CT-oriented perceptual autoen-coder with latent diffusion and deterministic DDIM-style sampling. Compared with the broader baselines, RED-CNN remains competitive in PSNR but is clearly weaker in LPIPS, and pixel-space diffusion methods such as DDPM and Dn-Dp are either slower or less balanced overall. Fast-DDPM provides high de-noising performance, but slightly slower in inference speed. These results indicate that MAN establishes the main quality-efficiency advantage of the framework, while TAFG further improves structural fidelity and perceptual realism through more effective conditional modulation.                                                  
+
+> Method PSNR ↑SSIM ↑LPIPS ↓Time ↓
+> BM3D[2] 30.09 0.660 0.370 21.0m RED-CNN[1] 31.38 0.693 0.272 3.7s Q-AE[4] 30.19 0.652 0.246 0.6s WGAN-VGG[26] 27.03 0.533 0.300 0.3s DU-GAN[8] 30.35 0.683 0.211 3.8s DDPM[6] 29.44 0.655 0.312 47m Fast-DDPM[10] 31.18 0.701 0.251 31.5s Dn-Dp[15] 29.02 0.623 0.211 18.7m
+> MAN (Ours) 31.16 0.703 0.119 18.8s
+> TAFG-MAN (Proposed) 31.43 0.722 0.100 18.7s
+> Table 1. Quantitative comparison of CT denoising methods. Higher PSNR and SSIM indicate better distortion/structure preservation, while lower LPIPS indicates better perceptual fidelity.
+
+TAFG-MAN 9
+
+3.3 Qualitative results 
+
+Figure 2 provides representative visual comparisons that are consistent with the quantitative results. RED-CNN suppresses noise effectively but tends to smooth away subtle structural variation, whereas DU-GAN preserves texture more aggressively at the cost of residual noise or local artifacts. Fast-DDPM demonstrates generally good visual performance at its native resolution, but does not align with mainstream resolution, implying additional post-processing costs. MAN already provides a stronger balance between suppression and detail retention through its perceptually optimized latent representation and stable de-terministic restoration process, and TAFG-MAN further improves this balance by recovering cleaner local structure, sharper boundaries, and finer vessels with fewer over-smoothed regions. The visual results therefore support the same con-clusion as Table 1: the main robustness comes from the MAN backbone, while TAFG improves the use of conditional guidance for detail preservation. Low-dose CT REDCNN DUGAN FASTDDPM MAN (Ours) TAFG-MAN (Ours) Full-dose CT                   
+
+> Zoomed Zoomed Zoomed Zoomed Zoomed Zoomed Zoomed Low-dose CT REDCNN DUGAN FASTDDPM MAN (Ours) TAFG-MAN (Ours) Full-dose CT
+> Zoomed Zoomed Zoomed Zoomed Zoomed Zoomed Zoomed
+
+Fig. 2. Visual comparison of denoising results on two representative test slices. For visualization only, the output of Fast-DDPM, originally 256 × 256 in its native setting, was upscaled to 512 × 512 using bicubic interpolation. 
+
+3.4 Ablation study 
+
+To assess the contribution of the major design components, we conduct the ablation study summarized in Table 2. Starting from a minimal latent diffu-sion baseline with a simple autoencoder and a conventional DDPM-style sam-pler, we progressively introduce the perceptually-optimized autoencoder (P-AE), 10 T. Fang, Y. Jiao et al. 
+
+the DDIM-style quick sampler (Q-SP), and TAFG. The perceptual autoencoder alone mainly improves SSIM and LPIPS, indicating that better latent represen-tations already benefit restoration quality. Replacing the DDPM-style sampler with Q-SP yields the largest efficiency gain, reducing inference from minutes to seconds while also improving all three image-quality metrics. Adding TAFG on top of the MAN configuration further improves PSNR, SSIM, and LPIPS with almost no runtime cost, and the full combination achieves the best over-all result. Taken together, the ablation shows that latent representation quality, efficient deterministic sampling, and timestep-adaptive frequency-aware condi-tioning contribute complementary gains rather than redundant ones.                                        
+
+> Components Performance P-AE Q-SP TAFG PSNR ↑SSIM ↑LPIPS ↓Time ↓
+> ×××29.72 0.676 0.156 3.29m
+> ✓××29.68 0.682 0.153 3.35m
+> ×✓×30.93 0.695 0.132 18.98s
+> ✓✓×31.13 0.708 0.118 18.87s
+> ✓✓✓31.43 0.722 0.100 18.71s Table 2. Ablation study of the proposed perceptual autoencoder (P-AE), quick sam-pler (Q-SP), and TAFG conditioning module.
+
+## 4 Conclusion and Limitations 
+
+We presented TAFG-MAN, a latent diffusion framework for efficient and high-quality LDCT denoising. The framework combines a CT-oriented perceptual au-toencoder, conditional latent diffusion, deterministic DDIM-style sampling, and timestep-adaptive frequency-gated condition modeling. Extensive experiments and ablation studies show that TAFG-MAN improves over its base variant and remains competitive with or superior to representative CNN, GAN, and pixel-space diffusion baselines, indicating that efficient latent diffusion with adaptive condition modeling is a practical direction for medical image restoration. This work still has several limitations. First, the experiments are conducted on a specific LDCT subset, so broader validation on additional anatomies, scan-ners, and acquisition protocols is still needed. Second, the latent diffusion process relies on a simplified Gaussian-style corruption model, whereas real CT noise can be more complex and acquisition dependent. Third, although TAFG im-proves the balance between noise suppression and detail preservation, it remains a lightweight local conditioning mechanism and does not explicitly model longer-range anatomical priors. Finally, the current study does not include a radiologist reader evaluation, so the clinical significance of the perceptual improvements re-mains to be further assessed. TAFG-MAN 11 
+
+## References 
+
+1. Chen, H., Zhang, Y., Kalra, M.K., Lin, F., Chen, Y., Liao, P., Zhou, J., Wang, G.: Low-dose ct with a residual encoder-decoder convolutional neural network. IEEE transactions on medical imaging 36 (12), 2524–2535 (2017) 2. Dabov, K., Foi, A., Katkovnik, V., Egiazarian, K.: Image denoising by sparse 3-d transform-domain collaborative filtering. IEEE Transactions on image processing 
+
+16 (8), 2080–2095 (2007) 3. Eulig, E., Ommer, B., Kachelrieß, M.: Benchmarking deep learning-based low-dose ct image denoising algorithms. Medical physics 51 (12), 8776–8788 (2024) 4. Fan, F., Shan, H., Kalra, M.K., Singh, R., Qian, G., Getzin, M., Teng, Y., Hahn, J., Wang, G.: Quadratic autoencoder (q-ae) for low-dose ct denoising. IEEE trans-actions on medical imaging 39 (6), 2035–2050 (2019) 5. Fang, T., Hu, J., He, X., Yang, J.: Man: Latent diffusion enhanced multistage anti-noise network for efficient and high-quality low-dose ct image denoising. arXiv preprint arXiv:2509.23603 (2025) 6. Ho, J., Jain, A., Abbeel, P.: Denoising diffusion probabilistic models. Advances in neural information processing systems 33 , 6840–6851 (2020) 7. Hu, J., Shen, L., Sun, G.: Squeeze-and-excitation networks. In: Proceedings of the IEEE Conference on Computer Vision and Pattern Recognition (CVPR). pp. 7132–7141 (2018) 8. Huang, Z., Zhang, J., Zhang, Y., Shan, H.: Du-gan: Generative adversarial net-works with dual-domain u-net-based discriminators for low-dose ct denoising. IEEE Transactions on Instrumentation and Measurement 71 , 1–12 (2021) 9. Jiang, C., Pan, Y., Liu, M., Ma, L., Zhang, X., Liu, J., Xiong, X., Shen, D.: Pet-diffusion: Unsupervised pet enhancement based on the latent diffusion model. In: International Conference on Medical Image Computing and Computer-Assisted Intervention. pp. 3–12. Springer (2023) 10. Jiang, H., Imran, M., Ma, L., Zhang, T., Zhou, Y., Liang, M., Gong, K., Shao, W.: Fast-ddpm: Fast denoising diffusion probabilistic models for medical image-to-image generation. arXiv preprint arXiv:2405.14802 (2024) 11. Khader, F., Müller-Franzes, G., Tayebi Arasteh, S., Han, T., Haarburger, C., Schulze-Hagen, M., Schad, P., Engelhardt, S., Baeßler, B., Foersch, S., et al.: De-noising diffusion probabilistic models for 3d medical image generation. Scientific Reports 13 (1), 7303 (2023) 12. Kim, B., Han, M., Shim, H., Baek, J.: A performance comparison of convolutional neural network-based image denoising methods: the effect of loss functions on low-dose ct images. Medical physics 46 (9), 3906–3923 (2019) 13. Li, L., Wu, J., Jin, X.: Cnn denoising for medical image based on wavelet domain. In: 2018 9th International Conference on Information Technology in Medicine and Education (ITME). pp. 105–109. IEEE (2018) 14. Li, Y., Shao, H.C., Liang, X., Chen, L., Li, R., Jiang, S., Wang, J., Zhang, Y.: Zero-shot medical image translation via frequency-guided diffusion models. IEEE Transactions on Medical Imaging 43 (3), 980–993 (2024). https://doi.org/10.1109/ TMI.2023.3325703 15. Liu, X., Xie, Y., Liu, C., Cheng, J., Diao, S., Tan, S., Liang, X.: Diffusion prob-abilistic priors for zero-shot low-dose ct image denoising. Medical Physics 52 (1), 329–345 (2025) 16. McCollough, C., Chen, B., Holmes III, D., Duan, X., Yu, Z., Yu, L., Leng, S., Fletcher, J.: Low dose ct image and projection data (ldct-and-projection-data). The Cancer Imaging Archive pp. 1–10 (2020) 12 T. Fang, Y. Jiao et al. 17. Miao, Y., Deng, J., Han, J.: Waveface: Authentic face restoration with efficient frequency recovery. In: Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition. pp. 6583–6592 (2024) 18. Nichol, A.Q., Dhariwal, P.: Improved denoising diffusion probabilistic models. In: International conference on machine learning. pp. 8162–8171. PMLR (2021) 19. Perez, E., Strub, F., de Vries, H., Dumoulin, V., Courville, A.: Film: Visual rea-soning with a general conditioning layer. In: Proceedings of the AAAI Conference on Artificial Intelligence. vol. 32 (2018) 20. Rombach, R., Blattmann, A., Lorenz, D., Esser, P., Ommer, B.: High-resolution image synthesis with latent diffusion models. In: Proceedings of the IEEE/CVF conference on computer vision and pattern recognition. pp. 10684–10695 (2022) 21. Simonyan, K., Zisserman, A.: Very deep convolutional networks for large-scale image recognition. arXiv preprint arXiv:1409.1556 (2014) 22. Song, J., Meng, C., Ermon, S.: Denoising diffusion implicit models. arXiv preprint arXiv:2010.02502 (2020) 23. Thaker, D., Goyal, A., Vidal, R.: Frequency-guided posterior sampling for diffusion-based image restoration. In: Proceedings of the IEEE/CVF International Confer-ence on Computer Vision. pp. 12873–12882 (2025) 24. Waheed, S., Tahir, M.J., Ullah, I., Alwalid, O., Irshad, S.G., Asghar, M.S., Yousaf, Z.: The impact of dependence on advanced imaging techniques on the current radiology practice. Annals of Medicine and Surgery 78 (2022) 25. Yang, B., Huang, Y., Xie, Y., Li, J., Jia, S., Hao, Q.: Time-step encoded high-frequency enhanced diffusion model for oct retinal image denoising. Biomedical Optics Express 16 (11), 4571–4587 (2025). https://doi.org/10.1364/BOE.575221 26. Yang, Q., Yan, P., Zhang, Y., Yu, H., Shi, Y., Mou, X., Kalra, M.K., Zhang, Y., Sun, L., Wang, G.: Low-dose ct image denoising using a generative adversarial net-work with wasserstein distance and perceptual loss. IEEE transactions on medical imaging 37 (6), 1348–1357 (2018) 27. Yu, B., Ozdemir, S., Dong, Y., Shao, W., Shi, K., Gong, K.: Pet image denois-ing based on 3d denoising diffusion probabilistic model: Evaluations on total-body datasets. In: International Conference on Medical Image Computing and Computer-Assisted Intervention. pp. 541–550. Springer (2024) 28. Zhang, R., Isola, P., Efros, A.A., Shechtman, E., Wang, O.: The unreasonable effectiveness of deep features as a perceptual metric. In: Proceedings of the IEEE conference on computer vision and pattern recognition. pp. 586–595 (2018) 29. Zhang, Y., Shi, X., Li, D., Wang, X., Wang, J., Li, H.: A unified conditional frame-work for diffusion-based image restoration. In: Advances in Neural Information Processing Systems. vol. 36 (2023)
