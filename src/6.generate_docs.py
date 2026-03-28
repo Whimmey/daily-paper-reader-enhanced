@@ -12,7 +12,7 @@ import tempfile
 import time
 import xml.etree.ElementTree as ET
 from urllib.parse import quote_plus
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, List, Tuple
 
 import requests
@@ -873,6 +873,36 @@ def format_date_str(date_str: str) -> str:
     if len(s) == 8 and s.isdigit():
         return f"{s[:4]}-{s[4:6]}-{s[6:]}"
     return date_str
+
+
+def format_runtime_with_beijing(utc_dt):
+    """格式化运行时间，同时生成北京时间和 UTC 时间，跨日期时紧凑显示。
+    输出带有 data 属性的 span，供前端时区切换使用。
+    """
+    beijing_dt = utc_dt + timedelta(hours=8)
+
+    beijing_date = beijing_dt.strftime("%Y-%m-%d")
+    utc_date = utc_dt.strftime("%Y-%m-%d")
+
+    if beijing_date == utc_date:
+        date_part = beijing_date
+        beijing_time = beijing_dt.strftime("%H:%M:%S")
+        utc_time = utc_dt.strftime("%H:%M:%S UTC")
+        beijing_display = f"{date_part} {beijing_time} (UTC+8)"
+        utc_display = utc_time
+    else:
+        beijing_short = beijing_dt.strftime("%m-%d %H:%M")
+        utc_short = utc_dt.strftime("%m-%d %H:%M UTC")
+        beijing_display = f"{beijing_short} (UTC+8)"
+        utc_display = utc_short
+
+    return (
+        f'<span class="dpr-runtime" '
+        f'data-beijing="{beijing_display}" '
+        f'data-utc="{utc_display}">'
+        f"{beijing_display} / {utc_display}"
+        f"</span>"
+    )
 
 
 def prepare_paper_paths(docs_dir: str, date_str: str, title: str, arxiv_id: str) -> Tuple[str, str, str]:
@@ -1749,7 +1779,7 @@ def build_day_report_markdown(
     recommend_exists: bool,
 ) -> str:
     effective_label = (date_label or "").strip() or format_date_str(date_str)
-    generated_at = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
+    generated_at = format_runtime_with_beijing(datetime.now(timezone.utc))
     total = len(deep_entries) + len(quick_entries)
     run_status = "成功" if recommend_exists else "未产出 recommend 文件（视为无结果）"
     summary = build_daily_brief_summary(
@@ -2576,7 +2606,7 @@ def main() -> None:
         log_substep("6.3", "生成速读区文章", "END")
 
     log_substep("6.4", "生成当日日报并同步首页 README", "START")
-    run_generated_at = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
+    run_generated_at = format_runtime_with_beijing(datetime.now(timezone.utc))
     day_readme = write_day_report_readme(
         docs_dir=docs_dir,
         date_str=date_str,
