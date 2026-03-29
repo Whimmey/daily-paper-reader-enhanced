@@ -1,0 +1,226 @@
+Title: GenFacet: End-to-End Generative Faceted Search via Multi-Task Preference Alignment in E-Commerce
+
+URL Source: https://arxiv.org/pdf/2603.19665v1
+
+Published Time: Mon, 23 Mar 2026 00:31:29 GMT
+
+Number of Pages: 5
+
+Markdown Content:
+# GenFacet: End-to-End Generative Faceted Search via Multi-Task Preference Alignment in E-Commerce 
+
+## Zhouwei Zhai ∗
+
+zhaizhouwei1@jd.com JD.com BeiJing, China 
+
+## Min Yang 
+
+yangmin.aurora@jd.com JD.com BeiJing, China 
+
+## Jin Li 
+
+lijin.257@jd.com JD.com BeiJing, China 
+
+## Abstract 
+
+Faceted search acts as a critical bridge for navigating massive e-commerce catalogs, yet traditional systems rely on static rule-based extraction or statistical ranking, struggling with emerging vocab-ulary, semantic gaps, and a disconnect between facet selection and underlying retrieval. In this paper, we introduce GenFacet, an industrial-grade, end-to-end generative framework deployed at JD.com. GenFacet reframes faceted search as two coupled genera-tive tasks within a unified Large Language Model: Context-Aware Facet Generation, which dynamically synthesizes trend-responsive navigation options, and Intent-Driven Query Rewriting, which translates user interactions into precise search queries to close the retrieval loop. To bridge the gap between generative capabilities and search utility, we propose a novel multi-task training pipeline combining teacher-student distillation with GRPO. This aligns the model with complex user preferences by directly optimizing for downstream search satisfaction. Validated on China’s largest self-operated e-commerce platform via rigorous offline evaluations and online A/B tests, GenFacet demonstrated substantial improvements. Specifically, online results reveal a relative increase of 42.0% in facet Click-Through Rate (CTR) and 2.0% in User Conversion Rate (UCVR). These outcomes provide strong evidence of the benefits of generative methods for improving query understanding and user engagement in large-scale information retrieval systems. 
+
+## CCS concepts 
+
+• Information systems → Retrieval models and ranking ; •
+
+Applied computing → Online shopping ; • Computing method-ologies → Natural language processing. 
+
+## Keywords 
+
+Faceted Search, E-commerce Search, Large Language Models, Query Rewriting, Reinforcement Learning 
+
+## 1 Introduction 
+
+Faceted Search serves as a critical interactive paradigm bridging the gap between users’ ambiguous intents and massive item reposito-ries. By providing a “click-and-filter” mechanism based on attribute  
+
+> Permission to make digital or hard copies of all or part of this work for personal or classroom use is granted without fee provided that copies are not made or distributed for profit or commercial advantage and that copies bear this notice and the full citation on the first page. Copyrights for components of this work owned by others than the author(s) must be honored. Abstracting with credit is permitted. To copy otherwise, or republish, to post on servers or to redistribute to lists, requires prior specific permission and/or a fee. Request permissions from permissions@acm.org.
+> SIGIR ’26, July 12–16, 2026, Melbourne, VIC, Australia
+> ©2026 Copyright held by the owner/author(s). Publication rights licensed to ACM. ACM ISBN 978-1-4503-XXXX-X/18/06 https://doi.org/XXXXXXX.XXXXXXX
+
+dimensions, it offers a minimalist interactive experience for general users and acts as a pivotal bridge for precise localization [ 20 , 21 ]. By transforming unstructured queries into structured attribute se-lections, faceted search significantly reduces cognitive load and enhances retrieval efficiency, making it a standard feature on main-stream platforms such as Amazon and JD.com. Existing technologies primarily fall into two categories: static extraction methods based on rules or external knowledge bases (e.g., utilizing WordNet [19] or Wikipedia [3] ), and sta-tistical dynamic ranking methods, such as the DFDRF framework proposed by Pradhan et al. [ 16 ]. However, in open-domain or large-scale Web environments, traditional Boolean filtering logic is often overly strict and inefficient, failing to cope with query diversity [ 7]. Furthermore, the Business Intelligence (BI) aggregation approach introduced by Ben-Yitzhak et al. [ 1] faces significant computational challenges when handling high-dimensional, sparse data in modern e-commerce. Current systems face three core limitations in complex modern e-commerce scenarios: 
+
+• Insufficient Timeliness and Adaptability: Methods relying on static lexicons or statistics [ 20 , 21 ] struggle to capture emerging trend attributes ( e.g., “Dopamine Dressing” )and implicit long-tail attributes. This results in filtering op-tions that lag behind rapid shifts in user cognition. 
+
+• Persistent “Vocabulary Gap”: A semantic disconnection ex-ists between users ‘colloquial queries and systems’ structured attributes. While Manku et al. [ 13 ] introduced “intent opera-tors” in ShopTalk, they still rely on expensive and delayed manual mapping rules, making automated generalization difficult. 
+
+• Disconnection of Personalized Intent in the Retrieval Chain: Traditional three-stage architectures (Retrieval-Facet Generation-Ranking) suffer from severe cascading errors [ 11 ]. Person-alization work by Koren et al. [ 8] focuses solely on “what facets to display” while neglecting subsequent retrieval logic. Users’ filtering actions (explicit feedback) fail to propagate back to the underlying retrieval model. Consequently, re-fined choices are not reflected in the final item retrieval, creating a rift between interaction and retrieval. The core of these challenges lies in: How to achieve end-to-end semantic alignment among unstructured user intents, dynamic personalized behaviors, and structured item knowledge graphs while guaranteeing industrial-grade low latency? To this end, we propose GenFacet, an LLM-based, end-to-end gen-erative faceted search framework tailored for industrial e-commerce scenarios. Its core idea is to reconstruct faceted search into two tightly coupled generative tasks: Context-Aware Facet Generation  
+
+> arXiv:2603.19665v1 [cs.IR] 20 Mar 2026 SIGIR ’26, July 12–16, 2026, Melbourne, VIC, Australia , Zhouwei Zhai, Min Yang, and Jin Li
+
+and Intent-Driven Query Rewriting. Through multi-task Supervi-sory Fine-Tuning (SFT) [ 14 ] and further post-training with GRPO (Group Relative Policy Optimization) [ 18 ], we align these tasks with final search utility, unifying them within the semantic space of a single LLM. The main contributions of this paper are as follows: 
+
+• We propose the GenFacet framework: The first end-to-end generative framework to unify faceted search into context-aware facet generation and intent-driven query rewriting, effectively resolving semantic gaps and pipeline disconnec-tions. 
+
+• We design an RL-based multi-task alignment method: Inno-vatively combining teacher-student distillation with Group Relative Policy Optimization (GRPO) [ 18 ], we directly as-sociate user filtering interactions with the optimization of search result satisfaction, achieving deep alignment from “displaying filters” to “precise retrieval”. 
+
+• We demonstrate significant industrial impact: Extensive of-fline evaluations on real-world data from the JD.com plat-form show significant improvements. Online A/B testing reveals a significant 42% relative increase in Facet Click-Through Rate (CTR) and a 2% relative increase in User Con-version Rate (UCVR) for facet users, validating the method’s effectiveness in real-world e-commerce search scenarios. The system has been fully deployed on JD Search. 
+
+## 2 The GenFacet Framework 2.1 Problem Formulation & Overview 
+
+Formally, let Q denote the space of user queries and C represent the comprehensive context, including user profile 𝑢 𝑝𝑟𝑜 𝑓 , real-time be-havior 𝑢 𝑏𝑒ℎ , product knowledge graph G, and external web knowl-edge W. The traditional faceted search problem is often treated as a static classification task. In contrast, we reformulate it as a con-ditional generation problem. Our goal is to learn a parameterized function 𝜋 𝜃 that performs two coupled tasks: (1) Facet Generation : mapping (𝑞, C) to a ranked list of dy-namic facets F = {𝑓 1, . . . , 𝑓 𝑘 }
+
+(2) Query Rewriting : mapping a user’s selection 𝑓 𝑠𝑒𝑙 ∈ F 
+
+back to an optimized retrieval query 𝑞 ′ that maximizes the downstream search utility function 𝑈 (𝑞 ′).
+
+Figure 1: the GenFacet Overview 
+
+Framework Overview. Figure 1 illustrates the GenFacet architec-ture. The system operates in two phases. In the Unified Context-Aware Inference phase, GenFacet aggregates multi-modal context (Query, Profile, Behavior, KG, Web Content) into a structured prompt. This input drives the GenFacetLLM to generate contextually rel-evant facets (Task 1). Upon user interaction, the specific selec-tion—combined with the interaction history—triggers the model to generate a rewritten query (Task 2), which is then executed by the underlying search engine to retrieve precise results, effec-tively closing the loop between attribute selection and document retrieval. To ensure robustness, we design a Multi-Task Training Pipeline comprising three stages: Teacher-Student Distillation using reasoning-heavy models ( e.g., DeepSeek-R1 [4] ), Multi-Task Supervised Fine-Tuning (SFT) [ 14 ], and preference alignment via Group Relative Policy Optimization (GRPO) [ 18 ] to directly opti-mize search utility. 
+
+## 2.2 Unified Context-Aware Inference 
+
+GenFacet unifies facet generation and query rewriting within a single Large Language Model (LLM) inference process, ensuring semantic consistency across the search session. 
+
+Context-Aware Facet Generation. To address the “vocabulary gap” and emerging trends ( e.g., “Dopamine dressing” ), we construct a rich context vector x𝑐𝑡𝑥 . This vector aggregates the raw query 𝑞 , user profile interests 𝑢 𝑝𝑟𝑜 𝑓 , session-based click/cart behaviors 𝑢 𝑏𝑒ℎ , local sub-graphs from the Product KG G related to 
+
+𝑞 , and real-time Web Content W retrieved via search APIs. These inputs are serialized into a prompt template 𝑇 𝑔𝑒𝑛 . The probability of generating a sequence of facets F is given by: 
+
+𝑃 (F | 𝑞, C) =
+
+> 𝑇
+
+Ö 
+
+> 𝑡 =1
+
+𝑃 (𝑦 𝑡 |𝑦 <𝑡 ,𝑇 𝑔𝑒𝑛 (𝑞, 𝑢 𝑝𝑟𝑜 𝑓 , 𝑢 𝑏𝑒ℎ , G, W) ; 𝜃 )
+
+where 𝑦 𝑡 represents tokens in the generated facet list. This genera-tion allows for dynamic attribute extraction that transcends static indices, capturing latent user needs. The prompt is as follows: 
+
+> You are an AI assistant for an e-commerce search system. Based on the user 's search context, generate a list of relevant facets (like product attributes) that can help them refine their search. User Query: {query} User Profile Interests: {user_profile} User Session Behaviors (clicks/carts): {user_behavior} Related Product Knowledge Graph: {kg_subgraph} Real-time Web Trends: {web_content} Generate a list of facets in JSON format, each with a name and possible values. Focus on attributes that are not obvious from the query alone and reflect current trends or specific user needs. Facets:
+
+Intent-Based Filtering Query Rewriting. Standard systems treat facets as rigid Boolean filters ( e.g., AND category=“dress” ). However, this often leads to zero-recall or overly narrow results for long-tail queries. GenFacet treats the user’s click on a facet value 𝑓 𝑠𝑒𝑙 
+
+as an explicit relevance feedback signal. We construct a rewriting context x𝑟 𝑤 combining the original query, the selected facet, and GenFacet: End-to-End Generative Faceted Search via Multi-Task Preference Alignment in E-Commerce SIGIR ’26, July 12–16, 2026, Melbourne, VIC, Australia 
+
+the interaction history. The model then generates a rewritten query 
+
+𝑞 ′:
+
+𝑞 ′ = arg max 
+
+> 𝑞 ∗
+
+𝑃 (𝑞 ∗ |𝑞, 𝑓 𝑠𝑒𝑙 , H𝑐𝑙𝑖𝑐𝑘 ; 𝜃 )
+
+Unlike existing approaches [ 9, 12 , 15 ], this rewritten query 𝑞 ′ is semantically aligned with the user’s refined intent and is sent to the retrieval engine. By updating the retrieval query rather than merely filtering a static candidate set, GenFacet ensures that the top-ranked results dynamically align with the user’s clarified in-tent, significantly improving recall for complex, high-dimensional demands. The prompt is as follows: 
+
+> You are an AI assistant for an e-commerce search system. A user has just clicked on a facet to refine their search . Rewrite the original query to better reflect their new intent for the retrieval engine. Original Query: {original_query} Selected Facet: {selected_facet_value} (from facet: { selected_facet_name}) User Click History in this session: {click_history} Generate ONLY the rewritten query string that captures the user 's refined intent. Rewritten Query:
+
+## 2.3 Multi-Task Training Pipeline 
+
+To adapt a general-purpose LLM to the strict latency and accuracy requirements of industrial e-commerce, we propose a three-stage training paradigm. 
+
+2.3.1 Stage 1: Teacher-Student Distillation. Since high-quality la-bels for “ideal facets” or “perfect rewrites” are unavailable in click logs, we employ strong reasoning models (GPT-5 and DeepSeek-R1) as teachers. We sample 50k instances of real user traffic (queries + context). The teacher models generate candidate facet lists and rewritten queries via chain-of-thought prompting. These outputs are verified by human experts to ensure domain correctness, creat-ing a distilled dataset D𝑑𝑖𝑠𝑡𝑖𝑙𝑙 .
+
+2.3.2 Stage 2: Multi-Task Supervised Fine-Tuning (SFT). We fine-tune the student model (GenFacetLLM) to minimize the joint nega-tive log-likelihood of both tasks. Let L𝑔𝑒𝑛 and L𝑟 𝑤 be the losses for facet generation and query rewriting, respectively. The total loss is defined as: 
+
+L𝑆𝐹𝑇 = ED𝑑𝑖𝑠𝑡𝑖𝑙𝑙 [− log 𝑃 (F | x𝑐𝑡𝑥 ) − 𝜆 log 𝑃 (𝑞 ′ |x𝑟 𝑤 )] 
+
+where 𝜆 balances the task weights. This embeds both capabilities into a shared semantic space. 
+
+2.3.3 Stage 3: Preference Alignment via GRPO. SFT alone cannot optimize for the non-differentiable metric of “search utility.” We employ Group Relative Policy Optimization (GRPO) [ 18 ] to align the model with search satisfaction. Unlike PPO [ 17 ] which requires a value model, GRPO estimates baselines from group scores, re-ducing computational overhead. We define task-specific reward functions: 𝑅 𝑓 𝑎𝑐𝑒𝑡 measures the Facet Coverage and predicted CTR of generated attributes; 𝑅 𝑞𝑢𝑒𝑟 𝑦 executes the rewritten query 𝑞 ′ in a pseudo-search environment to measure Recall and Semantic Rele-vance. The objective is to maximize: 
+
+J ( 𝜃 ) = E𝑞 ∼D ,{𝑜 𝑖 }𝐺 𝑖 =1∼𝜋 𝜃 𝑜𝑙𝑑 
+
+"
+
+1
+
+𝐺 
+
+> 𝐺
+
+∑︁ 
+
+> 𝑖 =1
+
+𝜋 𝜃 (𝑜 𝑖 |𝑞 )
+
+𝜋 𝜃 𝑜𝑙𝑑 (𝑜 𝑖 |𝑞 ) ˆ𝐴 𝑖 
+
+#
+
+−𝛽 D𝐾𝐿 (𝜋 𝜃 || 𝜋 𝑟𝑒 𝑓 )
+
+where ˆ𝐴 𝑖 is the advantage computed from normalized rewards 
+
+(𝑅 𝑓 𝑎𝑐𝑒𝑡 + 𝑅 𝑞𝑢𝑒𝑟 𝑦 ) within the group 𝐺 . This ensures the model fa-vors outputs that not only look plausible but actually drive search conversion. 
+
+## 3 Industrial implementation at JD.com 3.1 Efficient Model Serving & Inference 
+
+We address the computational bottleneck by applying knowledge distillation [ 5] to compress the teacher model into a lightweight Qwen3-4B backbone (GenFacetLLM). To accelerate inference, we employ INT8 quantization [ 6] and speculative decoding [ 2], along-side optimized KV-cache [ 10 ] management. Furthermore, to tackle the “freshness” issue of emerging attributes, the system integrates the Baidu Search API for real-time external knowledge retrieval, ensuring the model captures long-tail and trending concepts ( e.g., “Dopamine Dressing” ) unavailable in static training data. 
+
+## 3.2 Deployment & Data Flywheel 
+
+The system is deployed on dual NVIDIA H800 GPU nodes. We in-troduced a session-aware caching mechanism to handle multi-turn user interactions efficiently. These optimizations reduced average latency to 400ms for facet generation and 180ms for query rewriting, meeting the platform’s strict Service Level Agreements (SLAs). Cru-cially, we established a closed-loop data flywheel. Post-deployment, explicit user feedback (clicks on generated facets) and implicit sig-nals (add-to-cart actions) are harvested to form preference pairs. This data drives a continuous iterative training loop, allowing Gen-Facet to dynamically adapt to shifting user intents and maximize long-term search utility. 
+
+## 4 Experiments 4.1 Experimental Setup 
+
+4.1.1 Dataset. We constructed JD-Facet, a dataset derived from desensitized search logs at JD.com. It contains 5,000 search sessions covering diverse domains. For each session, domain experts anno-tated the “ideal facet list” and relevance scores for the retrieved products after facet selection, serving as the ground truth. 
+
+4.1.2 Baselines. We compare GenFacet against three distinct paradigms: (1) Rule-based (Production): The current JD.com online system, which relies on a static “Category-Attribute” knowledge graph [19]. (2) DFDRF [ 16 ]: A dynamic facet ranking framework utilizing Gini coefficients and historical interaction signals. (3) Qwen3-4B (Zero-shot): An LLM-based approach using prompt-ing without domain-specific fine-tuning or alignment. 
+
+4.1.3 Metrics. 
+
+(1) Facet Quality: Precision@10 (P@10) and Recall@10 (R@10) measure the accuracy and coverage of the generated facets. SIGIR ’26, July 12–16, 2026, Melbourne, VIC, Australia , Zhouwei Zhai, Min Yang, and Jin Li 
+
+(2) Retrieval Effectiveness: nDCG@10 evaluates the final prod-uct ranking after the complete interaction cycle (Generation 
+
+→ Interaction → Rewriting → Retrieval). (3) Online Metrics:Facet CTR (Click-Through Rate) and UCVR (User Conversion Rate). 
+
+## 4.2 Offline Performance 
+
+Table 1 presents the comparative results. GenFacet consistently outperforms all baselines across all metrics. Comparison with Baselines. The Rule-based method exhibits reasonable precision ( 0.852 )due to curated knowledge bases but suffers significantly in re-call ( 0.584 ) as it fails to capture long-tail or emerging attributes (e.g., “dopamine dressing” ). Conversely, the zero-shot Qwen3-4B demonstrates higher recall ( 0.715 ) than rules but drops sharply in precision ( 0.631 ) due to hallucinations invalid for the specific in-ventory. GenFacet achieves the best of both worlds ( 𝑃 @10 = 0.920 ,
+
+𝑅 @10 = 0.847 ), proving that SFT effectively grounds the LLM in the product space. Critically, in the Retrieval (nDCG@10) metric, GenFacet achieves a substantial gain ( +15 .1% over Rule-based). This confirms that bridging the “vocabulary gap” via Intent-Driven Query Rewriting is superior to hard boolean filtering used by traditional methods. Ablation Study. We analyze three variants to validate our components: (1) w/o GRPO: Removing the reinforcement learning alignment leads to a minor drop in facet metrics but a significant decay in 𝑛𝐷𝐶𝐺 @10 (0.783 → 0.741 ). This indicates that GRPO is crucial for aligning the generation probability with the utility of the search results (i.e., generating facets that actually lead to good items). (2) w/o Multi-task SFT: Training tasks independently degrades performance significantly, confirming that the shared seman-tic space benefits both facet generation and query rewriting. (3) w/o Query Rewriting: Replacing the rewriter with simple boolean filtering (appending the facet text to the query) causes the largest drop in retrieval performance ( 𝑛𝐷𝐶𝐺 @10 =
+
+0.712 ). This highlights that the semantic gap between user selection and index terms is the primary bottleneck in tradi-tional systems. 
+
+Table 1: Offline Performance Comparison & Ablation Study. 
+
+Relative improvements are calculated against the Rule-based production baseline.                            
+
+> Method Facet Gen P@10 Facet Gen R@10 Retrieval nDCG@10
+> Rule-based 0.852 0.584 0.680 DFDRF 0.795 0.642 0.705 Qwen3-4B (0-shot) 0.631 0.715 0.612 GenFacet 0.920 0.847 0.783
+> Imprv. vs. Production +7.9% +45.0% +15.1%
+> Ablation Variants
+> w/o GRPO 0.895 0.812 0.741 w/o Multi-task SFT 0.764 0.730 0.695 w/o Query Rewriting 0.918 0.845 0.712
+
+## 4.3 Online A/B Testing 
+
+We deployed GenFacet on the JD App search platform and con-ducted an A/B test on 10% of live traffic over two weeks against the production Rule-based system. 
+
+• Engagement: The Facet CTR increased by a significant 
+
+42.0% (relative, p<0.05). This validates that context-aware facets are far more attractive and relevant to users than static category trees. 
+
+• Conversion: More importantly, the UCVR (User Conver-sion Rate) for users who interacted with facets increased by 
+
+2.0% (relative, p<0.05). Given the massive scale of JD.com, this improvement represents a substantial uplift in Gross Merchandise Value (GMV). This confirms that GenFacet does not just encourage “clicks”, but effectively guides users to their desired products through the closed-loop intent align-ment. 
+
+## 5 Conclusion 
+
+In this work, we presented GenFacet, the first end-to-end generative framework designed to revolutionize faceted search in large-scale e-commerce environments. By transitioning from rigid extraction to dynamic generation, GenFacet effectively addresses the challenges of adaptability, vocabulary gaps, and the fragmentation between user interaction and retrieval logic. Our proposed multi-task train-ing paradigm, enhanced by GRPO-based preference alignment, suc-cessfully unifies context-aware facet generation and intent-driven query rewriting into a single, cohesive semantic space. The deployment of GenFacet at JD.com provides compelling evi-dence of its industrial viability. The substantial improvements in Facet CTR (+42.0%) and UCVR (+2.0%) confirm that capturing user intent through generative interactions translates directly into supe-rior business outcomes. GenFacet not only enhances the “search-ability” of complex product catalogs but also establishes a new standard for next-generation, intent-aligned information retrieval systems. Future work targets three key advancements: incorporating mul-timodal inputs for visual facet generation, modeling long-term user sequences for lifetime-aware personalization, and leveraging model quantization for further reducing inference latency. 
+
+## Presenter Biography 
+
+Zhouwei Zhai is a Scientist at JD.com, focusing on LLM-powered search systems and AI Agents. At JD.com, he spearheaded the transition towards LLM-augmented e-commerce search and led the end-to-end construction of the platform’s next-generation AI Search Assistant. 
+
+## References         
+
+> [1] Ori Ben-Yitzhak, Nadav Golbandi, Nadav Har’El, Ronny Lempel, Andreas Neu-mann, Shila Ofek-Koifman, Dafna Sheinwald, Eugene Shekita, Benjamin Sznajder, and Sivan Yogev. 2008. Beyond basic faceted search. In Proceedings of the 2008 International Conference on Web Search and Data Mining (Palo Alto, California, USA) (WSDM ’08) . Association for Computing Machinery, New York, NY, USA, 33–44. doi:10.1145/1341531.1341539 [2] Charlie Chen, Sebastian Borgeaud, Geoffrey Irving, Jean-Baptiste Lespiau, Lau-rent Sifre, and John Jumper. 2023. Accelerating large language model decod-ing with speculative sampling. arXiv (2023). doi:10.48550/arXiv.2302.01318 arXiv:2302.01318.
+
+GenFacet: End-to-End Generative Faceted Search via Multi-Task Preference Alignment in E-Commerce SIGIR ’26, July 12–16, 2026, Melbourne, VIC, Australia 
+
+[3] Wisam Dakka and Panagiotis G. Ipeirotis. 2008. Automatic Extraction of Useful Facet Hierarchies from Text Databases. In Proceedings of the 2008 IEEE Interna-tional Conference on Data Engineering (ICDE) . 466–475. doi:10.1109/ICDE.2008. 4497455 [4] Daya Guo, Dejian Yang, Haowei Zhang, Junxiao Song, Ruiyu Zhang, Runxin Xu, Qihao Zhu, Shirong Ma, Peiyi Wang, Xiao Bi, et al . 2025. DeepSeek-R1: Incentivizing Reasoning Capability in LLMs via Reinforcement Learning. arXiv 
+
+(2025). doi:10.48550/arXiv.2501.12948 arXiv:2501.12948. [5] Geoffrey Hinton, Oriol Vinyals, and Jeff Dean. 2015. Distilling the knowledge in a neural network. arXiv (2015). doi:10.48550/arXiv.1503.02531 arXiv:1503.02531. [6] Benoit Jacob, Skirmantas Kligys, Bo Chen, Menglong Zhu, Mingxing Tang, An-drew Howard, Hartwig Adam, and Dmitry Kalenichenko. 2018. Quantization and training of neural networks for efficient integer-arithmetic-only inference. In Proceedings of the IEEE Conference on Computer Vision and Pattern Recognition (CVPR’18) . IEEE, 2704–2713. doi:10.1109/CVPR.2018.00286 [7] Weize Kong and James Allan. 2014. Extending Faceted Search to the General Web. In Proceedings of the 23rd ACM International Conference on Information and Knowledge Management (CIKM ’14) . ACM, 839–848. [8] Jonathan Koren, Yi Zhang, and Xue Liu. 2008. Personalized interactive faceted search. In Proceedings of the 17th International World Wide Web Conference (WWW ’08) . Association for Computing Machinery, New York, NY, USA, 477–486. doi:10. 1145/1367497.1367562 [9] Jerry Liu and Barzan Mozafari. 2024. GenRewrite: Query Rewriting via Large Language Models. arXiv (2024). doi:10.48550/arXiv.2403.09060 arXiv:2403.09060. [10] Zichang Liu, Aditya Desai, Feng Liao, Varma Sivashankar, Yiyang Lu, Xiang Cheng, Yuanyuan Tian, Ashley Zhao, Liang Zhuang, S Shieh, and P Chen. 2023. Scissorhands: Exploiting the persistence of importance hypothesis for LLM KV cache compression at test time. arXiv (2023). doi:10.48550/arXiv.2305.17118 arXiv:2305.17118. [11] Hanqing Lu, Xianfeng Tang, Chen Luo, Limeng Cui, Zhenwei Dai, Rahul Goutam, Haiyang Zhang, and Monica Xiao Cheng. 2024. Session-aware product filter ranking in e-commerce search. In The Second Tiny Papers Track at ICLR 2024 .https://openreview.net/forum?id=r4LMF2IJ6R [12] Xuequn Ma, Yeyun Gong, Pengshan He, et al . 2023. Query rewriting in retrieval-augmented large language models. In Proceedings of the 2023 Conference on Empirical Methods in Natural Language Processing . 5303–5315. [13] Gurmeet Manku, James Lee-Thorp, and Ashwin Kakarla. 2021. ShopTalk: A System for Conversational Faceted Search. arXiv (2021). doi:10.48550/arXiv.2109. 00702 arXiv:2109.00702. [14] Long Ouyang, Jeffrey Wu, Xu Jiang, Diogo Almeida, Carroll L Wainwright, Pamela Mishkin, et al . 2022. Training language models to follow instructions with human feedback. arXiv (2022). doi:10.48550/arXiv.2203.02155 arXiv:2203.02155. [15] Wei Peng, Guanyu Li, Yan Jiang, et al . 2024. Large language model based long-tail query rewriting in taobao search. In Companion Proceedings of the ACM Web Conference 2024 . 20–28. [16] Ligaj Pradhan, Le Yu, and Sara Malvar. 2023. Dynamic Filter Discovery and Ranking Framework for Search and Browse Experiences in E-Commerce. In 
+
+Proceedings of the 2023 ACM SIGIR Workshop on eCommerce .[17] John Schulman, Filip Wolski, Prafulla Dhariwal, Alec Radford, and Oleg Klimov. 2017. Proximal Policy Optimization Algorithms. arXiv (2017). doi:10.48550/arXiv. 1707.06347 arXiv:1707.06347. [18] Zhihong Shao, Peiyi Wang, Qihao Zhu, Runxin Xu, Junxiao Song, Xiao Bi, et al. 2024. DeepSeekMath: Pushing the Limits of Mathematical Reasoning in Open Language Models. arXiv (2024). doi:10.48550/arXiv.2402.03300 arXiv:2402.03300. [19] Emilia Stoica, Marti A Hearst, and Megan Richardson. 2007. Automating Cre-ation of Hierarchical Faceted Metadata Structures. In Proceedings of the Human Language Technology Conference of the NAACL (NAACL-HLT ’07) . 244–251. [20] Bifan Wei, Jun Liu, and Qiaoming Zhu. 2013. A Survey of Faceted Search. Journal of Web Engineering 12, 1 & 2 (2013), 041–064. [21] Ka-Ping Yee, Kirsten Swearingen, Kevin Li, and Marti Hearst. 2003. Faceted metadata for image search and browsing. In Proceedings of the SIGCHI Conference on Human Factors in Computing Systems (CHI ’03) . ACM, 401–408.

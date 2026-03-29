@@ -6,89 +6,71 @@
 </div>
 
 ## 每次日报
-- 最新运行日期：2026-03-28
-- 运行时间：<span class="dpr-runtime" data-beijing="03-29 03:43 (UTC+8)" data-utc="03-28 19:43 UTC">03-29 03:43 (UTC+8) / 03-28 19:43 UTC</span>
+- 最新运行日期：2026-03-29
+- 运行时间：<span class="dpr-runtime" data-beijing="03-30 03:54 (UTC+8)" data-utc="03-29 19:54 UTC">03-30 03:54 (UTC+8) / 03-29 19:54 UTC</span>
 - 运行状态：成功
-- 本次总论文数：23
-- 精读区：12
+- 本次总论文数：17
+- 精读区：6
 - 速读区：11
 
 ### 今日简报（AI）
-今日精读12篇、速读11篇AI论文，重点关注图像转换与超分辨率技术。图像转换与超分辨率领域的Rectified Flow方法表现优异，语言模型专业化分割与低资源优化也值得关注。建议关注图像处理技术的实际应用进展，以及大模型在资源受限环境下的优化策略。
-- 详情：[/202603/28/README](/202603/28/README)
+今日研读17篇AI前沿论文，聚焦大模型优化、视觉检测与推荐系统创新。大模型结构编码器提升预测精度与卫星图像多阶段损伤检测框架最具突破性。关注AI在专业领域的落地应用，尤其是医疗影像与电商推荐的实际进展。
+- 详情：[/202603/29/README](/202603/29/README)
 
 ### 精读区论文标签
-1. [Improving Image-to-Image Translation via a Rectified Flow Reformulation](/202603/28/2603.20186v1-improving-image-to-image-translation-via-a-rectified-flow-reformulation)  
+1. [Improving LLM Predictions via Inter-Layer Structural Encoders](/202603/29/2603.22665v1-improving-llm-predictions-via-inter-layer-structural-encoders)  
    标签：评分：9.0/10、query:dl-cv
-   evidence：图像到图像翻译方法
-2. [MFSR: MeanFlow Distillation for One Step Real-World Image Super Resolution](/202603/28/2603.20690v1-mfsr-meanflow-distillation-for-one-step-real-world-image-super-resolution)  
+   evidence：LLM的层间结构编码器
+2. [From Pixels to Semantics: A Multi-Stage AI Framework for Structural Damage Detection in Satellite Imagery](/202603/29/2603.22768v1-from-pixels-to-semantics-a-multi-stage-ai-framework-for-structural-damage-detection-in-satellite-imagery)  
    标签：评分：9.0/10、query:dl-cv
-   evidence：新颖的单步图像超分辨率技术
-3. [TAFG-MAN: Timestep-Adaptive Frequency-Gated Latent Diffusion for Efficient and High-Quality Low-Dose CT Image Denoising](/202603/28/2603.20868v1-tafg-man-timestep-adaptive-frequency-gated-latent-diffusion-for-efficient-and-high-quality-low-dose-ct-image-denoising)  
+   evidence：结合图像修复与视觉语言模型
+3. [LLMORPH: Automated Metamorphic Testing of Large Language Models](/202603/29/2603.23611v1-llmorph-automated-metamorphic-testing-of-large-language-models)  
    标签：评分：9.0/10、query:dl-cv
-   evidence：用于CT图像去噪的潜在扩散框架
-4. [Overview of TREC 2025 Biomedical Generative Retrieval (BioGen) Track](/202603/28/2603.21582v1-overview-of-trec-2025-biomedical-generative-retrieval-biogen-track)  
+   evidence：提出LLM自动化测试框架
+4. [How Vulnerable Are Edge LLMs?](/202603/29/2603.23822v1-how-vulnerable-are-edge-llms)  
    标签：评分：9.0/10、query:dl-cv
-   evidence：使用LLM的生物医学生成检索
-5. [MARCUS: An agentic, multimodal vision-language model for cardiac diagnosis and management](/202603/28/2603.22179v1-marcus-an-agentic-multimodal-vision-language-model-for-cardiac-diagnosis-and-management)  
+   evidence：边缘LLM安全分析
+5. [AuthorityBench: Benchmarking LLM Authority Perception for Reliable Retrieval-Augmented Generation](/202603/29/2603.25092v1-authoritybench-benchmarking-llm-authority-perception-for-reliable-retrieval-augmented-generation)  
    标签：评分：9.0/10、query:dl-cv
-   evidence：用于心脏诊断的多模态视觉语言模型
-6. [Confidence-Based Decoding is Provably Efficient for Diffusion Language Models](/202603/28/2603.22248v1-confidence-based-decoding-is-provably-efficient-for-diffusion-language-models)  
-   标签：评分：9.0/10、query:dl-cv
-   evidence：扩散语言模型的高效解码
-7. [SLARM: Streaming and Language-Aligned Reconstruction Model for Dynamic Scenes](/202603/28/2603.22893v2-slarm-streaming-and-language-aligned-reconstruction-model-for-dynamic-scenes)  
-   标签：评分：9.0/10、query:dl-cv
-   evidence：结合动态场景重建与语言对齐表示
-8. [Set-Valued Prediction for Large Language Models with Feasibility-Aware Coverage Guarantees](/202603/28/2603.22966v1-set-valued-prediction-for-large-language-models-with-feasibility-aware-coverage-guarantees)  
-   标签：评分：9.0/10、query:dl-cv
-   evidence：LLM的集合值预测
-9. [Gimbal360: Differentiable Auto-Leveling for Canonicalized $360^\circ$ Panoramic Image Completion](/202603/28/2603.23179v1-gimbal360-differentiable-auto-leveling-for-canonicalized-360circ-panoramic-image-completion)  
-   标签：评分：9.0/10、query:dl-cv
-   evidence：基于扩散模型的360度全景图像补全
-10. [Sparser, Faster, Lighter Transformer Language Models](/202603/28/2603.23198v1-sparser-faster-lighter-transformer-language-models)  
-   标签：评分：9.0/10、query:dl-cv
-   evidence：稀疏变换器语言模型
-11. [InverFill: One-Step Inversion for Enhanced Few-Step Diffusion Inpainting](/202603/28/2603.23463v1-inverfill-one-step-inversion-for-enhanced-few-step-diffusion-inpainting)  
-   标签：评分：9.0/10、query:dl-cv
-   evidence：基于扩散的图像修复方法
-12. [Self-Improvement of Large Language Models: A Technical Overview and Future Outlook](/202603/28/2603.25681v1-self-improvement-of-large-language-models-a-technical-overview-and-future-outlook)  
-   标签：评分：9.0/10、query:dl-cv
-   evidence：大型语言模型的自改进方法
+   evidence：LLM权威感知基准
+6. [MzansiText and MzansiLM: An Open Corpus and Decoder-Only Language Model for South African Languages](/202603/29/2603.20732v1-mzansitext-and-mzansilm-an-open-corpus-and-decoder-only-language-model-for-south-african-languages)  
+   标签：评分：8.0/10、query:dl-cv
+   evidence：低资源语言的语言模型
 
 ### 速读区论文标签
-1. [Optimal Splitting of Language Models from Mixtures to Specialized Domains](/202603/28/2603.19149v1-optimal-splitting-of-language-models-from-mixtures-to-specialized-domains)  
+1. [Accelerating Diffusion Decoders via Multi-Scale Sampling and One-Step Distillation](/202603/29/2603.19570v1-accelerating-diffusion-decoders-via-multi-scale-sampling-and-one-step-distillation)  
    标签：评分：8.0/10、query:dl-cv
-   evidence：分割语言模型用于专业化
-2. [VEPO: Variable Entropy Policy Optimization for Low-Resource Language Foundation Models](/202603/28/2603.19152v1-vepo-variable-entropy-policy-optimization-for-low-resource-language-foundation-models)  
+   evidence：加速扩散解码器用于图像重建
+2. [GenFacet: End-to-End Generative Faceted Search via Multi-Task Preference Alignment in E-Commerce](/202603/29/2603.19665v1-genfacet-end-to-end-generative-faceted-search-via-multi-task-preference-alignment-in-e-commerce)  
    标签：评分：8.0/10、query:dl-cv
-   evidence：低资源语言基础模型的优化
-3. [GeoLAN: Geometric Learning of Latent Explanatory Directions in Large Language Models](/202603/28/2603.19460v1-geolan-geometric-learning-of-latent-explanatory-directions-in-large-language-models)  
+   evidence：用于分面搜索的端到端生成框架
+3. [From Token to Item: Enhancing Large Language Models for Recommendation via Item-aware Attention Mechanism](/202603/29/2603.19693v1-from-token-to-item-enhancing-large-language-models-for-recommendation-via-item-aware-attention-mechanism)  
    标签：评分：8.0/10、query:dl-cv
-   evidence：LLM透明度的几何学习
-4. [Inducing Sustained Creativity and Diversity in Large Language Models](/202603/28/2603.19519v1-inducing-sustained-creativity-and-diversity-in-large-language-models)  
+   evidence：通过项目感知注意力机制增强语言模型推荐能力
+4. [AIGQ: An End-to-End Hybrid Generative Architecture for E-commerce Query Recommendation](/202603/29/2603.19710v1-aigq-an-end-to-end-hybrid-generative-architecture-for-e-commerce-query-recommendation)  
    标签：评分：8.0/10、query:dl-cv
-   evidence：增强语言模型输出的创造力和多样性
-5. [MetaCues: Enabling Critical Engagement with Generative AI for Information Seeking and Sensemaking](/202603/28/2603.19634v1-metacues-enabling-critical-engagement-with-generative-ai-for-information-seeking-and-sensemaking)  
+   evidence：端到端生成式查询推荐
+5. [An Industrial-Scale Retrieval-Augmented Generation Framework for Requirements Engineering: Empirical Evaluation with Automotive Manufacturing Data](/202603/29/2603.20534v1-an-industrial-scale-retrieval-augmented-generation-framework-for-requirements-engineering-empirical-evaluation-with-automotive-manufacturing-data)  
    标签：评分：7.0/10、query:dl-cv
-   evidence：用于与生成式AI进行关键交互的交互式工具
-6. [ConSearcher: Supporting Conversational Information Seeking in Online Communities with Member Personas](/202603/28/2603.19747v1-consearcher-supporting-conversational-information-seeking-in-online-communities-with-member-personas)  
+   evidence：工业需求工程的RAG框架
+6. [Can AI Agents Answer Your Data Questions? A Benchmark for Data Agents](/202603/29/2603.20576v1-can-ai-agents-answer-your-data-questions-a-benchmark-for-data-agents)  
    标签：评分：7.0/10、query:dl-cv
-   evidence：LLM驱动的对话搜索工具
-7. [DIAL-KG: Schema-Free Incremental Knowledge Graph Construction via Dynamic Schema Induction and Evolution-Intent Assessment](/202603/28/2603.20059v1-dial-kg-schema-free-incremental-knowledge-graph-construction-via-dynamic-schema-induction-and-evolution-intent-assessment)  
+   evidence：数据查询的AI代理
+7. [Cerebra: Aligning Implicit Knowledge in Interactive SQL Authoring](/202603/29/2603.21363v1-cerebra-aligning-implicit-knowledge-in-interactive-sql-authoring)  
    标签：评分：7.0/10、query:dl-cv
-   evidence：无模式增量知识图谱构建
-8. [Current LLMs still cannot 'talk much' about grammar modules: Evidence from syntax](/202603/28/2603.20114v1-current-llms-still-cannot-talk-much-about-grammar-modules-evidence-from-syntax)  
+   evidence：LLM驱动的SQL查询生成工具
+8. [Enterprise Sales Copilot: Enabling Real-Time AI Support with Automatic Information Retrieval in Live Sales Calls](/202603/29/2603.21416v1-enterprise-sales-copilot-enabling-real-time-ai-support-with-automatic-information-retrieval-in-live-sales-calls)  
    标签：评分：7.0/10、query:dl-cv
-   evidence：LLM语法局限性研究
-9. [LoASR-Bench: Evaluating Large Speech Language Models on Low-Resource Automatic Speech Recognition Across Language Families](/202603/28/2603.20042v1-loasr-bench-evaluating-large-speech-language-models-on-low-resource-automatic-speech-recognition-across-language-families)  
+   evidence：使用LLM进行实时问题检测和信息检索
+9. [Functional Estimation of Manifold-Valued Diffusion Processes](/202603/29/2603.20945v1-functional-estimation-of-manifold-valued-diffusion-processes)  
    标签：评分：6.0/10、query:dl-cv
-   evidence：语音语言模型评估
-10. [Time-Reversed BSDEs for Accurate Gradient Estimation in Diffusion Models](/202603/28/2603.20455v1-time-reversed-bsdes-for-accurate-gradient-estimation-in-diffusion-models)  
+   evidence：流形值扩散过程的估计
+10. [Active Inference Agency Formalization, Metrics, and Convergence Assessments](/202603/29/2603.21319v1-active-inference-agency-formalization-metrics-and-convergence-assessments)  
    标签：评分：6.0/10、query:dl-cv
-   evidence：扩散模型的梯度估计
-11. [Is the future of AI green? What can innovation diffusion models say about generative AI's environmental impact?](/202603/28/2603.21419v1-is-the-future-of-ai-green-what-can-innovation-diffusion-models-say-about-generative-ais-environmental-impact)  
+   evidence：AI安全代理形式化
+11. [DATASHI: A Parallel English-Tashlhiyt Corpus for Orthography Normalization and Low-Resource Language Processing](/202603/29/2603.21571v1-datashi-a-parallel-english-tashlhiyt-corpus-for-orthography-normalization-and-low-resource-language-processing)  
    标签：评分：6.0/10、query:dl-cv
-   evidence：AI创新扩散模型
+   evidence：低资源语言处理语料库
 
 
 <div class="dpr-home-promo-card">
