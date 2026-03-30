@@ -932,29 +932,6 @@ def prepare_day_report_paths(docs_dir: str, date_str: str) -> Tuple[str, str]:
     return day_dir, day_readme
 
 
-def prepare_home_module_paths(docs_dir: str) -> Tuple[str, str]:
-    notice_path = os.path.join(docs_dir, "_home_notice.md")
-    promo_path = os.path.join(docs_dir, "_home_promo.md")
-    return notice_path, promo_path
-
-
-def ensure_home_module_files(docs_dir: str) -> Tuple[str, str]:
-    notice_path, promo_path = prepare_home_module_paths(docs_dir)
-    if not os.path.exists(notice_path):
-        with open(notice_path, "w", encoding="utf-8") as f:
-            f.write("────────────────────────────────────────\n")
-            f.write("（公告占位）欢迎使用 Daily Paper Reader。\n")
-            f.write("（公告占位）可在此放置本周更新、维护通知等。\n")
-            f.write("────────────────────────────────────────\n")
-    if not os.path.exists(promo_path):
-        with open(promo_path, "w", encoding="utf-8") as f:
-            f.write("════════════════════════════════════════\n")
-            f.write("（宣传占位）欢迎 Star / Fork 本项目。\n")
-            f.write("（宣传占位）欢迎提交 Issue 与 PR。\n")
-            f.write("════════════════════════════════════════\n")
-    return notice_path, promo_path
-
-
 def _read_module_markdown(path: str) -> str:
     if not os.path.exists(path):
         return ""
@@ -1903,9 +1880,14 @@ def build_home_readme_content(
     quick_entries: List[Tuple[str, str, List[Tuple[str, str]]]],
     paper_evidence_by_id: Dict[str, str],
 ) -> str:
-    notice_path, promo_path = ensure_home_module_files(docs_dir)
+    notice_path = os.path.join(docs_dir, "_home_notice.md")
+    if not os.path.exists(notice_path):
+        with open(notice_path, "w", encoding="utf-8") as f:
+            f.write("────────────────────────────────────────\n")
+            f.write("（公告占位）欢迎使用 Daily Paper Reader。\n")
+            f.write("（公告占位）可在此放置本周更新、维护通知等。\n")
+            f.write("────────────────────────────────────────\n")
     notice_md = _read_module_markdown(notice_path)
-    promo_md = _read_module_markdown(promo_path)
     latest_report_md = build_latest_report_section(
         date_str=date_str,
         date_label=date_label,
@@ -1921,8 +1903,6 @@ def build_home_readme_content(
     lines.append("")
     lines.append("## 每次日报")
     lines.append(latest_report_md)
-    lines.append("")
-    lines.append(promo_md or "（宣传模块为空）")
     lines.append("")
     return "\n".join(lines)
 
