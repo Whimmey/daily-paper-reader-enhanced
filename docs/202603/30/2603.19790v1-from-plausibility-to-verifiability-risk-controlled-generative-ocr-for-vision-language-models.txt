@@ -1,0 +1,679 @@
+Title: From Plausibility to Verifiability: Risk-Controlled Generative OCR for Vision-Language Models
+
+URL Source: https://arxiv.org/pdf/2603.19790v1
+
+Published Time: Mon, 23 Mar 2026 00:41:41 GMT
+
+Number of Pages: 10
+
+Markdown Content:
+# From Plausibility to Verifiability: Risk-Controlled Generative OCR for Vision-Language Models 
+
+# Weile Gong 
+
+School of Communication and Information Engineering, Nanjing University of Posts and Telecommunications Nanjing, China b25011527@njupt.edu.cn 
+
+# Yiping Zuo ∗
+
+College of Computer, Nanjing University of Posts and Telecommunications Nanjing, China zuoyiping@njupt.edu.cn 
+
+# Zijian Lu 
+
+School of Communication and Information Engineering, Nanjing University of Posts and Telecommunications Nanjing, China 18818732360@163.com 
+
+# Xin He 
+
+College of Computer, Nanjing University of Posts and Telecommunications Nanjing, China xhe@njupt.edu.cn 
+
+# Weibei Fan 
+
+College of Computer, Nanjing University of Posts and Telecommunications Nanjing, China wbfan@njupt.edu.cn 
+
+# Chen Dai 
+
+College of Computer, Nanjing University of Posts and Telecommunications Nanjing, China daichen@njupt.edu.cn 
+
+## ABSTRACT 
+
+Modern vision-language models (VLMs) can act as generative OCR engines, yet open-ended decoding can expose rare but consequen-tial failures. We identify a core deployment misalignment in gener-ative OCR. Autoregressive decoding favors semantic plausibility, whereas OCR requires outputs that are visually grounded and ge-ometrically verifiable. This mismatch produces severe errors, es-pecially over-generation and unsupported substitutions, creating deployment risk even when benchmark accuracy remains high. We therefore formulate frozen VLM OCR as a selective accept/abstain problem and propose a model-agnostic Geometric Risk Controller. The controller probes multiple structured views of the same input, applies lightweight structural screening, and accepts a transcription only when cross-view consensus and stability satisfy predefined criteria, yielding a small family of operating points. Experiments on frozen VLM backbones and standard OCR benchmarks show consistent reductions in extreme-error risk and catastrophic over-generation at predictable coverage costs. Reliable deployment of generative OCR with frozen VLMs benefits from explicit system-level risk control rather than unconstrained generation. 
+
+## 1 INTRODUCTION 
+
+Optical character recognition (OCR) is increasingly treated as an emergent capability of modern vision-language models (VLMs) [ 22 ,38 ]. In practice, this has encouraged the use of frozen VLMs as direct generative OCR engines. However, such usage remains frag-ile in deployment. Under open-ended autoregressive decoding, a model may generate continuations that extend beyond the visible text or produce semantically plausible yet visually unsupported substitutions. These failure modes violate a key requirement for user-facing OCR, namely geometric verifiability, meaning that the emitted text should be locally supportable by image evidence under geometric constraints. 
+
+> ∗Corresponding author.
+
+Traditionally, OCR systems are evaluated by average-case ac-curacy, namely whether the predicted string matches the ground-truth transcription on a benchmark [ 14 ]. Here the focus shifts to deployment risk, defined by the risk exposed on the outputs re-turned to users under a fixed inference protocol. Under this view, generative OCR with frozen VLMs becomes a selective prediction problem with abstention, where the system either emits a transcrip-tion or abstains, and abstention is part of the deployment contract rather than a convenience feature [ 9 , 35 ]. Making the accept-versus-abstain decision explicit turns evaluation from a single average-case score into an auditable risk–coverage trade-off under fixed proto-cols [ 2, 9]. The most harmful OCR failures are both rare and highly sensitive to the inference protocol, especially the prompt template and decoding strategy. Open-ended generative decoding is opti-mized for coherent continuation, so when visual evidence is weak or ambiguous, the model may fall back on language priors and pro-duce semantically plausible but visually unsupported outputs [ 20 ]. Consequently, stronger average benchmark performance does not necessarily reduce the severe-error tail that drives user-facing ex-posure. Reliability also should not depend on ad hoc prompting, since even minor prompt changes can materially alter model behav-ior [26, 39]. Decoding-time heuristics can likewise change halluci-nation frequency, making behavior harder to reproduce and audit even under a nominally fixed deployment setup [ 11 ]. Our target setting is deployment-driven. Foundation models are often shared across tasks and products, making per-application retraining for OCR costly or impractical. We therefore seek an external control layer that operates at inference time and reduces exposed risk with-out modifying model internals. This layer is not an after-the-fact heuristic filter; rather, the accept/abstain rule is specified as part of the deployment contract. We therefore propose a deployment-centric risk-control framework for generative OCR with frozen VLMs. At its core is the Geometric Risk Controller (GRC), which converts open-ended decoding into a selective system under a fixed accept/abstain contract. Under a fixed multi-view protocol with 𝐾 
+
+geometrically related views, GRC probes the frozen model through 
+
+> arXiv:2603.19790v1 [cs.CV] 20 Mar 2026
+
+Input  Multi -view 
+
+Probing  Backbone  Controller Layer  Output 
+
+Input Crop I Input Crop I 
+
+> View 1
+> View 2
+> View K
+> View 1
+> View 2
+> View K
+
+## Geometric Risk Controller 
+
+Accept?                 
+
+> Abstention
+> Accepted
+> Transcription
+> Accepted
+> Transcription
+> Preprocessing
+> Structural Screening
+> length ≤L_g eom
+> format valid ...
+> Cross -View Consensus
+> tok
+> tok
+> tok
+> tok
+> tok
+> tok sarg max ( )
+> s
+> count s * = ()count s
+> qn
+> =*1(, *) kd y snΔ=
+> Operating -Point Controller
+> Evidence Summary
+> Evidence
+> Summary
+> Decision Gate min ?Kn()
+> ?qm
+> 
+> ()
+> ?m
+> 
+>  
+
+Frozen 
+
+Vision -
+
+Language 
+
+Model 
+
+Backbone 
+
+Frozen 
+
+Vision -
+
+Language 
+
+Model 
+
+Backbone 
+
+> s*
+> Consensus
+> s*
+> Consensus
+
+Figure 1: System overview of the proposed Geometric Risk Controller (GRC). Given multi-view queries to a frozen vision-language model, the controller applies structural screening and cross-view consensus to produce a candidate string 𝑠 ∗, where 𝑠 ∗
+
+is the consensus transcription across views. The operating point then decides whether to accept 𝑠 ∗ or abstain. 
+
+controlled input variations, applies lightweight structural validity checks, and accepts a transcription only when cross-view agree-ment is sufficiently stable. A single strictness knob 𝑚 exposes a small family of operating points on a risk–coverage curve, enabling explicit operating-point control rather than ad hoc retuning [ 2, 9]. We provide full protocol details and component ablations, and re-port results at fixed operating points so that trade-offs remain com-parable across models and datasets. While related in spirit to recent test-time scaling strategies for compact VLMs based on augmenta-tion and aggregation [ 15 ], our formulation is specialized to OCR failure modes and instantiated as a fixed, deployment-auditable accept/abstain contract. Our contributions are threefold: (1) Reframe. We recast frozen VLM-based OCR as a deployment-control problem, introducing geometric verifiability and deployment-oriented risk primitives that expose long-tail and catastrophic fail-ures beyond mean accuracy. (2) Control. We propose a model-agnostic Geometric Risk Con-troller that converts open-ended generative OCR into a fixed-protocol selective system with an explicit strictness knob. (3) Validate. Across multiple frozen VLM backbones and scene-text benchmarks, we show that the controller consistently sup-presses exposed long-tail risk while offering controllable coverage trade-offs; a compact query-budget analysis further illustrates the associated inference-cost trade-off. 
+
+## 2 RELATED WORK 
+
+We organize prior work around deployment reliability in frozen VLM OCR, focusing on why stronger OCR capability alone does not guarantee reliable deployment, how prior work introduces selective accept/abstain interfaces to address this gap, and what forms of test-time evidence are needed to make such interfaces auditable under a fixed inference protocol. 
+
+## 2.1 Generative OCR Backbones and the Deployment Misalignment 
+
+Frozen VLMs as Generative OCR Engines. Vision-language models (VLMs) are increasingly used as OCR engines [ 17 ]. Systems such as KOSMOS-2.5 [ 22 ], TextHawk [ 38 ], and OCEAN-OCR [ 4]show strong end-to-end transcription ability across several settings. However, stronger OCR capability does not by itself guarantee de-ployment reliability. Under open-ended generation, autoregressive decoding optimizes next-token likelihood rather than explicit vi-sual verifiability, leading to unsupported substitutions and runaway continuations [ 11 ]. These failures are sensitive to prompting and decoding choices [ 11 , 26 , 27 ], complicating auditing and control in deployment. Recent analyses further link such behaviors to broader visual-grounding weaknesses in multimodal LLMs [31]. 
+
+Average-Case Metrics versus Deployment Exposure. Bench-marks such as the ICDAR series [ 12 – 14 ], OCRBench [ 8, 21 ], and SVT [ 32 ] emphasize aggregated scores such as recognition accuracy, From Plausibility to Verifiability: Risk-Controlled Generative OCR for Vision-Language Models 
+
+CER, and exact match. While these metrics capture average capa-bility, they can understate rare but high-cost tail failures [ 1 ]. For generative OCR, this creates a deployment misalignment between benchmark capability and exposed-output reliability, motivating an explicit accept–abstain formulation [ 23 ] under selective prediction and risk–coverage principles [9]. 
+
+## 2.2 Selective Deployment and Risk-Controlled Decision Interfaces 
+
+Selective deployment requires an explicit accept–abstain interface, not merely a stronger recognizer. Selective prediction formalizes this interface through the coverage–risk trade-off [ 7, 9 , 35 ], while Conformal Risk Control (CRC) formalizes finite-sample control of expected risk under a specified loss [ 2 , 3, 33 ]. In generative systems, however, abstention is often based on internal confidence or self-evaluation [ 23 , 25 ], and such signals can be prompt- and protocol-sensitive [ 27 ] while remaining overconfident on hallucinated out-puts [ 23 , 37 , 41 ]. Our controller adopts the same deployment-level framing but remains empirical rather than guarantee-providing, basing abstention on protocol-induced exogenous evidence—cross-view consistency and structural stability—to define auditable fixed-protocol operating points. 
+
+## 2.3 Verification Signals under Fixed Inference Protocols 
+
+Test-time scaling methods such as test-time augmentation, multi-crop inference, and self-consistency are widely used to improve performance and robustness through aggregation, reranking, or voting [ 5, 6, 15 , 18 , 28 , 34 ]. Our setting uses repeated inference for a different purpose. Under a fixed protocol, cross-view agreement and stability serve as decision evidence for accept–abstain con-trol rather than as heuristics for improving accuracy [16]. Related OCR and structured extraction systems also use lightweight out-put constraints, such as character-set, length, and format checks, to suppress obviously invalid generations [ 36 ], but these string-level filters do not directly establish visual support [ 19 ] and can remain misleading when the model is consistently wrong [ 10 ]. We therefore treat cross-view consistency under controlled geometric perturbations as exogenous evidence of visual support, turning test-time consistency into a fixed-protocol control signal for auditable accept–abstain decisions. 
+
+## 3 METHODS 3.1 Setting and Control Contract 
+
+We study generative OCR with a frozen vision-language model (VLM) used as a black-box generator. Given an image crop 𝐼 ∈I, a fixed prompt template 𝑝 , and a fixed deterministic decoding configuration 𝛿 , the frozen backbone returns 
+
+𝑦 = 𝐺 𝛿 (𝐼, 𝑝 ; 𝜃 ) ∈ Y , 𝜃 frozen .
+
+We treat 𝐺 𝛿 as the black-box mapping induced by the frozen back-bone under the fixed prompt-and-decoding setup; model internals are not used, and control relies only on queried image views and returned strings. Our goal is not to modify the backbone, but to place it inside a selective accept–abstain contract. Accordingly, the deployed OCR system is 
+
+𝑓 : I → Y ∪ {⊥} ,
+
+where ⊥ denotes abstention. The map 𝑓 is induced by an inference-time evidence protocol 𝜋 and an acceptance rule applied to that evidence. Specifically, a protocol 𝜋 extracts from the input crop a candidate transcription ˆ𝑦 (𝐼 ) ∈ Y together with an evidence summary 𝑒 (𝐼 ).An acceptance rule 𝐴 then determines whether the candidate is exposed: 
+
+𝑓 𝜋 (𝐼 ) =
+
+(
+
+ˆ𝑦 (𝐼 ), if 𝐴  𝑒 (𝐼 ) = 1,
+
+⊥, otherwise. Conventional frozen-VLM OCR is recovered as the degenerate always-accept case, in which the protocol reduces to a single stan-dard query and the returned output is always exposed. 
+
+## 3.2 Evidence Protocol: Multi-view Geometric Probing 
+
+We instantiate 𝜋 through multi-view probing of the same input crop. Let T denote a family of admissible image transforms that apply mild geometric perturbations, such as small translations, crop jitter, or scale variation, while preserving nominal text content. A fixed protocol 𝜋 specifies the transform family T , a view-selection rule, and the total number of queried views 𝐾 . The original crop is always included as the anchor view, 
+
+𝑇 1 = Id , 𝐼 1 = 𝐼 . 
+
+The remaining views are 
+
+𝐼 𝑘 = 𝑇 𝑘 (𝐼 ), 𝑘 = 2, . . . , 𝐾, 
+
+where the selection rule for {𝑇 𝑘 }𝐾 𝑘 =2 is part of the protocol. In our implementation, the non-anchor transforms are sampled from a fixed distribution over admissible transforms. Each view is queried with the same prompt template and decoding configuration as in Sec. 3.1: 
+
+𝑦 𝑘 = 𝐺 𝛿 (𝐼 𝑘 , 𝑝 ; 𝜃 ), 𝑘 = 1, . . . , 𝐾 . 
+
+This yields the evidence record 
+
+𝑅 𝜋 (𝐼 ) = {( 𝐼 𝑘 , 𝑦 𝑘 )} 𝐾 𝑘 =1.
+
+Under the fixed protocol, we treat cross-view stability as an opera-tional proxy for geometric support and cross-view disagreement as a risk signal. These exogenous signals are then used for accept– abstain control. 
+
+## 3.3 Canonicalization and Structural Screening 
+
+To make cross-view evidence comparable under the fixed protocol, we first map each returned string to a canonical form 
+
+˜𝑦 𝑘 = Norm (𝑦 𝑘 ) ∈ Y ,
+
+where Norm (·) is a protocol-fixed normalization rule that removes only presentation variance, such as whitespace normalization and, when specified by the task protocol, case canonicalization, without changing the underlying transcription content. We then apply a structural screening rule 
+
+𝑣 𝑘 = I[ ˜𝑦 𝑘 ∈ V] ∈ { 0, 1},(a) Low -q Abstention                                         
+
+> TEXTBOOK TEXTB 00 KTEXT 8OOK TEXTBO 0KTEXTB 0OK
+> n=5, s* =TEXT8OOK, q=0.20, Δ=0.20
+> [Abstain]
+> v1 v2 v3 v4 v5
+> METRO
+> STATION
+> METRO
+> (b) High -dispersion Abstention
+> METRO PIZZA ME TOO
+> n=4, s *=METRO, q=0.50, Δ=0.50
+> [Abstain]
+> v1 v2 v3 v4 v5
+> METRO
+> STATION
+> METRO
+> (b) High -dispersion Abstention
+> METRO PIZZA ME TOO
+> n=4, s *=METRO, q=0.50, Δ=0.50
+> [Abstain]
+> v1 v2 v3 v4 v5
+> (c)Borderline Accepted Consensus
+> OPFN OPEM
+> n=5, s *=OPEN, q=0.60, Δ=0.10
+> [Accept]
+> OPEN OPEN OPEN
+> v1 v2 v3 v4 v5
+> (c)Borderline Accepted Consensus
+> OPFN OPEM
+> n=5, s *=OPEN, q=0.60, Δ=0.10
+> [Accept]
+> OPEN OPEN OPEN
+> v1 v2 v3 v4 v5
+
+Figure 2: Representative accept–abstain evidence patterns under the fixed 𝐾 =5 protocol at the default operating point (𝑚 =3). Fragmented valid outputs cause abstention, a majority can still be rejected under high dispersion, and borderline consensus is accepted when the valid views remain tightly clustered. 
+
+where V ⊆ Y is a protocol-fixed set of lightweight admissibility constraints. These constraints are label-agnostic and serve only to reject degenerate continuations, not to recognize text or estimate confidence. The main admissibility constraint in V is a conservative geomet-ric length bound. For each view 𝐼 𝑘 , we compute an upper bound 
+
+𝐿 geom (𝐼 𝑘 ) from foreground geometry after scale normalization and dominant-axis span estimation. A decoded string is marked invalid if 
+
+| ˜𝑦 𝑘 | > 𝐿 geom (𝐼 𝑘 ).
+
+This bound is not intended to estimate the exact ground-truth length; it only suppresses implausibly overlong continuations. The resulting processed evidence is 
+
+e𝑅 𝜋 (𝐼 ) = {( ˜𝑦 𝑘 , 𝑣 𝑘 )} 𝐾 𝑘 =1.
+
+Let 
+
+Ω(𝐼 ) = {𝑘 : 𝑣 𝑘 = 1}, 𝑛 (𝐼 ) = |Ω(𝐼 )| .
+
+All downstream evidence statistics are computed only over Ω(𝐼 ).This induces a minimum-evidence gate with threshold 𝐾 min .
+
+## 3.4 Decision Functional: Consensus, Stability, and Operating-Point Control 
+
+For samples with 𝑛 (𝐼 ) ≥ 𝐾 min , let 𝑠 ∗ (𝐼 ) denote the unique mode of the valid canonicalized outputs { ˜𝑦 𝑘 : 𝑘 ∈ Ω(𝐼 )} when it exists. If the mode is not unique, the system abstains. Otherwise, the candidate transcription is 
+
+ˆ𝑦 𝜋 (𝐼 ) = 𝑠 ∗ (𝐼 ),
+
+with vote fraction 
+
+𝑞 (𝐼 ) = 1
+
+𝑛 (𝐼 )∑︁ 𝑘 ∈Ω (𝐼 )
+
+I ˜𝑦 𝑘 = 𝑠 ∗ (𝐼 ) ∈ [ 0, 1].
+
+To measure residual disagreement around the candidate, we use the bounded normalized edit distance 
+
+𝑑 (𝑎, 𝑏 ) = min 
+
+
+
+1, ED (𝑎, 𝑏 )
+
+max (1, max (| 𝑎 |, |𝑏 |)) 
+
+
+
+∈ [ 0, 1],
+
+where ED (· , ·) is Levenshtein edit distance, and define the candidate-centered dispersion 
+
+Δ(𝐼 ) = 1
+
+𝑛 (𝐼 )∑︁ 𝑘 ∈Ω (𝐼 )
+
+𝑑   ˜𝑦 𝑘 , 𝑠 ∗ (𝐼 ) .
+
+The resulting evidence summary is 
+
+𝑒 𝜋 (𝐼 ) =  𝑛 (𝐼 ), 𝑞 (𝐼 ), Δ(𝐼 ).
+
+The controller uses a consensus threshold 𝜏 (𝑚 ) and a fixed dis-persion threshold 𝜅 . In the main operating-point family, the strict-ness index 𝑚 affects only the minimum required vote fraction, with 
+
+𝜏 (𝑚 ) nondecreasing in 𝑚 , while 𝜅 is held fixed. Larger 𝑚 therefore induces a stricter acceptance region through a stronger consensus requirement under the common stability gate Δ(𝐼 ) ≤ 𝜅 .The instantiated controller is 
+
+𝑓 𝜋,𝑚 (𝐼 ) =
+
+
+
+𝑠 ∗ (𝐼 ), if 𝑛 (𝐼 ) ≥ 𝐾 min ,𝑠 ∗ (𝐼 ) exists uniquely ,𝑞 (𝐼 ) ≥ 𝜏 (𝑚 ),
+
+Δ(𝐼 ) ≤ 𝜅, 
+
+⊥, otherwise. 
+
+## 3.5 Coverage, Risk, and Operating Points 
+
+Selective OCR is evaluated jointly by coverage and conditional risk on exposed outputs. For the controlled system 𝑓 𝜋,𝑚 (𝐼 ) ∈ Y ∪ {⊥} ,coverage is 
+
+Cov (𝜋, 𝑚 ) = Pr 𝑓 𝜋,𝑚 (𝐼 ) ≠ ⊥ .
+
+If the protocol uses randomized view selection, the probability is taken jointly over the data distribution and the induced protocol randomness. All controlled-system risk metrics are computed on the covered subset. We report mean CER and upper-tail CER (P99) on covered outputs, and define the conditional catastrophic exposure rate as 
+
+Meltdown@ 𝛿 (𝜋, 𝑚 ) = Pr 
+
+h
+
+CER 
+
+
+
+𝑓 𝜋,𝑚 (𝐼 ), 𝑦 gt 
+
+≥ 𝛿 𝑓 𝜋,𝑚 (𝐼 ) ≠ ⊥
+
+i
+
+,
+
+with 𝛿 = 2 in our main setting. Since CER is normalized by ground-truth length, severe over-generation may yield CER > 1.We report results on a small set of predefined operating points 𝑚 
+
+under a common protocol 𝜋 . In the main instantiation used in this paper, these operating points correspond to increasing consensus From Plausibility to Verifiability: Risk-Controlled Generative OCR for Vision-Language Models 
+
+Algorithm 1 Multi-view geometric probing and accept–abstain control 
+
+Require: Crop 𝐼 , frozen generator 𝐺 𝛿 , prompt 𝑝 , proto-col/controller instantiation (𝜋, 𝑚 )
+
+Ensure: Output transcription 𝑠 ∗ or abstention ⊥ 
+
+> 1:
+
+𝐼 1 ← 𝐼 ; for 𝑘 = 2, . . . , 𝐾 , select 𝑇 𝑘 according to 𝜋 and set 
+
+𝐼 𝑘 ← 𝑇 𝑘 (𝐼 ) 
+
+> 2:
+
+for 𝑘 = 1, . . . , 𝐾 do  
+
+> 3:
+
+˜𝑦 𝑘 ← Norm (𝐺 𝛿 (𝐼 𝑘 , 𝑝 ; 𝜃 )) , 𝑣 𝑘 ← I[ ˜𝑦 𝑘 ∈ V]  
+
+> 4:
+
+Ω ← { 𝑘 : 𝑣 𝑘 = 1} 
+
+> 5:
+
+if |Ω| < 𝐾 min then  
+
+> 6:
+
+return ⊥ 
+
+> 7:
+
+Determine the unique mode 𝑠 ∗ of { ˜𝑦 𝑘 : 𝑘 ∈ Ω} 
+
+> 8:
+
+if no unique mode exists then  
+
+> 9:
+
+return ⊥ 
+
+> 10:
+
+𝑞 ← 1
+
+> |Ω|
+
+Í𝑘 ∈Ω I[ ˜𝑦 𝑘 = 𝑠 ∗], Δ ← 1
+
+> |Ω|
+
+Í𝑘 ∈Ω 𝑑 ( ˜𝑦 𝑘 , 𝑠 ∗) 
+
+> 11:
+
+if 𝑞 ≥ 𝜏 (𝑚 ) and Δ ≤ 𝜅 then  
+
+> 12:
+
+return 𝑠 ∗ 
+
+> 13:
+
+return ⊥
+
+thresholds 𝜏 (𝑚 ) while the dispersion threshold 𝜅 is fixed. These settings are fixed before evaluation and shared across models and benchmarks. For comparison, we report baseline risk on the full test set and controlled-system risk on the covered subset together with coverage. As an additional reference point, we include an approximately coverage-matched external selective baseline in Sec. 4.3. 
+
+## 4 EXPERIMENTS 4.1 Experimental Setup 
+
+Backbones and datasets. We evaluate the controller on three frozen vision-language backbones used as black-box generators: LLaVA-Phi3 (3.8B) [ 40 ], Gemma3 (4B) [ 30 ], and GLM-OCR. Experi-ments use the official test sets of IIIT5K [ 24 ] and ICDAR 2013 [ 14 ]. 
+
+Protocol instantiation. Unless otherwise noted, the common protocol uses 𝐾 = 5 geometrically related views, consisting of one anchor view and four additional views sampled from a fixed admissible transform distribution over translation, crop jitter, and scale variation. Returned strings are canonicalized by Norm (·) and filtered by the admissibility screen V, with 𝐾 min = 3.
+
+Operating points. We use predefined strictness levels 𝑚 ∈{1, 3, 5}. In the main instantiation, these correspond to increasing consensus thresholds 
+
+𝜏 (1) = 0.1, 𝜏 (3) = 0.5, 𝜏 (5) = 0.9,
+
+while the dispersion threshold is fixed at 𝜅 = 0.4. All settings are fixed before evaluation and shared across models and benchmarks. Unless otherwise stated, the main results use 𝑚 = 3.
+
+Metrics and reporting protocol. Following Sec. 3.5, we re-port coverage together with covered-subset risk, including mean CER, upper-tail CER (P99), and Meltdown @2 . Since the baseline never abstains, its risk is reported on the full test set, whereas controlled-system risk is reported on covered outputs. Whenever the controlled system applies output canonicalization, the same canonicalization is also applied to the baseline. Sec. 4.3 further includes an approximately coverage-matched external baseline. 
+
+## 4.2 Main Results 
+
+Table 1 reports the main deployment-level results under the com-mon fixed protocol with 𝐾 = 5 at the moderate operating point 
+
+𝑚 = 3. These results address the deployment setting introduced in Sec. 1 by quantifying the error risk exposed on the outputs that the system actually returns under a fixed selective contract. Across all 3 × 2 model–dataset settings, the Geometric Risk Con-troller maintains high coverage while substantially reducing ex-posed risk relative to the always-accept baseline. Relative to baseline full-set exposure, the controlled system consistently lowers mean CER, suppresses upper-tail error, and reduces catastrophic exposure as measured by Meltdown @2 . These results align with the intended deployment role of the controller, turning open-ended generative OCR into a selective system that trades a moderate amount of cov-erage for a substantially safer set of exposed outputs. Because the baseline never abstains, its risk is reported on the full test set; for the controlled system, risk is reported on the covered subset together with coverage. Figure 3 shows representative qualitative outcomes under the fixed protocol, including over-generation, unsupported substitution, instability-driven abstention, and stable-but-wrong residual failures. 
+
+## 4.3 Approximately Coverage-Matched External Baseline Comparison 
+
+We next test whether the gains of GRC can be explained by stan-dard confidence-based abstention alone. To this end, we compare against an external confidence-threshold selective baseline (Conf.-Thr.) adapted from the vanilla selective-prediction component of Srinivasan et al . [29] . We retain only the threshold-based abstention rule, so that the comparison isolates a standard internal-confidence selective baseline under the OCR setting. For fairness, this baseline uses the same frozen backbone, prompt template, deterministic decoding, and output canonicalization as the always-accept OCR baseline. It operates on a single view and accepts a transcription only when the model’s internal confidence exceeds a calibrated threshold. Confidence is instantiated by the mean token log-probability of the generated transcription, and the threshold is calibrated on a held-out split to target the coverage of our default operating point ( 𝑚 = 3) for each backbone–dataset setting. Realized test-set coverage is therefore approximately, rather than exactly, matched. Table 2 reports the comparison. At similar coverage, the confidence-threshold baseline reduces some ordinary errors, but remains much weaker at suppressing catastrophic exposure. GRC achieves lower CER mean and lower Meltdown @2 in all six settings, with the largest gains on the more failure-prone LLaVA-Phi3. This suggests that single-view internal confidence does not capture the instability revealed by multi-view external evidence. 
+
+## 4.4 Operating-Point Control 
+
+A key property of the controller is that the strictness index 𝑚 does not modify the backbone or protocol; it selects one predefined C.  Stable  and  correct accept 
+
+> GT: Multimedia
+> 5/5 valid ·q=1.0 ·L_g=10
+> GRC
+> Multimedia
+> Baseline
+> Multimedia
+
+C.  Stable  and  correct accept 
+
+> GT: Multimedia
+> 5/5 valid ·q=1.0 ·L_g=10
+> GRC
+> Multimedia
+> Baseline
+> Multimedia
+
+D. Cross -view instability   
+
+> GT: BANK
+> Baseline GRC
+> BAN [Abstain]
+> 5/5 valid ·q=0.6 · Δ=0.9
+
+F. Accepted  borderline consensus    
+
+> GT: Peninjau
+> Baseline GRC
+> Peninjau Peninjau
+> 5/5 valid ·q=0.8 ·L_g=9
+
+F. Accepted  borderline consensus    
+
+> GT: Peninjau
+> Baseline GRC
+> Peninjau Peninjau
+> 5/5 valid ·q=0.8 ·L_g=9
+
+E. Stable -but -wrong residual  
+
+> GT: Child
+> Baseline GRC
+> Chidde
+> 5/5 valid ·q=1.0 ·L_g=6
+
+B. Unsupported semantic substitution     
+
+> GT: 0.05 -2.00
+> GRC
+> 95.5 -2 = 93.04 [Abstain]
+> 5/5 valid · q=0.2 ·L_g=12
+> Baseline
+> Chidde
+
+A. Over -generation   
+
+> GT: NEWTON
+> Baseline GRC
+> One way to
+> think about it
+> is that ...
+> [Abstain]
+> 4/5 valid · q=0.2 ·L_g=6
+
+C.  Stable  and  correct accept 
+
+> GT: Multimedia
+> 5/5 valid ·q=1.0 ·L_g=10
+> GRC
+> Multimedia
+> Baseline
+> Multimedia
+
+D. Cross -view instability   
+
+> GT: BANK
+> Baseline GRC
+> BAN [Abstain]
+> 5/5 valid ·q=0.6 · Δ=0.9
+
+F. Accepted  borderline consensus    
+
+> GT: Peninjau
+> Baseline GRC
+> Peninjau Peninjau
+> 5/5 valid ·q=0.8 ·L_g=9
+
+E. Stable -but -wrong residual  
+
+> GT: Child
+> Baseline GRC
+> Chidde
+> 5/5 valid ·q=1.0 ·L_g=6
+
+B. Unsupported semantic substitution     
+
+> GT: 0.05 -2.00
+> GRC
+> 95.5 -2 = 93.04 [Abstain]
+> 5/5 valid · q=0.2 ·L_g=12
+> Baseline
+> Chidde
+
+A. Over -generation   
+
+> GT: NEWTON
+> Baseline GRC
+> One way to
+> think about it
+> is that ...
+> [Abstain]
+> 4/5 valid · q=0.2 ·L_g=6
+
+Figure 3: Qualitative OCR cases under the fixed deployment protocol. Each panel shows the crop, ground truth, the always-accept baseline, and the GRC decision at the default operating point ( 𝑚 = 3). Cases include over-generation, unsupported substitution, correct acceptance, cross-view instability, a stable-but-wrong residual failure, and a borderline accepted case. The evidence tag reports valid-view count, consensus fraction 𝑞 , and geometric length estimate 𝐿 geom ; for the instability case, it reports dispersion Δ instead of 𝐿 geom .Table 1: Main deployment-level results at the fixed operating point ( 𝐾 = 5, 𝑚 = 3). 
+
+Dataset Metric Model LLaVA-Phi3 Gemma3 GLM-OCR IIIT5K Cov. ↑ 100.0/89.5 100.0/94.9 100.0/95.7 CER Mean ↓ 110.5 / 8.4 7.4 / 3.7 6.3 / 4.0 
+
+CER P99 ↓ 3087.8 / 100.0 100.0 / 66.7 100.0 / 66.7 
+
+MD@2 ↓ 33.7 / 0.3 3.7 / 0.0 3.7 / 0.7 
+
+ICDAR13 Cov. ↑ 100.0/89.0 100.0/93.0 100.0/96.2 CER Mean ↓ 147.4 / 9.3 20.1 / 3.7 3.3 / 2.3 
+
+CER P99 ↓ 3572.5 / 100.0 500.0 / 100.0 88.3 / 58.0 
+
+MD@2 ↓ 35.6 / 3.7 16.4 / 1.8 1.8 / 0.9   
+
+> Coverage is reported for the controlled system only. For risk metrics, each entry is shown as Baseline/System , where Baseline is computed on the full test set and System on the covered subset. CER is reported in %; MD@2 in ‰.
+
+operating point under a fixed selective contract. In our main instan-tiation, increasing 𝑚 raises the required consensus threshold 𝜏 (𝑚 )
+
+while the dispersion gate remains fixed, making acceptance more conservative and trading coverage for lower exposed risk. Figure 4 visualizes this behavior across all three backbones on both IIIT5K and ICDAR13. In each case, increasing 𝑚 moves the system along a consistent risk–coverage frontier toward lower coverage and lower covered-output mean CER. This behavior is 
+
+Table 2: Approximately coverage-matched comparison with an external confidence-threshold selective baseline adapted from Srinivasan et al . [29] . For each backbone–dataset setting, the threshold is calibrated on a held-out split to target the coverage of our default operating point ( 𝑚 = 3). Coverage and mean CER are reported in %; Meltdown@2 (MD@2) is reported in ‰.   
+
+> Dataset Model Method Cov.
+
+↑ CER ↓ MD@2 ↓                                          
+
+> IIIT5K LLaVA-Phi3 Conf.-Thr. 90.0 30.9 19.6 Ours 89.5 8.4 0.3
+> Gemma3 Conf.-Thr. 95.8 7.6 2.2 Ours 94.9 3.7 0.0
+> GLM-OCR Conf.-Thr. 94.8 4.4 2.2 Ours 95.7 4.0 0.7
+> ICDAR13 LLaVA-Phi3 Conf.-Thr. 88.2 82.7 31.4 Ours 89.0 9.3 3.7
+> Gemma3 Conf.-Thr. 95.5 22.5 15.1 Ours 93.0 3.7 1.8
+> GLM-OCR Conf.-Thr. 95.9 3.2 5.8 Ours 96.2 2.3 0.9
+
+consistent with interpreting 𝑚 as a practical deployment knob, since the operator does not modify the backbone or protocol, but instead selects an operating point from a fixed and auditable family. From Plausibility to Verifiability: Risk-Controlled Generative OCR for Vision-Language Models 
+
+Figure 4: Risk–coverage trajectories under the common fixed protocol for all three backbones on IIIT5K and ICDAR13. Each point is a predefined operating point indexed by 𝑚 ;larger 𝑚 yields lower coverage and lower covered-output risk. Filled markers denote the default operating point 𝑚 = 3.Baseline  
+
+> Conf-thr
+> w/o structural
+> w/o consensus
+> Full GRC
+> 0
+> 10
+> 20
+> 30
+> 40
+> Meltdown@2 (  )
+> Cov.
+> 100.0%
+> 90.0%
+> 95.3%
+> 91.8%
+> 89.5%
+> IIIT5K
+> Baseline
+> Conf-thr
+> w/o structural
+> w/o consensus
+> Full GRC
+> 0
+> 10
+> 20
+> 30
+> 40 Cov.
+> 100.0%
+> 88.2%
+> 93.1%
+> 93.7%
+> 88.9%
+> ICDAR13
+
+Figure 5: Component effects and comparison to an external confidence-threshold baseline on LLaVA-Phi3 under the fixed protocol ( 𝐾 =5, 𝑚 =3). Bars show Meltdown@2; labels show coverage. Full GRC achieves the lowest catastrophic exposure on both datasets while maintaining competitive coverage. 
+
+## 4.5 Ablation Study 
+
+We next ablate the two decision channels of the controller under the same fixed protocol used above. Table 3 compares the full system with two partial variants. The w/o structural variant removes the protocol-fixed admissibility screen while retaining cross-view 
+
+Table 3: Component ablation under the common fixed proto-col ( 𝐾 = 5, 𝑚 = 3). w/o structural removes the protocol-fixed admissibility screen, w/o consensus removes the cross-view consensus control, and Full GRC applies both. Coverage and CER are reported in %. Meltdown@2 is omitted here and shown in Fig. 5. 
+
+Method LLaVA-Phi3 Gemma3 GLM-OCR Cov. ↑ CER ↓ Cov. ↑ CER ↓ Cov. ↑ CER ↓
+
+IIIT5K 
+
+Baseline 100.0 110.5 100.0 7.4 100.0 6.3 w/o structural 95.3 21.8 98.8 4.6 99.6 5.5 w/o consensus 91.8 11.2 95.8 4.3 96.0 4.5 Full GRC 89.5 8.4 94.9 3.7 95.7 4.0 
+
+ICDAR13 
+
+Baseline 100.0 147.4 100.0 20.1 100.0 3.3 w/o structural 93.1 31.7 96.1 10.4 99.6 3.3 w/o consensus 93.7 17.4 96.0 8.7 96.5 2.5 Full GRC 88.9 9.3 93.0 3.7 96.2 2.3 
+
+Table 4: Representative endpoint operating points under the fixed protocol ( 𝐾 = 5). Coverage (Cov.) is reported in %, and Meltdown@2 (MD@2) is reported in ‰.                                                          
+
+> IIIT5K ICDAR13 Model Set. Cov. ↑MD@2 ↓Cov. ↑MD@2 ↓
+> LLaVA-Phi3 Baseline 100.0 33.7 100.0 35.6
+> 𝑚 =191.3 0.3 92.1 3.7
+> 𝑚 =567.7 0.0 68.3 0.9 Gemma3 Baseline 100.0 3.7 100.0 16.4
+> 𝑚 =195.8 0.0 95.1 1.8
+> 𝑚 =582.5 0.0 82.0 1.8 GLM-OCR Baseline 100.0 3.7 100.0 1.8
+> 𝑚 =195.9 1.0 96.5 0.9
+> 𝑚 =590.5 0.0 91.0 0.9
+
+consensus control, whereas w/o consensus removes vote-fraction and dispersion control while retaining structural screening. The two components play distinct and complementary roles. The 
+
+w/o consensus variant is particularly effective at filtering obviously degenerate continuations and often delivers strong reductions in catastrophic exposure. The w/o structural variant captures cross-view instability and usually improves over the baseline, but its gains are less uniform, especially on already stronger backbones. Neither partial variant matches the full controller. Full GRC consistently delivers the strongest overall deployment behavior across models and datasets, achieving the lowest exposed risk in every setting while maintaining high coverage. Taken to-gether, these results show that the controller is not a loose collection of heuristics, but a complementary combination of admissibility screening and cross-view consensus control. Table 5: Compact query-budget check for LLaVA-Phi3 at 𝑚 =
+
+3. Relative time is normalized by the single-pass baseline; coverage is reported in %, and Meltdown@2 in ‰.
+
+𝐾 Time IIIT5K ICDAR13 Cov. ↑ MD@2 ↓ Cov. ↑ MD@2 ↓
+
+Baseline 1.0x 100.0 33.7 100.0 35.6 3 2.7x 85.4 0.0 86.3 1.8 5 4.5x 89.5 0.3 88.9 3.7 7 6.3x 89.5 0.3 89.1 3.7 
+
+## 4.6 Operating-Point Endpoints and Practical Trade-offs 
+
+Figure 4 shows that predefined operating points trace a risk–coverage frontier under a fixed protocol. Because deployment is typically se-lected from a small set of discrete operating-point options, Table 4 reports three representative settings, namely the always-accept baseline, a permissive setting ( 𝑚 = 1), and a conservative setting (𝑚 = 5). Stricter operating points reduce catastrophic exposure at the cost of lower coverage. This separation is most pronounced on LLaVA-Phi3 and remains consistent on Gemma3 and GLM-OCR. The default setting 𝑚 = 3 used in Sec. 4.2 lies between these end-points and provides a practical balance between availability and exposed-output reliability. Table 5 reports a compact query-budget check on LLaVA-Phi3. The single-pass always-accept baseline is included for reference, while 𝐾 ∈ { 3, 5, 7} varies the evidence budget within the multi-view controller. Reducing to 𝐾 = 3 slightly lowers catastrophic exposure but also lowers coverage, while increasing to 𝐾 = 7 adds cost with little gain over 𝐾 = 5. This supports 𝐾 = 5 as a practical default. 
+
+## 5 DISCUSSION AND LIMITATIONS 
+
+GRC is designed for deployment control rather than backbone improvement. Under a fixed protocol, it reduces unstable user-facing exposure, but it does not eliminate all accepted errors. The main residual failure mode is stable-but-wrong consensus, where multiple admissible views support the same incorrect word and the system still accepts it. This marks a core boundary of the current design. Cross-view agreement provides evidence of stability, but not proof of correctness. As a result, GRC is most effective at filtering unstable and catastrophic exposure, and less effective at detecting errors that remain consistent across views. Our study is also limited to a word-level scene-text setting, where lightweight structural screening and string-level consensus already provide useful control signals. Extending this framework to broader OCR settings will require stronger verification than word-level agreement alone. A natural next step is region-level verification, in which candidate transcriptions are tied more directly to localized visual evidence, together with stronger geometric admissibility tests and more precise cross-view validation. We therefore view GRC as a practical first control layer for frozen VLM OCR rather than a complete solution to reliable generative OCR. 
+
+## 6 CONCLUSION 
+
+This paper reframes reliable generative OCR with frozen VLMs as a deployment-control problem rather than an average-accuracy problem. We present a Geometric Risk Controller that places a frozen backbone inside a fixed-protocol selective contract, where multi-view probing provides external evidence, structural screening removes degenerate outputs, and cross-view consensus governs accept-versus-abstain decisions. The result is a small set of pre-defined operating points that makes the coverage–risk trade-off explicit and auditable. Across models and datasets, GRC consistently reduces exposed risk while retaining substantial coverage, with the largest gains on long-tail and catastrophic failures. More broadly, the results suggest that for generative perception systems, deployment reliability de-pends not only on stronger backbones, but also on explicit control over when outputs are exposed to users. 
+
+## REFERENCES 
+
+[1] Noga Amit, Shafi Goldwasser, Orr Paradise, and Guy N. Rothblum. 2025. ATheory for Worst-Case vs. Average-Case Guarantees for LLMs. In The Thirty-ninth Annual Conference on Neural Information Processing Systems . https:// openreview.net/forum?id=M83RPhdsX4 [2] Anastasios Angelopoulos, Stephen Bates, Adam Fisch, Lihua Lei, and Tal Schuster. 2024. Conformal Risk Control. In International Conference on Learning Represen-tations , B. Kim, Y. Yue, S. Chaudhuri, K. Fragkiadaki, M. Khan, and Y. Sun (Eds.), Vol. 2024. 55198–55218. https://proceedings.iclr.cc/paper_files/paper/2024/file/ f3549ef9b5ff520a7e41ff3cc306ab2b-Paper-Conference.pdf [3] Anastasios Nikolas Angelopoulos and Stephen Bates. 2021. A Gentle Introduction to Conformal Prediction and Distribution-Free Uncertainty Quantification. ArXiv 
+
+abs/2107.07511 (2021). https://api.semanticscholar.org/CorpusID:235899036 [4] Song Chen, Xinyu Guo, Yadong Li, Tao Zhang, Mingan Lin, Dongdong Kuang, Youwei Zhang, Lingfeng Ming, Fengyu Zhang, Yuran Wang, Jianhua Xu, Zenan Zhou, and Weipeng Chen. 2025. Ocean-OCR: Towards General OCR Application via a Vision-Language Model. arXiv:2501.15558 [cs.CV] https://arxiv.org/abs/ 2501.15558 [5] Shih-Han Chou, Shivam Chandhok, Jim Little, and Leonid Sigal. 2025. MM-R 3:On (In-)Consistency of Vision-Language Models (VLMs). In Findings of the Asso-ciation for Computational Linguistics: ACL 2025 , Wanxiang Che, Joyce Nabende, Ekaterina Shutova, and Mohammad Taher Pilehvar (Eds.). Association for Compu-tational Linguistics, Vienna, Austria, 4762–4788. doi:10.18653/v1/2025.findings-acl.246 [6] Shih-Han Chou, Shivam Chandhok, James J. Little, and Leonid Sigal. 2025. Test-Time Consistency in Vision Language Models. ArXiv abs/2506.22395 (2025). https://api.semanticscholar.org/CorpusID:280010669 [7] C. Chow. 1970. On optimum recognition error and reject tradeoff. IEEE Transac-tions on Information Theory 16, 1 (1970), 41–46. doi:10.1109/TIT.1970.1054406 [8] Ling Fu, Zhebin Kuang, Jiajun Song, Mingxin Huang, Biao Yang, Yuzhe Li, Ling-hao Zhu, Qidi Luo, Xinyu Wang, Hao Lu, Zhang Li, Guozhi Tang, Bin Shan, Chun-hui Lin, Qi Liu, Binghong Wu, Hao Feng, Hao Liu, Can Huang, Jingqun Tang, Wei Chen, Lianwen Jin, Yuliang Liu, and Xiang Bai. 2025. OCRBench v2: An Improved Benchmark for Evaluating Large Multimodal Models on Visual Text Localization and Reasoning. arXiv:2501.00321 [cs.CV] https://arxiv.org/abs/2501.00321 [9] Yonatan Geifman and Ran El-Yaniv. 2017. Selective Classification for Deep Neural Networks. In Advances in Neural Information Processing Systems , I. Guyon, U. Von Luxburg, S. Bengio, H. Wallach, R. Fergus, S. Vishwanathan, and R. Garnett (Eds.), Vol. 30. Curran Associates, Inc. https://proceedings.neurips.cc/paper_files/paper/ 2017/file/4a8423d5e91fda00bb7e46540e2b0cf1-Paper.pdf [10] Jie Huang, Xinyun Chen, Swaroop Mishra, Huaixiu Steven Zheng, Adams Wei Yu, Xinying Song, and Denny Zhou. 2024. Large Language Models Cannot Self-Correct Reasoning Yet. arXiv:2310.01798 [cs.CL] https://arxiv.org/abs/2310.01798 [11] Qidong Huang, Xiaoyi Dong, Pan Zhang, Bin Wang, Conghui He, Jiaqi Wang, Dahua Lin, Weiming Zhang, and Nenghai Yu. 2024. OPERA: Alleviating Hal-lucination in Multi-Modal Large Language Models via Over-Trust Penalty and Retrospection-Allocation. In 2024 IEEE/CVF Conference on Computer Vision and Pattern Recognition (CVPR) . 13418–13427. doi:10.1109/CVPR52733.2024.01274 [12] Zheng Huang, Kai Chen, Jianhua He, Xiang Bai, Dimosthenis Karatzas, Shijian Lu, and C. V. Jawahar. 2019. ICDAR2019 Competition on Scanned Receipt OCR and Information Extraction. In 2019 International Conference on Document Analysis and Recognition (ICDAR) . 1516–1520. doi:10.1109/ICDAR.2019.00244 From Plausibility to Verifiability: Risk-Controlled Generative OCR for Vision-Language Models 
+
+[13] Dimosthenis Karatzas, Lluis Gomez-Bigorda, Anguelos Nicolaou, Suman Ghosh, Andrew Bagdanov, Masakazu Iwamura, Jiri Matas, Lukas Neumann, Vijay Ra-maseshan Chandrasekhar, Shijian Lu, Faisal Shafait, Seiichi Uchida, and Ernest Valveny. 2015. ICDAR 2015 competition on Robust Reading. In 2015 13th Inter-national Conference on Document Analysis and Recognition (ICDAR) . 1156–1160. doi:10.1109/ICDAR.2015.7333942 [14] Dimosthenis Karatzas, Faisal Shafait, Seiichi Uchida, Masakazu Iwamura, Lluis Gomez i Bigorda, Sergi Robles Mestre, Joan Mas, David Fernandez Mota, Jon Al-mazàn Almazàn, and Lluís Pere de las Heras. 2013. ICDAR 2013 Robust Reading Competition. In 2013 12th International Conference on Document Analysis and Recognition . 1484–1493. doi:10.1109/ICDAR.2013.221 [15] Mehmet Onurcan Kaya, Desmond Elliott, and Dim P. Papadopoulos. 2026. Efficient Test-Time Scaling for Small Vision-Language Models. arXiv:2510.03574 [cs.LG] https://arxiv.org/abs/2510.03574 [16] Zaid Khan and Yun Fu. 2024. Consistency and Uncertainty: Identifying Unreli-able Responses From Black-Box Vision-Language Models for Selective Visual Question Answering. arXiv:2404.10193 [cs.CV] https://arxiv.org/abs/2404.10193 [17] Geewook Kim, Teakgyu Hong, Moonbin Yim, Jeongyeon Nam, Jinyoung Park, Jinyeong Yim, Wonseok Hwang, Sangdoo Yun, Dongyoon Han, and Seunghyun Park. 2022. OCR-free Document Understanding Transformer. arXiv:2111.15664 [cs.LG] https://arxiv.org/abs/2111.15664 [18] Youngjun Lee, Doyoung Kim, Junhyeok Kang, Jihwan Bang, Hwanjun Song, and Jae-Gil Lee. 2025. RA-TTA: Retrieval-Augmented Test-Time Adap-tation for Vision-Language Models. In International Conference on Learn-ing Representations , Y. Yue, A. Garg, N. Peng, F. Sha, and R. Yu (Eds.), Vol. 2025. 100590–100614. https://proceedings.iclr.cc/paper_files/paper/2025/ file/fa1790d7c3036c691d0b2fb3b9a0ce64-Paper-Conference.pdf [19] Ming Li, Ruiyi Zhang, Jian Chen, Chenguang Wang, Jiuxiang Gu, Yufan Zhou, Franck Dernoncourt, Wanrong Zhu, Tianyi Zhou, and Tong Sun. 2025. Towards Visual Text Grounding of Multimodal Large Language Model. arXiv:2504.04974 [cs.CV] https://arxiv.org/abs/2504.04974 [20] Yifan Li, Yifan Du, Kun Zhou, Jinpeng Wang, Xin Zhao, and Ji-Rong Wen. 2023. Evaluating Object Hallucination in Large Vision-Language Models. In Proceedings of the 2023 Conference on Empirical Methods in Natural Language Processing ,Houda Bouamor, Juan Pino, and Kalika Bali (Eds.). Association for Computational Linguistics, Singapore, 292–305. doi:10.18653/v1/2023.emnlp-main.20 [21] Yuliang Liu, Zhang Li, Mingxin Huang, Biao Yang, Wenwen Yu, Chunyuan Li, Xu-Cheng Yin, Cheng-Lin Liu, Lianwen Jin, and Xiang Bai. 2024. OCRBench: on the hidden mystery of OCR in large multimodal models. Science China Information Sciences 67, 12 (Dec. 2024). doi:10.1007/s11432-024-4235-6 [22] Tengchao Lv, Yupan Huang, Jingye Chen, Yuzhong Zhao, Yilin Jia, Lei Cui, Shuming Ma, Yaoyao Chang, Shaohan Huang, Wenhui Wang, Li Dong, Weiyao Luo, Shaoxiang Wu, Guoxin Wang, Cha Zhang, and Furu Wei. 2024. KOSMOS-2.5: A Multimodal Literate Model. arXiv:2309.11419 [cs.CL] https://arxiv.org/abs/ 2309.11419 [23] Yuzhen Mao, Thibaut Durand, Nazanin Mehrasa, Jiawei He, and Martin Ester. 2025. Calibrating LLMs for Selective Prediction: Balancing Coverage and Risk. In 
+
+Socially Responsible and Trustworthy Foundation Models at NeurIPS 2025 . https: //openreview.net/forum?id=ZVZGjtP5VB [24] A. Mishra, K. Alahari, and C. V. Jawahar. 2012. Scene Text Recognition using Higher Order Language Priors. In BMVC .[25] Jie Ren, Yao Zhao, Tu Vu, Peter J. Liu, and Balaji Lakshminarayanan. 2023. Self-Evaluation Improves Selective Generation in Large Language Models. In 
+
+Proceedings on "I Can’t Believe It’s Not Better: Failure Modes in the Age of Foun-dation Models" at NeurIPS 2023 Workshops (Proceedings of Machine Learning Research, Vol. 239) , Javier Antorán, Arno Blaas, Kelly Buchanan, Fan Feng, Vin-cent Fortuin, Sahra Ghalebikesabi, Andreas Kriegler, Ian Mason, David Rohde, Francisco J. R. Ruiz, Tobias Uelwer, Yubin Xie, and Rui Yang (Eds.). PMLR, 49–64. https://proceedings.mlr.press/v239/ren23a.html [26] William Rudman, Michal Golovanevsky, Dana Arad, Yonatan Belinkov, Ritamb-hara Singh, Carsten Eickhoff, and Kyle Mahowald. 2026. Mechanisms of Prompt-Induced Hallucination in Vision-Language Models. arXiv:2601.05201 [cs.CV] https://arxiv.org/abs/2601.05201 [27] Jenny Schmalfuss, Nadine Chang, VS Vibashan, Maying Shen, Andrés Bruhn, and José M. Álvarez. 2025. PARC: A Quantitative Framework Uncovering the Symmetries within Vision Language Models. 2025 IEEE/CVF Conference on Computer Vision and Pattern Recognition (CVPR) (2025), 25081–25091. https: //api.semanticscholar.org/CorpusID:279447417 [28] Charlie Snell, Jaehoon Lee, Kelvin Xu, and Aviral Kumar. 2024. Scaling LLM Test-Time Compute Optimally can be More Effective than Scaling Model Parameters. arXiv:2408.03314 [cs.LG] https://arxiv.org/abs/2408.03314 [29] Tejas Srinivasan, Jack Hessel, Tanmay Gupta, Bill Yuchen Lin, Yejin Choi, Jesse Thomason, and Khyathi Raghavi Chandu. 2024. Selective "Selective Prediction": Reducing Unnecessary Abstention in Vision-Language Reasoning. arXiv:2402.15610 [cs.CL] https://arxiv.org/abs/2402.15610 [30] Gemma Team, Aishwarya Kamath, Johan Ferret, Shreya Pathak, Nino Vieil-lard, Ramona Merhej, Sarah Perrin, Tatiana Matejovicova, Alexandre Ramé, Morgane Rivière, Louis Rouillard, Thomas Mesnard, Geoffrey Cideron, Jean bastien Grill, Sabela Ramos, Edouard Yvinec, Michelle Casbon, Etienne Pot, Ivo Penchev, Gaël Liu, Francesco Visin, Kathleen Kenealy, Lucas Beyer, Xiaohai Zhai, Anton Tsitsulin, Robert Busa-Fekete, Alex Feng, Noveen Sachdeva, Ben-jamin Coleman, Yi Gao, Basil Mustafa, Iain Barr, Emilio Parisotto, David Tian, Matan Eyal, Colin Cherry, Jan-Thorsten Peter, Danila Sinopalnikov, Surya Bhu-patiraju, Rishabh Agarwal, Mehran Kazemi, Dan Malkin, Ravin Kumar, David Vilar, Idan Brusilovsky, Jiaming Luo, Andreas Steiner, Abe Friesen, Abhanshu Sharma, Abheesht Sharma, Adi Mayrav Gilady, Adrian Goedeckemeyer, Alaa Saade, Alex Feng, Alexander Kolesnikov, Alexei Bendebury, Alvin Abdagic, Amit Vadi, András György, André Susano Pinto, Anil Das, Ankur Bapna, Antoine Miech, Antoine Yang, Antonia Paterson, Ashish Shenoy, Ayan Chakrabarti, Bilal Piot, Bo Wu, Bobak Shahriari, Bryce Petrini, Charlie Chen, Charline Le Lan, Christopher A. Choquette-Choo, CJ Carey, Cormac Brick, Daniel Deutsch, Danielle Eisenbud, Dee Cattle, Derek Cheng, Dimitris Paparas, Divyashree Shiv-akumar Sreepathihalli, Doug Reid, Dustin Tran, Dustin Zelle, Eric Noland, Er-win Huizenga, Eugene Kharitonov, Frederick Liu, Gagik Amirkhanyan, Glenn Cameron, Hadi Hashemi, Hanna Klimczak-Plucińska, Harman Singh, Harsh Mehta, Harshal Tushar Lehri, Hussein Hazimeh, Ian Ballantyne, Idan Szpek-tor, Ivan Nardini, Jean Pouget-Abadie, Jetha Chan, Joe Stanton, John Wieting, Jonathan Lai, Jordi Orbay, Joseph Fernandez, Josh Newlan, Ju yeong Ji, Jyotinder Singh, Kat Black, Kathy Yu, Kevin Hui, Kiran Vodrahalli, Klaus Greff, Linhai Qiu, Marcella Valentine, Marina Coelho, Marvin Ritter, Matt Hoffman, Matthew Watson, Mayank Chaturvedi, Michael Moynihan, Min Ma, Nabila Babar, Natasha Noy, Nathan Byrd, Nick Roy, Nikola Momchev, Nilay Chauhan, Noveen Sachdeva, Oskar Bunyan, Pankil Botarda, Paul Caron, Paul Kishan Rubenstein, Phil Culli-ton, Philipp Schmid, Pier Giuseppe Sessa, Pingmei Xu, Piotr Stanczyk, Pouya Tafti, Rakesh Shivanna, Renjie Wu, Renke Pan, Reza Rokni, Rob Willoughby, Rohith Vallu, Ryan Mullins, Sammy Jerome, Sara Smoot, Sertan Girgin, Shariq Iqbal, Shashir Reddy, Shruti Sheth, Siim Põder, Sijal Bhatnagar, Sindhu Raghuram Panyam, Sivan Eiger, Susan Zhang, Tianqi Liu, Trevor Yacovone, Tyler Liechty, Uday Kalra, Utku Evci, Vedant Misra, Vincent Roseberry, Vlad Feinberg, Vlad Kolesnikov, Woohyun Han, Woosuk Kwon, Xi Chen, Yinlam Chow, Yuvein Zhu, Zichuan Wei, Zoltan Egyed, Victor Cotruta, Minh Giang, Phoebe Kirk, Anand Rao, Kat Black, Nabila Babar, Jessica Lo, Erica Moreira, Luiz Gustavo Martins, Omar Sanseviero, Lucas Gonzalez, Zach Gleicher, Tris Warkentin, Vahab Mirrokni, Evan Senter, Eli Collins, Joelle Barral, Zoubin Ghahramani, Raia Hadsell, Yossi Matias, D. Sculley, Slav Petrov, Noah Fiedel, Noam Shazeer, Oriol Vinyals, Jeff Dean, Demis Hassabis, Koray Kavukcuoglu, Clement Farabet, Elena Buchatskaya, Jean-Baptiste Alayrac, Rohan Anil, Dmitry, Lepikhin, Sebastian Borgeaud, Olivier Bachem, Armand Joulin, Alek Andreev, Cassidy Hardin, Robert Dadashi, and Léonard Hussenot. 2025. Gemma 3 Technical Report. arXiv:2503.19786 [cs.CL] https://arxiv.org/abs/2503.19786 [31] Shengbang Tong, Zhuang Liu, Yuexiang Zhai, Yi Ma, Yann Lecun, and Saining Xie. 2024. Eyes Wide Shut? Exploring the Visual Shortcomings of Multimodal LLMs. In Proceedings - 2024 IEEE/CVF Conference on Computer Vision and Pattern Recognition, CVPR 2024 (Proceedings of the IEEE Computer Society Conference on Computer Vision and Pattern Recognition) . IEEE Computer Society, United States, 9568–9578. doi:10.1109/CVPR52733.2024.00914 Publisher Copyright: © 2024 IEEE.; 2024 IEEE/CVF Conference on Computer Vision and Pattern Recognition, CVPR 2024 ; Conference date: 16-06-2024 Through 22-06-2024. [32] Kai Wang, Boris Babenko, and Serge Belongie. 2011. End-to-end scene text recognition. In 2011 International Conference on Computer Vision . 1457–1464. doi:10.1109/ICCV.2011.6126402 [33] Qingni Wang, Yue Fan, and Xin Eric Wang. 2025. SAFER: Risk-Constrained Sample-then-Filter in Large Language Models. ArXiv abs/2510.10193 (2025). https://api.semanticscholar.org/CorpusID:282058131 [34] Xuezhi Wang, Jason Wei, Dale Schuurmans, Quoc V Le, Ed H. Chi, Sharan Narang, Aakanksha Chowdhery, and Denny Zhou. 2023. Self-Consistency Im-proves Chain of Thought Reasoning in Language Models. In The Eleventh Inter-national Conference on Learning Representations . https://openreview.net/forum? id=1PL1NIMMrw [35] Bingbing Wen, Jihan Yao, Shangbin Feng, Chenjun Xu, Yulia Tsvetkov, Bill Howe, and Lucy Lu Wang. 2025. Know Your Limits: A Survey of Abstention in Large Language Models. Transactions of the Association for Computational Linguistics 
+
+13 (2025), 529–556. doi:10.1162/tacl_a_00754 [36] Brandon T. Willard and Rémi Louf. 2023. Efficient Guided Generation for Large Language Models. arXiv:2307.09702 [cs.CL] https://arxiv.org/abs/2307.09702 [37] Sangmin Woo, Donguk Kim, Jaehyuk Jang, Yubin Choi, and Changick Kim. 2025. Don’t Miss the Forest for the Trees: Attentional Vision Calibration for Large Vision Language Models. In Findings of the Association for Computational Linguistics: ACL 2025 , Wanxiang Che, Joyce Nabende, Ekaterina Shutova, and Mohammad Taher Pilehvar (Eds.). Association for Computational Linguistics, Vienna, Austria, 1927–1951. doi:10.18653/v1/2025.findings-acl.99 [38] Ya-Qi Yu, Minghui Liao, Jihao Wu, Yongxin Liao, Xiaoyu Zheng, and Wei Zeng. 2024. TextHawk: Exploring Efficient Fine-Grained Perception of Multimodal Large Language Models. arXiv:2404.09204 [cs.CV] https://arxiv.org/abs/2404. 09204 [39] Zihao Zhao, Eric Wallace, Shi Feng, Dan Klein, and Sameer Singh. 2021. Calibrate Before Use: Improving Few-shot Performance of Language Models. In Proceedings of the 38th International Conference on Machine Learning (Proceedings of Machine Learning Research, Vol. 139) , Marina Meila and Tong Zhang (Eds.). PMLR, 12697– 12706. https://proceedings.mlr.press/v139/zhao21c.html [40] Yichen Zhu, Minjie Zhu, Ning Liu, Zhicai Ou, Xiaofeng Mou, and Jian Tang. 2024. LLaVA-Phi: Efficient Multi-Modal Assistant with Small Language Model. arXiv:2401.02330 [cs.CV] https://arxiv.org/abs/2401.02330 [41] Geigh Zollicoffer, Minh Vu, and Manish Bhattarai. 2025. MTRE: Multi-Token Reli-ability Estimation for Hallucination Detection in VLMs. arXiv:2505.11741 [cs.AI] https://arxiv.org/abs/2505.11741
