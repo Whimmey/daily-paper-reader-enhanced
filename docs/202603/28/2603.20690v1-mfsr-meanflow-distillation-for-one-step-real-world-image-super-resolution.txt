@@ -1,0 +1,600 @@
+Title: MFSR: MeanFlow Distillation for One Step Real-World Image Super Resolution
+
+URL Source: https://arxiv.org/pdf/2603.20690v1
+
+Published Time: Tue, 24 Mar 2026 00:41:01 GMT
+
+Number of Pages: 20
+
+Markdown Content:
+# MFSR: MeanFlow Distillation for One Step Real-World Image Super Resolution 
+
+# Ruiqing Wang 1 Kai Zhang 1,* Yuanzhi Zhu 2 Hanshu Yan 3 Shilin Lu 4 Jian Yang 11Nanjing University 2LIX, ´ Ecole Polytechnique, CNRS, IPP 
+
+> 3
+
+# Salesforce AI Research 4Nanyang Technological University 
+
+# Abstract 
+
+Diffusion- and flow-based models have advanced Real-world Image Super-Resolution (Real-ISR), but their multi-step sampling makes inference slow and hard to deploy. One-step distillation alleviates the cost, yet often degrades restoration quality and removes the option to refine with more steps. We present Mean Flows for Super-Resolution (MFSR) , a new distillation framework that produces pho-torealistic results in a single step while still allowing an optional few-step path for further improvement. Our ap-proach uses MeanFlow as the learning target, enabling the student to approximate the average velocity between arbi-trary states of the Probability Flow ODE (PF-ODE) and effectively capture the teacher’s dynamics without explicit rollouts. To better leverage pretrained generative priors, we additionally improve original MeanFlow’s Classifier-Free Guidance (CFG) formulation with teacher CFG distil-lation strategy, which enhances restoration capability and preserves fine details. Experiments on both synthetic and real-world benchmarks demonstrate that MFSR achieves ef-ficient, flexible, and high-quality super-resolution, deliver-ing results on par with or even better than multi-step teach-ers while requiring much lower computational cost. 
+
+# 1. Introduction 
+
+Image Super-Resolution (ISR) [8, 25, 27] aims to recon-struct High-Resolution (HR) image from Low-Resolution (LR) inputs. Traditional ISR methods typically downsam-ple HR images to form training pairs. However, such approaches fall short when dealing with real-world im-ages degraded by complex and unknown processes. Re-cent research has shifted toward Real-World ISR (Real-ISR) [52, 68], a more challenging yet practically valuable setting. Early progress in Real-ISR was largely driven by Gener-ative Adversarial Networks (GANs) [15, 38], where adver-sarial training encouraged sharper textures and perceptual 
+
+> *Corresponding author (kaizhang@nju.edu.cn).
+
+realism. Despite their success, GAN-based methods often suffer from unstable training and tend to introduce artifacts. This has motivated exploration of more powerful generative paradigms. Recently, diffusion- and flow-based generative models [3, 19, 31, 33, 34, 43, 47] have shown superior image generation and editing capabilities compared to earlier ap-proaches such as GANs, Normalizing Flows (NFs) [7] and Variational Autoencoders (VAEs) [26]. Numerous re-searchers have applied diffusion and flow-based models to Real-ISR [44, 66]. A notable direction further adapts large-scale Text-to-Image (T2I) diffusion models [11, 42]. These methods [10, 29, 57, 65] have achieved superior perfor-mance. However, due to the iterative denoising mechanism of diffusion and flow-based models, the inference process is computationally expensive. Thus, reducing the number of inference steps while maintaining sample quality has be-come a key challenge. To address this, various one-step distillation methods have been proposed [9, 53, 56, 64]. Broadly, these methods either (i) match the output distribution between student and teacher models [9, 56], or (ii) constrain the student’s denois-ing trajectory to remain consistent with that of the teacher [64]. Although effective to some extent, existing methods often fail to recover fine details and completely lose the flex-ibility of few-step sampling. More recently, MeanFlow [14] has emerged as an effec-tive generative modeling paradigm. Unlike traditional flow models, which regress instantaneous velocity at each time step, MeanFlow instead targets the average velocity. It es-tablishes an analytic relation, termed the MeanFlow Identity that links average and instantaneous velocities via a time derivative. This formulation provides a principled training objective, avoiding heuristic consistency constraints and of-fering clear physical interpretation. At inference, Mean-Flow supports flexible sampling strategies, allowing the model to map noisy state to any future point along the PF-ODE in a single step. Such flexibility is largely absent in existing one-step image restoration methods, making Mean-Flow a natural foundation for developing a more versatile      
+
+> arXiv:2603.20690v1 [cs.CV] 21 Mar 2026 LR Input MFSR-1s LR Input MFSR-2s LR Input MFSR-3s
+> Figure 1. We present MFSR, a high-capacity one- or few-step super-resolution model that delivers photorealistic restoration of real-world low-resolution images. The number of diffusion inference steps is indicated by ‘s’.
+
+and tunable Real-ISR framework. Although MeanFlow was originally proposed as a gener-ative model trained from scratch, we argue that a two-stage strategy—first pre-training a teacher and then distilling into a student—is more effective and efficient. Directly learn-ing both instantaneous and average velocities often leads to slow convergence, as the network struggles to learn short-cuts based on instantaneous velocity which it has not yet accurately captured. By contrast, distillation from a pre-trained teacher instead leverages already well-learned, high-quality instantaneous velocity field, thereby enabling faster convergence. This perspective is consistent with recent studies that emphasize the advantages of two-stage distil-lation [13, 35, 41]. In this paper, we therefore treat MeanFlow as a distilla-tion strategy to accelerate a powerful multi-step model into a one-step student network. To enhance performance, we propose a novel Classifier-Free Guidance (CFG)-based dis-tillation strategy [18]: the teacher’s CFG-enhanced predic-tion is used as the instantaneous velocity in the MeanFlow distillation loss. This modification yields stronger guidance and better performance than the original MeanFlow CFG formulation. Unlike previous one-step SR approaches, our method, 
+
+Mean Flows for Super-Resolution (MFSR) , does not rely on complex loss combinations to ensure restoration quality. It employs only the MeanFlow distillation loss, computed entirely in the latent space. Consequently, gradients do not back-propagate through the encoder or decoder, unlike in [9, 56, 67], which significantly improves training efficiency. MFSR not only delivers high-quality one-step restoration, but also preserves the flexibility of few-step sampling, en-abling a controllable trade-off between inference efficiency and restoration quality. As shown in the left panel of Fig. 1, MFSR is capable of producing visually pleasing restorations with both high fidelity and perceptual realism in a single forward pass. Ex-periments on synthetic and real-world benchmarks demon-strate that our approach achieves superior restoration qual-ity while being significantly faster than the teacher model. Our contributions are summarized as follows: • We propose MFSR, the first framework that adapts Mean-Flow to Real-ISR, enabling both one-step and few-step image restoration. • We introduce a CFG-based MeanFlow distillation strat-egy that leverages the teacher’s prior, yielding stronger supervision and better results than the original MeanFlow CFG formulation. • Extensive experiments on synthetic and real-world bench-marks demonstrate that MFSR delivers strong perceptual quality, robust generalization, and efficient inference. 
+
+# 2. Related Works 
+
+2.1. Few-step Diffusion/Flow Models 
+
+Despite their strong generative power, diffusion models suffer from high inference cost. This motivates research on reducing sampling steps. For acceleration, existing distillation methods can be broadly categorized into two paradigms: distribution-based [39, 54, 59, 62, 63, 72, 73] and trajectory-based [12, 24, 35, 36, 45, 48]. Distribution-based approaches (e.g., score distribution matching) [54, 63]) aim to align the output distributions of student and teacher models. However, they often suffer from high com-putational cost, as they rely on a fake score model and al-ternate optimization between the student and the fake score network. Trajectory-based methods train the student with regression objectives derived from the PF-ODE. A repre-sentative method, Consistency Model [35, 48], employs a loss function that constrains student predictions on two con-secutive points along the same PF-ODE, ensuring coherent output across different timesteps. MeanFlow also belongs to the trajectory-based category, and we defer a detailed dis-cussion to §3.2. 
+
+2.2. Diffusion/flow-based Real-ISR 
+
+Multi-step Diffusion-based Real-ISR. Diffusion models have achieved remarkable success in the field of image super-resolution. Recent advances leverage powerful pre-trained Text-to-Image (T2I) models such as Stable Dif-fusion (SD) [43] to address the challenges of Real-ISR [10, 51, 57, 61, 65]. These methods typically guide or con-trol the diffusion process to generate images that preserve the semantic content of degraded inputs while removing degradations. Representative works include SUPIR [65], which demonstrates strong generative ability by incorporat-ing negative prompts and scaling up pre-training with larger models and datasets. Nevertheless, all of these methods re-main limited by the multi-step denoising process inherent to diffusion models, which typically requires 20-50 denoising steps at inference. Besides, the employment of CFG needs 2 Number of Function Evaluations (NFEs) at each step, dou-bling the inference time. 
+
+One-step Diffusion-based Real-ISR. To reduce inference cost, several works have explored distillation techniques for Real-ISR. SinSR [53] reformulates the inference pro-cess of ResShift [66] as an ODE and performs consistency-preserving distillation. CTMSR [64] applies Consistency Training (CT) [48] and Distribution Trajectory Matching (DTM) to map perturbed LR inputs to HR in a single step. Yet these approaches remain constrained by the lack of large-scale training data. Another line of research focuses on score distillation. OSEDiff [56] introduces the Varia-tional Score Distillation (VSD) [54] loss to Real-ISR tasks, achieving decent one-step performance by leveraging prior knowledge from pre-trained models. TSD-SR [9] further proposes Target Score Distillation (TSD), effectively ad-dressing the issue of unreliable gradient direction caused by VSD. However, they both need to load an auxiliary score model and alternately train the student and score network, which increases the training overhead. 
+
+# 3. Preliminary 
+
+3.1. Rectified Flow 
+
+Rectified Flow [3, 31, 33, 34] is an ODE-based generative modeling framework. Given an initial distribution π0 and a target data distribution π1, it learns a neural velocity field v
+
+by minimizing: 
+
+LRF =Ex0∼π0,x 1∼π1
+
+Z 10
+
+v(xt, t ) − (x1 − x0) 2dt
+
+
+
+,
+
+with xt = (1 − t)x0 + tx 1,
+
+(1) where xt is the linear interpolation of x0 and x1. After training, sample generation reduces to solving the follow-ing neural ODE: 
+
+dxt
+
+dt = v(xt, t ), t ∈ [0 , 1] , (2) which can be numerically approximated using standard ODE solvers. For instance, applying the first-order Euler method yields: 
+
+xt+ 1
+
+> N
+
+= xt + 1 
+
+> N
+
+v(xt, t ), t ∈ { 0, 1, . . . , N − 1}/N. (3) Here, the trajectory is integrated in N steps with a step size of 1/N . A larger N provides higher accuracy at the expense of slower sampling, while a smaller N accelerates genera-tion but reduces sample quality. 
+
+3.2. MeanFlow 
+
+Unlike standard Rectified Flow, which learns an instanta-neous velocity field, MeanFlow [14] regresses the average velocity field over an interval. Specifically, given a time in-terval [t, s ], the model will take a current state xt as input and defines a vector pointing to the next state xs (s > t )via: 
+
+xs = xt + ( s − t)u(xt, t, s ), (4) where u is the average velocity, defined by u(xt, t, s ) = 
+
+> 1
+> s−t
+
+R st v(xτ , τ )d τ . By differentiating both sides on Eq. (4) with respect to t and re-arranging terms, one can obtain the 
+
+MeanFlow Identity , which describes the relation between average velocity u(xt, t, s ) and instantaneous velocity dxt 
+
+> dt
+
+:     
+
+> u(xt, t, s ) = dxt
+> dt+ ( s−t) du(xt, t, s )dt.(5)
+
+The derivative du(xt,t,s )dt can be expanded by its partial com-ponents, du(xt,t,s )dt = ∂u (xt,t,s ) 
+
+> ∂x t
+> dxt
+> dt
+
++ ∂u (xt,t,s ) 
+
+> ∂t
+
+, which cor-responds to a Jacobian-Vector Product (JVP). Then we min-imize this objective:               
+
+> LMF =Ex0,x 1,t,s u(xt, t, s )−sg( utgt )22,
+> with utgt = dxt
+> dt+ ( s−t)
+> h∂u (xt, t, s )
+> ∂x t
+> dxt
+> dt+∂u (xt, t, s )
+> ∂t
+> i
+> ,
+> (6)
+
+where utgt serves as the effective regression target , sg( ·) de-notes stop-gradient operation, and the JVP term can be cal-culated approximately at the same cost of one forward op-eration. ϵ                     
+
+> HR LR
+> Encoder
+> Encoder
+> Teacher model v
+> Student model u
+> vneg inst (zt, t )
+> u(zt, t, s )
+> LMFD
+> Teacher trajectory Student trajectory
+> ∆t→0
+> (s−t)u(zt, t, s ) = ( s−t−∆t)u(zt+∆ t, t + ∆ t, s ) + ∆ tv (zt, t )
+> u(zt, t, s ) = ( s−t)du(zt,t,s )dt+v(zt, t )
+> t
+> t
+> s
+> s
+> t+ ∆ tText prompt c
+> t
+> (Augmented sfor student)
+> vneg inst
+> vneg inst
+
+Figure 2. Overview of the MeanFlow Distillation (MFD) pipeline. Left: Training pipeline where the student model is initialized from the teacher. Student model needs two time steps as input. Right: Derivation of the MFD loss. The dotted orange line denotes the teacher’s and student’s PF-ODE, the blue line shows the teacher’s predicted instantaneous velocity, the solid orange line shows the student’s predicted average velocity and the purple line indicates the student’s predicted average velocity over a shorter interval. Taking the limit ∆t → 0
+
+yields the MFD loss LMFD .
+
+During sampling, the numerical integration of instanta-neous velocity R st v(xτ , τ )d τ in Rectified Flow can be re-placed by (s − t)u(xt, t, s ). In the case of 1-step sampling, one can simply have x1 = x0 + u(x0, 0, 1) , where x0 is sampled from an initial distribution π0.
+
+3.3. DiT4SR 
+
+DiT4SR [10] builds on Stable Diffusion3.5 (SD3.5) [11], a large-scale Rectified Flow model that employs Diffusion Transformers (DiTs) [40] as backbone. To adapt SD3.5 for Real-ISR, DiT4SR integrates a LR stream into the DiT blocks, enabling high perceptual realism in the restored im-ages. During inference, DiT4SR starts from Gaussian noise and performs iterative denoising conditioned on the latent LR image and a text prompt extracted from it. Formally, the DiT4SR sampling process is described by the PF-ODE: 
+
+dzt
+
+dt = v(zt, t | zLR , c ), (7) 
+
+where zt = tz HR + (1 − t)ϵ, zHR is the latent HR image, ϵ
+
+is Gaussian noise, and c denotes the text prompt. DiT4SR typically requires about 40 denoising steps to produce high-quality reconstructions, and reducing the number of steps leads to a significant drop in performance. 
+
+# 4. Method 
+
+4.1. Framework Overview 
+
+Our goal is to distill a powerful but slow multi-step teacher into a one/few-step MeanFlow student for Real-ISR. We adopt DiT4SR [10] as the teacher model. An overview of the distillation pipeline is shown in Fig. 2. The framework comprises four components: a visual encoder E, a prompt extractor, a teacher model v, and a student model u, with only u being trainable. Given a high-low resolution image pair (xHR , x LR ), we first sample time steps t, s and random noise ϵ. A text prompt c is extracted from xHR , and both 
+
+xHR and xLR are encoded into latent representations zHR 
+
+and zLR . We then interpolate zHR with ϵ according to t to obtain zt, with boundary states z0 = ϵ and z1 = zHR . Con-ditioned on zLR and prompt c, the teacher receives (zt, t )
+
+while the student receives (zt, t, s ) to compute the Mean-Flow Distillation loss LMFD . The loss is calculated in latent space, therefore no decoding is needed during training. In the following sections, we describe the detailed designs of MFSR and its training loss. 
+
+4.2. Model Initialization and Timestep Augmenta-tion 
+
+While MeanFlow can be trained from scratch, initializing from a pre-trained DiT4SR teacher is far more efficient and practical. Since the teacher produces high-quality restora-tions, it offers a reliable trajectory from which the student can learn effective shortcuts. The teacher predicts the instantaneous velocity dzt 
+
+> dt
+
+at a single time step, requiring only one time embedding. In contrast, our student is designed to predict the average ve-locity over an interval [t, s ], which requires the start and end timestep of the interval to avoid ambiguity. To accommodate this, we augment the original DiT4SR architecture with an additional time-embedding branch so that the student can also take the end time s as input. Specifically, we duplicate the network structure of the orig-inal t-time embedder from DiT4SR and use this copy as a separate s-time embedder. The resulting s-embedding is added to the t-embedding before being fed into the net-work. The teacher v(zt, t ) is thus adapted into a student model u(zt, t, s ). Then, extending the unconditional Mean-Flow Identity (Eq. (5)) to the LR- and text-conditioned case yields: 
+
+u(zt, t, s | zLR , c ) = dzt
+
+dt
+
++ ( s − t)
+
+ ∂u (zt, t, s | zLR , c )
+
+∂z t
+
+dzt
+
+dt + ∂u (zt, t, s | zLR , c )
+
+∂t 
+
+
+
+.
+
+(8) 
+
+4.3. Improved Instantaneous Velocity with Teacher CFG 
+
+A crucial component in MeanFlow distillation is the choice of the instantaneous velocity dzt 
+
+> dt
+
+. A na¨ ıve choice is to use the Ground-Truth (GT) velocity z1 − z0. Under this cir-cumstance, the teacher model is just used as initialization for student model. However, we empirically observe that this leads to inferior restoration results. Notably, the teacher achieves strong visual realism by employing CFG, suggest-ing that CFG plays a crucial role in semantic alignment and perceptual quality. The original MeanFlow paper attempts to enhance the velocity field using the student model itself under CFG. In the Real-ISR setting, it can be formulated as: 
+
+vorig inst = w(z1 − z0) + κ u (zt, t, t | zLR , c )+ (1 − w − κ) u(zt, t, t | zLR , c = ∅), (9) 
+
+where w and κ are scalar weighting factors, and the effec-tive guidance scale is w′ = w 
+
+> 1−κ
+
+. However, since the student is still being optimized, this self-referential target hampers convergence. In our setting, however, a pre-trained teacher model is available. This provides a better alternative: instead of rely-ing on the student’s self-improvement, we directly use the teacher’s CFG-based prediction to construct the instanta-neous velocity. Concretely, we define: 
+
+vnull inst = v(zt, t | zLR , c )+ w v(zt, t | zLR , c )−v(zt, t | zLR , c = ∅).
+
+(10) 
+
+This formulation incorporates the semantic prior from the text prompt through the teacher’s guidance, while maintain-ing stability during training. Furthermore, we extend this idea by incorporating neg-ative prompts into the teacher’s CFG. Prior works [65, 67] have shown that negative prompts 1 can effectively suppress undesired artifacts and improve the perceptual quality of 
+
+> 1“oil painting, cartoon, blur, dirty, messy, low quality, deformation, low resolution, oversmooth.”
+
+generated images. Inspired by this, we replace the null con-dition in Eq. (10) with a negative prompt condition, leading to: 
+
+vneg inst = v(zt, t | zLR , c )+ w v(zt, t | zLR , c )−v(zt, t | zLR , c neg ).
+
+(11) 
+
+Compared with Eq. (10), this formulation provides stronger supervision by explicitly discouraging unrealistic or low-quality attributes, thereby encouraging the student model to generate sharper details and richer textures. Finally, the MeanFlow Distillation loss integrates teacher-guided instantaneous velocity: 
+
+LMFD (θ) = EzHR ,z LR ,ϵ,t,s u(zt, t, s | zLR , c ) − sg (utgt ) 2,
+
+with utgt =vneg inst + ( s − t)
+
+h ∂u θ (zt,t,s |zLR ,c ) 
+
+> ∂z t
+
+vneg inst + ∂u θ (zt,t,s |zLR ,c )
+
+> ∂t
+
+i
+
+.
+
+(12) 
+
+During inference, the student model takes the LR image and the extracted text prompt as conditioning inputs. We perform N -step sampling with uniformly spaced timesteps 
+
+0 = τ1 < τ 2 < · · · < τ N = 1 , starting from initial noise z0.The update at each step is given by zτn+1 = zτn + ( τn+1 −
+
+τn)u zτn , τ n, τ n+1 | zLR , c .
+
+4.4. Design Decisions 
+
+Stabilizing Time Embedding. In the case of distilling DiT4SR, naively computing the Jacobian-Vector Product (JVP) term du(zt,t,s )dt often leads to training instabilities. As shown in sCM [35] and SANA-Sprint [6], the time-derivative can be decomposed as ∂tu = ∂c noise (t) 
+
+> ∂t
+
+· ∂emb (cnoise ) 
+
+> ∂c noise
+
+· 
+
+> ∂u ∂emb (cnoise )
+
+, where emb (·) denotes the time embeddings and 
+
+cnoise (·) is time transformation. In prior Rectified Flow models such as SD3.5, the choice cnoise (t) = 1000 t ampli-fies the time derivative ∂tu by a factor of 1000, resulting in large fluctuations during training. To mitigate this issue, we adopt the remedy proposed in [6, 35] and set cnoise (t) = t in the student model. This modification avoids excessive am-plification of gradient norms and yields more stable training dynamics. Note that the teacher model does not need this modification, as the time-derivative computation does not propagate through its architecture. 
+
+Sampling Time Steps. We draw two time steps (t, s )
+
+from the joint distribution p(t, s ) = p(t)p(s | t), where 
+
+p(t) = U[0 , 1] and p(s | t) = U[t, 1] . Following [14], we enforce a certain portion of t = s. Specifically, when t =
+
+s, the model learns the instantaneous velocity, while when 
+
+t̸ = s, it learns the shortcut between time steps (average velocity). 
+
+Loss Metrics. Instead of the squared L2 loss or adaptive L2 loss used in [14], we use Pseudo-Huber loss as suggested in [46] to reduce loss variance during training. Table 1. Quantitative comparison with the state-of-the-art one-step methods across both synthetic and real-world benchmarks. The number of diffusion inference steps is indicated by ‘s’. The best and second best results of each metric are highlighted in red and blue, respectively. S3Diff uses CFG during inference, which actually has 2 number of function evaluations (NFEs).                                                                                                                                                                                                       
+
+> Datasets Metric OSEDiff-1s AddSR-1s SinSR-1s CTMSR-1s S3Diff-1s TSDSR-1s MFSR-1s MFSR-2s DRealSR PSNR ↑27.92 27.77 28.27 28.66 27.53 26.19 24.15 24.29
+> LPIPS ↓0.2966 0.3196 0.3730 0.3232 0.3109 0.3116 0.3660 0.3689
+> FID ↓135.39 150.18 182.28 162.29 118.49 130.70 143.12 139.56
+> NIQE ↓6.4381 6.9321 7.0246 6.1426 6.2142 5.7643 6.0241 6.2711
+> MUSIQ ↑64.67 60.85 55.55 59.84 63.94 66.11 64.47 64.45
+> MANIQA ↑0.5898 0.5490 0.4907 0.4865 0.6124 0.5820 0.6148 0.6354 CLIPIQA ↑0.6959 0.6188 0.6391 0.6505 0.7132 0.7303 0.7171 0.7023
+> RealSR PSNR ↑25.15 24.79 26.23 25.98 25.18 23.40 21.51 21.75
+> LPIPS ↓0.2920 0.3091 0.3191 0.2901 0.2721 0.2805 0.3158 0.2999
+> FID ↓123.57 132.05 136.65 135.69 105.12 114.56 110.14 107.87 NIQE ↓5.6345 5.5440 6.2773 5.5046 5.2708 5.0924 5.2421 5.5980
+> MUSIQ ↑69.09 66.18 60.84 64.49 67.82 70.76 67.95 67.45
+> MANIQA ↑0.6335 0.6098 0.5418 0.5276 0.6424 0.6312 0.6389 0.6560 CLIPIQA ↑0.6685 0.5722 0.6224 0.6397 0.6734 0.7198 0.6968 0.6705
+> DIV2K-Val PSNR ↑23.86 22.39 24.50 24.87 23.68 22.17 21.25 21.49
+> LPIPS ↓0.2896 0.3728 0.3164 0.3011 0.2545 0.2679 0.3143 0.2965
+> FID ↓100.53 133.78 131.96 126.49 84.92 103.49 111.45 106.09
+> NIQE ↓4.9741 5.9929 6.1721 5.3036 5.0358 4.6621 4.5831 4.8895
+> MUSIQ ↑68.53 63.39 64.26 66.59 68.40 71.19 69.30 68.34
+> MANIQA ↑0.6111 0.5657 0.5442 0.5146 0.6252 0.6010 0.6256 0.6364 CLIPIQA ↑0.6692 0.5734 0.6687 0.6602 0.7012 0.7221 0.7199 0.6906
+
+# 5. Experiments 
+
+5.1. Experimental Settings 
+
+Training Datasets. We construct the training set using a combination of images from DIV2K [1], DIV8K [16], Flickr2K [49], LSDIR [28], NKUSR8K [10], and the first 10K face images from FFHQ [22]. To generate paired data, we apply the Real-ESRGAN [52] degradation pipeline. The resolution of resulting LR and HR images are set to 
+
+128 × 128 and 512 × 512 , respectively. 
+
+Test Datasets. We evaluate performance on both syn-thetic and real-world datasets. The synthetic set con-tains 100 randomly cropped 512 × 512 images from the DIV2K validation set and degrade using the Real-ESRGAN pipeline. For real-world evaluation, we employ RealSR [5], DRealSR [55], RealLR200 [57], and RealLQ250 [2] datasets. All experiments are conducted with the scaling factor of ×4. Center-cropping is applied to RealSR and DRealSR, and the resolution of their LR images is set to 
+
+128 × 128 . Both RealLR200 and RealLQ250 lack corre-sponding GT images, and no cropping is performed on these two datasets. 
+
+Evaluation Metrics. To evaluate our method, we adopt both reference-based and no-reference metrics. Reconstruc-tion fidelity is measured using PSNR, while perceptual sim-ilarity is assessed with LPIPS [70]. In addition, FID [17] is used to quantify the distributional discrepancy between restored and GT images. For no-reference Image Qual-ity Assessment (IQA), we include NIQE [69], CLIPIQA [50], MUSIQ [23], and MANIQA [60]; for datasets lack-ing ground truth, we additionally employ LIQE [71]. It is worth noting that quantitative metrics only partially capture perceptual quality, as prior studies have shown that these metrics often diverge from human judgments [21, 30, 65]. Therefore, we report these metrics just for reference and mainly focus on user study. 
+
+Compared Methods. We compare our method with sev-eral one-step diffusion-based methods SinSR [53], CTMSR [64], OSEDiff [56], AddSR [58], S3Diff [67], TSDSR [9]. Comparison with multi-step diffusion-based methods can be found in the Supplementary Material .
+
+5.2. Comparison with Existing Methods 
+
+Qualitative Comparisons. Fig. 3 presents visual com-parisons with other one-step baselines. In the first row, our method demonstrates a clear advantage in recovering fine structural details of the bicycle. In the second row, it successfully generates rich textures (e.g., frost and snow covering the flower), benefiting from the strong generative prior initialized from the teacher model. While OSED-iff produces artifact-free outputs, its results are noticeably over-smoothed. In the last row, our method effectively re-moves undesired degradation patterns, whereas competing approaches still suffer from blurring and color distortions. Zoomed LR SinSR AddSR CTMSR LR OSEDiff S3Diff TSDSR MFSR Zoomed LR SinSR AddSR CTMSR LR OSEDiff S3Diff TSDSR MFSR Zoomed LR SinSR AddSR CTMSR LR OSEDiff S3Diff TSDSR MFSR Figure 3. Qualitative comparison with state-of-the-art methods. All methods perform 1-step inference. Our MFSR is capable of generating vivid details without artifacts or remaining degradations. 
+
+These results highlight the superiority of our MeanFlow dis-tillation framework in achieving both structural fidelity and perceptual realism. 
+
+Quantitative Comparisons. Tables 1 and 2 report the quantitative results. The relatively lower PSNR/SSIM scores can be attributed to the perception-distortion (realism-fidelity) trade-off [4, 74]. Notably, our method achieves leading MANIQA score with one-step sampling, and further improves with two-steps. It also shows com-petitive performance on FID, NIQE, MUSIQ, and CLIP-IQA, though not always the best. Since quantitative metrics are often misaligned with human perception in generative restoration, we present them mainly for reference and place greater emphasis on the user study, which more faithfully reflects perceptual quality. 
+
+5.3. User Study 
+
+To further assess perceptual quality, we conduct a user study with 75 volunteers. We randomly sampled 25 LR images from RealLQ250, and compared 1-step MFSR against four representative methods: SinSR, CTMSR, OSEDiff, and TS-DSR. For each image, participants were asked to select the restoration that best balances realism of textures and details and structural fidelity to the LR input. The percentage of votes (preference rate) obtained by each method is reported in Fig. 4. MFSR received the highest preference rate of 38.9%, significantly outperforming the second-best method. These results confirm that MFSR delivers the most percep-tually preferred results. 
+
+5.4. Effect of Increasing Inference Steps 
+
+Our one-step results already surpass existing one-step base-lines. Furthermore, unlike prior methods, our framework supports few-step inference. In Fig. 7, we evaluate the ef-fect of different sampling steps on RealLQ250 and report MANIQA. S3Diff and TSDSR perform 1-step sampling. Increasing the step count from one to two brings a clear improvement, demonstrating the benefit of optional refine-ment. Extending the steps to three, four or five yields mod-erate improvements, while increasing to eight steps results in only marginal gains. These results show that most per-ceptual benefits are captured within the first few steps. To better illustrate the effectiveness of our method, we present qualitative comparisons between MFSR (with 1/2/4 Table 2. Quantitative comparison with the state-of-the-art one-step methods on real-world benchmarks lacking ground-truth image. The number of diffusion inference steps is indi-cated by ’s’.                                                                                  
+
+> Datasets Method NIQE ↓MUSIQ ↑MANIQA ↑CLIPIQA ↑LIQE ↑
+> RealLQ250
+> OSEDiff-1s 3.9656 69.55 0.5782 0.6725 3.9039 SinSR-1s 5.8204 63.73 0.5161 0.6990 3.2578 CTMSR-1s 4.5835 68.00 0.5078 0.6706 3.3373 S3Diff-1s 4.0360 68.92 0.6172 0.7025 4.0643 TSDSR-1s 3.4868 72.09 0.5829 0.7221 4.0834 MFSR-1s 3.5309 70.65 0.6040 0.6992 4.2136
+> MFSR-2s 3.5560 70.58 0.6204 0.7047 4.1687 RealLR200
+> OSEDiff-1s 4.0199 69.60 0.6020 0.6752 4.0560 SinSR-1s 5.5887 63.59 0.5421 0.6955 3.4758 CTMSR-1s 4.2815 67.60 0.5354 0.6738 3.6061 S3Diff-1s 4.0360 68.92 0.6172 0.7025 4.0643 TSDSR-1s 3.6400 71.02 0.6093 0.7212 4.1035 MFSR-1s 3.6690 69.50 0.6190 0.6893 4.1813
+> MFSR-2s 3.7721 69.38 0.6344 0.6876 4.1564
+
+Figure 4. Results of user study, with numbers showing vote percentages for each method. 
+
+LR DiTSR-1s DiTSR-40s MFSR-1s MFSR-2s MFSR-4s 
+
+Figure 5. Qualitative comparison across different sampling steps and our teacher model, DiT4SR. The number of diffusion inference steps is indicated by ’s’. 
+
+steps) and the teacher model in Fig. 5. Performing only a single inference step with DiT4SR results in pronounced ar-tifacts and distortions. The first three rows compare super-resolution results across different sampling steps of our stu-dent model (1/2/4 steps) against the teacher model. Our one-step restoration occasionally introduces reconstruction errors; for example, in the first row, the reflection in the wa-ter is incorrectly reconstructed as buildings. In contrast, our two-step and four-step variants effectively correct this is-sue, producing realistic water ripples and reflection. In the second row, our one-step restoration fails to remove back-ground degradations around the cat’s ear, whereas two-step and four-step restoration successfully remove these artifacts and produce sharper, more realistic fur details compared to the teacher. 
+
+5.5. Ablation Study 
+
+Effectiveness of CFG strategy. We evaluate our proposed CFG strategy for MeanFlow distillation by comparing dif-ferent instantaneous velocity formulations on RealLQ250, including the GT field ( z1 − z0), the original MeanFlow CFG strategy, and our CFG variants with null and negative prompts. We also conduct an ablation study on the CFG scale w. The original MeanFlow CFG has an effective guid-ance scale of w′ = w 
+
+> 1−κ
+
+= 6 , with w = 1 and κ = 0 .83 in Eq. (9). As shown in Tab. 3, our strategy achieves the best quality scores (MUSIQ, MANIQA, CLIPIQA), demonstrat-ing its effectiveness over baselines. Among different CFG scales, w = 6 with negative prompt yields the best perfor-mance, and is therefore adopted as our default configura-tion. It is worth noting that our null-prompt variant achieves a much lower LPIPS score than the negative-prompt variant, LR z1 − z0 Original MeanFlow CFG Ours                                                                                    
+
+> Figure 6. Visual comparison from ablation study of our CFG strategy. Table 3. Ablation studies for CFG strategy and its scale w.
+> Instantaneous Velocity wPSNR ↑LPIPS ↓DISTS ↓FID ↓NIQE ↓MUSIQ ↑MANIQA ↑CLIPIQA ↑
+> z1−z0-24.21 0.3210 0.2276 121.78 5.5784 65.32 0.6035 0.6474 Original MeanFlow CFG 621.20 0.3478 0.2453 120.81 5.8691 67.33 0.6091 0.6951
+> Ours null 625.38 0.2931 0.2151 109.75 5.7146 65.27 0.6184 0.6551 Ours neg 124.49 0.2983 0.2237 109.23 5.2234 66.84 0.6273 0.6747 Ours neg 422.94 0.3021 0.2255 110.83 5.2317 67.02 0.6317 0.6773 Ours neg 621.51 0.3158 0.2295 110.14 5.2421 67.95 0.6389 0.6968
+> Ours neg 820.92 0.3151 0.2300 110.01 5.2253 67.69 0.6364 0.6879
+> Figure 7. Effect of sampling steps.
+
+but falls short in realism and fine details. This is because, in generative SR, LPIPS also reflects fidelity to the input; models that produce richer textures can deviate from the pixelwise structure of the LR input, which in turn leads to higher LPIPS despite yielding visually superior restoration quality. This observation is consistent with prior work [10]. At the same time, decreasing the CFG scale consistently reduces LPIPS and DISTS, indicating that users seeking higher fidelity can tune the guidance strength accordingly. In Fig. 6, we provide a visual comparison from the ablation study of our proposed CFG strategy. All variants perform 1-step sampling. Our method delivers the best restoration quality, free of artifacts and with the most detailed textures. 
+
+# 6. Conclusion 
+
+In this paper, we propose Mean Flows for Super-Resolution, an effective distillation method that enables high-realism restoration results in only one step while retaining the op-tion of few-step sampling to trade compute for sample qual-ity. We adapt MeanFlow to distill a multi-step Real-ISR teacher into student model. To improve SR performance, we make modifications to original MeanFlow CFG strategy to achieve stronger guidance and better performance. Ex-tensive experimental results demonstrate the effectiveness of our method, highlighting its ability to restore fine details with remarkable realism. References 
+
+[1] Eirikur Agustsson and Radu Timofte. Ntire 2017 challenge on single image super-resolution: Dataset and study. In Pro-ceedings of the IEEE conference on computer vision and pat-tern recognition workshops , pages 126–135, 2017. 6 [2] Yuang Ai, Xiaoqiang Zhou, Huaibo Huang, Xiaotian Han, Zhengyu Chen, Quanzeng You, and Hongxia Yang. Dream-clear: High-capacity real-world image restoration with privacy-safe dataset curation. In NeurIPS , 2025. 6 [3] Michael S Albergo, Nicholas M Boffi, and Eric Vanden-Eijnden. Stochastic interpolants: A unifying framework for flows and diffusions. arXiv preprint arXiv:2303.08797 ,2023. 1, 3 [4] Yochai Blau and Tomer Michaeli. The perception-distortion tradeoff. In Proceedings of the IEEE conference on computer vision and pattern recognition , pages 6228–6237, 2018. 7 [5] Jianrui Cai, Hui Zeng, Hongwei Yong, Zisheng Cao, and Lei Zhang. Toward real-world single image super-resolution: A new benchmark and a new model. In Proceedings of the IEEE/CVF international conference on computer vision ,pages 3086–3095, 2019. 6 [6] Junsong Chen, Shuchen Xue, Yuyang Zhao, Jincheng Yu, Sayak Paul, Junyu Chen, Han Cai, Enze Xie, and Song Han. Sana-sprint: One-step diffusion with continuous-time con-sistency distillation. arXiv preprint arXiv:2503.09641 , 2025. 5[7] Laurent Dinh, Jascha Sohl-Dickstein, and Samy Ben-gio. Density estimation using real nvp. arXiv preprint arXiv:1605.08803 , 2016. 1 [8] Chao Dong, Chen Change Loy, Kaiming He, and Xiaoou Tang. Learning a deep convolutional network for image super-resolution. In Computer Vision–ECCV 2014: 13th European Conference, Zurich, Switzerland, September 6-12, 2014, Proceedings, Part IV 13 , pages 184–199. Springer, 2014. 1 [9] Linwei Dong, Qingnan Fan, Yihong Guo, Zhonghao Wang, Qi Zhang, Jinwei Chen, Yawei Luo, and Changqing Zou. Tsd-sr: One-step diffusion with target score distillation for real-world image super-resolution. In CVPR , 2025. 1, 2, 3, 6[10] Zheng-Peng Duan, Jiawei Zhang, Xin Jin, Ziheng Zhang, Zheng Xiong, Dongqing Zou, Jimmy S Ren, Chun-Le Guo, and Chongyi Li. Dit4sr: Taming diffusion trans-former for real-world image super-resolution. arXiv preprint arXiv:2503.23580 , 2025. 1, 3, 4, 6, 9 [11] Patrick Esser, Sumith Kulal, Andreas Blattmann, Rahim Entezari, Jonas M¨ uller, Harry Saini, Yam Levi, Dominik Lorenz, Axel Sauer, Frederic Boesel, et al. Scaling recti-fied flow transformers for high-resolution image synthesis. In Forty-first International Conference on Machine Learn-ing , 2024. 1, 4 [12] Kevin Frans, Danijar Hafner, Sergey Levine, and Pieter Abbeel. One step diffusion via shortcut models. arXiv preprint arXiv:2410.12557 , 2024. 2 [13] Zhengyang Geng, Ashwini Pokle, William Luo, Justin Lin, and J Zico Kolter. Consistency models made easy. arXiv preprint arXiv:2406.14548 , 2024. 2 [14] Zhengyang Geng, Mingyang Deng, Xingjian Bai, J Zico Kolter, and Kaiming He. Mean flows for one-step genera-tive modeling. arXiv preprint arXiv:2505.13447 , 2025. 1, 3, 5, 2 [15] Ian Goodfellow, Jean Pouget-Abadie, Mehdi Mirza, Bing Xu, David Warde-Farley, Sherjil Ozair, Aaron Courville, and Yoshua Bengio. Generative adversarial nets. Advances in neural information processing systems , 27, 2014. 1 [16] Shuhang Gu, Andreas Lugmayr, Martin Danelljan, Manuel Fritsche, Julien Lamour, and Radu Timofte. Div8k: Diverse 8k resolution image dataset. 2019. 6 [17] Martin Heusel, Hubert Ramsauer, Thomas Unterthiner, Bernhard Nessler, and Sepp Hochreiter. Gans trained by a two time-scale update rule converge to a local nash equilib-rium. Advances in neural information processing systems ,30, 2017. 6 [18] Jonathan Ho and Tim Salimans. Classifier-free diffusion guidance. arXiv preprint arXiv:2207.12598 , 2022. 2 [19] Jonathan Ho, Ajay Jain, and Pieter Abbeel. Denoising diffu-sion probabilistic models. Advances in Neural Information Processing Systems , 33:6840–6851, 2020. 1 [20] Edward J Hu, Yelong Shen, Phillip Wallis, Zeyuan Allen-Zhu, Yuanzhi Li, Shean Wang, Lu Wang, and Weizhu Chen. Lora: Low-rank adaptation of large language models. arXiv preprint arXiv:2106.09685 , 2021. 1 [21] Gu Jinjin, Cai Haoming, Chen Haoyu, Ye Xiaoxing, Jimmy S Ren, and Dong Chao. Pipal: a large-scale image quality assessment dataset for perceptual image restoration. In Computer Vision–ECCV 2020: 16th European Confer-ence, Glasgow, UK, August 23–28, 2020, Proceedings, Part XI 16 , pages 633–651. Springer, 2020. 6 [22] Tero Karras, Samuli Laine, and Timo Aila. A style-based generator architecture for generative adversarial networks. In Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition , pages 4401–4410, 2019. 6 [23] Junjie Ke, Qifei Wang, Yilin Wang, Peyman Milanfar, and Feng Yang. Musiq: Multi-scale image quality transformer. In Proceedings of the IEEE/CVF international conference on computer vision , pages 5148–5157, 2021. 6 [24] Dongjun Kim, Chieh-Hsin Lai, Wei-Hsiang Liao, Naoki Mu-rata, Yuhta Takida, Toshimitsu Uesaka, Yutong He, Yuki Mitsufuji, and Stefano Ermon. Consistency trajectory mod-els: Learning probability flow ode trajectory of diffusion. 
+
+arXiv preprint arXiv:2310.02279 , 2023. 2 [25] Jiwon Kim, Jung Kwon Lee, and Kyoung Mu Lee. Accurate image super-resolution using very deep convolutional net-works. In Proceedings of the IEEE conference on computer vision and pattern recognition , pages 1646–1654, 2016. 1 [26] Diederik P Kingma and Max Welling. Auto-encoding varia-tional bayes. arXiv preprint arXiv:1312.6114 , 2013. 1 [27] Christian Ledig, Lucas Theis, Ferenc Husz´ ar, Jose Caballero, Andrew Cunningham, Alejandro Acosta, Andrew Aitken, Alykhan Tejani, Johannes Totz, Zehan Wang, et al. Photo-realistic single image super-resolution using a generative ad-versarial network. In Proceedings of the IEEE/CVF Con-ference on Computer Vision and Pattern Recognition , pages 4681–4690, 2017. 1 [28] Yawei Li, Kai Zhang, Jingyun Liang, Jiezhang Cao, Ce Liu, Rui Gong, Yulun Zhang, Hao Tang, Yun Liu, Denis Deman-dolx, et al. Lsdir: A large scale dataset for image restoration. In Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition , pages 1775–1787, 2023. 6 [29] Xinqi Lin, Jingwen He, Ziyan Chen, Zhaoyang Lyu, Bo Dai, Fanghua Yu, Wanli Ouyang, Yu Qiao, and Chao Dong. Diff-bir: Towards blind image restoration with generative diffu-sion prior. arXiv preprint arXiv:2308.15070 , 2023. 1 [30] Xinqi Lin, Fanghua Yu, Jinfan Hu, Zhiyuan You, Wu Shi, Jimmy S Ren, Jinjin Gu, and Chao Dong. Harnessing diffusion-yielded score priors for image restoration. arXiv preprint arXiv:2507.20590 , 2025. 6 [31] Yaron Lipman, Ricky TQ Chen, Heli Ben-Hamu, Maximil-ian Nickel, and Matt Le. Flow matching for generative mod-eling. arXiv preprint arXiv:2210.02747 , 2022. 1, 3 [32] Haotian Liu, Chunyuan Li, Qingyang Wu, and Yong Jae Lee. Visual instruction tuning. In NeurIPS , 2024. 1 [33] Qiang Liu. Rectified flow: A marginal preserving approach to optimal transport. arXiv preprint arXiv:2209.14577 , 2022. 1, 3 [34] Xingchao Liu, Chengyue Gong, and Qiang Liu. Flow straight and fast: Learning to generate and transfer data with rectified flow. arXiv preprint arXiv:2209.03003 , 2022. 1, 3 [35] Cheng Lu and Yang Song. Simplifying, stabilizing and scaling continuous-time consistency models. arXiv preprint arXiv:2410.11081 , 2024. 2, 3, 5 [36] Eric Luhman and Troy Luhman. Knowledge distillation in iterative generative models for improved sampling speed. 
+
+arXiv preprint arXiv:2101.02388 , 2021. 2 [37] Chenlin Meng, Robin Rombach, Ruiqi Gao, Diederik Kingma, Stefano Ermon, Jonathan Ho, and Tim Salimans. On distillation of guided diffusion models. In Proceedings of the IEEE/CVF Conference on Computer Vision and Pat-tern Recognition , pages 14297–14306, 2023. 2 [38] Mehdi Mirza. Conditional generative adversarial nets. arXiv preprint arXiv:1411.1784 , 2014. 1 [39] Thuan Hoang Nguyen and Anh Tran. Swiftbrush: One-step text-to-image diffusion model with variational score distilla-tion. In Proceedings of the IEEE/CVF Conference on Com-puter Vision and Pattern Recognition , pages 7807–7816, 2024. 2 [40] William Peebles and Saining Xie. Scalable diffusion models with transformers. In Proceedings of the IEEE/CVF Inter-national Conference on Computer Vision , pages 4195–4205, 2023. 4 [41] Yansong Peng, Kai Zhu, Yu Liu, Pingyu Wu, Hebei Li, Xi-aoyan Sun, and Feng Wu. Flow-anchored consistency mod-els. arXiv preprint arXiv:2507.03738 , 2025. 2 [42] Dustin Podell, Zion English, Kyle Lacey, Andreas Blattmann, Tim Dockhorn, Jonas M¨ uller, Joe Penna, and Robin Rombach. Sdxl: Improving latent diffusion mod-els for high-resolution image synthesis. arXiv preprint arXiv:2307.01952 , 2023. 1 [43] Robin Rombach, Andreas Blattmann, Dominik Lorenz, Patrick Esser, and Bj¨ orn Ommer. High-resolution image synthesis with latent diffusion models. In Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition , pages 10684–10695, 2022. 1, 3 [44] Hshmat Sahak, Daniel Watson, Chitwan Saharia, and David Fleet. Denoising diffusion probabilistic models for ro-bust image super-resolution in the wild. arXiv preprint arXiv:2302.07864 , 2023. 1 [45] Tim Salimans and Jonathan Ho. Progressive distillation for fast sampling of diffusion models. arXiv preprint arXiv:2202.00512 , 2022. 2 [46] Yang Song and Prafulla Dhariwal. Improved tech-niques for training consistency models. arXiv preprint arXiv:2310.14189 , 2023. 5 [47] Yang Song, Jascha Sohl-Dickstein, Diederik P Kingma, Ab-hishek Kumar, Stefano Ermon, and Ben Poole. Score-based generative modeling through stochastic differential equa-tions. arXiv preprint arXiv:2011.13456 , 2020. 1 [48] Yang Song, Prafulla Dhariwal, Mark Chen, and Ilya Sutskever. Consistency models. arXiv preprint arXiv:2303.01469 , 2023. 2, 3 [49] Radu Timofte, Eirikur Agustsson, Luc Van Gool, Ming-Hsuan Yang, and Lei Zhang. Ntire 2017 challenge on single image super-resolution: Methods and results. In Proceed-ings of the IEEE conference on computer vision and pattern recognition workshops , pages 114–125, 2017. 6 [50] Jianyi Wang, Kelvin CK Chan, and Chen Change Loy. Ex-ploring clip for assessing the look and feel of images. In Pro-ceedings of the AAAI Conference on Artificial Intelligence ,pages 2555–2563, 2023. 6 [51] Jianyi Wang, Zongsheng Yue, Shangchen Zhou, Kelvin CK Chan, and Chen Change Loy. Exploiting diffusion prior for real-world image super-resolution. International Journal of Computer Vision , pages 1–21, 2024. 3 [52] Xintao Wang, Liangbin Xie, Chao Dong, and Ying Shan. Real-esrgan: Training real-world blind super-resolution with pure synthetic data. In Proceedings of the IEEE/CVF inter-national conference on computer vision , pages 1905–1914, 2021. 1, 6 [53] Yufei Wang, Wenhan Yang, Xinyuan Chen, Yaohui Wang, Lanqing Guo, Lap-Pui Chau, Ziwei Liu, Yu Qiao, Alex C Kot, and Bihan Wen. Sinsr: diffusion-based image super-resolution in a single step. In Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition ,pages 25796–25805, 2024. 1, 3, 6 [54] Zhengyi Wang, Cheng Lu, Yikai Wang, Fan Bao, Chongxuan Li, Hang Su, and Jun Zhu. Prolificdreamer: High-fidelity and diverse text-to-3d generation with variational score distilla-tion. Advances in Neural Information Processing Systems ,36, 2024. 2, 3 [55] Pengxu Wei, Ziwei Xie, Hannan Lu, Zongyuan Zhan, Qixi-ang Ye, Wangmeng Zuo, and Liang Lin. Component divide-and-conquer for real-world image super-resolution. In Com-puter Vision–ECCV 2020: 16th European Conference, Glas-gow, UK, August 23–28, 2020, Proceedings, Part VIII 16 ,pages 101–117. Springer, 2020. 6 [56] Rongyuan Wu, Lingchen Sun, Zhiyuan Ma, and Lei Zhang. One-step effective diffusion network for real-world image super-resolution. arXiv preprint arXiv:2406.08177 , 2024. 1, 2, 3, 6 [57] Rongyuan Wu, Tao Yang, Lingchen Sun, Zhengqiang Zhang, Shuai Li, and Lei Zhang. Seesr: Towards semantics-aware real-world image super-resolution. In Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition , pages 25456–25467, 2024. 1, 3, 6 [58] Rui Xie, Ying Tai, Kai Zhang, Zhenyu Zhang, Jun Zhou, and Jian Yang. Addsr: Accelerating diffusion-based blind super-resolution with adversarial diffusion distillation. arXiv preprint arXiv:2404.01717 , 2024. 6 [59] Yanwu Xu, Yang Zhao, Zhisheng Xiao, and Tingbo Hou. Ufogen: You forward once large scale text-to-image gener-ation via diffusion gans. In Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition ,pages 8196–8206, 2024. 2 [60] Sidi Yang, Tianhe Wu, Shuwei Shi, Shanshan Lao, Yuan Gong, Mingdeng Cao, Jiahao Wang, and Yujiu Yang. Maniqa: Multi-dimension attention network for no-reference image quality assessment. In Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition ,pages 1191–1200, 2022. 6 [61] Tao Yang, Rongyuan Wu, Peiran Ren, Xuansong Xie, and Lei Zhang. Pixel-aware stable diffusion for realistic image super-resolution and personalized stylization. arXiv preprint arXiv:2308.14469 , 2023. 3 [62] Tianwei Yin, Micha¨ el Gharbi, Taesung Park, Richard Zhang, Eli Shechtman, Fredo Durand, and William T Freeman. Im-proved distribution matching distillation for fast image syn-thesis. arXiv preprint arXiv:2405.14867 , 2024. 2 [63] Tianwei Yin, Micha¨ el Gharbi, Richard Zhang, Eli Shecht-man, Fredo Durand, William T Freeman, and Taesung Park. One-step diffusion with distribution matching distillation. In 
+
+Proceedings of the IEEE/CVF Conference on Computer Vi-sion and Pattern Recognition , pages 6613–6623, 2024. 2 [64] Weiyi You, Mingyang Zhang, Leheng Zhang, Xingyu Zhou, Kexuan Shi, and Shuhang Gu. Consistency trajectory match-ing for one-step generative super-resolution. arXiv preprint arXiv:2503.20349 , 2025. 1, 3, 6 [65] Fanghua Yu, Jinjin Gu, Zheyuan Li, Jinfan Hu, Xiangtao Kong, Xintao Wang, Jingwen He, Yu Qiao, and Chao Dong. Scaling up to excellence: Practicing model scaling for photo-realistic image restoration in the wild. In Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition , pages 25669–25680, 2024. 1, 3, 5, 6 [66] Zongsheng Yue, Jianyi Wang, and Chen Change Loy. Resshift: Efficient diffusion model for image super-resolution by residual shifting. Advances in Neural Infor-mation Processing Systems , 36, 2024. 1, 3 [67] Aiping Zhang, Zongsheng Yue, Renjing Pei, Wenqi Ren, and Xiaochun Cao. Degradation-guided one-step im-age super-resolution with diffusion priors. arXiv preprint arXiv:2409.17058 , 2024. 2, 5, 6 [68] Kai Zhang, Jingyun Liang, Luc Van Gool, and Radu Timo-fte. Designing a practical degradation model for deep blind image super-resolution. In Proceedings of the IEEE/CVF International Conference on Computer Vision , pages 4791– 4800, 2021. 1 [69] Lin Zhang, Lei Zhang, and Alan C Bovik. A feature-enriched completely blind image quality evaluator. IEEE Transactions on Image Processing , 24(8):2579–2591, 2015. 6 [70] Richard Zhang, Phillip Isola, Alexei A Efros, Eli Shecht-man, and Oliver Wang. The unreasonable effectiveness of deep features as a perceptual metric. In Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition , pages 586–595, 2018. 6 [71] Weixia Zhang, Guangtao Zhai, Ying Wei, Xiaokang Yang, and Kede Ma. Blind image quality assessment via vision-language correspondence: A multitask learning perspective. In IEEE Conference on Computer Vision and Pattern Recog-nition , pages 14071–14081, 2023. 6 [72] Mingyuan Zhou, Huangjie Zheng, Yi Gu, Zhendong Wang, and Hai Huang. Adversarial score identity distillation: Rapidly surpassing the teacher in one step. arXiv preprint arXiv:2410.14919 , 2024. 2 [73] Mingyuan Zhou, Huangjie Zheng, Zhendong Wang, Mingzhang Yin, and Hai Huang. Score identity distillation: Exponentially fast distillation of pretrained diffusion models for one-step generation. In Forty-first International Confer-ence on Machine Learning , 2024. 2 [74] Yuanzhi Zhu, Ruiqing Wang, Shilin Lu, Junnan Li, Han-shu Yan, and Kai Zhang. Oftsr: One-step flow for im-age super-resolution with tunable fidelity-realism trade-offs. 
+
+arXiv preprint arXiv:2412.09465 , 2024. 7 MFSR: MeanFlow Distillation for One Step Real-World Image Super Resolution 
+
+# Supplementary Material 
+
+# A. Algorithm 
+
+The pseudo-code of MFSR training and inference algo-rithms are summarized as 1 and 2. 
+
+Algorithm 1 MFSR training 
+
+Require: Pre-trained teacher model v, VAE encoder E, prompt extractor Y , data distribution pD , two time step joint distri-bution pT , stop gradient operator sg [·], a predefined metric function d(·, ·) 
+
+> 1:
+
+Student model u ← copyWeights (v), // intialize  
+
+> 2:
+
+Add the second time embedder to u 
+
+> 3:
+
+repeat  
+
+> 4:
+
+Sample ϵ ∼ N (0 , 1) , (xHR , x LR ) ∼ pD , t, s ∼ pT 
+
+> 5:
+
+Calculate zHR , z LR = E(xHR ), E (xLR ) 
+
+> 6:
+
+Calculate c = Y (xHR ) 
+
+> 7:
+
+Calculate zt = tz HR + (1 − t)ϵ 
+
+> 8:
+
+Calculate dzt 
+
+> dt
+
+= v(zt, t | zLR , c ) + w v(zt, t | zLR , c ) −
+
+v(zt, t | zLR , c neg ). 
+
+> 9:
+
+Calculate loss: L =
+
+d(u(zt, t, s | zLR , c ), sg 
+
+h dzt 
+
+> dt
+
++ ( s − t) du(zt,t,s |zLR ,c )dt
+
+i  
+
+> 10:
+
+Update u with the loss gradient ∇L  
+
+> 11:
+
+until convergence  
+
+> 12:
+
+Return student model u
+
+Algorithm 2 MFSR inference 
+
+Require: MFSR model u, VAE encoder E, VAE decoder D,prompt extractor Y , LR image xLR , sampling steps N, se-quence of time points 0 = τ1 < τ 2 < · · · < τ N = 1 , initial noise z0 
+
+> 1:
+
+Calculate zLR = E(xLR ) 
+
+> 2:
+
+Calculate c = Y (xLR ) 
+
+> 3:
+
+for n = 0 to N − 1 do  
+
+> 4:
+
+Calculate zτn+1 =
+
+zτn + ( τn+1 − τn)u(zτn , τ n, τ n+1 | zLR , c ) 
+
+> 5:
+
+end for  
+
+> 6:
+
+Calculate ˆxHR = D(z1) 
+
+> 7:
+
+Return super-resolved image ˆxHR 
+
+# B. Implementation Details 
+
+Our model is initialized from the teacher model DiT4SR, which is built upon SD3.5. During training, we freeze the original parameters of SD3.5 and only update the additional parameters introduced by DiT4SR, as detailed in Sec.3 of the DiT4SR paper [10]. Besides, we incorporate LoRA [20] into the transformer blocks of SD3.5, with a LoRA rank of 64. Following DiT4SR, we adopt LLaVA [32] as the prompt extractor, generating prompts from HR images during train-ing and from LR images during inference. We employ the Adam optimizer with a learning rate of 5e-5. Training is conducted on 8 NVIDIA H200 GPUs with a batch size of 80, and the entire process takes approximately 19 hours. In total, the model is trained for 12K iterations. 
+
+# C. Derivation of the Continuous-Time Equa-tion 
+
+Here we show detailed derivations of the continuous-time equations in Fig. 2. This also shows another way to derive Eq. (4). Starting from the original equation, 
+
+(s−t) u(zt, t, s ) =  s−t−∆t u zt+∆ t, t +∆ t, s +∆ t v (zt, t ).
+
+(13) 
+
+Since u is differentiable in both z and t and the path 
+
+t 7 → zt is differentiable, we can apply a first-order Taylor expansion of u(zt+∆ t, t +∆ t, s ) along the trajectory (zt, t ):
+
+u zt+∆ t, t + ∆ t, s  = u(zt, t, s ) + ∆ t ddt u(zt, t, s ) + r(∆ t),
+
+(14) 
+
+where the remainder satisfies 
+
+lim 
+
+> ∆t→0
+
+r(∆ t)∆t = 0 , i.e. r(∆ t) = o(∆ t).
+
+Substituting Eq. (14) into the right-hand side of Eq. (13) gives 
+
+(s − t) u(zt, t, s ) =  s − t − ∆th
+
+u(zt, t, s )+ ∆ t ddt u(zt, t, s ) + r(∆ t)
+
+i
+
++ ∆ t v (zt, t )
+
+(((((( (
+
+(s − t) u(zt, t, s ) = (((((( (
+
+(s − t) u(zt, t, s ) − ∆t u (zt, t, s )+ ( s − t) ∆ t ddt u(zt, t, s ) − ∆t2 ddt u(zt, t, s )+ ( s − t)r(∆ t) − ∆t r (∆ t) + ∆ t v (zt, t ).
+
+Dividing through by ∆t (for ∆t̸ = 0 ) and re-arranging terms gives 
+
+u(zt, t, s ) = ( s − t) ddt u(zt, t, s ) − ∆t ddt u(zt, t, s )+ (s − t)r(∆ t)∆t − r(∆ t) + v(zt, t ).
+
+Taking the limit ∆t → 0, we have r(∆ t)∆t → 0 and 
+
+r(∆ t) → 0, while also noting ∆t ddt u(zt, t, s ) → 0, we obtain the final result: 
+
+u(zt, t, s ) = ( s − t) ddt u(zt, t, s ) + v(zt, t ) (15) 
+
+And this is used to construct MeanFlow Distillation loss in Eq. (12) D. Noise vs. LR Initialization 
+
+We adopt Gaussian noise as the initial state for denoising. While recent works [9, 56] instead initialize from the LR image, we find that noise initialization offers clear advan-tages. First, it allows the model to synthesize richer details and textures, whereas starting from the LR image tends to restrict the generative capacity and makes it difficult to re-move complex degradations (as shown in the third row of Fig. 3). Second, initializing from noise ensures consistency with the teacher’s PF-ODE, thereby strengthening the stu-dent’s ability to inherit the teacher’s generative prior. 
+
+# E. Difference from Previous Works 
+
+Guided distillation [37]. Guided distillation, originally proposed for text-to-image generation, transfers knowledge from a teacher model with CFG to a few-step student model via a two-stage process. The first stage trains a model to match CFG-enhanced outputs of the teacher, and the second stage progressively distills it into a few-step diffu-sion model. While effective for generation, this two-stage paradigm is inefficient. In contrast, our method directly dis-tills teacher CFG prediction through MeanFlow distillation, avoiding two-stage training and improving efficiency. 
+
+S3Diff [67]. S3Diff introduces an online negative sam-ple generation strategy to align low-quality concepts with negative prompts, enabling CFG at inference to improve vi-sual quality. However, this requires applying CFG during the inference time of the student model, effectively dou-bling the NFE. By contrast, our approach utilizes the neg-ative prompt enhanced teacher’s CFG prediction as the su-pervision signal during training, allowing genuine 1 NFE inference. 
+
+# F. More Ablation Study Results 
+
+Ratio of t̸ = s. We study the effect of varying the ratio of 
+
+t̸ = s on RealLQ250 in Table 4. Empirically, a ratio of 0.5 yields the best results, which is lower than the 0.75 used in original MeanFlow [14]. This difference arises because our distillation setting already captures the instantaneous veloc-ity field, allowing greater focus on learning the shortcut.                          
+
+> Table 4. Ablation studies for hyperparameter ratio r.
+> rNIQE ↓MUSIQ ↑MANIQA ↑CLIPIQA ↑
+> 05.2529 67.23 0.6283 0.6819 0.25 5.2311 67.58 0.6301 0.6863 0.5 5.2421 67.95 0.6389 0.6968
+> 0.75 5.1046 67.76 0.6358 0.6895
+
+# G. Qualitative Comparison across Different Sampling Step and with the Teacher 
+
+We present more qualitative comparisons between MFSR (with 1/2/4 steps) and the teacher model in Fig. 9. The first row shows an image containing text: the one-step model distorts the letter M, while two-step and four-step mod-els accurately reconstruct the character. These examples demonstrate that increasing the number of sampling steps improves restoration quality, offering a flexible trade-off be-tween efficiency and SR quality. The second to fourth rows highlight cases where our method surpasses the teacher model. Specifically, our ap-proach yields sharper and more natural reconstructed leaves (while the teacher outputs blurry textures), more realistic wall patterns, and a better removal of excessive blur. Overall, these results indicate that our distilled student model achieves restoration quality on par with, or even su-perior to the teacher model and is much more efficient. 
+
+# H. LR Images in User Study 
+
+Fig. 8 shows the thumbnail of LR images used in the user study. 
+
+> Figure 8. The LR images used in user study.
+
+# I. More Visual Comparisons 
+
+In Fig. 12, Fig. 10 and Fig. 11, we provide additional vi-sual comparisons with other state-of-the-art one-step meth-ods, further demonstrating the robust restoration ability of MFSR and the superior quality of its results. In addition, Fig. 13 presents examples of super-resolution on AI-Generated Content (AIGC), and Fig. 14 shows an example of old photo restoration. These results achieve visually pleasing effects, highlighting strong prac-tical value of our method in real-world applications. LR DiTSR-1s DiTSR-40s MFSR-1s MFSR-2s MFSR-4s 
+
+Figure 9. Qualitative comparison across different sampling steps and our teacher model, DiT4SR. The number of diffusion inference steps is indicated by ’s’. Zoomed LR SinSR AddSR CTMSR LR OSEDiff S3Diff TSDSR MFSR Zoomed LR SinSR AddSR CTMSR LR OSEDiff S3Diff TSDSR MFSR 
+
+Zoomed LR SinSR AddSR CTMSR LR OSEDiff S3Diff TSDSR MFSR Zoomed LR SinSR AddSR CTMSR LR OSEDiff S3Diff TSDSR MFSR Figure 10. Qualitative comparison with state-of-the-art methods. All methods perform 1-step inference. Please zoom in for a better view. Zoomed LR SinSR AddSR CTMSR LR OSEDiff S3Diff TSDSR MFSR Zoomed LR SinSR AddSR CTMSR LR OSEDiff S3Diff TSDSR MFSR 
+
+Zoomed LR SinSR AddSR CTMSR LR OSEDiff S3Diff TSDSR MFSR Zoomed LR SinSR AddSR CTMSR LR OSEDiff S3Diff TSDSR MFSR Figure 11. Qualitative comparison with state-of-the-art methods. All methods perform 1-step inference. Please zoom in for a better view. Zoomed LR SinSR AddSR CTMSR LR OSEDiff S3Diff TSDSR MFSR Zoomed LR SinSR AddSR CTMSR LR OSEDiff S3Diff TSDSR MFSR Figure 12. Qualitative comparison with state-of-the-art methods. All methods perform 1-step inference. Please zoom in for a better view. LR MFSR 
+
+Figure 13. 4 × SR results on AI-Generated Content using 3-step sampling. LR MFSR 
+
+Figure 14. Result of old photo restoration using 3-step sampling.

@@ -1,0 +1,622 @@
+Title: DIAL-KG: Schema-Free Incremental Knowledge Graph Construction via Dynamic Schema Induction and Evolution-Intent Assessment
+
+URL Source: https://arxiv.org/pdf/2603.20059v1
+
+Published Time: Mon, 23 Mar 2026 01:03:59 GMT
+
+Number of Pages: 16
+
+Markdown Content:
+# DIAL-KG: Schema-Free Incremental Knowledge Graph Construction via Dynamic Schema Induction and Evolution-Intent Assessment 
+
+Weidong Bao ⋆, Yilin Wang ⋆, Ruyu Gao, Fangling Leng, Yubin Bao( ), and Ge Yu 
+
+Department of Computer Science and Engineering, Northeastern University, Shenyang, China 
+
+{baowd, gaory2}@mails.neu.edu.cn, wangyilin0409@gmail.com, {lengfangling, baoyubin, yuge}@cse.neu.edu.cn 
+
+Abstract. Knowledge Graphs (KGs) are foundational to applications such as search, question answering, and recommendation. Conventional knowledge graph construction methods are predominantly static, rely-ing on a single-step construction from a fixed corpus with a prede-fined schema. However, such methods are suboptimal for real-world sce-narios where data arrives dynamically, as incorporating new informa-tion requires complete and computationally expensive graph reconstruc-tions. Furthermore, predefined schemas hinder the flexibility of knowl-edge graph construction. To address these limitations, we introduce DIAL-KG , a closed-loop framework for incremental KG construction orches-trated by a Meta-Knowledge Base (MKB) . The framework oper-ates in a three-stage cycle: (i) Dual-Track Extraction , which ensures knowledge completeness by defaulting to triple generation and switching to event extraction for complex knowledge; (ii) Governance Adjudica-tion , which ensures the fidelity and currency of extracted facts to prevent hallucinations and knowledge staleness; and (iii) Schema Evolution ,in which new schemas are induced from validated knowledge to guide subsequent construction cycles, and knowledge from the current round is incrementally applied to the existing KG. Extensive experiments demon-strate that our framework achieves state-of-the-art (SOTA) performance in the quality of both the constructed graph and the induced schemas. 
+
+Keywords: Knowledge Graph Construction · Large Language Models ·
+
+Dynamic Schema Induction 
+
+1 Introduction 
+
+Knowledge Graphs (KGs) are foundational to applications such as search, ques-tion answering, and recommendation.[8,32,6,24,16,18,17]. Nonetheless, real-world knowledge is intrinsically complex, and conventional KGs construction(KGC) methods are heavily dependent on extensive manual effort[15,36,40,26].  
+
+> ⋆
+
+Equal contribution  
+
+> arXiv:2603.20059v1 [cs.AI] 20 Mar 2026 2W. Bao et al.
+
+Several approaches have been used to construct KGs. Rule-based systems apply predefined logical rules to extract and structure knowledge [29,21,14,3,7]. They offer high precision and domain control but struggle with scalability, lim-ited generalization, and fragility. Supervised models learn extraction patterns from annotated data[29,2,27], yet face high annotation costs, limited adaptabil-ity, and dependence on training data. Large language models (LLMs) are increas-ingly used for automated extraction and graph construction [40,4,33,38,20]. How-ever, many methods still rely on predefined schemas, as shown in Fig. 1,which restricts flexibility. Moreover, the absence of incremental lifecycle mechanisms impedes adding, modifying, and retiring knowledge while preserving traceability.  
+
+> Fig. 1. Comparison of extraction paradigms for dynamic and complex knowledge. Tra-ditional methods (Top) rely on predefined static schemas, forcing the model (depicted as the overwhelmed agent) to compress dynamic histories and complex events into sim-ple triples. This results in severe semantic distortion and temporal ambiguity. In con-trast, DIAL-KG (Bottom) introduces a Dual-Track Extraction mechanism. By routing simple attribute changes (Static Track) and complex structural changes (Event Track) separately, DIAL-KG achieves schema-free evolution, ensuring both temporal clarity and comprehensive context preservation.
+
+By drawing inspiration from human learning and cognitive correction mech-anisms [13], we can more effectively perform incremental knowledge graph con-struction (IKGC) on dynamic data. Human learning is a process of continuous refinement: new knowledge integrates, adjusts, and extends prior understand-ing rather than overturning it. A physics student, for example, does not discard Newtonian mechanics after learning relativity but treats it as an approximation valid under specific conditions, with clearly defined boundaries within a broader DIAL-KG 3
+
+theory. This relies on the human brain’s unique “versioned memory” mechanism, which preserves conclusions together with their provenance and revision history, including the evidence that prompted updates and the limits of earlier beliefs. Such a mechanism enables resilience and sustainable evolution when confronted with conflict. To replicate this evolutionary capacity, IKGC must handle knowl-edge in its inherent complexity. Because many statements exhibit n-ary structure or time varying [23,28], event representations are more appropriate; compress-ing them into triples discards the temporal and state signals needed to verify correctness[10,11,12,19,31]. To address these challenges, we propose DIAL-KG , a closed-loop framework built around a Meta-Know-ledge Base (MKB) that serves as both governance hub and evolutionary memory. The MKB records, indexes, and updates meta-knowledge , including entity profiles, schema proposals that supplies batch-aware contextual constraints. With this context, the system conducts evidence verifi-cation, consistency checks, intent recognition, and auditable soft deprecation as transactional updates, enabling iterative, traceable, and reliable graph evolution without full reconstruction. Operationally, DIAL-KG executes a three stage loop for each batch Bk: (i) Dual-Track Extraction , which ensures knowledge com-pleteness by defaulting to triple generation and switching to event extraction for complex knowledge. (ii) Governance Adjudication , which ensures the fi-delity and currency of extracted facts to prevent hallucinations and knowledge staleness; and (iii) Schema Evolution , in which new schemas are induced from validated knowledge to guide subsequent construction cycles and knowledge from the current round is incrementally applied to the existing KG. The key contributions of this paper are: 
+
+– Closed-loop, incremental operation. We recast KGC from static, open-loop pipelines into a governance-centric closed loop with transactional up-dates and soft deprecation, enabling auditable add, modify, and retire oper-ations at batch granularity. 
+
+– Evolution-aware representation with parsimony. We establish a dual-track extraction regime that preserves time, status, and phase cues via events only when necessary, retaining sparsity while enabling lifecycle-aware deci-sions. 
+
+– Self-evolving constraints via an MKB. We operationalize a Meta-Knowledge Base that promotes relation and event schemas and consolidates entity pro-files, turning them into retrieval constraints for later batches, thereby ex-panding coverage without rigid predefined schemas or heavy per-relation tuning. We validate DIAL-KG on static benchmarks and a purpose-built stream-ing dataset, where it improves F1 by up to 4.7% over strong schema-free LLM baselines, achieves over 98% precision on evidence-backed soft deprecations in streaming, and delivers more compact schemas (up to 15% fewer relation types) with a 1.6–2.8 point reduction in redundancy. These results confirm its superior performance in foundational extraction and, more importantly, its robustness in managing the incremental knowledge lifecycle with high fidelity. 4 W. Bao et al. 
+
+2 Related Work 
+
+In recent years, the paradigm of Knowledge Graph construction has undergone a profound shift from traditional rule-based and supervised learning to approaches driven by Large Language Models. 
+
+Rule and supervised-learning–based KGC. The YAGO family of systems leverages hierarchical structures and prior knowledge for semantic extraction[29]. With advances in pre-trained language models such as T5 [27] and BART [21], subsequent work has framed Knowledge Graph Construction (KGC) as a sequence-to-sequence task, fine-tuning these models to generate relational triples end to end[37,2]. However, this line of techniques generally relies on meticulous feature engineering or template design and substantial manual hyperparameter tuning, resulting in high cross-domain transfer costs, limited adaptability to long, com-plex documents with intertwined relations, and poor support for high-frequency updates and continual evolution. 
+
+LLM-based KGC. The rise of LLMs has opened a disruptive path for auto-mated KGC, which can be broadly organized into three lines. Schema-/Ontology-guided. These methods are anchored in external knowledge bases or domain ontologies (e.g., Wikipedia, DBpedia)[30,1] and leverage the generative and rea-soning capabilities of LLMs to complete entity relations and types. For instance, SAC-KG retrieves domain corpora and DBpedia to provide context that guides triple generation[5]; CoT-Ontology combines domain ontologies with Chain-of-Thought (CoT) prompting for step-wise triple extraction[25]; RAP proposes a schema-aware, retrieval-augmented approach that dynamically incorporates structured schema knowledge and semantically relevant instances as contextual prompts[35]. The main bottleneck is the strong dependence of construction qual-ity and coverage on the completeness and accuracy of external ontologies: once these sources lag or contain bias, KG quality is constrained, and domain adap-tation and maintenance become costly. Fine-tuning-based. This line of work, such as AutoRE[33], aims to directly generate structured triples from unstruc-tured documents, weakening the hard constraint of a “predefined relation set.” By updating a small subset of parameters, such methods can capture deep se-mantic relations in specific scenarios and deliver stable performance. However, as the relation space grows rapidly in practice, fine-tuning and maintenance complexity escalate, and generalization to novel relations and long-tail types remains limited. Schema-free. To eliminate reliance on predefined schemas, re-searchers explore more open pipelines that perform open information extraction first and induce/normalize schemas afterward. EDC decomposes KGC into three stages: open information extraction, schema definition, and schema normaliza-tion. However, its single-batch and static architecture exposes inherent limita-tions when applied to dynamic, continuous data streams [38]. iText2KG proposes a zero-shot, incremental construction method that resolves semantic ambiguity DIAL-KG 5
+
+via user-defined blueprints; its core limitation, however, is the inability to proac-tively discover knowledge types beyond the blueprint’s scope and the lack of clear mechanisms for dynamic knowledge evolution (e.g., revising and depre-cating outdated knowledge)[20]. AutoKG[4] designs a multi-agent collaboration framework and integrates real-time web retrieval to build knowledge, fitting an agentic/RAG-centric paradigm that can complement schema-free extraction. An effective dynamic KGC framework must combine automation, accuracy, adaptability, and incremental integration. DIAL-KG achieves this by unifying extraction, schema evolution, and lifecycle governance within a self-driven closed loop. 
+
+3 Preliminaries 
+
+3.1 Meta-Knowledge Base 
+
+The Meta-Knowledge Base (MKB) is the management core and evolving meta-data repository of DIAL-KG. It comprises: Entity Profile : a structured, nor-malized description of a real-world entity, consolidating verified canonical names, aliases, and types. Profiles act as semantic anchors for coreference resolution and entity alignment, ensuring consistency and contextual continuity over time. 
+
+Schema Proposal : Candidate schemas induced from accumulated, verified facts, corresponding to the dual-track extraction. They are categorized into: Relation Schemas: Define static fact structures, specifying the schema and its do-main/range constraints. Event Schemas: Define dynamic event structures, spec-ifying the event type, its trigger, and its argument roles with their constraints. Once validated, both types of schemas are integrated into the MKB to constrain subsequent extraction and logical validation (Sect. 4.2), enabling the system to progressively form a self-evolving schema system without a fixed ontology. 
+
+3.2 Task Definition: Incremental Knowledge Graph Construction 
+
+We define Incremental Knowledge Graph Construction (IKGC) as a setting where text arrives continuously in streaming batches. At each timestep k, the system receives a new batch Bk = {d1, . . . , d n}. Given the existing graph state 
+
+Gk−1 and the Meta-Knowledge Base M KB k−1, the system autonomously pro-duces the updated state: 
+
+(Gk−1, M KB k−1) Φ(Bk )
+
+−−−−→ (Gk, M KB k), (1) where Φ is the autonomous update function that extracts, validates, integrates, and generalizes knowledge from Bk.
+
+3.3 Knowledge Graph State Definition 
+
+At a discrete timestep k − 1, the knowledge graph is Gk−1 = ( Vk−1, E k−1),where Vk−1 is the set of entity nodes and Ek−1 is the set of fact edges. Each 6 W. Bao et al. 
+
+edge e ∈ Ek−1 is a triple ⟨h, r, t ⟩ indicating that relation r connects head entity 
+
+h and tail entity t.Each edge e ∈ Ek−1 has a traceable status mapping 
+
+sk−1 : Ek−1 → { Active , Deprecated }, (2) which indicates whether a fact is currently in effect. Outdated facts are not physically deleted. Instead, their status is set to Deprecated while retaining the associated evidence and timestamps. This design preserves historical evolution and enables soft deprecation .
+
+3.4 Entity and Event Normalization 
+
+Given the new batch Bk, let Mk denote the set of raw entity mentions and Ek the set of raw event instances. Normalization for both entities and events proceeds in two steps— intra-batch canonicalization followed by cross-batch alignment. 
+
+˜Mk
+
+|{z} 
+
+> intra-batch
+
+= πintra  
+
+> k
+
+(Mk), ˆMk
+
+|{z} 
+
+> cross-batch
+
+= ( πcross  
+
+> k
+
+◦ πintra  
+
+> k
+
+)( Mk). (3) 
+
+˜Ek
+
+|{z} 
+
+> intra-batch
+
+= ψintra  
+
+> k
+
+(Ek), ˆEk
+
+|{z} 
+
+> cross-batch
+
+= ( ψcross  
+
+> k
+
+◦ ψintra  
+
+> k
+
+)( Ek). (4) New entities in ˆMk are merged into historical nodes Vk−1 to yield Vk. The normalized events ˆEk serve as the sole input to subsequent Event Relationaliza-tion (Sect. 4.3). 
+
+3.5 Knowledge Increment Definition 
+
+At each update round, the system produces a knowledge increment 
+
+∆G k = ( V + 
+
+> k
+
+, E + 
+
+> k
+
+, E ↓ 
+
+> k
+
+), (5) where V + 
+
+> k
+
+are newly discovered entities, E+ 
+
+> k
+
+are verified new facts, and E↓ 
+
+> k
+
+⊆
+
+Ek−1 are facts identified for deprecation. Applying the increment yields Gk =(Vk, E k):
+
+Vk = Vk−1 ∪ V + 
+
+> k
+
+, (6) 
+
+Ek = ( Ek−1 \ E↓ 
+
+> k
+
+) ∪ E+ 
+
+> k
+
+. (7) The status mapping sk is updated accordingly to maintain evolutionary consis-tency. DIAL-KG 7Open -Domain 
+
+Knowledge 
+
+Stream 
+
+Document 
+
+Batch  aaaaaaaaaaaaa 
+
+Graph 
+
+Integration 
+
+Updated KG 
+
+(G k)
+
+Retrieve  Update 
+
+Active Edge 
+
+Deprecated Edge 
+
+Gk-1
+
+Initial Meta Knowledge Base 
+
+Entity 
+
+Profile 
+
+Event 
+
+Schema  
+
+> Event Schema I
+> Status: Release
+> Static
+> Schema I
+> Static
+> Schema II
+> ...
+> Entity I
+> With Candidate
+> Entity II
+> Entity III
+> Entity IV
+> With Candidate
+> .
+> .
+> .
+> .
+> .
+> .
+> Entity V
+> With Candidate
+> Entity VIII
+
+Static 
+
+Schema  
+
+> Event Schema II
+> Status: Release
+
+...... 
+
+Updated Meta Knowledge Base     
+
+> Static
+> Schema I
+> Static
+> Schema II
+> Event Schema I
+> Status: Deprecated
+> Event Schema II
+> Status: Release
+> Eventa Schema III
+> Status: Release
+> Event Schema IV
+> Status: Release
+> Static
+> Schema III
+
+Entity 
+
+Profile 
+
+Event 
+
+Schema 
+
+Static 
+
+Schema 
+
+> Entity I
+> With Candidate
+> Entity II
+> Entity III
+> Entity IV
+> With Candidate
+> .
+> .
+> .
+> .
+> .
+> .
+> Entity V
+> With Candidate
+> Entity XIV
+> Abort
+
+Logical Verification 
+
+Evolutionary Intent  Verification  
+
+> Logical
+> Standard
+> Information
+> Evolutionary Deprecation Log
+> (Event Schema I )
+> LLM
+
+Governance Adjudication 
+
+Evidence Verification  
+
+> LLM Abort
+
+Schema Evolution 
+
+> Schema
+> Induction
+> Static
+> Schema III
+> Schema
+> Induction
+> Event
+> Relation -
+> alization
+> Event Schema
+> III
+> Event Schema
+> IV
+> Event Schema I
+> Status:
+> Deprecated
+> Event based
+> triples
+> Obtain Entity
+> Profile
+> Entity
+> Profile
+> ...
+> Event
+> Track
+> Static
+> Track
+
+Dual -Track Extraction 
+
+Coreference 
+
+Alignment 
+
+> Triples
+> Events
+> Corresponding
+> Evidence
+> Corresponding
+> Evidence
+> LLM
+
+Fig. 2. Overall DIAL-KG framework. 
+
+4 Methodology 
+
+As shown in Fig. 2, DIAL-KG constructs a dynamic knowledge graph through an autonomous, iterative process with three core stages: (i) Dual-Track Ex-traction : in parallel, identify relation triples and event instances from streaming text; (ii) Governance Adjudication : perform Evidence Verification, Logical Verification, and Evolutionary-Intent Verification with support from the MKB; and (iii) Schema Evolution : generalize verified knowledge to induce new rela-tion and event schemas. Finally, Transactional Integration atomically applies 
+
+∆G k to Gk−1 to produce Gk.
+
+4.1 Stage 1: Dual-Track Extraction 
+
+To balance parsimony with temporal fidelity, DIAL-KG dynamically routes in-put statements in batch Bk to the appropriate representation track. Real-world statements differ in nature: stable, context-invariant assertions (e.g., “Python is a programming language”) are encoded as relation triples ⟨h, r, t ⟩, whereas complex statements involving timestamps, state transitions, or multi-argument semantics (e.g., “In 2022, Microsoft announced Windows 10 EOL”) are repre-sented as event structures ϵ = ( trigger , roles , time ). This avoids over-structuring simple facts while preserving the nuances of evolving knowledge. 
+
+MKB-Guided Generation. The extraction mechanism adapts to the sys-tem state defined in Sect. 3.2. In the cold-start phase ( k = 0 ), extraction relies 8 W. Bao et al. Static Facts 
+
+Python is a programming language. 
+
+> In 2022, Microsoft announced that Windows 10 version 1909 would reach the end of support in 2022.
+
+Complex Facts 
+
+LLM 
+
+LLM Triple 
+
+Event   
+
+> Python Programming Language is
+> Microsoft 2022 Windows 10 version 1909 2022
+> Product Support Termination Agent Product Announcement Time Effective Time
+
+Fig. 3. Dual-Track Extraction . 
+
+on few-shot prompting. In the MKB-guided phase ( k > 0), the system utilizes the Schema Proposals Sk−1 from the MKB. We vectorize the input to retrieve the top-K relevant schemas from Sk−1 (set to K = 30 to balance schema re-call with context length limits). These retrieved schemas are injected into the prompt as constraints. This retrieval-augmented generation ensures that new ex-tractions remain consistent with the evolving schema ontology without exceeding the LLM’s context window. 
+
+Coreference Alignment. Coreference resolution operates at two levels to produce the normalized entities ˆMk and events ˆEk defined in Sect. 3.4. In the cold-start phase ( k = 0 ), only intra-batch normalization is performed. 
+
+1)Intra-batch normalization. For entities, we compute entity embeddings us-ing an embedding model and cluster them based on embedding similarity, in-fer types with an LLM, and adjudicate pairs within same-type clusters using {Merge , Hierarchy , Separate }. This yields ˜Mk (the range of πintra  
+
+> k
+
+). For events, characterized by trigger, argument set, and spatio-temporal constraints, we compute pairwise similarity, cluster candidates, and adjudicate clusters with the same decision set, yielding ˜Ek (the range of ψintra  
+
+> k
+
+). 
+
+2)Cross-batch alignment. Enabled when k > 0, each entity in ˜Mk is matched to the MKB’s entity profiles to retrieve the top candidates. An LLM decides whether to reuse a historical ID or create a new one, completing πcross  
+
+> k
+
+. For events, we query the MKB’s event index using trigger semantics, key arguments, and time window. If an event in ˜Ek has a high match score and is consistent in time and arguments, it is aligned; otherwise, it is registered as new, completing 
+
+ψcross  
+
+> k
+
+. The resulting ˆEk is the sole input to Event Triplelization (Sect. 4.3) and supports Evolutionary-Intent Detection (Sect. 4.2). DIAL-KG 9
+
+4.2 Stage 2: Governance Adjudication 
+
+This stage filters hallucinations and prevents knowledge staleness through three sub-processes: Evidence Verification, Logical Verification, and Evolutionary-Intent Verification. 
+
+Evidence Verification. Each extraction (triple or event) and its evidence segment are submitted to an LLM that judges strictly from the provided text, without external knowledge. A candidate is Rejected only if the evidence di-rectly contradicts it; otherwise, it is conservatively Accepted to retain seman-tically correct candidates. 
+
+Logical Verification. Logical verification comprises (i) general consistency checks that remove contradictions, e.g., ⟨A, r, A ⟩ with r = ancestor _of , or the mutually inverse pair ⟨A, part _of , B ⟩ and ⟨B, part _of , A ⟩; and (ii) schema-constraint checks (when k > 0 and MKB schemas exist) that verify type sig-natures and event roles (e.g., ceo _of(Person , Organization) ). For example, if the CorporateAcquisition schema requires acquirer :Organization , then a candidate with acquirer = Elon Musk (Person) is rejected. In the cold-start phase ( k = 0 ), only general consistency applies. When k > 0,candidates matching known schemas must pass both criteria, whereas candidates for unseen schemas skip the schema-constraint check and proceed to dynamic induction (Sect. 4.3). 
+
+Evolutionary-Intent Verification. This process applies to normalized events 
+
+ϵ ∈ ˆEk that pass the previous checks. The LLM assigns one of two intents: In-formational (stating a fact, e.g., “Google Inc. was founded on September 4, 1998, in Menlo Park”) or Evolutionary (indicating a state transition of his-torical knowledge, e.g., “The company announced in 2022 it would discontinue support for product X”). The system identifies evolutionary triggers (e.g., depre-cated , removed , replaced ). Informational events contribute to E+ 
+
+> k
+
+. For evolution-ary events, the system retrieves the targeted outdated facts in Ek−1 and adds them to E↓ 
+
+> k
+
+, recording them in a deprecation log for final integration. 
+
+4.3 Stage 3: Schema Evolution 
+
+Knowledge that passes the Governance Adjudication stage (including informa-tional events and verified triples) enters this stage to induce new schemas and update the MKB. 
+
+Relation Schema Induction : Verified relation triples are clustered based on their relation r’s embedding (using cosine similarity). When a cluster’s fre-quency exceeds a threshold θ and exhibits high semantic coherence, a relation schema candidate is generated. This proposal is evaluated by an LLM for seman-tic completeness and generalizability. Passed schemas are written to the MKB (with type signatures like domain/range, symmetric/anti-symmetric properties); failed ones are kept in a proposal pool for re-evaluation with more data. 
+
+Event Schema Induction and Relationalization : First, event schemas are induced. The system clusters instances from the normalized event set ˆEk
+
+(represented by triggers, argument roles, time, etc.). Clusters meeting frequency 10 W. Bao et al. 
+
+and coherence thresholds generate an event schema candidate. After LLM evalu-ation, passed schemas are written to the MKB as formal event schemas (defining role sets and constraints). Subsequently, each normalized event instance in ˆEk
+
+undergoes Relationalization for unified graph storage: a unique node ϵ is created for the event, and facts are generated, such as ⟨ϵ, rdf:type , EventType ⟩ and a series of argument facts ⟨ϵ, has_role , a i⟩ (where ai is the subject, object, time, etc.). 
+
+Entity Profile Update : The system aggregates all verified new facts by en-tity ID, merges aliases, and normalizes key attributes. The updated EntityProfile is written back to the MKB, and the vector index is synchronized to improve coreference resolution and extraction consistency in subsequent batches. 
+
+4.4 Transactional Integration 
+
+This final stage atomically applies all round-k changes to the graph. The system aggregates V + 
+
+> k
+
+(new entities from coreference resolution), E+ 
+
+> k
+
+(new facts verified in Governance Adjudication and facts from Event Triplelization), and E↓ 
+
+> k
+
+(facts recorded in the Deprecation Log). The complete increment ∆G k = ( V + 
+
+> k
+
+, E + 
+
+> k
+
+, E ↓ 
+
+> k
+
+)
+
+is applied to Gk−1 to obtain Gk according to Sect. 3.5, completing the incre-mental update. 
+
+5 Experiments 
+
+5.1 Experimental Setup Implementation. We employ Qwen-Max [34] for generation and reasoning tasks, and leverage DeepSeek-V3 [22] (temp=0.1) as an independent judge [5,39]. Semantic similarity is computed via BGE-M3 1.
+
+Datasets. We use two static benchmarks, WebNLG [9] and Wiki-NRE [8], adapted for streaming via deterministic slicing. Crucially, we construct SoftRel-
+
+∆ (1,515 entries) from Kubernetes release logs across three windows ( ∆1: Base-line, ∆2: Evolution signals, ∆3: Consolidation). While distinct from real-time news, this windowed setup rigorously isolates and tests the system’s ability to handle deprecation and evolution. 
+
+Baselines. We compare against two state-of-the-art schema-free LLM ex-tractors: EDC [38] and AutoKG [4]. Note that traditional Temporal KGC methods are excluded as they rely on predefined schemas, contradicting our schema-free setting. 
+
+Research Questions. Our evaluation addresses three core questions: RQ1 (Static Quality) investigates how DIAL-KG compares with baselines on foun-dational extraction tasks; RQ2 (Incremental Reliability) assesses whether the system can reliably add new facts and deprecate obsolete ones in streaming settings; and RQ3 (Schema Quality) evaluates if the induced schema main-tains compactness and minimizes redundancy.   
+
+> 1https://huggingface.co/BAAI/bge-m3 DIAL-KG 11
+
+Metrics. For static tasks, we report standard Precision, Recall, and F1. For streaming (RQ2), we introduce two incremental metrics for window t: (1) ∆-Precision: The accuracy of newly added facts At, defined as ∆-P t = |T P t|/|At|,where T P t denotes additions judged as fully_supported by the LLM. (2) 
+
+Deprecation-Handling Precision (D-HP): The reliability of soft depreca-tions Dt, calculated as D-HP t = |JD t|/|D t|, where JD t represents deprecations supported by explicit textual evidence.                                                   
+
+> Table 1. Static extraction performance on WebNLG ,Wiki-NRE , and SoftRel-∆. Base-lines vs. DIAL-KG in Batch-Static and Stream-End-Static (static scoring at the end).
+> Dataset Model (Mode) Precision Recall F1-Score
+> WebNLG
+> EDC (baseline) 0.835 0.862 0.848
+> AutoKG (baseline) 0.781 0.801 0.791
+> DIAL-KG (Batch) 0.848 0.883 0.865
+> DIAL-KG (Stream-End) 0.842 0.872 0.857
+> Wiki-NRE
+> EDC (baseline) 0.784 0.833 0.808
+> AutoKG (baseline) 0.792 0.840 0.815
+> DIAL-KG (Batch) 0.822 0.887 0.853
+> DIAL-KG (Stream-End) 0.814 0.876 0.844
+> SoftRel-∆
+> EDC (baseline) 0.901 0.892 0.897
+> AutoKG (baseline) 0.894 0.887 0.891
+> DIAL-KG (Batch) 0.933 0.909 0.922
+> DIAL-KG (Stream-End) 0.931 0.910 0.920
+
+5.2 Results Static Performance. Table 1 shows that DIAL-KG in Batch-Static consis-tently surpasses static baselines, indicating a strong foundational extractor. In 
+
+Stream-End-Static , performance on WebNLG and Wiki-NRE remains within 1–2 F1 points of the batch setting, reflecting mild cold-start and sequencing effects. On the evolutionary SoftRel-∆ dataset, the batch–stream gap is negligible: the-matically linked windows allow memory and the MKB to recover or refine facts later, validating robustness under realistic information evolution. 
+
+Incremental Reliability. Table 2 reports per-window ∆-Precision (additions) and D-HP (soft deprecations). WebNLG and Wiki-NRE contain no explicit dep-recations (D-HP = N/A). On SoftRel-∆, D-HP > 0.98 indicates that depreca-tions are executed only when textually justified. Across open-domain ( WebNLG ), Wikipedia-style ( Wiki-NRE ), and domain-specific ( SoftRel-∆) corpora, ∆-Precision 
+
+≥ 0.97 demonstrates robust online decisions; later windows further benefit from schemas/entities accumulated after the ∆1 cold start. 
+
+Schema Quality. DIAL-KG consistently outperforms EDC across all datasets (Fig. 4). It achieves higher precision (an improvement of 0.8–3.2 points) while 12 W. Bao et al. 
+
+Table 2. Incremental decision quality on WebNLG , Wiki-NRE , and SoftRel-∆. We report ∆-Precision for additions and D-HP for soft deprecations (N/A where no dep-recations occur). 
+
+Dataset ∆ ∆-Precision D-HP 
+
+WebNLG ∆2 0.975 N/A 
+
+∆3 0.976 N/A 
+
+Wiki-NRE ∆2 0.972 N/A 
+
+∆3 0.974 N/A 
+
+SoftRel-∆ ∆2 0.978 0.986 
+
+∆3 0.973 0.983 WebNLG Wiki-NRE SoftRel-            
+
+> 0.85
+> 0.90
+> 0.95
+> 1.00
+> 1.05
+> 1.10
+> Score / Count
+> 0.963
+> 0.913
+> 0.942
+> 0.971
+> 0.921
+> 0.974
+> Prec. ( )
+> WebNLG Wiki-NRE SoftRel-
+> 0
+> 50
+> 100
+> 150
+> 200 200
+> 106
+> 138
+> 172
+> 94
+> 117
+> No. Rel. ( )
+> WebNLG Wiki-NRE SoftRel-
+> 0.75
+> 0.80
+> 0.85
+> 0.90
+> 0.95
+> 0.833 0.833 0.826
+> 0.812 0.817
+> 0.798
+> Red. ( )
+> EDC DIAL-KG (Ours)
+
+Fig. 4. Schema quality comparison. DIAL-KG achieves higher precision with lower redundancy. 
+
+producing more compact schemas, with up to 15% fewer relation types and a 1.6–2.8 point reduction in redundancy. EDC often generates near-duplicate re-lations such as acquired_by and acquisition_of , whereas DIAL-KG consol-idates them into unified predicates through cross-batch canonicalization. These results indicate that DIAL-KG produces accurate, compact, and non-redundant schemas through self-canonicalized schema evolution. 
+
+5.3 Ablation Study & Case Study Ablation Analysis. Table 3 confirms the necessity of our core modules. DIAL-KG ’s core contributions target streaming; thus, cross-window signals necessary for (i) Evolution-Intent Assessment (EIA), (ii) event representations, and (iii) Coreference Alignment are largely absent in Batch-Static . We therefore ablate on the incremental metrics ( ∆-Precision, D-HP). Removing EIA eliminates de-pendable deprecations (D-HP = N/A). Ablating event representations harms decisions on multi-argument facts. This confirms that event representation and intent assessment are indispensable for reliable streaming governance. Disabling coreference alignment degrades D-HP (to ≈ 0.33 ) due to entity fragmentation, which hinders precise targeting of historical facts for deprecation. 
+
+Case Study: Lifecycle Governance. To illustrate the system’s handling of evolution, we present a representative case from SoftRel-∆ below. DIAL-KG 13                                        
+
+> Table 3. Ablation on SoftRel-∆. “N/A” indicates missing functional capabilities.
+> Ablation Variant ∆-Precision D-HP Full Model 0.976 0.985
+> w/o Intent Assessment 0.848 N/A w/o Event Representation 0.850 N/A w/o Coreference Alignment 0.860 0.322
+> Input Stream ( ∆2): “The PodSecurityPolicy API is deprecated in v1.21 and will be removed in v1.25. ”
+> 1. Dual-Track Extraction: The system extracts an Event: {Trigger: deprecated, Target: PodSecurityPolicy} .
+> 2. Intent Verification: The LLM identifies the intent as Evolutionary rather than purely Informational.
+> 3. MKB Governance: The system queries the MKB for existing rela-tions involving PodSecurityPolicy . It adds the new fact (PodSecurityPolicy, status, deprecated) and executes a Soft Deprecation on the outdated fact
+> (PodSecurityPolicy, status, active) .
+
+5.4 Judge Reliability and Validity Controls 
+
+We fix the judge prompt and set temperature to 0.1. For ∆-Precision, only 
+
+fully_supported counts as correct; partially_supported and not_supported 
+
+count as errors. For D-HP, a deprecation is correct only if the judge returns 
+
+deletion_justified=true with explicit evidence. Manual spot checks show substantial agreement; disagreements concentrate on borderline paraphrases rather than contradictions. 
+
+6 Conclusion 
+
+We propose DIAL-KG , a schema-agnostic, closed-loop architecture for incre-mental knowledge graph (KG) construction, anchored by an evolving Meta-Knowledge Base (MKB). By synergizing dual-track extraction, governance adju-dication, and dynamic schema evolution, the framework facilitates autonomous schema induction and lifecycle management without necessitating a predefined ontology. Our empirical evaluations demonstrate that DIAL-KG achieves high-fidelity extraction and robust incremental updates through an auditable transac-tional mechanism. While the current reliance on Large Language Models (LLMs) for governance introduces latency constraints in high-velocity data environments, we contend that this computational overhead represents a strategic trade-off. Unlike conventional paradigms that require exhaustive graph reconstructions to incorporate new information, DIAL-KG substantially reduces the long-term amortized cost of KG maintenance. Future research will explore alleviating la-tency bottlenecks via the distillation of MKB-resident knowledge into specialized small language models (SLMs) and extending the framework to encompass mul-timodal signals for a more holistic knowledge evolution. 14 W. Bao et al. 
+
+Acknowledgments This research was funded by the National Natural Science Foundation of China (Nos. 62272093, 62137001). 
+
+References 
+
+1. Auer, S., Bizer, C., Kobilarov, G., Lehmann, J., Cyganiak, R., Ives, Z.: Dbpedia: A nucleus for a web of open data. In: international semantic web conference. pp. 722–735. Springer (2007) 2. Banko, M., Etzioni, O.: The tradeoffs between open and traditional relation ex-traction. In: Proceedings of ACL-08: HLT. pp. 28–36 (2008) 3. Carlson, A., Betteridge, J., Kisiel, B., Settles, B., Hruschka, E.R., Mitchell, T.M.: Toward an architecture for never-ending language learning. In: Proceedings of the AAAI conference on artificial intelligence. vol. 24, pp. 1306–1313 (2010) 4. Chen, B., Bertozzi, A.L.: Autokg: Efficient automated knowledge graph generation for language models (2023), https://arxiv.org/abs/2311.14740 5. Chen, H., Shen, X., Lv, Q., Wang, J., Ni, X., Ye, J.: Sac-kg: Exploiting large language models as skilled automatic constructors for domain knowledge graphs. arXiv preprint arXiv:2410.02811 (2024) 6. Chen, Z., Bai, L., Li, Z., Huang, Z., Jin, X., Dou, Y.: A new pipeline for knowl-edge graph reasoning enhanced by large language models without fine-tuning. In: Proceedings of the 2024 Conference on Empirical Methods in Natural Language Processing. pp. 1366–1381 (2024) 7. Chiticariu, L., Li, Y., Reiss, F.R.: Rule-based information extraction is dead! long live rule-based information extraction. In: Proceedings of the 2013 conference on empirical methods in natural language processing. pp. 827–832 (2013) 8. Distiawan, B., Weikum, G., Qi, J., Zhang, R.: Neural relation extraction for knowl-edge base enrichment. In: Proceedings of the 57th Annual Meeting of the Associ-ation for Computational Linguistics. pp. 229–240 (2019) 9. Ferreira, T.C., Gardent, C., Ilinykh, N., Van Der Lee, C., Mille, S., Moussallem, D., Shimorina, A.: The 2020 bilingual, bi-directional webnlg+ shared task overview and evaluation results (webnlg+ 2020). In: Proceedings of the 3rd International Workshop on Natural Language Generation from the Semantic Web (WebNLG+) (2020) 10. Galkin, M., Trivedi, Priyansh andstrnadova, G., Lehmann, J.: Message passing for hyper-relational knowledge graphs. In: Proceedings of the 2020 Conference on Em-pirical Methods in Natural Language Processing (EMNLP). pp. 7346–7359 (2020) 11. Gottschalk, S., Demidova, E.: Eventkg: A multilingual event-centric temporal knowledge graph. Semantic Web 9(4), 415–432 (2018) 12. Guo, J., Cao, Y., Zhang, R., Cheng, X.: What is event knowledge graph: A survey. IEEE Transactions on Knowledge and Data Engineering 34 (12), 5806–5824 (2022) 13. Hassabis, D., Kumaran, D., Summerfield, C., Botvinick, M.: Neuroscience-inspired artificial intelligence. Neuron 95 (2), 245–258 (2017) 14. Hearst, M.A.: Automatic acquisition of hyponyms from large text corpora. In: Proceedings of the 14th conference on Computational linguistics. vol. 2, pp. 539– 545. Association for Computational Linguistics (1992) 15. Hofer, M., Obraczka, D., Saeedi, A., Köpcke, H., Rahm, E.: Construction of knowl-edge graphs: State and challenges. arXiv preprint arXiv:2302.11509 (2023) 16. Huang, L., Feng, X., Ma, W., Fan, Y., Feng, X., Gu, Y., Ye, Y., Zhao, L., Zhong, W., Wang, B., et al.: Alleviating hallucinations from knowledge misalignment in DIAL-KG 15 large language models via selective abstention learning. In: Proceedings of the 63rd Annual Meeting of the Association for Computational Linguistics (Volume 1: Long Papers). pp. 24564–24579 (2025) 17. Huang, L., Feng, X., Ma, W., Fan, Y., Feng, X., Ye, Y., Zhong, W., Gu, Y., Wang, B., Wu, D., et al.: Improving contextual faithfulness of large language models via retrieval heads-induced optimization. arXiv preprint arXiv:2501.13573 (2025) 18. Huang, L., Yu, W., Ma, W., Zhong, W., Feng, Z., Wang, H., Chen, Q., Peng, W., Feng, X., Qin, B., et al.: A survey on hallucination in large language mod-els: Principles, taxonomy, challenges, and open questions. ACM Transactions on Information Systems 43 (2), 1–55 (2025) 19. Knez, T., Zitnik, S.: Event-centric temporal knowledge graph construction: A sur-vey. Mathematics 11 (23), 4852 (2023) 20. Lairgi, Y., Moncla, L., Cazabet, R., Benabdeslem, K., Cléau, P.: itext2kg: Incre-mental knowledge graphs construction using large language models. In: Interna-tional Conference on Web Information Systems Engineering. pp. 214–229. Springer (2024) 21. Lewis, M., Liu, Y., Goyal, N., Ghazvininejad, M., Mohamed, A., Levy, O., Stoyanov, V., Zettlemoyer, L.: Bart: Denoising sequence-to-sequence pre-training for natural language generation, translation, and comprehension. arXiv preprint arXiv:1910.13461 (2019) 22. Liu, A., Feng, B., Xue, B., Wang, B., Wu, B., Lu, C., Zhao, C., Deng, C., Zhang, C., Ruan, C., et al.: Deepseek-v3 technical report. arXiv preprint arXiv:2412.19437 (2024) 23. Luo, H., Yang, Y., Yao, T., Guo, Y., Tang, Z., Zhang, W., Peng, S., Wan, K., Song, M., Lin, W., et al.: Text2nkg: Fine-grained n-ary relation extraction for n-ary relational knowledge graph construction. Advances in Neural Information Processing Systems 37 , 27417–27439 (2024) 24. Lyu, H., Jiang, S., Zeng, H., Xia, Y., Wang, Q., Zhang, S., Chen, R., Leung, C., Tang, J., Luo, J.: Llm-rec: Personalized recommendation via prompting large language models. arXiv preprint arXiv:2307.15780 (2023) 25. Mintz, M., Bills, S., Snow, R., Jurafsky, D.: Distant supervision for relation ex-traction without labeled data. In: Proceedings of the Joint Conference of the 47th Annual Meeting of the ACL and the 4th International Joint Conference on Natural Language Processing of the AFNLP. pp. 1003–1011 (2009) 26. Pan, S., Luo, L., Wang, Y., Chen, C., Wang, J., Wu, X.: Unifying large language models and knowledge graphs: A roadmap. IEEE Transactions on Knowledge and Data Engineering 36 (7), 3580–3599 (2024) 27. Raffel, C., Shazeer, N., Roberts, A., Lee, K., Narang, S., Matena, M., Zhou, Y., Li, W., Liu, P.J.: Exploring the limits of transfer learning with a unified text-to-text transformer. Journal of machine learning research 21 (140), 1–67 (2020) 28. Rosso, P., Yang, D., Cudré-Mauroux, P.: Beyond triplets: hyper-relational knowl-edge graph embedding for link prediction. In: Proceedings of the web conference 2020. pp. 1885–1896 (2020) 29. Suchanek, F.M., Kasneci, G., Weikum, G.: Yago: a core of semantic knowledge. In: Proceedings of the 16th international conference on World Wide Web. pp. 697–706 (2007) 30. Völkel, M., Krötzsch, M., Vrandecic, D., Haller, H., Studer, R.: Semantic wikipedia. In: Proceedings of the 15th international conference on World Wide Web. pp. 585– 594 (2006) 16 W. Bao et al. 31. Wadden, D., Wennberg, U., Luan, Y., Hajishirzi, H.: Entity, relation, and event extraction with contextualized span representations. In: Proceedings of the 2019 Conference on Empirical Methods in Natural Language Processing. pp. 5784–5789 (2019) 32. Wu, Y., Huang, Y., Hu, N., Hua, Y., Qi, G., Chen, J., Pan, J.Z.: Cotkr: Chain-of-thought enhanced knowledge rewriting for complex knowledge graph question answering. arXiv preprint arXiv:2409.19753 (2024) 33. Xue, L., Zhang, D., Dong, Y., Tang, J.: Autore: Document-level relation extraction with large language models. arXiv preprint arXiv:2403.14888 (2024) 34. Yang, A., Li, A., Yang, B., Zhang, B., Hui, B., Zheng, B., Yu, B., Gao, C., Huang, C., Lv, C., et al.: Qwen3 technical report. arXiv preprint arXiv:2505.09388 (2025) 35. Yao, Y., Mao, S., Zhang, N., Chen, X., Deng, S., Chen, X., Chen, H.: Schema-aware reference as prompt improves data-efficient knowledge graph construction. In: Proceedings of the 46th International ACM SIGIR Conference on Research and Development in Information Retrieval. pp. 911–921 (2023) 36. Ye, H., Zhang, N., Chen, H., Chen, H.: Generative knowledge graph construction: A review. arXiv preprint arXiv:2210.12714 (2022) 37. Zhan, J., Zhao, H.: Span model for open information extraction on accurate corpus. In: Proceedings of the AAAI Conference on Artificial Intelligence. vol. 34, pp. 9523– 9530 (2020) 38. Zhang, B., Soh, H.: Extract, define, canonicalize: An llm-based framework for knowledge graph construction. arXiv preprint arXiv:2404.03868 (2024) 39. Zheng, L., Chiang, W.L., Sheng, Y., Zhuang, S., Wu, Z., Zhuang, Y., Lin, Z., Li, Z., Li, D., Xing, E., et al.: Judging llm-as-a-judge with mt-bench and chatbot arena. Advances in neural information processing systems 36 , 46595–46623 (2023) 40. Zhu, Y., Wang, X., Chen, J., Qiao, S., Ou, Y., Yao, Y., Deng, S., Chen, H., Zhang, N.: Llms for knowledge graph construction and reasoning: Recent capabilities and future opportunities. World Wide Web 27 (5), 58 (2024)

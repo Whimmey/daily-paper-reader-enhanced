@@ -1,0 +1,743 @@
+Title: AIGQ: An End-to-End Hybrid Generative Architecture for E-commerce Query Recommendation
+
+URL Source: https://arxiv.org/pdf/2603.19710v1
+
+Published Time: Mon, 23 Mar 2026 00:34:20 GMT
+
+Number of Pages: 10
+
+Markdown Content:
+# AIGQ: An End-to-End Hybrid Generative Architecture for E-commerce Query Recommendation 
+
+# Jingcao Xu ∗† 
+
+xujingcao.xjc@taobao.com Taobao & Tmall Group of Alibaba Hangzhou, China 
+
+# Jianyun Zou ∗
+
+zoujianyun.zjy@taobao.com Taobao & Tmall Group of Alibaba Hangzhou, China 
+
+# Renkai Yang ∗
+
+renkai.yrk@taobao.com Taobao & Tmall Group of Alibaba Hangzhou, China 
+
+# Zili Geng 
+
+gengzili@std.uestc.edu.cn University of Electronic Science and Technology of China Chengdu, China 
+
+# Qiang Liu 
+
+2012dtd@gmail.com Taobao & Tmall Group of Alibaba Hangzhou, China 
+
+# Haihong Tang 
+
+piaoxue@taobao.com Taobao & Tmall Group of Alibaba Hangzhou, China 
+
+## Abstract 
+
+Pre-search query recommendation, widely known as HintQ on Taobao’s homepage, plays a vital role in intent capture and de-mand discovery, yet traditional methods suffer from shallow se-mantics, poor cold-start performance and low serendipity due to reliance on ID-based matching and co-click heuristics. To overcome these challenges, we propose AIGQ (AI-Generated Query architec-ture), the first end-to-end generative framework for HintQ scenario. AIGQ is built upon three core innovations spanning training para-digm, policy optimization and deployment architecture. First, we propose Interest-Aware List Supervised Fine-Tuning (IL-SFT), a list-level supervised learning approach that constructs training samples through session-aware behavior aggregation and interest-guided re-ranking strategy to faithfully model nuanced user intent. Accordingly, we design Interest-aware List Group Relative Policy Optimization (IL-GRPO), a novel policy gradient algorithm with a dual-component reward mechanism that jointly optimizes in-dividual query relevance and global list properties, enhanced by a model-based reward from the online click-through rate (CTR) ranking model. To deploy under strict real-time and low-latency re-quirements, we further develop a hybrid offline-online architecture comprising AIGQ-Direct for nearline personalized user-to-query generation and AIGQ-Think , a reasoning-enhanced variant that produces trigger-to-query mappings to enrich interest diversity. Ex-tensive offline evaluations and large-scale online A/B experiments on Taobao demonstrate that AIGQ consistently delivers substantial improvements in key business metrics across platform effectiveness and user engagement.  
+
+> ∗Equal contribution.
+> †Corresponding author. Permission to make digital or hard copies of all or part of this work for personal or classroom use is granted without fee provided that copies are not made or distributed for profit or commercial advantage and that copies bear this notice and the full citation on the first page. Copyrights for components of this work owned by others than the author(s) must be honored. Abstracting with credit is permitted. To copy otherwise, or republish, to post on servers or to redistribute to lists, requires prior specific permission and/or a fee. Request permissions from permissions@acm.org.
+> Conference acronym ’XX, Woodstock, NY
+> ©2018 Copyright held by the owner/author(s). Publication rights licensed to ACM. ACM ISBN 978-1-4503-XXXX-X/2018/06 https://doi.org/XXXXXXX.XXXXXXX
+
+## Keywords 
+
+Large Language Models, Query Recommendation, Personalized Search, Chain-of-Thought Reasoning, Reinforcement Learning 
+
+ACM Reference Format: 
+
+Jingcao Xu, Jianyun Zou, Renkai Yang, Zili Geng, Qiang Liu, and Haihong Tang. 2018. AIGQ: An End-to-End Hybrid Generative Architecture for E-commerce Query Recommendation. In Proceedings of Make sure to enter the correct conference title from your rights confirmation email (Conference acronym ’XX). ACM, New York, NY, USA, 10 pages. https://doi.org/XXXX XXX.XXXXXXX 
+
+## 1 Introduction 
+
+In modern search engines, query recommendation systems are routinely deployed to assist users in articulating their informa-tion needs. These systems typically fall into three canonical cat-egories: (1) Query Suggestion[ 18 , 38 , 41 ], which predicts query suffixes or full queries based on a user-provided prefix; (2) Query Clarification[ 11 , 26 , 39 , 40 ], which resolves query ambiguity through disambiguating prompts; (3) Query Recommendation[ 16 , 17 , 24 , 25 ], which proposes alternative queries derived from aggregated behav-ioral data or trending signals. Within this category, HintQ is a pre-search query recommendation feature on Taobao’s homepage that operates without any current query context, taking the user’s historical behavior sequence and profile attributes as input and generating personalized queries as output, as illustrated in Figure 1. Recall Rank 
+
+User Profile    
+
+> Male
+> 25 years old
+> Hangzhou
+> Winter
+> 0℃
+
+Context Info 
+
+User Behavior Sequence 
+
+> 男生羽绒服
+
+~10 ! ~10 "
+
+> 冬季马丁靴
+> 男士毛线帽
+
+Figure 1: Overview of HintQ 
+
+Early query recommendation systems relied on collaborative filtering[ 14 ] and DNN-based matching [ 6, 13 ] which suffer from poor cold-start generalization, but the recent rise of Large Language Models (LLMs) has sparked a paradigm shift toward generative  
+
+> arXiv:2603.19710v1 [cs.IR] 20 Mar 2026 Conference acronym ’XX, June 03–05, 2018, Woodstock, NY Jingcao Xu, Jianyun Zou, Renkai Yang, Zili Geng, Qiang Liu, and Haihong Tang
+
+recommendation, enabling diverse applications such as item recom-mendation [ 19 , 27 , 34 ] and video suggestion[ 23 , 44 , 45 ]. However, no prior work has explored generative ability for hint query rec-ommendation. While OneSug[ 8] represents a pioneering effort in LLM-based query recommendation, it optimizes primarily for rele-vance under strong contextual constraints. In contrast, HintQ must generate diverse, personalized queries without any trigger, which poses a great challenge for requiring a delicate balance between personalization accuracy and serendipitous discovery. In industrial practice, the common approach to leveraging LLMs is to construct a static context-to-query mapping offline and then function as an online recall in response to user triggers. However, this paradigm fails to capture the multi-faceted nature of user in-terests and often produces incoherent outputs. Moreover, these queries are fed into a downstream ranker that optimizes short-term engagement (e.g., CTR), creating a misalignment between semantic legitimacy and user preference. To enable fully personalized query recommendation via LLMs in HintQ where multiple candidates are presented in ranked order, a key challenge lies in designing an end-to-end generative framework that directly optimizes the ranking of generated queries aligned with real user preferences. As for the online deployment of generative architectures in in-dustrial recommendation scenarios, existing end-to-end approaches treat recommendation as a next token prediction (NTP) task over semantic IDs and rely on online beam search to generate multiple candidates [ 10 , 27 , 36 ]. However, in industrial recommendation systems, it remains tempered in practice by tight constraints on computational resources and real-time latency budgets. Therefore, another key challenge arises in the balance of maximizing the semantic fidelity of LLM-based modeling while simultaneously achieving inference efficiency at scale. To address these challenges, we propose AIGQ (AI-Generated Query architecture), a hybrid end-to-end generative framework for pre-search query recommendation in e-commerce. Through co-design of list-level training objectives, policy optimization and deployment strategy, AIGQ unifies semantic capability with infer-ence efficiency, effectively balancing accuracy, diversity and latency under real-world constraints. To the best of our knowledge, AIGQ is the first end-to-end generative solution successfully deployed for the HintQ scenario, delivering significant improvements in both user engagement and business outcomes. The main contributions of this work are summarized as follows: 
+
+• We present the first end-to-end generative framework for pre-search query recommendation scenario (HintQ), introducing two specialized LLM variants, i.e., AIGQ-Direct and AIGQ-Think ,designed to address the dual demands of high accuracy and broad interest coverage. Both models are trained on massive user be-havior logs using an innovative Interest-Aware List Supervised Fine-Tuning (IL-SFT ) paradigm that jointly optimizes personal-ization fidelity and inference efficiency. 
+
+• We propose Interest-aware List Group Relative Policy Optimization 
+
+(IL-GRPO ), a novel policy gradient algorithm that performs ad-vantage estimation at the granularity of individual queries within a generated list. IL-GRPO employs a dual-component reward mechanism, combining a local query-level reward that assesses the quality and relevance of individual recommended queries with a global sequence-level reward that evaluates the overall coherence, coverage and diversity of the entire recommendation list. 
+
+• We design a hybrid offline-online deployment architecture for end-to-end generative models, where lightweight AIGQ-Direct 
+
+generates nearline personalized user-to-query (u2q) hints and 
+
+AIGQ-Think constructs offline trigger-to-query (x2q) mappings to support real-time refinement. The system meets stringent online latency requirements while delivering remarkable metrics improvement and the highest PVR contribution, demonstrating the feasibility of AIGQ in production. 
+
+## 2 Related Work 2.1 Query Recommendation 
+
+Traditional query recommendation methods use heuristic rules and statistical models based on query logs, term co-occurrence, and user behavior. They work well in narrow settings but often suffer from sparse data and struggle to adapt to changing user intents [ 2, 30 ]. Neural approaches improve this by modeling sequential patterns for better contextual recommendations [ 15 ], yet they still struggle with long-tail queries. Recently, the field has moved toward generative methods using LLMs. For example, GQR [ 1 ] handles cold-start cases without historical logs. Later work boosts relevance by linking gen-eration to CTR prediction [ 24 ] or using query-to-recommendation frameworks for personalized expansion [ 9]. Other studies show that LLM-generated pseudo references greatly improve retrieval [ 43 ], and tailored techniques can produce high-quality queries even in low-resource, task-oriented systems [4]. 
+
+## 2.2 Generative Recommendation 
+
+Generative recommendation leverages LLMs to produce recommen-dations as sequences, either in the form of semantic IDs (SIDs) or natural language. For instance, TIGER [ 27 ] generates SIDs via a sequence-to-sequence framework, while HLLM [ 5 ] employs a hier-archical structure to model user interests and item representations separately. In industrial practice, the OneRec family [ 23 , 44 , 45 ] es-tablishes end-to-end generative frameworks that integrate reason-ing and reinforcement learning for video and e-commerce recom-mendations. Concurrently, SynerGen [ 7 ] and OneSearch [ 3, 8 ] unify search and recommendation tasks under generative paradigms. However, recent work suggests natural language itself can serve as a more expressive alternative to SIDs [ 22 ]. Distinct from SID-based approaches, AIGQ operates entirely in natural language space, di-rectly generating contextually persuasive queries without discrete indexing, thereby fully harnessing the generative capacity of LLMs for pre-search query recommendation. 
+
+## 2.3 Preference Alignment for Recommendation 
+
+Reinforcement learning (RL) has emerged as a powerful approach to align generative recommenders with real user preferences beyond static supervision. In this direction, Rec-R1 [ 21 ] shows that closed-loop policy optimization adapts LLM-based generation more effec-tively than conventional prompting or fine-tuning, while STREAM-Rec [ 42 ] applies RL to improve deliberative reasoning in sequen-tial recommendation tasks. Industrial systems further demonstrate AIGQ: An End-to-End Hybrid Generative Architecture for E-commerce Query Recommendation Conference acronym ’XX, June 03–05, 2018, Woodstock, NY 
+
+the value of reinforcement learning, with OneRec [ 44 ] employ-ing multi-dimensional rewards to balance business constraints and user engagement, and OneRec-Think [ 23 ] using RL to refine explicit chain-of-thought (CoT) reasoning for complex user intents. How-ever, applying standard RL to list-wise query generation remains challenging due to high computational cost and strong inter-query dependencies. To address this, we adapt GRPO [ 28 ] to our setting by introducing fine-grained advantage estimation that operates at the granularity of individual queries within a generated list. 
+
+## 3 Methodology 
+
+In this section, we elaborate on our AIGQ framework in detail. We first define the problem for HintQ recommendation task, then we present our design in context engineering and sample construction, followed by the introduction of the two-stage training paradigm. The overall framework is depicted in Figure 2. 
+
+## 3.1 Problem Definition 
+
+In this work, we focus on the HintQ recommendation task in Taobao’s search scenario. Formally, given a user 𝑢 with demographic profile P𝑢 (e.g., age, gender, location) and a time-ordered behavior sequence S𝑢 = {( 𝑡 𝑖 , 𝑎 𝑖 , 𝑐 𝑖 )} 𝐿 𝑖 =1, where 𝑡 𝑖 denotes the time offset (in days ago), 𝑎 𝑖 ∈ { search , click } indicates the action type, and 𝑐 𝑖 is the associated content (query text or item description), the goal is to generate a ranked list of 𝐾 hint queries Q = [𝑞 1, 𝑞 2, . . . , 𝑞 𝐾 ].This list must capture the user’s near-term intent, jointly optimize for relevance and business utility (e.g., CTR, GMV). Importantly, in contrast to conventional two-stage pipelines, which first retrieve candidates via pointwise scoring and subse-quently rerank them, we formulate HintQ recommendation as an interest-aware list generation task, which produces the entire or-dered candidate list in a holistic manner to eliminate the need for online beam search, thereby reducing both computational overhead and inference latency. 
+
+## 3.2 User-Centric Context Engineering 
+
+In personalized query recommendation, the input representation plays a pivotal role in accurately capturing user intent and gen-erating relevant queries. Given the sensitivity of LLMs to input length and inference costs, we adopt a deliberately minimal user-level context: basic user profile attributes (e.g., age, gender, region) are verbalized in natural language, and user behavior histories are merged into a time-ordered sequence using a unified textual schema 
+
+"index | time | behavior type | behavior content" . The remainder of this section focuses on two key components: behavior content representation and prompt compression. 
+
+3.2.1 Behavior Content Representation. In this work, we model user behavior history using search queries and item clicks. Search queries are naturally textual, whereas items are inherently multi-modal, encompassing both rich textual attributes (e.g., titles, tags) and visual content (e.g., product images). To bridge the semantic gap between discrete item identifiers and the continuous representation space of LLMs, we design an item-to-text generator that synthesizes textual surrogates from structured item metadata. Specifically, we fine-tune a Qwen3-32B [ 35 ] language model on large-scale user click logs to generate concise descriptions from heterogeneous item facets including title, category, attributes, tags, etc., which encapsulate item’s core characteristics and user-preferred linguistic patterns. 
+
+3.2.2 Prompt Compression. To minimize token consumption while preserving context integrity, we compress both feature represen-tations and task prompts through two complementary strategies: (1) Feature structuring. Discrete fields with small vocabularies, such as timestamps and behavior types, are encoded as dedicated special tokens added to the model’s vocabulary, replacing verbose natural-language descriptions of the schema.    
+
+> “1|1 day ago | search | iPhone17” ⇒<1><1_day_ago><search> iPhone17 .(1)
+
+where the special token is initialized as the average of the em-beddings of its constituent subwords, for example, the embedding of <1_day_ago> is initialized as the mean of the embeddings of "1", "day", and "ago". This substantially shortens long behavior se-quences while keeping their structure explicit. (2) Instruction pruning. Leveraging the fact that supervised fine-tuning (SFT) has already internalized the task objective and input schema, we adopt a minimal instruction format and eliminate redundant explanatory text in the final prompt. The complete prompt example is as follows: 
+
+AIGQ Prompt.       
+
+> Input: Please Recommend the next 10 queries. User Profile: { Gender: Female, Age: 44, Occupation: Medical Staff, City: Beijing }. User Behavior Sequence: { <1><Today><Click> National Style Hand-woven Sachet;; <1><Today><Search> Flower Cake Sachet... }
+> Output: {Predicted queries.}
+
+## 3.3 Unified Sample Construction Framework 
+
+To support both domain-specific precision and global interest explo-ration, we adopt a unified two-stage sample construction pipeline: (1) session-aware behavior aggregation , which defines the tem-poral scope of user intent and gathers raw interaction signals; and (2) interest-guided label re-ranking , which organizes the can-didate queries into an ordered supervision list according to quan-tified interest strength. While sharing this structural backbone, 
+
+AIGQ-Direct and AIGQ-Think differ significantly in their session definitions and label curation strategies, as detailed below. 
+
+3.3.1 Stage 1: Session-Aware Behavior Aggregation. The session boundary governs the granularity of intent modeling and deter-mines which interactions constitute a valid training instance. Let 
+
+H𝑢 denote the complete history of user 𝑢 ’s timestamped interac-tions, including query exposures, clicks, and other in-app actions. In AIGQ-Direct , a session SAIGQ-Direct  
+
+> 𝑢
+
+is defined as a single exposure event in the HintQ scenario, where three hint queries are presented to the user in one request. This exposure is retained as a valid session only if at least one of the three displayed queries receives a click, as verified using the user’s click records in H𝑢 . This fine-grained definition ensures high behavioral fidelity but restricts the context to a narrow in-domain snapshot. In contrast, AIGQ-Think adopts a day-level session definition: Conference acronym ’XX, June 03–05, 2018, Woodstock, NY Jingcao Xu, Jianyun Zou, Renkai Yang, Zili Geng, Qiang Liu, and Haihong Tang Unified Sample Construction 
+
+Stage2. Interest -guided Label Re -Ranking          
+
+> Sug Search
+> Item View Item View Item Stay Item click
+> Search HintQ Exit Taobao
+
+Stage1. Session -aware Behavior Aggregation 
+
+> 𝑄 𝓊
+> "#$%& '()#*+
+> 𝑄 𝓊
+> ,)-./) '01/2*3
+
+𝒮 𝓊 
+
+> "#$% &'()*+,
+
++
+
+> 𝑄 𝓊
+> 445 ',1$
+
+𝑄 𝓊 
+
+> "#$% &-.(/0
+
+𝑞 1 𝑞 2 𝑞 3 𝑞 / 
+
+> LLM
+> Augmentation
+> 𝑄 𝓊
+> 6/$+ '7-89 Online
+> Logs
+
+𝒮 𝓊 
+
+> "#$% &-.(/0
+
+~ Human Prior 
+
+𝑞 1 𝑞 2 𝑞 4…
+
+𝑄 𝓊  
+
+> "#$% &'()*+,
+> System Prior
+
+…
+
+Interest -Aware List SFT 
+
+Next List Generation Paradigm 
+
+AIGQ LLM Decoder    
+
+> Reason Token Activated
+> For AIGQ -Think
+
+…
+
+Reasoning Augmentation 
+
+𝒯 1 𝑞 1 𝑞 2 𝑞 3
+
+𝒯 2 𝑞 5 𝑞 6 𝑞 7     
+
+> Trigger Set Query Set Reason Token
+
+User Centric Context Engineering 
+
+Item Text Representation 
+
+𝐿𝐿𝑀  
+
+> Item
+> Title
+> Item
+> Tag
+> Item
+> CPV
+> “Olive green cargo utility jacket
+> ”
+
+User Profile 
+
+> Sex
+> Age
+> City
+> Weather
+> Festival
+
+Context Info 
+
+User Behavior Sequence 
+
+Prompt Compression         
+
+> #Task Desc #Context Desc
+> polo shirt
+> <Index><Time><Type><Content>
+> #Sequence Format:
+> 1
+> sneaker 2
+
+# AIGQ LLM Decoder     
+
+> SEP Token
+> Task Token
+> Seq Token
+> Context Token
+
+Task Desc Context Info User Sequence 
+
+Label List 
+
+…
+
+…
+
+Interest -Aware List GRPO 
+
+AIGQ 
+
+LLM 
+
+… 
+
+> Rollout G
+
+𝑞 1 𝑞 2 𝑞 8
+
+…      
+
+> …
+> High
+> Low 𝜖 !"#
+> Entropy -Adaptive
+> Clipping
+> Rouge -LReward
+> Length Reward
+> Repetition Penalty
+> Query
+> Level
+> Trigger Reward
+> Rule -Based Model -Based
+
+…
+
+𝑞 1 𝑞 2 𝑞 8
+
+…    
+
+> Rollout 2
+> Repetition Penalty Format Reward
+> Sequence Level
+
+𝑞 1
+
+… 
+
+> Rollout 1
+
+𝑞 2 𝑞 8
+
+…      
+
+> …𝜇 $
+> %,𝜎 $
+> %
+> Dynamic Entropy
+> Regularization
+> 𝛽 𝑠 ℋ𝜋 &
+> CTR Reward
+> User
+> Query
+
+Reward Design Training 
+
+(a) Design 
+
+AIGQ -Think 
+
+Online System 
+
+AIGQ -Direct 
+
+Nearline System 
+
+prod u2q cache   
+
+> 𝑞 '𝑞 $𝑞 (
+> 𝑞 )𝑞 *𝑞 +
+
+Offline System 
+
+dev x2q cache     
+
+> 𝑞 ,𝑞 $𝑞 -
+> 𝑞 $. 𝑞 *𝑞 $$
+> AIGQ u2q
+> AIGQ x2q
+> Other
+> Retrieval
+> Rank
+
+𝑞 1
+
+𝑞 2
+
+𝑞 9
+
+Logs 
+
+> Read
+> Async
+> Call
+> Read
+> Daily
+> Call
+
+Request 
+
+(b) Training 
+
+(c) Deployment       
+
+> Today Search
+> Today Click
+> 𝜇 /,𝜎 /
+> 𝜇 '
+> %,𝜎 '
+> %𝜇 0
+> %,𝜎 0
+> %
+> 𝜖 1231
+
+Figure 2: Overview of the AIGQ framework. 
+
+SAIGQ-Think  
+
+> 𝑢
+
+= {ℎ ∈ H 𝑢 | 𝑡 first ≤ ℎ. time ≤ 𝑡 exit } (2) 
+
+where 𝑡 first marks the user’s first interaction with the search entry and 𝑡 exit denotes their final exit from Taobao on the same day. This window aggregates cross-domain behaviors which enables the discovery of diverse interests beyond immediate exposure. 
+
+3.3.2 Stage 2: Interest-Guided Label Re-Ranking. Given a valid ses-sion, we construct a ranked label list Q𝑢 = [𝑞 1, . . . , 𝑞 𝐾 ] by reor-ganizing the collected candidates according to interest strength derived from system priors (e.g., production ranking scores) and feedback priors (e.g., clicks outweighing exposures), which serves as the supervision target for list generation fine-tuning. Intuitively, through years of optimization based upon the real-world engagement feedback, the production ranking model is able to encode user interest strength implicitly. Therefore, for AIGQ-Direct , the labels are composed of the clicked hint query QHintQ-Click 
+
+𝑢 
+
+and top ranked queries QRank-TopK 
+
+𝑢 during the current exposure event. Finally, the ranked label list is as follows: 
+
+QAIGQ-Direct  
+
+> 𝑢
+
+= Concat( QHintQ-Click  
+
+> 𝑢
+
+, QRank-TopK  
+
+> 𝑢
+
+) (3) 
+
+In contrast, AIGQ-Think explicitly models multi-faceted user in-terests by aggregating heterogeneous query signals from the user’s day-level session, including in-domain signals (i.e., the clicked hint query and top ranked queries), cross-domain global search queries, and LLM-generated candidates. Based on their reliability as behav-ioral indicators, we construct the ranked label list as follows: 
+
+QAIGQ-Think  
+
+> 𝑢
+
+= Concat  QHintQ-Click  
+
+> 𝑢
+
+, QGlobal-Search  
+
+> 𝑢
+
+, QRank-TopK  
+
+> 𝑢
+
+, QLLM-Gen 
+
+> 𝑢
+
+ (4) 
+
+where QHintQ-Click 
+
+𝑢 and QGlobal-Search 
+
+𝑢 represent high-confidence positive feedback signals, while QRank-TopK 
+
+𝑢 and QLLM-Gen 
+
+𝑢 provide coverage expansion with decreasing reliability. To ensure label relevance to user behavior, we further employ a powerful LLM to filter out candidates that exhibit weak alignment with the user’s historical behavioral patterns. 
+
+## 3.4 Interest-Aware List SFT (IL-SFT) 
+
+In this section, we propose Interest-Aware List SFT (IL-SFT) , a supervised fine-tuning framework that explicitly models the target as an ordered list of queries grounded in quantifiable user interests. Critically, IL-SFT diverges from conventional next-token prediction (NTP) by treating the target not as an unstructured token sequence, but as an ordered interest-driven list. The training objective is formulated as: 
+
+LSFT = −E(x,z)∼D 
+
+" 𝑇 ∑︁  
+
+> 𝑡 =1
+
+log 𝑃 (𝑧 𝑡 | 𝑧 <𝑡 , x; 𝜃 )
+
+#
+
+, (5) 
+
+where x = [P , S] denotes the user context, 𝜃 denotes model parameters and 𝑇 is the output sequence length. The key distinction lies in the composition of the target sequence z. Both AIGQ-Direct 
+
+and AIGQ-Think instantiate this paradigm, differing only in the internal structure of the target sequence. 
+
+3.4.1 AIGQ-Direct . We generate a flat list of top-𝐾 queries di-rectly based on the output of the production ranking model. The training dataset is constructed as: 
+
+D𝑑𝑖𝑟𝑒𝑐𝑡 =
+
+n x(𝑛 ) , y(𝑛 ) o𝑁 𝑛 =1 , y(𝑛 ) = Q (𝑛 ) (6) AIGQ: An End-to-End Hybrid Generative Architecture for E-commerce Query Recommendation Conference acronym ’XX, June 03–05, 2018, Woodstock, NY 
+
+where 𝑁 denotes the number of training samples, Q (𝑛 ) denote the label list of the 𝑛 -th sample, which instantiates QAIGQ-Direct  
+
+> 𝑢
+
+.
+
+3.4.2 AIGQ-Think . Inspired by recent advances in chain-of-thought (CoT) reasoning for recommendation, we enhance AIGQ-Think 
+
+with explicit reasoning augmentation, which follows a two-stage cognitive process: (1) induce multi-interest points represented as trigger behavior sets {T 𝑘 }𝐾 𝑘 =1; (2) generate a query list Q𝑘 for each in-terest point. The final output takes the structured form y = {(T 1 →Q1), . . . , (T 𝐾 → Q 𝐾 )} . To make this reasoning process explicit and distillable, we use Qwen3-32B as a teacher to generate natural-language rationales. Specifically, for each interest point (T 𝑘 , Q𝑘 ),we prompt the teacher model to produce a sub-reasoning chain r𝑘 
+
+explaining the mapping from behaviors to queries:         
+
+> r𝑘 =LLM reason
+>  x,T𝑘 ,Q𝑘 ;prompt (7)
+
+The final output is formed by concatenating the reasoning trace with the structured prediction. Specifically, the complete reason-ing trace is composed as accordingly r = r1 ∥ · · · ∥ r𝐾 , and the distillation dataset is constructed as:                   
+
+> D𝑡ℎ𝑖𝑛𝑘 =
+> n x(𝑛 ),r(𝑛 ),y(𝑛 )o𝑁 𝑛 =1(8)
+> r(𝑛 )={r(𝑛 )
+> 𝑘 }𝐾𝑛 𝑘 =1,y(𝑛 )={ ( T (𝑛 )
+> 𝑘 → Q (𝑛 )
+> 𝑘 ) } 𝐾𝑛 𝑘 =1(9)
+
+where 𝐾 𝑛 denotes the number of interest points for the 𝑛 -th sam-ple. Through this design, AIGQ-Think extends the output space to jointly model structured predictions and their underlying reasoning traces, thereby guiding the prediction process toward outputs that are not only accurate but also interpretable and controllable. 
+
+## 3.5 Interest-aware List GRPO (IL-GRPO) 
+
+In this section, we introduce Interest-aware List GRPO (IL-GRPO) , an enhanced reinforcement learning algorithm specifi-cally designed for ordered list generation. IL-GRPO enhances fine-grained optimization based on GRPO by combining query-level and sequence-level rewards, thereby facilitating precise credit assign-ment that reflects both user preferences and reasoning rationality. 
+
+3.5.1 Dual-Level Reward Design. Conventional reinforcement learn-ing methods are ill-suited for list generation, as they assign a single scalar reward to the entire sequence, leading to severe credit as-signment issues: high-quality queries may be unfairly penalized by weaker ones in the same list. To overcome this, we propose a fine-grained optimization strategy that decouples individual query evaluation from the sequence level. Specifically, given that the output of IL-SFT implies strict order, we adopt a position-wise matching strategy, i.e., the 𝑗 -th generated query is directly aligned with the 𝑗 -th reference query. Based on this structure, we define two distinct reward components consisting of a local query-level reward and a global sequence-level reward:                
+
+> Rquery (𝑞 𝑖,𝑗 )=∑︁
+> 𝑚
+> 𝑤 𝑚 𝑟 𝑚 (𝑞 𝑖,𝑗 ),Rseq (𝑜 𝑖 )=Rfmt (𝑜 𝑖 ) + R rep (𝑜 𝑖 )(10)
+
+where 𝑤 𝑚 denotes the weight for the 𝑚 -th reward component, 
+
+𝑖 denotes the sample index and Rquery integrates three aspects of query quality: (1) user preference alignment , approximated through the production CTR model; (2) semantic fidelity , measured by ROUGE-L[ 20 ], which suits search queries due to its sensitivity to lexical and sequential overlap; and (3) query consistency , enforced via length constraints to avoid truncation or unnatural elongation. Meanwhile, 
+
+Rseq captures global sequence objectives with Rfmt ensuring proper punctuation and structural consistency, while Rrep penalizes redun-dant or near-duplicate queries to promote diversity. Formally, Let 
+
+{𝑜 1, . . . , 𝑜 𝐺 } denote a group of 𝐺 outputs sampled from the current policy, the advantage 𝐴 𝑖,𝑡 for each token 𝑡 is computed by summing the normalized advantages from both levels, i.e., for the specific query position and the global sequence.                                           
+
+> 𝐴 𝑖,𝑡 =Rquery (𝑞 𝑖,𝑗 ) − 𝜇 𝑄 𝑗
+> 𝜎 𝑄 𝑗
+> |{z }
+> Query Advantage
+> +𝜆 Rseq (𝑜 𝑖 ) − 𝜇 𝑆
+> 𝜎 𝑆
+> |{z }
+> Sequence Advantage
+> ,(11)
+> 𝜇 𝑄 𝑗 =1
+> 𝐺
+> 𝐺 ∑︁
+> 𝑖 =1
+> Rquery (𝑞 𝑖,𝑗 ),𝜎 𝑄 𝑗 =
+> vut1
+> 𝐺
+> 𝐺 ∑︁
+> 𝑖 =1
+> ( R query (𝑞 𝑖,𝑗 ) − 𝜇 𝑄 𝑗 )2+𝜖. (12)
+> 𝜇 𝑆 =1
+> 𝐺
+> 𝐺 ∑︁
+> 𝑖 =1
+> Rseq (𝑜 𝑖 ),𝜎 𝑆 =
+> vut1
+> 𝐺
+> 𝐺 ∑︁
+> 𝑖 =1
+> ( R seq (𝑜 𝑖 ) − 𝜇 𝑆 )2+𝜖. (13)
+
+where 𝜇 𝑄 𝑗 and 𝜎 𝑄 𝑗 are the position-specific statistics for the 𝑗 -th query slot while 𝜇 𝑆 and 𝜎 𝑆 are the group statistics for the global se-quence, 𝜆 is a balancing coefficient and 𝜖 ensures numerical stability. This mechanism ensures that the policy simultaneously optimizes the specific utility of each query slot while satisfying global con-straints, with both signals normalized to a consistent scale within the group. 
+
+3.5.2 Continuous CTR Reward Adaptation. To align query gener-ation with evolving user interests, we incorporate a CTR reward derived from the production ranking model to provide supervision signals for the generated query. Since predicted probabilities are typically small and sparse, yielding negligible gradient signals, we apply linear scaling and upper-bound truncation. Finally, the CTR reward of 𝑞 𝑗 for user 𝑢 is formulated as:             
+
+> 𝑟 CTR (𝑞 𝑗 )=Clip
+> 
+> 𝛾 ·ˆ𝑝 𝜙 𝑇 (𝑞 𝑗 |𝑢 ),0, 𝛽
+> 
+> ,(14)
+
+where ˆ𝑝 𝜙 𝑇 denotes the predicted click probability from the CTR model with parameters 𝜙 𝑇 on day 𝑇 . 𝛾 is a scaling factor to am-plify reward variance for effective gradient estimation, and the clip operation prevents outlier scores from destabilizing the training process. This term 𝑟 CTR (𝑞 𝑗 ) serves as a primary component of the composite query reward Rquery (𝑞 𝑗 ) defined in Eq. (10). Note that the CTR model parameters 𝜙 𝑇 are updated daily using the latest interaction logs D𝑇 for tracking user interests and com-bating data drift, we also implement a daily continuous training mechanism to ensure the reward signal remains aligned with this up-to-date ranking system:               
+
+> 𝜙 𝑇 +1←Train (𝜙 𝑇 ,D𝑇 ),𝜋 𝜃 𝑇 +1←RL (𝜋 𝜃 𝑇 , 𝑟 𝜙 𝑇 +1
+> CTR ).(15)
+
+This iterative cycle ensures that the IL-GRPO framework contin-uously aligns the LLM’s generation policy with the freshest user preferences, maintaining high recommendation utility over time. 
+
+3.5.3 Decoupled Trigger Reward Optimization. In AIGQ-Think ,the model generates a set of trigger-query pairs {T 𝑘 → Q 𝑘 }𝐾 𝑘 =1,where each trigger set T𝑘 (a sequence of behavior indices) serves as an interpretable representation of a single user interest. To ensure clean credit assignment, we decouple the reward signals: the query side Q𝑘 adopts the same reward formulation as in Section 3.5.1, Conference acronym ’XX, June 03–05, 2018, Woodstock, NY Jingcao Xu, Jianyun Zou, Renkai Yang, Zili Geng, Qiang Liu, and Haihong Tang 
+
+while the trigger side T𝑘 is supervised by a dedicated structural consistency objective. Specifically, we also use ROUGE-L to define a trigger-level re-ward that measures the alignment between the generated triggers 
+
+T gen  
+
+> 𝑘
+
+and the referenced label T ref  
+
+> 𝑘
+
+:       
+
+> 𝑟 trigger ( T 𝑘 )=ROUGE-L 𝐹
+>  Tgen
+> 𝑘 ,Tref
+> 𝑘
+> .(16)
+
+To further prevent gradient interference between reasoning and recommendation, we enforce strict signal separation: tokens be-longing to the trigger segment receive advantages derived solely from 𝑟 trigger , while query tokens use the composite advantage de-fined in Eq. (11) . Concretely, given 𝐺 sampled rollouts, we compute group statistics 𝜇 T 
+
+> 𝑘
+
+and 𝜎 T 
+
+> 𝑘
+
+over the trigger rewards, and normalize the advantage for each trigger token 𝑡 as:           
+
+> 𝐴 𝑖,𝑡 =𝑟 trigger ( T 𝑖,𝑘 ) − 𝜇 T
+> 𝑘
+> 𝜎 T
+> 𝑘
+> if 𝑡 ∈tokens ( T 𝑖,𝑘 ),(17)
+
+This segmented advantage design ensures that the reasoning process focuses on understanding user interests while the query generation part optimizes for practical utility. As a result, the two components learn independently yet jointly improve overall rec-ommendation quality. 
+
+3.5.4 Entropy-Guided Training Stabilization. Motivated by recent work that leverages token-level entropy to stabilize policy updates[ 31 ,32 , 37 ], we design two entropy-based strategies to maintain explo-ration diversity and prevent policy collapse: 
+
+• Dynamic Entropy Regularization: We add an entropy regular-ization term 𝛽 (𝑠 )H ( 𝜋 𝜃 ) to the loss, where H ( 𝜋 𝜃 ) is the policy entropy and 𝛽 (𝑠 ) is a linearly decaying weight that decreases with the global training step 𝑠 . This encourages exploration early in training and reduces randomness as learning progresses. 
+
+• Entropy-Adaptive Clipping: We apply differentiated clipping bounds for tokens with varying confidence levels as follows:             
+
+> 𝜖 (𝑒 𝑡 )=
+> 𝜖 high ,if 𝑒 𝑡 ≥𝜏, 𝜖 low ,if 𝑒 𝑡 <𝜏, (18)
+
+where 𝑒 𝑡 denotes the entropy of token 𝑡 and 𝜏 is the entropy threshold defined as the 80th percentile of token-level entropies in the current training batch. The bounds satisfy 𝜖 high > 𝜖 low , granting uncertain tokens more flexibility in policy updates while constrain-ing confident tokens to maintain stability. Beyond these, we further improve training stability with two complementary practices: (1) on-policy updates [12 ], where rollouts are freshly sampled at each training step to ensure the behavior and target policies remain close in distribution; and (2) difficulty-based data filtering , which focuses training on samples with intermediate reward scores to avoid trivially easy or highly noisy examples. Together, these techniques enhance training stability, encourage diverse reasoning paths and improve prediction accuracy in our list generation task for HintQ. 
+
+## 4 Online Deployment 
+
+To integrate a personalized LLM into a high-traffic industrial recom-mender under strict latency and resource constraints, we propose a hybrid retrieval architecture that combines: (1) AIGQ -u2q nearline recall, which runs AIGQ-Direct inference asynchronously and decoupled from user requests, then caches outputs for later use as personalized user-to-query (u2q) recommendations; (2) AIGQ -x2q real-time recall, which converts AIGQ-Think ’s CoT outputs into a compact trigger-to-query (x2q) index for low-latency retrieval. Both components plug seamlessly into the existing multi-source recall and ranking stack of the online HintQ system. 
+
+## 4.1 AIGQ-u2q Nearline Recall 
+
+Note that with a few hundred input tokens and dozens of output tokens, our production LLM service incurs several seconds per re-quest, which far exceeds the strict sub-second budget of online latency. Therefore, we perform asynchronous inference and cache the personalized outputs for on-demand retrieval. Specifically, we develop a dedicated nearline module that monitors each user’s interaction stream and triggers an AIGQ-Direct inference upon detecting meaningful behavioral signals. Finally, the inference re-sults are written to a user-level cache implemented as an internal key-value table, with each user retaining only the most recent 𝑀 in-ference runs. During online serving, the cached queries that reflect user’s recent interest will be consumed as a recall source integrated into the current HintQ online stack. Under this approach, the best possible balance between deep personalization and strict online latency requirements is achieved, but meanwhile, it incurs a small degradation in personalization fidelity, since current signals are only reflected in subsequent visits. 
+
+## 4.2 AIGQ-x2q Real-time Recall 
+
+Although AIGQ-Think improves personalized accuracy and dis-covery capability through CoT reasoning, its think-then-respond paradigm requires high inference latency. Meanwhile, the nearline 
+
+AIGQ-Direct recall operates asynchronously, so when a request arrives, the user’s most recent intent such as the last clicked item may not yet be captured in the AIGQ -u2q cache. To bridge this recency gap, we distill the reasoning outputs of AIGQ-Think into a compact trigger-to-query (x2q) recall mechanism that supports real-time retrieval. Specifically, the x2q index is constructed in an offline pipeline with daily update frequency. Given rich user behavioral traces as input, AIGQ-Think first generates CoT reasoning sequences of the form {T 𝑘 → Q 𝑘 }𝐾 𝑘 =1. During index construction, each trigger 
+
+𝑥 𝑖 ∈ T 𝑘 is mapped to the full query set Q𝑘 , yielding entries 𝑥 𝑖 ↦ → Q 𝑘 .We then rank the candidate queries associated with each trigger 𝑥 
+
+using a composite scoring function that balances semantic relevance and business effectiveness as follows:             
+
+> 𝑆 final (𝑥, 𝑞 )=𝛼 ·𝑆 rel (𝑥, 𝑞 ) + ( 1−𝛼 ) · 𝑆 eff (𝑞 ),(19)
+
+where 𝑆 rel (𝑥, 𝑞 ) is the relevance score reflecting how strongly the reasoning associates query 𝑞 with trigger 𝑥 while 𝑆 eff (𝑞 ) is the effectiveness score aggregating multiple normalized business signals, such as page views and predicted CTR. The final score 
+
+𝑆 final (𝑥, 𝑞 ) is a linear combination of these two scores with a tunable trade-off parameter 𝛼 ∈ ( 0, 1).
+
+## 5 Experiments 
+
+In this section, we present extensive offline experiments on real-world industrial datasets, together with rigorous online A/B testing, to validate the effectiveness and practicality of AIGQ .AIGQ: An End-to-End Hybrid Generative Architecture for E-commerce Query Recommendation Conference acronym ’XX, June 03–05, 2018, Woodstock, NY 
+
+Table 1: General performance on Taobao test set. The best results are illustrated in bold and the number underlined is the runner-up. 
+
+Model Cate HR@30 Sem. Sim. Query HR@30 Unique Cates EBR 0.1998 0.5198 0.0100 8.4 Qwen3-30B-A3B 0.3054 0.5554 0.0022 5.4 Gemini 3 Pro 0.3449 0.5475 0.0017 7.0 GPT-5.1 0.3353 0.5606 0.0021 4.6 
+
+AIGQ-Direct 𝑆𝐹𝑇 0.4181 0.5926 0.0428 7.1 
+
+AIGQ-Think 𝑆𝐹𝑇 0.4437 0.6358 0.0549 7.7 
+
+AIGQ-Direct 𝐼 𝐿 −𝑆𝐹𝑇 0.4305 0.5946 0.0442 7.5 
+
+AIGQ-Think 𝐼𝐿 −𝑆𝐹𝑇 0.4653 0.6478 0.0559 10.3 
+
+AIGQ-Direct 𝐼 𝐿 −𝑆𝐹𝑇 +𝐺𝑅𝑃𝑂 0.3906 0.6116 0.0634 4.7 
+
+AIGQ-Think 𝐼𝐿 −𝑆𝐹𝑇 +𝐺𝑅𝑃𝑂 0.4438 0.6421 0.0614 8.0 
+
+AIGQ-Direct 𝐼 𝐿 −𝑆𝐹𝑇 +𝐼 𝐿 −𝐺𝑅𝑃𝑂 0.4695 0.6341 0.0679 6.7 
+
+AIGQ-Think 𝐼𝐿 −𝑆𝐹𝑇 +𝐼𝐿 −𝐺𝑅𝑃𝑂 0.4704 0.6624 0.0745 9.8 
+
+## 5.1 Experimental Settings 
+
+5.1.1 Dataset. Our dataset comprises highly reliable user-interaction pairs extracted from Taobao’s online e-commerce logs spanning October 2025 to November 2025 with days 1–30 for training and days 31–32 for testing. After sampling, the dataset contains approx-imately 1 million page views (PVs), where training instances are organized at the PV level, while test instances are aggregated at the user level over a single day. 
+
+5.1.2 Evaluation Metrics. As a retrieval component, AIGQ is mea-sured primarily by Query Hit Rate at K (Query HR@K) and Category Hit Rate at K (Cate HR@K). In order to verify the diversity impact, we supplement HR@K with Semantic Similarity (Sem. Sim) and the number of unique leaf categories (Unique Cates). 
+
+5.1.3 Baseline Methods. We compare AIGQ against three major families of baselines: (i) traditional embedding-based retrieval (EBR), instantiated as a two-tower DNN model which is the strongest non-generative recall channel in our online system, delivering the highest PVR with competitive CTR; (ii) zero-shot LLMs, where we select state-of-the-art (SOTA) models spanning both open-source and proprietary ecosystems including Qwen3-30B-A3B, Gemini 3 Pro and GPT-5.1, all generating recommendations without any domain adaptation. (iii) task-adapted LLM variants under the AIGQ 
+
+framework. Specifically, models with the subscript “SFT” are opti-mized via standard SFT lacking interest-aware modeling or prompt compression while those with “GRPO” apply the standard GRPO that computes advantages solely at the sequence level. 
+
+5.1.4 Implementation Details. AIGQ is built upon Qwen3-30B-A3B with a 30B sparse Mixture-of-Experts (MoE) architecture and de-ployed on the PPU 810E platform. During training, the model is fine-tuned for two epochs using the Adam optimizer with a batch size of 1024 and an initial learning rate of 2 × 10 −3 in the Megatron framework [ 29 ]. In the IL-GRPO reinforcement learning phase, we use the ROLL framework [ 33 ] with a rollout batch size of 512 and a learning rate of 1 × 10 −6. For each input sample, we generate 8 responses using a sampling temperature of 1.0 and top-𝑘 = 100. Difficulty-based data filtering is applied with reward thresholds set to the range [0.1, 0.95 ]. For stabilization, we clip the value estimates to ±0.5, rewards to ±10 , and advantages to ±2.0.
+
+## 5.2 Offline Evaluation 
+
+Comprehensive experiments conducted on Taobao test set consis-tently show that AIGQ achieves superior performance compared to SOTA methods. As illustrated in Table 1, the key findings are summarized as follows: 
+
+• LLMs demonstrate significantly stronger potential for rec-ommendation than traditional embedding-based methods. 
+
+Despite the lack of supervision signals from online logs, zero-shot LLMs consistently outperform EBR in category-level relevance and semantic alignment by a substantial margin of over 50% in Cate HR@30, which is remarkable given that EBR is our strongest production recall channel. This highlights that LLMs, through pretraining on massive text, inherently capture semantic map-pings between user intents and query categories, thus enabling effective query generation even without task-specific adaptation. 
+
+• Adapting training paradigms to the list-wise nature of gen-erative retrieval is essential. Under the list-wise generation task, models trained with IL-SFT and IL-GRPO consistently out-perform those using standard SFT or canonical GRPO. This is because IL-SFT explicitly captures ranking signals that reflect user interest density, while IL-GRPO enables fine-grained credit assignment by computing advantages at the query-level with diverse rewards to better align with real user feedback. Moreover, the combination of IL-SFT and IL-GRPO yields the best overall performance, demonstrating that list-aware supervised learning and fine-grained reward optimization are complementary. 
+
+• Reasoning-augmented ( AIGQ-Think ) variants consistently surpass direct generation ( AIGQ-Direct ) across both ac-curacy and diversity. This stems from their ability to unlock greater generative potential by structuring inference explicitly into two stages: first distilling user intent into coherent inter-est points, then generating queries grounded in this structured Conference acronym ’XX, June 03–05, 2018, Woodstock, NY Jingcao Xu, Jianyun Zou, Renkai Yang, Zili Geng, Qiang Liu, and Haihong Tang 
+
+Table 2: The experimental results of ablation study. 
+
+Model Cate HR Query HR 
+
+AIGQ-Direct 𝑆𝐹𝑇 0.4181 0.0428 + Interest-Guided Label Re-Ranking 0.4260 0.0442 + Prompt Compression 0.4305 0.0442 + IL-GRPO 0.4695 0.0679 
+
+AIGQ-Think 𝑆𝐹𝑇 0.4437 0.0549 + Interest-Guided Label Re-Ranking 0.4492 0.0594 + Reasoning Augmentation 0.4653 0.0559 + IL-GRPO 0.4704 0.0745 
+
+Table 3: Online performance of AIGQ across effectiveness, engagement, and discovery. Effectiveness and engagement report relative gains while discovery shows the percentage of queries or leaf categories uniquely covered by AIGQ .Category Metric Value (%) 
+
+Effectiveness HintQ UCTR +7.42 Attributed orders +10.31 Attributed GMV +10.68 Engagement LT-7 retention +3.73 Search UV +0.20 Discovery Unique queries 79.3 Unique leaf categories 37.3 representation. This separation empowers the model to simul-taneously achieve higher precision and broader coverage than direct implicit generation. 
+
+## 5.3 Ablation Study 
+
+We conduct an ablation study on the Taobao test set to assess the contribution of each component in AIGQ (Table 2). Note that due to space limitations, we only show the results on two representa-tive metrics, Cate HR@30 and Query HR@30. Table 2 reveals the following key insights: 
+
+• Interest-guided label re-ranking, which is a core part of IL-SFT, provides consistent though modest gains over the base SFT model by exposing the generator to supervision signals that reflect the underlying interest density of different user intents. 
+
+• Prompt compression preserves or slightly enhances performance when properly trained, indicating that eliminating redundant tokens does not degrade semantic quality, whereas reasoning augmentation yields a more substantial improvement by explic-itly modeling user intent structure and guiding query generation through structured planning. 
+
+• IL-GRPO further delivers significant advancement after fine-tuning the model with IL-SFT, producing a large relative increase in both category-level and query-level precision. This confirms that by estimating advantages at the query level, IL-GRPO en-ables fine-grained credit assignment that better aligns RL with the true objective of top-𝐾 generative retrieval. 
+
+## 5.4 Online A/B Testing 
+
+We conduct online A/B testing in the HintQ scenario of Taobao’s homepage over a thirty-day period, with results shown in Table 3. 
+
+AIGQ consistently improves performance across effectiveness, en-gagement, and discovery. Notably, it achieves significant gains in core conversion metrics (e.g., +10.31% in attributed orders and +10.68% in GMV), indicating that its generated queries better capture nuanced user intent and enable more precise demand fulfillment. This enhanced relevance also drives stronger long-term engage-ment, reflected in a +3.73% increase in 7-day retention, suggesting an effective balance between personalization and serendipity. More-over, almost 40% of leaf categories from AIGQ are not covered by any other recall channel, demonstrating strong diversity and differentiation. Additionally, we evaluate the impact of daily policy updates in IL-GRPO via a ten-day A/B test. As shown in Figure 3, enabling daily reinforcement learning updates consistently improves both PVR and CTR. This confirms that continuous alignment with real-time user feedback through CTR-based rewards mitigates distribution shift between training and deployment. The result highlights a key insight for applying LLMs in recommendation: effective generative retrieval requires not only strong language understanding but also tight integration with live user signals and downstream ranking systems to ensure end-to-end alignment. 
+
+Figure 3: Online A/B test: Impact of daily RL updates. 
+
+## 6 Conclusion and Future Work 
+
+In this work, we introduced AIGQ , the first end-to-end generative framework for personalized pre-search query recommendation. By synergizing direct and reasoning-augmented generation, list-wise reinforcement learning grounded in online CTR signals, and a hy-brid offline-online deployment strategy, AIGQ achieves substantial gains across effectiveness, discovery, and business outcomes at billion-user scale. Looking ahead, we envision two key directions to further advance this paradigm: (i) enriching query generation through more precise multimodal context understanding; (ii) en-abling scalable real-time reasoning through efficient deployment techniques such as distillation or quantization. 
+
+## Acknowledgments 
+
+We thank the Taobao Search and Recommendation teams for their support. This work was conducted at Alibaba Group. AIGQ: An End-to-End Hybrid Generative Architecture for E-commerce Query Recommendation Conference acronym ’XX, June 03–05, 2018, Woodstock, NY 
+
+## References 
+
+[1] Andrea Bacciu, Enrico Palumbo, Andreas Damianou, Nicola Tonellotto, and Fabrizio Silvestri. 2024. Generating Query Recommendations via LLMs. arXiv preprint arXiv:2405.19749 (2024). https://arxiv.org/pdf/2405.19749 [2] Ricardo Baeza-Yates, Carlos Hurtado, and Marcelo Mendoza. 2004. Query rec-ommendation using query logs in search engines. In Proceedings of the 2004 International Conference on Current Trends in Database Technology (Heraklion, Greece) (EDBT’04) . Springer-Verlag, Berlin, Heidelberg, 588–596. doi:10.1007/978-3-540-30192-9_58 [3] Ben Chen, Xian Guo, Siyuan Wang, Zihan Liang, Yue Lv, Yufei Ma, Xinlong Xiao, Bowen Xue, Xuxin Zhang, Ying Yang, et al . 2025. Onesearch: A preliminary exploration of the unified end-to-end generative framework for e-commerce search. arXiv preprint arXiv:2509.03236 (2025). [4] J. Chen et al . 2025. LLM -Enhanced Query Generation and Retrieval for Task -Oriented Dialogue Systems. In Findings of ACL 2025 . https://aclant hology.org/2025.findings-acl.737.pdf [5] Junyi Chen, Lu Chi, Bingyue Peng, and Zehuan Yuan. 2024. Hllm: Enhancing sequential recommendations via hierarchical large language models for item and user modeling. arXiv preprint arXiv:2409.12740 (2024). [6] Paul Covington, Jay Adams, and Emre Sargin. 2016. Deep Neural Networks for YouTube Recommendations. In Proceedings of the 10th ACM Conference on Recommender Systems (Boston, Massachusetts, USA) (RecSys ’16) . Association for Computing Machinery, New York, NY, USA, 191–198. doi:10.1145/2959100.2959 190 [7] Vianne R Gao, Chen Xue, Marc Versage, Xie Zhou, Zhongruo Wang, Chao Li, Yeon Seonwoo, Nan Chen, Zhen Ge, Gourab Kundu, et al . 2025. SynerGen: Con-textualized Generative Recommender for Unified Search and Recommendation. 
+
+arXiv preprint arXiv:2509.21777 (2025). [8] Xian Guo, Ben Chen, Siyuan Wang, Ying Yang, Chenyi Lei, Yuqing Ding, and Han Li. 2025. OneSug: The Unified End-to-End Generative Framework for E-commerce Query Suggestion. arXiv preprint arXiv:2506.06913 (2025). [9] Donghee Han, Hwanjun Song, and Mun Yong Yi. 2025. Rethinking LLM -Based Recommendations: A Query Generation -Based, Training -Free Approach. arXiv preprint arXiv:2504.11889 (2025). https://arxiv.org/pdf/2504.11889 [10] Xuegang Hao, Ming Zhang, Alex Li, Xiangyu Qian, Zhi Ma, Yanlong Zang, Shijie Yang, Zhongxuan Han, Xiaolong Ma, Jinguang Liu, et al . 2025. OxygenREC: An Instruction-Following Generative Framework for E-commerce Recommendation. 
+
+arXiv preprint arXiv:2512.22386 (2025). [11] Helia Hashemi, Hamed Zamani, and W Bruce Croft. 2020. Guided transformer: Leveraging multiple external sources for representation learning in conversa-tional search. In Proceedings of the 43rd international acm sigir conference on research and development in information retrieval . 1131–1140. [12] Jujie He, Jiacai Liu, Chris Yuhao Liu, Rui Yan, Chaojie Wang, Peng Cheng, Xiaoyu Zhang, Fuxiang Zhang, Jiacheng Xu, Wei Shen, et al . 2025. Skywork open reasoner 1 technical report. arXiv preprint arXiv:2505.22312 (2025). [13] Xiangnan He, Lizi Liao, Hanwang Zhang, Liqiang Nie, Xia Hu, and Tat-Seng Chua. 2017. Neural Collaborative Filtering. In Proceedings of the 26th International Conference on World Wide Web (Perth, Australia) (WWW ’17) . International World Wide Web Conferences Steering Committee, Republic and Canton of Geneva, CHE, 173–182. doi:10.1145/3038912.3052569 [14] Yehuda Koren, Robert Bell, and Chris Volinsky. 2009. Matrix Factorization Tech-niques for Recommender Systems. Computer 42, 8 (2009), 30–37. doi:10.1109/ MC.2009.263 [15] Eugenie Y. Lai, Zainab Zolaktaf, Mostafa Milani, Omar AlOmeir, Jianhao Cao, and Rachel Pottinger. 2023. Workload-Aware Query Recommendation Using Deep Learning. In EDBT 2023 . https://openproceedings.org/2023/conf/edbt/paper-173.pdf [16] Joosung Lee and Jinhong Kim. 2024. Enhanced facet generation with LLM editing. 
+
+arXiv preprint arXiv:2403.16345 (2024). [17] Ruirui Li, Liangda Li, Xian Wu, Yunhong Zhou, and Wei Wang. 2019. Click feedback-aware query recommendation using adversarial examples. In The World Wide Web Conference . 2978–2984. [18] Yanen Li, Anlei Dong, Hongning Wang, Hongbo Deng, Yi Chang, and ChengX-iang Zhai. 2014. A two-dimensional click model for query auto-completion. In Proceedings of the 37th international ACM SIGIR conference on Research & development in information retrieval . 455–464. [19] Zida Liang, Changfa Wu, Dunxian Huang, Weiqiang Sun, Ziyang Wang, Yuliang Yan, Jian Wu, Yuning Jiang, Bo Zheng, Ke Chen, et al . 2025. Tbgrecall: A generative retrieval model for e-commerce recommendation scenarios. In Proceedings of the 34th ACM International Conference on Information and Knowledge Management .5863–5870. [20] Chin-Yew Lin. 2004. ROUGE: A Package for Automatic Evaluation of Summaries. In Text Summarization Branches Out . Association for Computational Linguistics, Barcelona, Spain, 74–81. https://aclanthology.org/W04-1013/ [21] Jiacheng Lin, Tian Wang, and Kun Qian. 2025. Rec-R1: Bridging Generative Large Language Models and User-Centric Recommendation Systems via Reinforcement Learning. Transactions on Machine Learning Research (2025). https://openrevi ew.net/forum?id=YBRU9MV2vE [22] Jingzhe Liu, Liam Collins, Jiliang Tang, Tong Zhao, Neil Shah, and Clark Mingx-uan Ju. 2025. Understanding Generative Recommendation with Semantic IDs from a Model-scaling View. arXiv preprint arXiv:2509.25522 (2025). [23] Zhanyu Liu, Shiyao Wang, Xingmei Wang, Rongzhou Zhang, Jiaxin Deng, Honghui Bao, Jinghao Zhang, Wuchao Li, Pengfei Zheng, Xiangyu Wu, et al .2025. Onerec-think: In-text reasoning for generative recommendation. arXiv preprint arXiv:2510.11639 (2025). [24] Erxue Min, Hsiu-Yuan Huang, Min Yang, Xihong Yang, Xin Jia, Yunfang Wu, Hengyi Cai, Shuaiqiang Wang, and Dawei Yin. 2025. From Prompting to Align-ment: A Generative Framework for Query Recommendation. arXiv preprint arXiv:2504.10208 (2025). https://arxiv.org/pdf/2504.10208 [25] Erxue Min, Hsiu-Yuan Huang, Xihong Yang, Min Yang, Xin Jia, Yunfang Wu, Hengyi Cai, Junfeng Wang, Shuaiqiang Wang, and Dawei Yin. 2025. CTR-Guided Generative Query Suggestion in Conversational Search. In Proceedings of the 2025 Conference on Empirical Methods in Natural Language Processing: Industry Track ,Saloni Potdar, Lina Rojas-Barahona, and Sebastien Montella (Eds.). Association for Computational Linguistics, Suzhou (China), 2624–2634. doi:10.18653/v1/2025 .emnlp-industry.178 [26] Valentina Pyatkin, Jena D Hwang, Vivek Srikumar, Ximing Lu, Liwei Jiang, Yejin Choi, and Chandra Bhagavatula. 2023. ClarifyDelphi: Reinforced clarification questions with defeasibility rewards for social and moral situations. In Proceedings of the 61st Annual Meeting of the Association for Computational Linguistics (Volume 1: Long Papers) . 11253–11271. [27] Shashank Rajput, Nikhil Mehta, Anima Singh, Raghunandan Hulikal Keshavan, Trung Vu, Lukasz Heldt, Lichan Hong, Yi Tay, Vinh Tran, Jonah Samost, et al .2023. Recommender systems with generative retrieval. Advances in Neural Information Processing Systems 36 (2023), 10299–10315. [28] Zhihong Shao, Peiyi Wang, Qihao Zhu, Runxin Xu, Junxiao Song, Xiao Bi, Haowei Zhang, Mingchuan Zhang, Y. K. Li, Y. Wu, and Daya Guo. 2024. DeepSeek-Math: Pushing the Limits of Mathematical Reasoning in Open Language Models. arXiv:2402.03300 [cs.CL] https://arxiv.org/abs/2402.03300 [29] Mohammad Shoeybi, Mostofa Patwary, Raul Puri, Patrick LeGresley, Jared Casper, and Bryan Catanzaro. 2019. Megatron-lm: Training multi-billion parameter language models using model parallelism. arXiv preprint arXiv:1909.08053 (2019). [30] Alessandro Sordoni, Yoshua Bengio, Hossein Vahabi, Christina Lioma, Jakob Grue Simonsen, and Jian-Yun Nie. 2015. A Hierarchical Recurrent Encoder-Decoder for Generative Context-Aware Query Suggestion. In Proceedings of the 24th ACM International on Conference on Information and Knowledge Management 
+
+(Melbourne, Australia) (CIKM ’15) . Association for Computing Machinery, New York, NY, USA, 553–562. doi:10.1145/2806416.2806493 [31] Jiakang Wang, Runze Liu, Fuzheng Zhang, Xiu Li, and Guorui Zhou. 2025. Sta-bilizing Knowledge, Promoting Reasoning: Dual-Token Constraints for RLVR. arXiv:2507.15778 [cs.CL] https://arxiv.org/abs/2507.15778 [32] Shenzhi Wang, Le Yu, Chang Gao, Chujie Zheng, Shixuan Liu, Rui Lu, Kai Dang, Xiong-Hui Chen, Jianxin Yang, Zhenru Zhang, Yuqiong Liu, An Yang, Andrew Zhao, Yang Yue, Shiji Song, Bowen Yu, Gao Huang, and Junyang Lin. 2025. Beyond the 80/20 Rule: High-Entropy Minority Tokens Drive Effective Reinforcement Learning for LLM Reasoning. In The Thirty-ninth Annual Conference on Neural Information Processing Systems . https://openreview.net/forum?id=yfcpdY4gMP [33] Weixun Wang, Shaopan Xiong, Gengru Chen, Wei Gao, Sheng Guo, Yancheng He, Ju Huang, Jiaheng Liu, Zhendong Li, Xiaoyang Li, Zichen Liu, Haizhou Zhao, Dakai An, Lunxi Cao, Qiyang Cao, Wanxi Deng, Feilei Du, Yiliang Gu, Jiahe Li, Xiang Li, Mingjie Liu, Yijia Luo, Zihe Liu, Yadao Wang, Pei Wang, Tianyuan Wu, Yanan Wu, Yuheng Zhao, Shuaibing Zhao, Jin Yang, Siran Yang, Yingshui Tan, Huimin Yi, Yuchi Xu, Yujin Yuan, Xingyao Zhang, Lin Qu, Wenbo Su, Wei Wang, Jiamang Wang, and Bo Zheng. 2025. Reinforcement Learning Optimization for Large-Scale Learning: An Efficient and User-Friendly Scaling Library. arXiv:2506.06122 [cs.LG] https://arxiv.org/abs/2506.06122 [34] Haibo Xing, Hao Deng, Yucheng Mao, Jinxin Hu, Yi Xu, Hao Zhang, Jiahao Wang, Shizhun Wang, Yu Zhang, Xiaoyi Zeng, et al . 2025. Reg4rec: Reasoning-enhanced generative model for large-scale recommendation systems. arXiv preprint arXiv:2508.15308 (2025). [35] An Yang, Anfeng Li, Baosong Yang, Beichen Zhang, Binyuan Hui, Bo Zheng, Bowen Yu, Chang Gao, Chengen Huang, Chenxu Lv, Chujie Zheng, Dayiheng Liu, Fan Zhou, Fei Huang, Feng Hu, Hao Ge, Haoran Wei, Huan Lin, Jialong Tang, Jian Yang, Jianhong Tu, Jianwei Zhang, Jianxin Yang, Jiaxi Yang, Jing Zhou, Jingren Zhou, Junyang Lin, Kai Dang, Keqin Bao, Kexin Yang, Le Yu, Lianghao Deng, Mei Li, Mingfeng Xue, Mingze Li, Pei Zhang, Peng Wang, Qin Zhu, Rui Men, Ruize Gao, Shixuan Liu, Shuang Luo, Tianhao Li, Tianyi Tang, Wenbiao Yin, Xingzhang Ren, Xinyu Wang, Xinyu Zhang, Xuancheng Ren, Yang Fan, Yang Su, Yichang Zhang, Yinger Zhang, Yu Wan, Yuqiong Liu, Zekun Wang, Zeyu Cui, Zhenru Zhang, Zhipeng Zhou, and Zihan Qiu. 2025. Qwen3 Technical Report. arXiv:2505.09388 [cs.CL] https://arxiv.org/abs/2505.09388 [36] Zhongchao Yi, Kai Feng, Xiaojian Ma, Yalong Wang, Yongqi Liu, Han Li, Zhengyang Zhou, and Yang Wang. 2025. DualGR: Generative Retrieval with Long and Short-Term Interests Modeling. arXiv preprint arXiv:2511.12518 (2025). Conference acronym ’XX, June 03–05, 2018, Woodstock, NY Jingcao Xu, Jianyun Zou, Renkai Yang, Zili Geng, Qiang Liu, and Haihong Tang 
+
+[37] Qiying Yu, Zheng Zhang, Ruofei Zhu, Yufeng Yuan, Xiaochen Zuo, Yu Yue, Weinan Dai, Tiantian Fan, Gaohong Liu, Lingjun Liu, Xin Liu, Haibin Lin, Zhiqi Lin, Bole Ma, Guangming Sheng, Yuxuan Tong, Chi Zhang, Mofan Zhang, Wang Zhang, Hang Zhu, Jinhua Zhu, Jiaze Chen, Jiangjie Chen, Chengyi Wang, Hongli Yu, Yuxuan Song, Xiangpeng Wei, Hao Zhou, Jingjing Liu, Wei-Ying Ma, Ya-Qin Zhang, Lin Yan, Mu Qiao, Yonghui Wu, and Mingxuan Wang. 2025. DAPO: An Open-Source LLM Reinforcement Learning System at Scale. arXiv:2503.14476 [cs.LG] https://arxiv.org/abs/2503.14476 [38] Hamed Zamani, Susan Dumais, Nick Craswell, Paul Bennett, and Gord Lueck. 2020. Generating clarifying questions for information retrieval. In Proceedings of the web conference 2020 . 418–428. [39] Hamed Zamani, Bhaskar Mitra, Everest Chen, Gord Lueck, Fernando Diaz, Paul N. Bennett, Nick Craswell, and Susan T. Dumais. 2020. Analyzing and Learning from User Interactions for Search Clarification. In Proceedings of the 43rd International ACM SIGIR Conference on Research and Development in Information Retrieval 
+
+(Virtual Event, China) (SIGIR ’20) . Association for Computing Machinery, New York, NY, USA, 1181–1190. doi:10.1145/3397271.3401160 [40] Hamed Zamani, Bhaskar Mitra, Everest Chen, Gord Lueck, Fernando Diaz, Paul N Bennett, Nick Craswell, and Susan T Dumais. 2020. Analyzing and learning from user interactions for search clarification. In Proceedings of the 43rd international acm sigir conference on research and development in information retrieval . 1181– 1190. [41] Aston Zhang, Amit Goyal, Weize Kong, Hongbo Deng, Anlei Dong, Yi Chang, Carl A Gunter, and Jiawei Han. 2015. adaqac: Adaptive query auto-completion via implicit negative feedback. In Proceedings of the 38th international ACM SIGIR conference on research and development in information retrieval . 143–152. [42] Junjie Zhang, Beichen Zhang, Wenqi Sun, Hongyu Lu, Wayne Xin Zhao, Yu Chen, and Ji-Rong Wen. 2025. Slow Thinking for Sequential Recommendation. arXiv:2504.09627 [cs.IR] https://arxiv.org/abs/2504.09627 [43] Le Zhang, Yihong Wu, Qian Yang, and Jian-Yun Nie. 2024. Exploring the Best Practices of Query Expansion with Large Language Models. In Findings of the Association for Computational Linguistics: EMNLP 2024 , Yaser Al-Onaizan, Mohit Bansal, and Yun-Nung Chen (Eds.). Association for Computational Linguistics, Miami, Florida, USA, 1872–1883. doi:10.18653/v1/2024.findings-emnlp.103 [44] Guorui Zhou, Jiaxin Deng, Jinghao Zhang, Kuo Cai, Lejian Ren, Qiang Luo, Qian-qian Wang, Qigen Hu, Rui Huang, Shiyao Wang, et al . 2025. OneRec Technical Report. arXiv preprint arXiv:2506.13695 (2025). [45] Guorui Zhou, Hengrui Hu, Hongtao Cheng, Huanjie Wang, Jiaxin Deng, Jinghao Zhang, Kuo Cai, Lejian Ren, Lu Ren, Liao Yu, et al . 2025. Onerec-v2 technical report. arXiv preprint arXiv:2508.20900 (2025).

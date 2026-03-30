@@ -1,0 +1,2842 @@
+Title: Confidence-Based Decoding is Provably Efficient for Diffusion Language Models
+
+URL Source: https://arxiv.org/pdf/2603.22248v1
+
+Published Time: Tue, 24 Mar 2026 02:54:38 GMT
+
+Number of Pages: 35
+
+Markdown Content:
+# Confidence-Based Decoding is Provably Efficient for Diffusion Language Models 
+
+## Changxiao Cai ∗ Gen Li †
+
+## March 24, 2026 
+
+Abstract 
+
+Diffusion language models (DLMs) have emerged as a promising alternative to autoregressive (AR) models for language modeling, allowing flexible generation order and parallel generation of multiple tokens. However, this flexibility introduces a challenge absent in AR models: the decoding strategy —which determines the order and number of tokens generated at each iteration—critically affects sampling efficiency. Among decoding strategies explored in practice, confidence-based methods, which adaptively select which and how many tokens to unmask based on prediction confidence, have shown strong empirical performance. Despite this success, our theoretical understanding of confidence-based decoding remains limited. In this work, we develop the first theoretical analysis framework for confidence-based decoding in DLMs. We focus on an entropy sum-based strategy that continues unmasking tokens within each iteration until the cumulative entropy exceeds a threshold, and show that it achieves ε-accurate sampling in KL divergence with an expected number of iterations eO(H(X0)/ε ), where H(X0) denotes the entropy of the target data distribution. Notably, this strategy yields substantial sampling acceleration when the data distribution has low entropy relative to the sequence length, while automatically adapting to the intrinsic complexity of data without requiring prior knowledge or hyperparameter tuning. Overall, our results provide a theoretical foundation for confidence-based decoding and may inform the design of more efficient decoding strategies for DLMs. 
+
+Keywords: diffusion language model, confidence-based decoding, iteration complexity, information theory 
+
+# Contents 
+
+1 Introduction 2
+
+1.1 Our contributions . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 31.2 Other related work . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 41.3 Notation . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 5
+
+2 Preliminaries 53 Main results 7
+
+3.1 Entropy sum-based decoding strategy . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 73.2 Theoretical guarantee . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 83.3 Effect of entropy criterion . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 9
+
+4 Analysis 11 
+
+4.1 Preliminary facts . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 11 4.2 Proof sketch of Theorem 1 . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 12 
+
+Corresponding author: Gen Li. 
+
+> ∗
+
+Department of Industrial and Operations Engineering, University of Michigan, Ann Arbor, USA; Email: cxcai@umich.edu. 
+
+> †
+
+Department of Statistics and Data Science, The Chinese University of Hong Kong, Hong Kong; Email: genli@cuhk.edu.hk. 
+
+1
+
+> arXiv:2603.22248v1 [cs.LG] 23 Mar 2026
+
+5 Discussion 17 A Proof of lemmas for Theorem 1 21 
+
+A.1 Proof of Lemma 1 . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 21 A.2 Proof of Lemma 2 . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 22 A.3 Proof of Lemma 3 . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 26 A.4 Proof of Lemma 4 . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 27 A.5 Proof of Lemma 5 . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 27 A.6 Proof of Lemma 6 . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 29 
+
+B Proof of Theorem 2 29 
+
+B.1 Proof sketch of Theorem 2 . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 29 B.2 Proof of Lemma 7 . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 31 B.3 Proof of Lemma 8 . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 33 B.4 Proof of Lemma 9 . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 34 
+
+# 1 Introduction 
+
+Diffusion language models (DLMs) (Sahoo et al., 2024; Shi et al., 2024) have recently emerged as a compelling alternative to the autoregressive (AR) paradigm for language modeling. Unlike AR models, DLMs use a non-causal generation mechanism that can produce multiple tokens in parallel at each iteration and relax the rigid left-to-right constraint. The parallel generation capability offers strong potential for sampling acceleration, while the non-causal structure also makes DLMs well suited to tasks that benefit from bidirectional reasoning or the enforcement of global constraints (Nie et al., 2025; Prabhudesai et al., 2025). At scale, DLMs have been shown to achieve performance competitive with AR models (Ye et al., 2025; Song et al., 2025; You et al., 2025; Zhu et al., 2025; Bie et al., 2025; Labs et al., 2025). State-of-the-art DLMs are built upon masked diffusion models (MDMs) (Austin et al., 2021; Campbell et al., 2022; Lou et al., 2023), a class of discrete diffusion models that augment the vocabulary with an additional absorbing state, referred to as mask . An MDM is defined through two complementary processes. In the forward (masking) process, tokens in a sequence drawn from the target data distribution are progressively replaced by the mask until the sequence becomes fully masked. The reverse (unmasking) process then seeks to invert this corruption by iteratively recovering masked tokens, thereby transforming a fully masked sequence into a fresh sample from the data distribution. Central to the reverse process is a mask predictor , which learns the conditional distributions of masked tokens given the currently unmasked context at various masking levels (Lou et al., 2023; Ou et al., 2024; Zheng et al., 2024). The reverse dynamics are implemented by repeatedly sampling token values from these conditionals to impute masked positions, thereby moving from a fully masked sequence toward a data-like sample. In this sense, the mask predictor in MDMs serves as a discrete analog of the score estimator in continuous diffusion models (Song et al., 2020). As the joint distribution of multiple masked tokens is generally intractable in high-dimensional settings, practical mask predictors are typically trained to learn the conditional marginals of each masked token, and use the product of per-token conditional marginals as an approximation (Nie et al., 2025; Wu et al., 2025). In particular, a neural network-based mask predictor can output, in one forward pass, conditional marginal distributions for all currently masked positions. While this factorized approximation enables parallel generation of DLMs, it also introduces an inevitable bias in the sampling stage—simultaneously unmasking multiple tokens in one iteration ignores their statistical dependence conditioned on the currently revealed context. At one extreme, unmasking all tokens in a single iteration incurs an error comparable to the discrepancy between the target distribution and the product of its marginals. At the other extreme, generating tokens one-by-one recovers the standard AR approach, which removes the factorization bias but sacrifices the parallel generation advantage of DLMs. Therefore, the sampling speed and generation quality of DLMs depend critically on the decoding (or unmasking) strategy used at the inference stage, which determines both which positions to unmask and how many tokens to reveal at each iteration. 2Parallel decoding strategies. Decoding strategies used in practice can be broadly categorized into two families. 
+
+• Uniform decoding strategies. This class of decoding strategies prescribes a fixed total iteration count T and a step-size schedule s1, s 2 . . . , s T with st ≥ 1 and PTt=1 st = L (e.g., cosine schedules (Shi et al., 2024) or log-linear schedules (Sahoo et al., 2024; Lou et al., 2023)). At each iteration t,one samples a subset of size st uniformly at random from the remaining masked positions and then unmasks the tokens in the sampled subset. Note that this family of schemes treats all masked positions uniformly and thus belongs to the broader class of non-adaptive decoding strategies. 
+
+• Confidence-based decoding strategies. This collection of decoding strategies leverages the fact that a mask predictor provides not only a distribution but also a natural confidence signal for each token prediction. It is thus natural to unmask the “easiest” tokens first—those predicted with high confidence—so that newly revealed tokens can serve as additional context for the harder ones in later iterations (Chang et al., 2022; Zheng et al., 2023; Gong et al., 2024). In practice, confidence is often quantified by the entropy of the predicted distribution (Ben-Hamu et al., 2025), the mass of the most likely token (Nie et al., 2025; Yu et al., 2025; Wu et al., 2025), or the likelihood gap between the two most likely tokens (Kim et al., 2025), leading to a range of effective heuristics. Compared to uniform decoding strategies, these schemes determine the decoding order and batch size in an adaptive manner. In contrast to the rapid development of empirical decoding strategies, our theoretical understanding of their sampling efficiency remains limited. For uniform random schedules, substantial recent progress has been made in establishing theoretical guarantees for sampling performance (Li and Cai, 2025; Chen et al., 2025b; Lavenant and Zanella, 2025; Dmitriev et al., 2026; Zhao and Cai, 2026). We defer a detailed discussion to Section 1.2. By comparison, despite their strong empirical performance, confidence-based decoding re-mains far less understood theoretically. The fundamental difficulty lies in their inherently adaptive decoding dynamics: the set of tokens unmasked at each iteration depends on the realization of the tokens generated so far, through the corresponding confidence levels produced by the mask predictor. This adaptivity raises several fundamental but unanswered questions. For instance, if the total number of iterations is not prede-termined, how many iterations are needed to unmask all tokens? What is the resulting sampling error? Can these schemes provably adapt to the (unknown) intrinsic complexity or dependence structure of the data distribution? Such a theory-practice gap motivates the central question of our study: 
+
+Are confidence-based decoding strategies in DLMs provably efficient? 
+
+## 1.1 Our contributions 
+
+In this work, we take an initial step toward answering this question by developing sampling convergence guarantees for confidence-based decoding in DLMs, with the goal of demystifying their practical effectiveness. We focus on a canonical confidence measure—entropy—and investigate entropy-based decoding that selects unmasking positions and batch sizes based on the entropy of the predicted distribution at each masked position. Concretely, we study a representative entropy sum-based strategy that, at each iteration, greedily unmasks tokens from the remaining masked positions until the running entropy sum of the newly unmasked tokens exceeds a prescribed threshold, thereby revealing as many tokens as possible per iteration while keeping the cumulative prediction uncertainty controlled. We demonstrate that ε-accuracy in Kullback-Leibler (KL) divergence can be attained with an expected number of iterations that scales as 
+
+eO
+
+ H(X0)
+
+ε
+
+
+
+.
+
+This result implies a sublinear iteration complexity in the sequence length L when the data distribution has low entropy H(X0) ≪ L, thereby achieving provable sampling speedup compared to the Θ( L) iteration complexity of the AR decoding or naive uniform parallel decoding. Notably, this scheme does not require any prior knowledge of the data distribution such as its entropy, and thus automatically adapts to the intrinsic low-complexity data structure to achieve sampling acceleration. 3To establish these results, we introduce a novel analysis framework for adaptive decoding dynamics in DLMs that may be of independent interest. Overall, our results provide the first theoretical justification for the effectiveness of confidence-based unmasking strategies, and offer a principled explanation of when and why entropy-based decoding can achieve accelerated sampling without sacrificing generation fidelity. Our theoretical insights may inform the design of more efficient inference schemes in practice. 
+
+## 1.2 Other related work 
+
+Convergence theory for uniform decoding strategies. Existing sampling convergence analysis for DLMs largely focuses on uniform decoding strategies and two main viewpoints have been pursued. The first line of work directly studies the sampling error accumulated in the iterative unmasking procedure under the factorized approximation. For balanced step-size schedules (i.e., st ≍ L/T for all t), Li and Cai (2025) established an O(1 /T ) convergence rate in KL divergence, with leading factor equal to the sum of mutual information PTi=1 I(Xi; X∖i) between the i-th token Xi and the remaining tokens X∖i := ( Xj )j̸ =i
+
+under the data distribution. They also proved matching lower bounds (up to constant factors), showing that the O(1 /T ) decay is unimprovable for balanced step-size schedules in the worst case. Subsequently, Chen et al. (2025b) refined the convergence rate using the total correlation and dual total correlation of the data distribution, and developed optimal step-size schedules. These schedules can outperform balanced step-size schedules, albeit requiring either a priori estimates of these correlation measures or hyperparameter tuning. Recently, Zhao and Cai (2026) showed that randomized step-size schedules can automatically adapt to intrinsic dependence structure underlying data, leading to improved iteration complexity for structured data distributions. A parallel viewpoint analyzes discrete diffusion models from the perspective of CTMC discretization. However, most results in this direction yield iteration complexity that scales at least linearly in the sequence length (Chen and Ying, 2024; Liang et al., 2025b; Feng et al., 2025; Ren et al., 2024, 2025; Liang et al., 2026). Consequently, they fail to capture the parallel-generation regime in DLM decoding. A notable exception is Dmitriev et al. (2026), which developed sharp and adaptive guarantees for MDMs, with convergence rate governed by low-complexity measures of data. 
+
+Empirical confidence-based strategies. Early confidence-based approaches typically use a fixed-size strategy, which prescribes an unmasking size K and unmasks the top-K most confident tokens at each iteration (Chang et al., 2022). This idea has been instantiated with several ranking criteria, including top-K
+
+probability (Nie et al., 2025), top-K margin (Kim et al., 2025), and top-K entropy (Ben-Hamu et al., 2025). More recent work considers adaptive strategies, where the number of newly unmasked tokens is determined on the fly. Examples include threshold-based rules that reveal tokens whose confidence exceeds a prescribed level (Yu et al., 2025), and budget-based strategies that continue unmasking while the accumulated uncertainty remains within a budget (Ben-Hamu et al., 2025; Wu et al., 2025). The methods analyzed in this paper fall into this category. Beyond those one-step confidence rules, several works combine confidence information with more structured decoding procedures. For instance, Wei et al. (2025) proposes a two-stage method that alternates between exploratory and accelerated decoding strategies depending on the confidence region. In addition, another line of work seeks to improve decoding by explicitly planning ahead for future iterations rather than making purely myopic decisions, including lookahead-based exploration methods (Fu et al., 2025; Lee et al., 2025; Peng et al., 2025) and trial-and-verification procedures (Wu and Zhang, 2025; Li et al., 2026). Finally, to mitigate the limitation of standard MDMs that fix tokens once they are unmasked, recent work has also studied confidence-based remasking mechanisms that allow low-confidence tokens to be revised in later iterations (Wang et al., 2025; Shi et al., 2024). 
+
+Theory for continuous diffusion models. A rich body of work has developed sampling convergence guarantees for continuous diffusion models in Rd (Lee et al., 2022; Chen et al., 2022; Lee et al., 2023; Chen et al., 2023a; Benton et al., 2023; Li and Yan, 2024b; Li et al., 2024b), with state-of-the-art iteration complexity of eO(pd/ε ) in KL divergence and eO(√d/ε ) in total variation distance (Jiao et al., 2025; Zhang et al., 2025). A variety of provably accelerated samplers have been further developed (Li and Cai, 2024; Li and Jiao, 2024; Gatmiry et al., 2026; Huang et al., 2024a; Li et al., 2024a, 2025b). A theme relevant to our work is the adaptivity to (unknown) low-complexity structure. Several recent works (Li and Yan, 2024a; Liang et al., 2025a; Huang et al., 2024b; Potaptchik et al., 2024; Li et al., 2025a) show that when the 4data distribution concentrates near a k-dimensional structure with k ≪ d, the dependence on the ambient dimension d can be replaced by the intrinsic dimension k, yielding substantial sampling acceleration. Beyond sampling convergence, end-to-end statistical guarantees have been developed to demonstrate the optimality of diffusion-based distribution learning and sample generation (Oko et al., 2023; Wibisono et al., 2024; Zhang et al., 2024; Cai and Li, 2025; Gatmiry et al., 2024; Chen et al., 2024). Further results tailored to structured data have also been established, including distributions supported on low-dimensional linear subspaces or manifolds (Chen et al., 2023b; Tang and Yang, 2024; Azangulov et al., 2024; Wang et al., 2024; Yakovlev and Puchkin, 2025), distributions with low-complexity dependence (Fan et al., 2025), and factor models (Chen et al., 2025a). 
+
+## 1.3 Notation 
+
+For any integer n > 0, let [n] := {1, 2, . . . , n }. For any set S, we use the upper-case letter S to denote its cardinality |S| . We denote by X the (discrete) vocabulary of tokens. We write M for the mask and extend the vocabulary by adding M to define X = X ∪ { M}. Given a sequence x ∈ XL, we denote its i-th coordinate by xi for i ∈ [L]. For any index set S ⊆ [L], let xS = ( xi)i∈S be the subsequence in XS formed by the entries of x with indices in S. Define the projection operator PS : XL → XL by 
+
+PS (x)i =
+
+(
+
+xi, i ∈ S ,
+
+M, i / ∈ S . (1) For a random variable X, we use pX to denote its distribution, and (by a slight abuse of notation) also its probability mass/density function. The entropy of X is defined by H(X) = H(pX ) := Ex∼pX [− log pX (x)] .For a random vector (X, Y ) ∼ pX,Y , the Kullback-Leibler divergence between pX and pY is KL (pX ∥ pY ) := 
+
+Ex∼pX [log pX (x)  
+
+> pY(x)
+
+]. The conditional entropy of X given Y is defined as H(X | Y ) := E(x,y )∼pX,Y [− log pX|Y (x |
+
+y)] . The mutual information between X and Y is defined as I(X; Y ) := KL (pX,Y ∥ pX pY ). For a random vector (X, Y, Z ) ∼ pX,Y,Z , the conditional mutual information between X and Y given Z is defined as 
+
+I(X; Y | Z) := KL (pX,Y,Z ∥ pX|Z pY |Z pZ ).In addition to these standard information-theoretic measures, we also define pointwise conditional entropy and conditional mutual information as follows: 
+
+H(X | Z) := f (Z) with f (z) := H(pX|Z=z ), (2) 
+
+I(X, Y | Z) := g(Z) with g(z) := KL (pX,Y |Z=z ∥ pX|Z=z pY |Z=z ). (3) We note that H(X | Z) and I(X, Y | Z) are random variables measurable with respect to Z. Moreover, taking expectation with respect to Z ∼ pZ recovers the standard quantities: 
+
+EZ [H(X | Z)] = H(X | Z) and EZ [I(X, Y | Z)] = I(X; Y | Z).
+
+For two functions f (n), g (n) > 0, we use f (n) ≲ g(n) or f (n) = O g(n) to mean f (n) ≤ Cg (n) for some absolute constant C > 0. Similarly, we write f (n) ≳ g(n) or f (n) = Ω  g(n) when f (n) ≥ C′g(n) for some absolute constant C′ > 0. We denote f (n) ≍ g(n) or f (n) = Θ  g(n) when Cf (n) ≤ g(n) ≤ C′f (n) for some absolute constants C′ > C > 0. The notation eO(·), eΩ( ·), and eΘ( ·) denote the respective bounds up to a logarithmic factor. 
+
+# 2 Preliminaries 
+
+In this section, we provide an overview of the fundamental concepts underlying DLMs. 
+
+Forward (masking) process. Consider a token sequence X0 = ( X10 , X 20 , . . . , X L 
+
+> 0
+
+) ∈ XL sampled from the data distribution pdata . The forward process progressively corrupts X0 by replacing its tokens with the mask symbol M until the entire sequence is masked. Formally, let Xt denote the partially masked sequence obtained after t masking steps and let Mt := {i ∈ [L] : Xit = M} denote the index set of masked tokens. At 5each step t ≥ 1, we select a masking set St ⊆ [L] \ M t−1 and update Xt−1 to Xt by replacing tokens at positions in the set St with M:
+
+Xit =
+
+(
+
+M, if i ∈ S t,Xit−1, if i / ∈ S t.
+
+The masking process continues until all tokens have been masked. 
+
+Mask predictor training. DLMs are trained to reverse the above forward masking process by learning the conditional distribution of masked tokens given the unmasked ones. A notable feature of mask predictor training is that this posterior distribution is time-independent—it depends only on the unmasked context and not on the masking step t (Ou et al., 2024; Zheng et al., 2024). More precisely, for each token index i ∈ [L]
+
+and any set of unmasked positions S ⊆ [L] \ { i}, we define the true conditional marginal distribution of Xi
+
+> 0
+
+given XS 
+
+> 0
+
+under the data distribution pdata as 
+
+pi(x | zS ) := PXi 
+
+> 0
+
+= x | XS 
+
+> 0
+
+= zS ∀ x ∈ X, z S ∈ X|S| . (4) The objective is to learn estimators piθ (· | · ) for each conditional marginal pi(· | · ), thereby forming a mask predictor pθ = QLi=1 piθ .The mask predictor is trained by maximizing the log-likelihood of masked tokens conditioned on unmasked ones: 
+
+max   
+
+> pθ=QLi=1 piθ
+
+EX0,S
+
+"
+
+1
+
+|S c|
+
+X
+
+> i∈S c
+
+log piθ
+
+ Xi 
+
+> 0
+
+| XS
+
+> 0
+
+#
+
+. (5) This objective is equivalent to minimizing the KL divergence between the data distribution and the distribu-tion induced by the product of learned conditional marginals over partially masked sequences. In practice, the expectation is approximated by averaging over a finite number of training samples and random masking patterns. We remark that the product of the true conditional marginals QLi=1 pi defined in (4) is the maximizer of the training objective (5). 
+
+Reverse (unmasking) process. Given a trained mask predictor pθ , DLMs produce a token sequence through an iterative unmasking procedure. Starting from a fully masked sequence Y0 = ( M, M, . . . , M) ∈ XL
+
+with cumulative unmasking set W0 = ∅, we repeat the following two steps for iteration t = 1 , 2, . . . until all tokens have been unmasked. 1. Select unmasking set. Choose a subset Dt of the currently masked positions [L] \ W t−1 according to a decoding strategy , and update the cumulative unmasking set Wt = Wt−1 ∪ D t.2. Sample tokens. Draw the tokens for all positions in Dt independently and simultaneously from the learned mask predictor pθ = QLi=1 piθ , namely, 
+
+bY i ∼ piθ
+
+ · | Yt−1
+
+, ∀ i ∈ D t. (6) The sequence is then updated by inserting the newly sampled tokens: 
+
+Y it =
+
+( bY i, if i ∈ D t,Y it−1, if i / ∈ D t. (7) The final output is the fully unmasked sequence YT ∈ XL, where T is the (potentially random) number of iterations. It is worth noting that given a fixed mask predictor pθ , the sampling process of DLMs and the sampled distribution pYT are completely determined by the choice of decoding strategy, which specifies the unmasking set Dt at each iteration t.6Algorithm 1 Entropy sum-based decoding strategy  
+
+> 1:
+
+Input: Mask predictor pθ and entropy threshold η 
+
+> 2:
+
+Initialize k ← 0, t ← 0, token sequence Y0 ← (M, . . . , M) 
+
+> 3:
+
+Draw a permutation Π = (Π 1, . . . , ΠL) of [L] uniformly at random  
+
+> 4:
+
+while k < L do ▷ Repeat until all tokens are generated  
+
+> 5:
+
+t ← t + 1 ▷ Start iteration t 
+
+> 6:
+
+Yt ← Yt−1, Dt ← ∅, S ← 0 ▷ Initialize current iterate, unmasking set, and entropy sum  
+
+> 7:
+
+repeat  
+
+> 8:
+
+k ← k + 1  
+
+> 9:
+
+sample Y Πk 
+
+> t
+
+∼ pΠk 
+
+> θ
+
+(· | Yt−1) ▷ Unmask token with index Πk 
+
+> 10:
+
+Dt ← D t ∪ { Πk} ▷ Add index Πk to unmasking set Dt 
+
+> 11:
+
+S ← S + H pΠk 
+
+> θ
+
+(· | Yt−1) ▷ Update entropy sum  
+
+> 12:
+
+until S > η or k = L ▷ Iteration termination criteria  
+
+> 13:
+
+end while  
+
+> 14:
+
+T ← t ▷ Record total number of iterations  
+
+> 15:
+
+Output: Generated token sequence YT
+
+# 3 Main results 
+
+In this section, we present two entropy-based decoding strategies for DLMs and establish their theoretical guarantees. We begin with the entropy sum-based strategy, which is the main algorithmic result of the paper, and then study a maximum entropy-based variant to illustrate how the choice of entropy criterion affects sampling efficiency. 
+
+## 3.1 Entropy sum-based decoding strategy 
+
+We first introduce the entropy sum-based decoding strategy. Its key feature is that each decoding iteration is determined by the total uncertainty, measured by entropy, accumulated over the current batch of unmasked tokens. This leads to an adaptive rule that enlarges the unmasking set automatically in low-uncertainty regions and shrinks it when the mask predictor is uncertain. 
+
+Decoding procedure. At a high level, the entropy sum-based strategy scans the remaining masked posi-tions in a random order and continues unmasking tokens until the cumulative entropy of the current batch exceeds a threshold. Concretely, we first draw a permutation Π of [L] uniformly at random, where Πk represents the index of the k-th token to be unmasked. We then repeat the following decoding procedure until all tokens have been generated. At each iteration t ≥ 1, we initialize the current unmasking set Dt = ∅ and the running entropy sum S = 0 . Recall that for any set W, we use the upper-case letter W = |W| to denote its size. Given the partially unmasked sequence Yt−1 from the previous iteration, in which the tokens indexed by the cumulative unmasking set 
+
+Wt−1 =
+
+> t−1
+
+[
+
+> i=1
+
+Di = Π1, . . . , ΠWt−1
+
+have been generated, we continue along the permutation and examine the positions Πk for 
+
+k = Wt−1 + 1 , W t−1 + 2 , . . . 
+
+For each such position Πk, we compute the entropy of the corresponding conditional marginal pΠk 
+
+> θ
+
+(· | Yt−1),generate the token Y Πk 
+
+> t
+
+from this marginal, add the index Πk to the current unmasking set Dt, and update the running entropy sum S by H pΠk 
+
+> θ
+
+(· | Yt−1)1.      
+
+> 1Here, we use the notation Hdefined in (2) to denote the pointwise conditional entropy. It is a random variable depending on Yt−1, as opposed to the standard conditional entropy Hthat averages over the randomness in Yt−1.
+
+7The iteration terminates once the running entropy sum S exceeds a prescribed threshold η or all L tokens have been generated. Equivalently, the index set of newly unmasked tokens at iteration t has the form 
+
+Dt = Πk : Wt−1 < k ≤ kt ,
+
+where kt is defined by 
+
+kt := min 
+
+
+
+i > W t−1 :
+
+> i
+
+X
+
+> k=Wt−1+1
+
+H pΠk 
+
+> θ
+
+(· | Yt−1) > η 
+
+
+
+∧ L. 
+
+In other words, kt is the first permutation index beyond Wt−1 such that the cumulative entropy over per-mutation indices k = Wt−1 + 1 , . . . , k t exceeds η, or L if no such index appears before the sequence is fully unmasked. The complete decoding procedure is summarized in Algorithm 1. 
+
+Remark 1. The random permutation Π is introduced solely to simplify the presentation and analysis. Equivalently, the algorithm may be viewed as selecting the next token from the remaining masked positions uniformly at random. An important observation is that, for each iteration t, conditioned on the permutation Π, the cumula-tive unmasking set Wt−1, and the partially unmasked sequence Yt−1, the unmasking set Dt (and thus the cumulative unmasking set Wt = Wt−1 ∪ D t) is fully determined by the conditional entropies: 
+
+H pΠk 
+
+> θ
+
+(· | Yt−1), k = Wt−1 + 1 , W t−1 + 2 , . . . , L. 
+
+Once Dt is determined, we obtain the iterate Yt by generating the tokens in Dt independently according to the corresponding conditional distributions 
+
+Y it ∼ piθ (· | Yt−1), i ∈ D t,
+
+or equivalently, 
+
+Y Πk 
+
+> t
+
+∼ pΠk 
+
+> θ
+
+(· | Yt−1), Wt−1 + 1 ≤ k ≤ Wt.
+
+Therefore, the overall sampling process can be summarized by the following Markov chain: 
+
+Π → H pΠk 
+
+> θ
+
+(· | Y0) Lk=1 → (D1, W1) → Y1 → H pΠk 
+
+> θ
+
+(· | Y1) Lk=W1+1 → (D2, W2) → Y2
+
+→ · · · → H pΠk 
+
+> θ
+
+(· | YT −1) Lk=WT −1+1 → (DT , WT ) → YT , (8) where T denotes the (random) total number of iterations. 
+
+Connection to empirical entropy sum-based strategies. Algorithm 1 is closely related to the entropy-based decoding strategy recently proposed in Ben-Hamu et al. (2025). Their method sorts the remaining tokens by conditional entropy and then selects the largest subset for which the gap between the entropy sum and the maximum entropy remains below a prescribed threshold. Numerical results in Ben-Hamu et al. (2025) demonstrate that such an entropy sum-based decoding strategy achieves considerable speedups in generation, with quality that matches or surpasses that of uniform unmasking schemes. The main difference is that Algorithm 1 scans token positions in a random order instead of a deterministic entropy-sorted order. We introduce this randomness primarily to facilitate the theoretical analysis, and it would be of interest to investigate whether similar theoretical guarantees can be established for the deterministic variants. 
+
+## 3.2 Theoretical guarantee 
+
+We now state the performance guarantee for the entropy sum-based decoding scheme (Algorithm 1) in Theorem 1. The proof sketch can be found in Section 4.2. 8Theorem 1. Assume that the mask predictor pθ is optimal, namely, pθ = QLi=1 pi is the product of true conditional marginals. For any ε > 0, set the threshold to η = ε/  4(log 2 L + 1) . Then the entropy sum-based strategy in Algorithm 1 achieves ε-accurate sampling in KL divergence, i.e., EΠ
+
+KL (pX0 ∥ pYT |Π) ≤ ε. 
+
+Moreover, the expected number of iterations satisfies 
+
+E[T ] ≤ 4
+
+ H(X0)
+
+ε + 1 
+
+
+
+(log 2 L + 1) + 1 , (9) 
+
+where H(X0) denotes the entropy of the target data distribution. 
+
+To the best of our knowledge, this result provides the first theoretical guarantee for confidence-based decoding strategies in DLMs. We discuss several important implications below. 
+
+• Iteration complexity. The expected number of iterations required to achieve ε-accuracy in KL diver-gence is at most 
+
+eO
+
+ H(X0)
+
+ε
+
+
+
+. (10) Up to a logarithmic dependence on the sequence length L, this iteration complexity depends only on the entropy of the target data distribution, which can be viewed as a measure of its intrinsic complexity. Consequently, when the target distribution has low entropy, namely H(X0) ≪ L, the entropy sum-based decoding scheme yields a substantial sampling speedup. 
+
+• Adaptivity to intrinsic structure. The above sampling acceleration is achieved without requiring any prior knowledge of the data distribution or hyperparameter tuning. This highlights the distribution-agnostic adaptivity of the entropy-based decoding—it automatically exploits low-complexity structure in the target distribution to accelerate generation. 
+
+## 3.3 Effect of entropy criterion 
+
+A natural question is how the choice of entropy criterion affects decoding efficiency. To investigate this, we present a second entropy-based decoding strategy—the maximum entropy-based strategy —which differs from the entropy sum-based strategy in a single design choice. Instead of controlling the cumulative entropy of the entire batch, it terminates an iteration as soon as any single token’s conditional entropy exceeds a prescribed threshold, subject to an explicit cap on the batch size. As we will see shortly, this alternative strategy still achieves an iteration complexity sublinear in the sequence length. However, its sampling guarantee is weaker in two respects: the iteration complexity bound is looser, and the parameter choice requires knowledge of the entropy of the target distribution. This contrast highlights the importance of how entropy is incorporated into the design of decoding strategies. 
+
+Maximum entropy-based decoding strategy. As before, we begin by drawing a random permutation Π
+
+of [L]. At iteration t ≥ 1, given the previous iterate Yt−1 with cumulative unmasking set Wt−1, we scan the remaining positions in the permutation order and keep adding them to the current batch Dt. The iteration ends as soon as one of the following occurs: (i) the entropy of the most recently unmasked token exceeds the threshold η (this token is included in the set Dt); (ii) the current batch reaches the cap size Smax ;(iii) all L tokens have been generated. Formally, the index set Dt of newly unmasked tokens at iteration t is given by 
+
+Dt = Πk : Wt−1 < k ≤ kt ,
+
+9Algorithm 2 Maximum entropy-based decoding strategy  
+
+> 1:
+
+Input: Mask predictor pθ , entropy threshold η, and maximum unmasking size Smax  
+
+> 2:
+
+Initialize k ← 0, t ← 0, and token sequence Y0 ← (M, . . . , M) 
+
+> 3:
+
+Draw a permutation Π = (Π 1, . . . , ΠL) of [L] uniformly at random  
+
+> 4:
+
+while k < L do ▷ Repeat until all tokens are generated  
+
+> 5:
+
+t ← t + 1 ▷ Start iteration t 
+
+> 6:
+
+Yt ← Yt−1, Dt ← ∅ ▷ Initialize current iterate and unmasking set  
+
+> 7:
+
+repeat  
+
+> 8:
+
+k ← k + 1  
+
+> 9:
+
+Y Πk 
+
+> t
+
+∼ pΠk 
+
+> θ
+
+(· | Yt−1) ▷ Unmask token with index Πk 
+
+> 10:
+
+Dt ← D t ∪ { Πk} ▷ Add index Πk to unmasking set Dt 
+
+> 11:
+
+until H pΠk 
+
+> θ
+
+(· | Yt−1) > η , or |D t| = Smax , or k = L ▷ Iteration termination criteria  
+
+> 12:
+
+end while  
+
+> 13:
+
+T ← t ▷ Record total number of iterations  
+
+> 14:
+
+Output: Generated token sequence YT
+
+where kt is the first permutation index after Wt−1 for which the entropy exceeds η, or Wt−1 + Smax if no such index appears within the next Smax positions, or L if no such index appears before all tokens are generated. In other words, kt is defined by 
+
+kt := min i > W t−1 : H pΠi 
+
+> θ
+
+(· | Yt−1) > η ∧ (Wt−1 + Smax ) ∧ L. 
+
+A complete description of the unmasking scheme is given in Algorithm 2. Compared with the entropy sum-based decoding scheme, this strategy differs only in the stopping crite-rion: 1. it reacts to the entropy of a single token rather than the cumulative entropy of the whole batch; 2. it explicitly imposes a maximum unmasking size Smax .Despite this difference, these two entropy-based strategies share the same Markovian structure: the un-masking sets Dt and Wt at iteration t are fully determined by the previous iterate Yt−1 together with its cumulative unmasking set Wt−1. Accordingly, the sampling process under the maximum entropy-based decoding scheme also forms a Markov chain as follows: 
+
+Π → H pΠk 
+
+> θ
+
+(· | Y0) Lk=1 → (D1, W1) → Y1 → H pΠk 
+
+> θ
+
+(· | Y1) Lk=W1+1 → (D2, W2) → Y2
+
+→ · · · → H pΠk 
+
+> θ
+
+(· | YT −1) Lk=WT −1+1 → (DT , WT ) → YT . (11) 
+
+Theoretical guarantee. We now present the performance guarantee of the maximum entropy-based in-ference scheme (Algorithm 2) in Theorem 2 below. The proof can be found in Appendix B. 
+
+Theorem 2. Assume that the mask predictor pθ is optimal, namely, pθ = QLi=1 pi is the product of true conditional marginals. For any ε > 0, set the entropy threshold to η = pεH (X0)/L and the maximum unmasking size to Smax = ⌊pεL/H (X0)⌋ ∨ 1. Then the maximum entropy-based unmasking strategy in Algorithm 2 achieves ε-accurate sampling in KL divergence, namely, EΠ
+
+KL (pX0 ∥ pYT |Π) ≤ ε. Moreover, the expected number of iterations satisfies 
+
+E[T ] ≤ 2
+
+r H(X0)Lε + 1 . (12) In words, the maximum entropy-based decoding strategy attains ε-accuracy in KL divergence with an expected number of iterations scaling as 
+
+O
+
+r H(X0)Lε
+
+
+
+. (13) 10 As a consequence, when the entropy of the target data distribution satisfies H(X0) ≪ L, it achieves a sublinear iteration complexity in the sequence length L, thereby implying a provable speedup over fully sequential generation. Nevertheless, compared with the entropy sum-based strategy, this maximum entropy-based strategy has two important shortcomings: 
+
+• In the parallel sampling regime, where the iteration complexity is smaller than the sequence length L,the bound in (13) is worse than that in (10) by a factor of pεL/H (X0) ≫ 1.
+
+• The parameter choices η and Smax needed to achieve a sublinear iteration complexity require explicit knowledge of the entropy H(X0) of the target data distribution. This stands in stark contrast to the entropy sum-based strategy, which is fully distribution-adaptive. Since the theoretical guarantees for these two entropy-based decoding strategies are established under the same analysis framework, comparing them suggests that the choice of entropy criterion plays a critical role in efficient entropy-based decoding. An important future direction is thus to develop a deeper understanding of how different entropy criteria affect the sampling performance of DLMs, for example, by deriving algorithm-dependent lower bounds on the iteration complexity of various decoding strategies. 
+
+# 4 Analysis 
+
+In this section, we outline the proof strategy for the main theory (Theorem 1) for the entropy sum-based decoding strategy. 
+
+## 4.1 Preliminary facts 
+
+Before presenting the proof sketch, we collect several basic facts and notational conventions that will be used throughout the analysis. 
+
+Iterate representation. Starting from the fully masked initialization Y0 = ( M, . . . , M), the iterate Yt at step t is completely characterized by the cumulative unmasking set Wt together with the revealed token values on that set, namely Y Wt 
+
+> t
+
+, since Y it = M for all i ∈ W c 
+
+> t
+
+. Thus, the entropy-based sampler can be equivalently viewed as iteratively filling in the coordinates indexed by Wt. To simplify notation, we suppress the time index t in the iterate Yt whenever it is clear from context, and we also write X = X0.
+
+Permutation-induced order. Given a fixed permutation Π of [L], the sampler scans token indices in the order Π1, Π2, . . . , ΠL, where Πk denotes the index of the k-th token to be unmasked. Let Π−1 denote the inverse permutation so that Π−1 
+
+> i
+
+= k gives the unmasking order k of the token with index i. Moreover, for each token index i ∈ [L], there exists a unique iteration ti at which token i is unmasked, that is, the iteration satisfying i ∈ D ti = Wti \ W ti−1.
+
+Unmasking sets. The entropy-based sampling procedure produces an increasing sequence of cumulative unmasking sets ∅ = W0 ⊆ W 1 ⊆ · · · ⊆ W T = [ L] where T is the random total number of iterations. For convenience of analysis, we extend this sequence by defining Wt := [ L] for t > T so that the sequence (Wt)Lt=0 
+
+is defined for all 0 ≤ t ≤ L. The incremental unmasking sets (Dt)Lt=1 are extended in an analogous manner by setting Dt := ∅ for t > T .In addition, since tokens are revealed according to the permutation order, the cumulative unmasking set at iteration t can be expressed as 
+
+Wt = {Π1, . . . , ΠWt }, (14) where we recall the notation Wt := |W t|. Equivalently, the unmasking set Wt consists of the first Wt indices in the permutation Π. Similarly, the set of newly unmasked tokens at iteration t can be written as 
+
+Dt = Wt \ W t−1 = {ΠWt−1+1 , . . . , ΠWt }. (15) 11 Dependence structure of sampling process. Finally, we record two critical consequences of the Marko-vian structure of the entropy sum-based sampling procedure as shown in (8). 
+
+• First, for a fixed permutation Π, the unmasking set Dt at iteration t, and hence the cumulative unmasking set Wt, are completely determined by the cumulative set Wt−1 and sampled token values 
+
+Y Wt−1 = ( Y Π1 , . . . , Y Π|W t−1| ) from the previous iteration. 
+
+• Second, once the permutation Π and the fully sampled token sequence Y = ( Y 1, . . . , Y L) ∈ XL are given, the entire sampling trajectory is uniquely determined. In particular, one can recover the total number of iterations T , the cumulative unmasking sets (Wt)Lt=0 , and the incremental unmasking sets 
+
+(Dt)Lt=1 . In other words, the total number of iterations T and sets (Wt−1, Dt)Lt=1 are deterministic functions of the sampled token sequence Y and permutation Π, i.e., 
+
+T = T (Y, Π) and Wt−1 = Wt−1(Y, Π) , Dt = Dt(Y, Π) , t ∈ [L]. (16) 
+
+## 4.2 Proof sketch of Theorem 1 
+
+Having introduced the necessary preliminaries, we now outline the proof of Theorem 1 for the entropy sum-based decoding strategy. 
+
+Step 1: Express KL error along unmasking trajectory. We begin by expressing both the sampled distribution and the data distribution along the adaptive unmasking trajectory. The key insight is that, by the characterization in (16), once the permutation π and the sampled sequence x are given, the realized total iteration count τ and the realized sets (wt−1, d t)Lt=1 are fully determined. Concretely, when the mask predictor is optimal, conditioned on a fixed permutation Π = π, the entropy-based sampler generates the tokens in each unmasking set independently according to the true conditional marginals piθ = pi defined in (4). Hence the density of the sampled distribution factorizes within each batch as a product of conditional marginals: 
+
+log pYT |Π= π (x) = 
+
+> τ
+
+X
+
+> t=1
+
+X
+
+> i∈dt
+
+log p(xi | xwt−1 ) = 
+
+> L
+
+X
+
+> t=1
+
+1{t ≤ τ } X
+
+> i∈dt
+
+log p(xi | xwt−1 ), x ∈ XL, (17a) where the total number of iterations τ = τ (x, π ) and the sets dt = dt(x, π ) and wt−1 = wt−1(x, π ) for 
+
+1 ≤ t ≤ L are uniquely determined by x and π.By contrast, under the data distribution, the tokens revealed at each iteration follow their true conditional joint distribution. Grouping the density according to the same unmasking sets (wt−1, d t)Lt=1 gives 
+
+log pX0 (x) = 
+
+> τ
+
+X
+
+> t=1
+
+log p(xdt | xwt−1 ) = 
+
+> L
+
+X
+
+> t=1
+
+1{t ≤ τ } log p(xdt | xwt−1 ). (17b) Using the two factorizations above, let us calculate the KL divergence between the data and sampled distributions. Fixing a permutation Π = π, we can combine (17a) and (17b) to derive 
+
+KL  pX0 ∥ pYT |Π= π
+
+
+
+= EX∼pX0
+
+" LX
+
+> t=1
+
+1{t ≤ T } log p(XDt | XWt−1 )
+
+Q 
+
+> i∈D t
+
+p(Xi | XWt−1 ) Π = π
+
+#
+
+= E
+
+" LX
+
+> t=1
+
+1{t ≤ T }E
+
+
+
+log p(XDt | XWt−1 )
+
+Q 
+
+> i∈D t
+
+p(Xi | XWt−1 ) Wt−1, X Wt−1 , Π = π
+
+
+
+Π = π
+
+#
+
+, (18) where the last line holds due to the tower property, linearity of expectation, and the fact that {t ≤ T } =
+
+{W t−1̸ = [ L]} can be determined by Wt−1. Importantly, the only randomness here (with Π = π fixed) comes from X ∼ pX0 . Once X is fixed, the iteration count T , the sets (Wt−1, Dt)Lt=1 and the subsequences 
+
+(XWt−1 , X Dt )Lt=1 are all determined. 12 We next study the inner conditional expectation, which corresponds to the contribution of iteration t
+
+to the overall KL sampling error. Fix an iteration t ∈ [L], and condition on Π = π and (Wt−1, X Wt−1 ) = (wt−1, x wt−1 ). Under this conditioning, the set Dt = dt is deterministic, and we can derive 
+
+E
+
+
+
+log p(Xdt | Xwt−1 )
+
+Q 
+
+> i∈dt
+
+p(Xi | Xwt−1 ) (Wt−1, X Wt−1 ) = ( wt−1, x wt−1 ), Π = π
+
+
+
+> (i)
+
+= EXdt
+
+
+
+log p(Xdt | xwt−1 )
+
+Q 
+
+> i∈dt
+
+p(Xi | xwt−1 ) (Wt−1, X Wt−1 ) = ( wt−1, x wt−1 ), Π = π
+
+
+
+> (ii)
+
+= KL 
+
+
+
+pdt (· | xwt−1 ) Y
+
+> i∈dt
+
+pi(· | xwt−1 )
+
+
+
+, (19) where (i) is true because the unmasking set Dt = dt becomes deterministic conditioned on Π = π and 
+
+(Wt−1, X Wt−1 ) = ( wt−1, x wt−1 ); (ii) holds because the expectation is taken with respect to Xdt under the true conditional distribution p(· | xwt−1 ), which is independent of Π.Substituting (19) into (18) and then averaging over both X ∼ pX0 and Π yields 
+
+EΠ
+
+KL (pX0 ∥ pYT |Π) = EΠ,X ∼pX0
+
+" TX
+
+> t=1
+
+KL 
+
+
+
+pDt (· | XWt−1 ) Y
+
+> i∈D t
+
+pi(· | XWt−1 )
+
+#
+
+. (20) Thus, the expected KL sampling error decomposes as a sum over iterations t, where each term measures the discrepancy between the true conditional joint distribution of the tokens unmasked at iteration t and the product of their conditional marginals. 
+
+Step 2: Decompose KL error into sum of mutual information. In light of the expression for the total KL error in (20), it suffices to analyze the contribution from each iteration. This reduces to understanding the KL divergence between a joint distribution and the product of its marginals. To this end, Lemma 1 below states that this KL divergence can be decomposed into a sum of mutual information terms, each involving one token and the tokens with larger indices. The proof can be found in Appendix A.1. 
+
+Lemma 1. Consider a random sequence (Z1, . . . , Z d) with joint distribution pZ1,...,Z d and marginal distri-butions pZi for i ∈ [d]. The KL divergence between the joint distribution and the product of marginals is given by 
+
+KL 
+
+
+
+pZ1,...,Z d
+
+Y
+
+> i∈[d]
+
+pZi
+
+
+
+=
+
+> d−1
+
+X
+
+> i=1
+
+I(Zi; Zi+1 , Z i+2 , . . . , Z d). (21) 
+
+Moreover, for any j ∈ [d], the KL divergence can be upper bounded as 
+
+KL 
+
+
+
+pZ1,...,Z d
+
+> d
+
+Y
+
+> i=1
+
+pZi
+
+
+
+≤ X
+
+> i∈[d]\{ j}
+
+I(Zi; Z1, . . . , Z i−1, Z i+1 . . . , Z d). (22) 
+
+Remark 2. Both expressions involve a sum of d − 1 terms, but they differ in structure. In the identity (21), the last index i = d is excluded, and each term measures the mutual information between Zi and the variables with larger indices Zi+1 , Z i+2 , . . . , Z d. In the upper bound (22), one instead excludes an arbitrary index j ∈ [d], and each remaining term measures the mutual information between Zi and all other variables 
+
+Zk with k̸ = i.We shall apply the upper bound (22) in Lemma 1 to control the per-iteration KL sampling error. The key point is that, by construction, each iteration stops as soon as the running entropy sum of the currently unmasked tokens exceeds the threshold η. Consequently, within each iteration, there can be at most one token whose entropy is larger than η. Motivated by this observation, define 
+
+jt := arg max 
+
+> i∈D t
+
+H(Xi | W t−1, X Wt−1 ), (23) 13 with ties broken arbitrarily. Then every index i ∈ D t \ { jt} satisfies 
+
+H(Xi | W t−1, X Wt−1 ) ≤ η. 
+
+Here, we remind the reader that H(X | Z) denotes the entropy of X conditioned on a realization of Z (without taking the expectation of Z), so it is a function of Z. Similarly, I(X; YT | Z) denotes the mutual information between X and Y given a realization of Z.Now applying (22) in Lemma 1 with pZ1,...,Z d = pDt (· | xwt−1 ) and j = jt, we obtain 
+
+KL 
+
+
+
+pDt (· | XWt−1 ) Y
+
+> i∈D t
+
+pi(· | XWt−1 )
+
+
+
+≤ X
+
+> i∈D t
+
+I(Xi; XDt\{ i} | W t−1, X Wt−1 , Π) 1{i̸ = jt}
+
+= X
+
+> i∈D t
+
+I(Xi; XDt\{ i} | W t−1, X Wt−1 , Π) 1H(Xi | W t−1, X Wt−1 ) ≤ η . (24) 
+
+Remark 3. Conditioned on Wt−1 and XWt−1 , the conditional entropy H(Xi | W t−1, X Wt−1 ) is independent of the permutation Π, i.e., 
+
+H(Xi | W t−1, X Wt−1 ) = H(Xi | W t−1, X Wt−1 , Π) .
+
+This is in contrast to the mutual information terms, which depend explicitly on the unmasking set Dt, and hence on Π.Thus, the KL sampling error contributed by iteration t is controlled by a sum of mutual information, where each term quantifies the dependence between one unmasked token and the rest of the tokens unmasked in iteration t, conditioned on the tokens revealed previously. The indicator function in (24) highlights an important feature of the entropy-sum stopping rule: within each iteration, only tokens with conditional entropy at most η contribute to this KL error bound. As will be clear momentarily, this indicator function will be essential in the subsequent analysis. Substituting the bound (24) into the KL error expression in (20), we find 
+
+EΠ
+
+h
+
+KL  pX0 ∥ pYT |Π
+
+i
+
+≤ EX, Π
+
+" TX
+
+> t=1
+
+X
+
+> i∈D t
+
+I(Xi; XDt\{ i} | W t−1, X Wt−1 , Π) 1H(Xi | W t−1, X Wt−1 ) ≤ η
+
+#
+
+=
+
+> L
+
+X
+
+> i=1
+
+EX, Π
+
+h
+
+I(Xi; XDti \{ i} | W ti−1, X Wti−1 , Π) 1H(Xi | W ti−1, X Wti−1 ) ≤ η
+
+i
+
+,
+
+(25) where the last step rearranges the summation order from the iteration index t to the token index i, where we recall that ti denotes the index of the iteration at which token i is unmasked. In summary, the expected KL sampling error is bounded by a sum of mutual information terms over token index i ∈ [L]. Each term measures the dependence between token i and the other unmasked tokens in the same iteration, conditioned on the already unmasked tokens and the permutation. 
+
+Step 3: Average over random unmasking order. Equipped with the KL error bound in (25), it remains to control each token-wise contribution separately. To this end, fix a token index i and consider the corresponding summand: 
+
+EX, Π∖i,Π−1
+
+> i
+
+h
+
+I(Xi; XDti \{ i} | W ti−1, X Wti−1 , Π) 1H(Xi | W ti−1, X Wti−1 ) ≤ η
+
+i
+
+. (26) To make the dependence on the permutation explicit, we decompose the randomness of Π into the posi-tion Π−1 
+
+> i
+
+of token i in the permutation Π and the relative ordering of all other tokens, denoted by Π∖i.Concretely, we define 
+
+Π∖i :=  Π1, . . . , ΠΠ−1 
+
+> i−1
+
+, ΠΠ−1 
+
+> i+1
+
+, . . . , ΠL
+
+. (27) 14 That is, the permutation Π∖i is obtained from Π by removing the index i while preserving the relative order of all other tokens. Our goal is to show, after averaging over the randomness of the position Π−1 
+
+> i
+
+, the contribution of token i
+
+to the KL sampling error admits a clean and tractable upper bound. However, the major technical difficulty arises from the complicated dependence between the set Dti \ { i}—the tokens revealed in the same iteration as token i—and the full permutation Π. In particular, the iteration index ti and the set Dti both vary with 
+
+Π−1 
+
+> i
+
+, making it challenging to directly analyze (26). To address this, recall that Dt := |D t| denotes the size of the unmasking set Dt at iteration t ∈ [L].We then introduce a sequence of dyadic size envelopes (Dt)Lt=1 in R, defined recursively by D1 = 0 and, for 2 ≤ t ≤ L,
+
+Dt := 
+
+(
+
+Dt−1, if Dt−1 < D t−1,
+
+2Dt−1, if Dt−1 ≥ Dt−1. (28) In essence, the envelope remains unchanged as long as the previous set size stays below it; once the previous set size reaches the envelope, the envelope is doubled. Using the size-envelopes constructed above, the following lemma shows that, after averaging over the random position of token i, the mutual-information term in (26) can be bounded by a much simpler quantity involving only the conditional entropy of Xi and the event that the corresponding set size crosses the envelope. The proof is deferred to Appendix A.2. 
+
+Lemma 2. For any token index i ∈ [L], we have 
+
+EX, Π∖i,Π−1
+
+> i
+
+h
+
+I(Xi; XDti \{ i} | W ti−1, X Wti−1 , Π) 1H(Xi | W ti−1, X Wti−1 ) ≤ η
+
+i
+
+≤ 2 EX, Π∖i
+
+h H(Xi | W ti−1, X Wti−1 ) ∧ η1Dti ≥ Dti
+
+i
+
+. (29) In words, after averaging over the random unmasking order of token i, its contribution to the KL sampling error is controlled by its truncated conditional entropy, and contributes only on the event that the size of its unmasking set is at least as large as the corresponding envelope. Thus, the intricate dependence structure in (26) is reduced to a much more tractable indicator of whether a size-doubling event occurs. 
+
+Step 4: Control KL error by entropy-based stopping rule. Summing the bound (29) from Lemma 2 over all tokens and combining it with the KL error expression in (25), we obtain 
+
+EΠ
+
+KL (pX0 ∥ pYT |Π) ≤ 2 E
+
+" LX
+
+> i=1
+
+ H(Xi | W ti−1, X Wti−1 , Π∖i) ∧ η1Dti ≥ Dti
+
+#
+
+. (30) We now reindex the sum by iteration rather than token. Since Dt is exactly the set of tokens revealed at iteration t, the right-hand side of (30) becomes 
+
+E
+
+" LX
+
+> i=1
+
+ H(Xi | W ti−1, X Wti−1 , Π∖i) ∧ η1Dti ≥ Dti
+
+#
+
+= E
+
+" LX
+
+> t=1
+
+1{Dt ≥ Dt} X
+
+> i∈D t
+
+ H(Xi | W t−1, X Wt−1 , Π∖i) ∧ η#
+
+Next, we bound the inner sum using the stopping rule. By construction, within each iteration the cumulative entropy remains below η until the final token is added. Therefore, the total contribution of all but the last token is at most η, while the final token contributes at most η after truncation. Consequently, 
+
+X
+
+> i∈D t
+
+ H(Xi | W t−1, X Wt−1 , Π∖i) ∧ η ≤ 2η, 
+
+15 and hence 
+
+E
+
+" LX
+
+> i=1
+
+ H(Xi | W ti−1, X Wti−1 , Π∖i) ∧ η1Dti ≥ Dti
+
+#
+
+≤ 2η · E
+
+" LX
+
+> t=1
+
+1{Dt ≥ Dt}
+
+#
+
+. (31) It remains to bound the number of iterations for which the event Dt ≥ Dt occurs. Let s1 < s 2 < . . . be the iterations at which this event holds. By the definition of the size-envelope sequence in (28), whenever 
+
+Dsj ≥ Dsj occurs, the envelope at the next such iteration must have doubled. Thus, we have 
+
+Dsj+1 ≥ Dsj+1 = 2 Dsj ,
+
+and by induction, 
+
+Dsj ≥ 2j−1Ds1 = 2 j−1.
+
+Since Dsj ≤ L for all j, this implies that the number of such iterations satisfies 
+
+> L
+
+X
+
+> t=1
+
+1{Dt ≥ Dt} ≤ log 2 L + 1 . (32) Finally, combining (30)–(32) gives the final bound on the expected KL sampling error: 
+
+EΠ
+
+KL (pX0 ∥ pYT |Π) ≤ 4η(log 2 L + 1) . (33) Setting η = ε/ (4(log 2 L + 1)) immediately yields the desired result EΠ
+
+KL (pX0 ∥ pYT |Π) ≤ ε.
+
+Step 5: Bound expected number of iterations. Finally, let us study the expected number of iterations 
+
+E[T ]. To this end, we use the following entropy identity, whose proof is deferred to Appendix A.3. 
+
+Lemma 3. For any fixed permutation Π, the entropy of the data distribution admits the following decompo-sition: 
+
+H(X0) = EX∼pX0
+
+" TX
+
+> t=1
+
+H(XDt | W t−1, X Wt−1 , Π) 
+
+#
+
+(34) 
+
+= EX∼pX0
+
+" TX
+
+> t=1
+
+X
+
+> i∈D t
+
+H(Xi | W t−1, X Wt−1 , Π) 
+
+#
+
+− KL (pX0 ∥ pYT |Π). (35) We now combine this identity with the stopping rule. By construction, every iteration except the last one accumulates conditional entropy at least η, that is, 
+
+X
+
+> i∈D t
+
+H(Xi | W t−1, X Wt−1 , Π) ≥ η, 
+
+for all t < T . Therefore, substituting this into the entropy identity (35) yields 
+
+H(X0) ≥ E[T − 1] η − EΠ
+
+KL (pX0 ∥ pYT |Π).
+
+Using the KL bound from (33), we further obtain 
+
+H(X0) ≥  E[T ] − 1 − 4(log 2 L + 1) η. 
+
+Therefore, rearranging the above inequality and substituting η = ε/ (4(log 2 L + 1)) into it yields 
+
+E[T ] ≤ H(X0)
+
+η + 4(log 2 L + 1) + 1 = 4 
+
+ H(X0)
+
+ε + 1 
+
+
+
+(log 2 L + 1) + 1 .
+
+This completes the proof of Theorem 1. 16 5 Discussion 
+
+In this work, we have made progress toward understanding the sampling efficiency of confidence-based decod-ing strategies in DLMs. Our results show that entropy-based unmasking strategies can provably accelerate sampling, achieving an iteration complexity that is sublinear in the sequence length when the data distribu-tion has low entropy. Notably, they reveal that entropy-based strategies can adapt to the unknown intrinsic complexity of the data distribution without requiring any prior knowledge or hyperparameter tuning. Moving forward, it would be of interest to understand the performance of the entropy-based decoding schemes based on a deterministic order (e.g., a sorted order) instead of the random order considered in this work. Also, it would be valuable to extend our analysis to more general confidence measures beyond entropy, such as the mass of the most likely token and the mass gap between the two most likely tokens. Second, our current analysis focuses on the scenario where the optimal mask predictor is used. It would be important to understand the impact of training error in the mask predictor on the sampling performance under confidence-based decoding, which may yield insights into the design of more effective training objectives for DLMs. Third, another important direction is to establish lower bounds on the iteration complexity of confidence-based decoding schemes, which would shed light on the fundamental limits of sampling acceleration when using this class of strategies. 
+
+# Acknowledgements 
+
+C. Cai is supported in part by the NSF grants DMS-2515333. G. Li is supported in part by the Chinese University of Hong Kong Direct Grant for Research and the Hong Kong Research Grants Council ECS 2191363, GRF 2131005. 
+
+# References 
+
+Austin, J., Johnson, D. D., Ho, J., Tarlow, D., and Van Den Berg, R. (2021). Structured denoising diffusion models in discrete state-spaces. Advances in Neural Information Processing Systems , 34:17981–17993. Azangulov, I., Deligiannidis, G., and Rousseau, J. (2024). Convergence of diffusion models under the manifold hypothesis in high-dimensions. arXiv preprint arXiv:2409.18804 .Ben-Hamu, H., Gat, I., Severo, D., Nolte, N., and Karrer, B. (2025). Accelerated sampling from masked diffusion models via entropy bounded unmasking. arXiv preprint arXiv:2505.24857 .Benton, J., De Bortoli, V., Doucet, A., and Deligiannidis, G. (2023). Linear convergence bounds for diffusion models via stochastic localization. arXiv preprint arXiv:2308.03686 .Bie, T., Cao, M., Chen, K., Du, L., Gong, M., Gong, Z., Gu, Y., Hu, J., Huang, Z., Lan, Z., et al. (2025). Llada2. 0: Scaling up diffusion language models to 100b. arXiv preprint arXiv:2512.15745 .Cai, C. and Li, G. (2025). Minimax optimality of the probability flow ode for diffusion models. arXiv preprint arXiv:2503.09583 .Campbell, A., Benton, J., De Bortoli, V., Rainforth, T., Deligiannidis, G., and Doucet, A. (2022). Acontinuous time framework for discrete denoising models. Advances in Neural Information Processing Systems , 35:28266–28279. Chang, H., Zhang, H., Jiang, L., Liu, C., and Freeman, W. T. (2022). Maskgit: Masked generative image transformer. In Proceedings of the IEEE/CVF conference on computer vision and pattern recognition ,pages 11315–11325. Chen, H., Lee, H., and Lu, J. (2023a). Improved analysis of score-based generative modeling: User-friendly bounds under minimal smoothness assumptions. In International Conference on Machine Learning , pages 4735–4763. PMLR. 17 Chen, H. and Ying, L. (2024). Convergence analysis of discrete diffusion model: Exact implementation through uniformization. arXiv preprint arXiv:2402.08095 .Chen, M., Huang, K., Zhao, T., and Wang, M. (2023b). Score approximation, estimation and distribution recovery of diffusion models on low-dimensional data. In International Conference on Machine Learning ,pages 4672–4712. PMLR. Chen, M., Xu, R., Xu, Y., and Zhang, R. (2025a). Diffusion factor models: Generating high-dimensional returns with factor structure. arXiv preprint arXiv:2504.06566 .Chen, S., Chewi, S., Li, J., Li, Y., Salim, A., and Zhang, A. R. (2022). Sampling is as easy as learning the score: theory for diffusion models with minimal data assumptions. arXiv preprint arXiv:2209.11215 .Chen, S., Cong, K., and Li, J. (2025b). Optimal inference schedules for masked diffusion models. arXiv preprint arXiv:2511.04647 .Chen, S., Kontonis, V., and Shah, K. (2024). Learning general gaussian mixtures with efficient score match-ing. arXiv preprint arXiv:2404.18893 .Dmitriev, D., Huang, Z., and Wei, Y. (2026). Efficient sampling with discrete diffusion models: Sharp and adaptive guarantees. arXiv preprint arXiv:2602.15008 .Fan, J., Gu, Y., and Li, X. (2025). Optimal estimation of a factorizable density using diffusion models with relu neural networks. arXiv preprint arXiv:2510.03994 .Feng, G., Geng, Y., Guan, J., Wu, W., Wang, L., and He, D. (2025). Theoretical benefit and limitation of diffusion language model. arXiv preprint arXiv:2502.09622 .Fu, H., Huang, B., Adams, V., Wang, C., Srinivasan, V., and Jiao, J. (2025). From bits to rounds: Parallel decoding with exploration for diffusion language models. arXiv preprint arXiv:2511.21103 .Gatmiry, K., Chen, S., and Salim, A. (2026). High-accuracy and dimension-free sampling with diffusions. 
+
+arXiv preprint arXiv:2601.10708 .Gatmiry, K., Kelner, J., and Lee, H. (2024). Learning mixtures of gaussians using diffusion models. arXiv preprint arXiv:2404.18869 .Gong, S., Agarwal, S., Zhang, Y., Ye, J., Zheng, L., Li, M., An, C., Zhao, P., Bi, W., Han, J., et al. (2024). Scaling diffusion language models via adaptation from autoregressive models. arXiv preprint arXiv:2410.17891 .Huang, D. Z., Huang, J., and Lin, Z. (2024a). Convergence analysis of probability flow ODE for score-based generative models. arXiv preprint arXiv:2404.09730 .Huang, Z., Wei, Y., and Chen, Y. (2024b). Denoising diffusion probabilistic models are optimally adaptive to unknown low dimensionality. arXiv preprint arXiv:2410.18784 .Jiao, Y., Zhou, Y., and Li, G. (2025). Optimal convergence analysis of ddpm for general distributions. arXiv preprint arXiv:2510.27562 .Kim, J., Shah, K., Kontonis, V., Kakade, S., and Chen, S. (2025). Train for the worst, plan for the best: Understanding token ordering in masked diffusions. arXiv preprint arXiv:2502.06768 .Labs, I., Khanna, S., Kharbanda, S., Li, S., Varma, H., Wang, E., Birnbaum, S., Luo, Z., Miraoui, Y., Palrecha, A., et al. (2025). Mercury: Ultra-fast language models based on diffusion. arXiv preprint arXiv:2506.17298 .Lavenant, H. and Zanella, G. (2025). Error bounds and optimal schedules for masked diffusions with factor-ized approximations. arXiv preprint arXiv:2510.25544 .18 Lee, H., Lu, J., and Tan, Y. (2022). Convergence for score-based generative modeling with polynomial complexity. Advances in Neural Information Processing Systems , 35:22870–22882. Lee, H., Lu, J., and Tan, Y. (2023). Convergence of score-based generative modeling for general data distributions. In International Conference on Algorithmic Learning Theory , pages 946–985. PMLR. Lee, S., Kim, S., Park, J., and Park, D. (2025). Lookahead unmasking elicits accurate decoding in diffusion language models. arXiv preprint arXiv:2511.05563 .Li, G. and Cai, C. (2024). Provable acceleration for diffusion models under minimal assumptions. arXiv preprint arXiv:2410.23285 .Li, G. and Cai, C. (2025). Breaking ar’s sampling bottleneck: Provable acceleration via diffusion language models. In The Thirty-ninth Annual Conference on Neural Information Processing Systems .Li, G., Cai, C., and Wei, Y. (2025a). Dimension-free convergence of diffusion models for approximate gaussian mixtures. arXiv preprint arXiv:2504.05300 .Li, G., Huang, Y., Efimov, T., Wei, Y., Chi, Y., and Chen, Y. (2024a). Accelerating convergence of score-based diffusion models, provably. arXiv preprint arXiv:2403.03852 .Li, G. and Jiao, Y. (2024). Improved convergence rate for diffusion probabilistic models. arXiv preprint arXiv:2410.13738 .Li, G., Wei, Y., Chi, Y., and Chen, Y. (2024b). A sharp convergence theory for the probability flow odes of diffusion models. arXiv preprint arXiv:2408.02320 .Li, G. and Yan, Y. (2024a). Adapting to unknown low-dimensional structures in score-based diffusion models. 
+
+arXiv preprint arXiv:2405.14861 .Li, G. and Yan, Y. (2024b). O(d/T ) convergence theory for diffusion probabilistic models under minimal assumptions. arXiv preprint arXiv:2409.18959 .Li, G., Zhou, Y., Wei, Y., and Chen, Y. (2025b). Faster diffusion models via higher-order approximation. 
+
+arXiv preprint arXiv:2506.24042 .Li, M., Jiang, H., Cheng, S., Fu, H., Cai, Y., Huang, B., Ye, T., Chen, X., and Van Hentenryck, P. (2026). Plan, verify and fill: A structured parallel decoding approach for diffusion language models. arXiv preprint arXiv:2601.12247 .Liang, J., Huang, Z., and Chen, Y. (2025a). Low-dimensional adaptation of diffusion models: Convergence in total variation. arXiv preprint arXiv:2501.12982 .Liang, Y., Huang, R., Lai, L., Shroff, N., and Liang, Y. (2025b). Absorb and converge: Provable convergence guarantee for absorbing discrete diffusion models. arXiv preprint arXiv:2506.02318 .Liang, Y., Tan, Z., Shroff, N., and Liang, Y. (2026). Sharp convergence rates for masked diffusion models. 
+
+arXiv preprint arXiv:2602.22505 .Lou, A., Meng, C., and Ermon, S. (2023). Discrete diffusion modeling by estimating the ratios of the data distribution. arXiv preprint arXiv:2310.16834 .Nie, S., Zhu, F., You, Z., Zhang, X., Ou, J., Hu, J., Zhou, J., Lin, Y., Wen, J.-R., and Li, C. (2025). Large language diffusion models. arXiv preprint arXiv:2502.09992 .Oko, K., Akiyama, S., and Suzuki, T. (2023). Diffusion models are minimax optimal distribution estimators. In International Conference on Machine Learning , pages 26517–26582. PMLR. Ou, J., Nie, S., Xue, K., Zhu, F., Sun, J., Li, Z., and Li, C. (2024). Your absorbing discrete diffusion secretly models the conditional distributions of clean data. arXiv preprint arXiv:2406.03736 .19 Peng, F. Z., Bezemek, Z., Patel, S., Rector-Brooks, J., Yao, S., Bose, A. J., Tong, A., and Chatterjee, P. (2025). Path planning for masked diffusion model sampling. arXiv preprint arXiv:2502.03540 .Potaptchik, P., Azangulov, I., and Deligiannidis, G. (2024). Linear convergence of diffusion models under the manifold hypothesis. arXiv preprint arXiv:2410.09046 .Prabhudesai, M., Wu, M., Zadeh, A., Fragkiadaki, K., and Pathak, D. (2025). Diffusion beats autoregressive in data-constrained settings. arXiv preprint arXiv:2507.15857 .Ren, Y., Chen, H., Rotskoff, G. M., and Ying, L. (2024). How discrete and continuous diffusion meet: Comprehensive analysis of discrete diffusion models via a stochastic integral framework. arXiv preprint arXiv:2410.03601 .Ren, Y., Chen, H., Zhu, Y., Guo, W., Chen, Y., Rotskoff, G. M., Tao, M., and Ying, L. (2025). Fast solvers for discrete diffusion models: Theory and applications of high-order algorithms. arXiv preprint arXiv:2502.00234 .Sahoo, S., Arriola, M., Schiff, Y., Gokaslan, A., Marroquin, E., Chiu, J., Rush, A., and Kuleshov, V. (2024). Simple and effective masked diffusion language models. Advances in Neural Information Processing Systems , 37:130136–130184. Shi, J., Han, K., Wang, Z., Doucet, A., and Titsias, M. (2024). Simplified and generalized masked diffusion for discrete data. Advances in neural information processing systems , 37:103131–103167. Song, Y., Sohl-Dickstein, J., Kingma, D. P., Kumar, A., Ermon, S., and Poole, B. (2020). Score-based generative modeling through stochastic differential equations. arXiv preprint arXiv:2011.13456 .Song, Y., Zhang, Z., Luo, C., Gao, P., Xia, F., Luo, H., Li, Z., Yang, Y., Yu, H., Qu, X., et al. (2025). Seed dif-fusion: A large-scale diffusion language model with high-speed inference. arXiv preprint arXiv:2508.02193 .Tang, R. and Yang, Y. (2024). Adaptivity of diffusion models to manifold structures. In International Conference on Artificial Intelligence and Statistics , pages 1648–1656. PMLR. Wang, G., Schiff, Y., Sahoo, S. S., and Kuleshov, V. (2025). Remasking discrete diffusion models with inference-time scaling. arXiv preprint arXiv:2503.00307 .Wang, P., Zhang, H., Zhang, Z., Chen, S., Ma, Y., and Qu, Q. (2024). Diffusion models learn low-dimensional distributions via subspace clustering. arXiv preprint arXiv:2409.02426 .Wei, Q., Zhang, Y., Liu, Z., Liu, D., and Zhang, L. (2025). Accelerating diffusion large language models with slowfast sampling: The three golden principles. arXiv preprint arXiv:2506.10848 .Wibisono, A., Wu, Y., and Yang, K. Y. (2024). Optimal score estimation via empirical bayes smoothing. 
+
+arXiv preprint arXiv:2402.07747 .Wu, C., Zhang, H., Xue, S., Liu, Z., Diao, S., Zhu, L., Luo, P., Han, S., and Xie, E. (2025). Fast-dllm: Training-free acceleration of diffusion llm by enabling kv cache and parallel decoding. arXiv preprint arXiv:2505.22618 .Wu, S. and Zhang, J. (2025). Free draft-and-verification: Toward lossless parallel decoding for diffusion large language models. arXiv preprint arXiv:2510.00294 .Yakovlev, K. and Puchkin, N. (2025). Generalization error bound for denoising score matching under relaxed manifold assumption. arXiv preprint arXiv:2502.13662 .Ye, J., Xie, Z., Zheng, L., Gao, J., Wu, Z., Jiang, X., Li, Z., and Kong, L. (2025). Dream 7b: Diffusion large language models. arXiv preprint arXiv:2508.15487 .You, Z., Nie, S., Zhang, X., Hu, J., Zhou, J., Lu, Z., Wen, J.-R., and Li, C. (2025). Llada-v: Large language diffusion models with visual instruction tuning. arXiv preprint arXiv:2505.16933 .20 Yu, R., Ma, X., and Wang, X. (2025). Dimple: Discrete diffusion multimodal large language model with parallel decoding. arXiv preprint arXiv:2505.16990 .Zhang, K., Yin, H., Liang, F., and Liu, J. (2024). Minimax optimality of score-based diffusion models: Beyond the density lower bound assumptions. arXiv preprint arXiv:2402.15602 .Zhang, M. S., Huan, S., Huang, J., Boffi, N. M., Chen, S., and Chewi, S. (2025). Sublinear iterations can suffice even for ddpms. arXiv preprint arXiv:2511.04844 .Zhao, Y. and Cai, C. (2026). Adaptation to intrinsic dependence in diffusion language models. arXiv preprint arXiv:2602.20126 .Zheng, K., Chen, Y., Mao, H., Liu, M.-Y., Zhu, J., and Zhang, Q. (2024). Masked diffusion models are secretly time-agnostic masked models and exploit inaccurate categorical sampling. arXiv preprint arXiv:2409.02908 .Zheng, L., Yuan, J., Yu, L., and Kong, L. (2023). A reparameterized discrete diffusion model for text generation. arXiv preprint arXiv:2302.05737 .Zhu, F., Wang, R., Nie, S., Zhang, X., Wu, C., Hu, J., Zhou, J., Chen, J., Lin, Y., Wen, J.-R., et al. (2025). Llada 1.5: Variance-reduced preference optimization for large language diffusion models. arXiv preprint arXiv:2505.19223 .
+
+# A Proof of lemmas for Theorem 1 
+
+## A.1 Proof of Lemma 1 
+
+To simplify the notation, we write Z>i = ( Zi+1 , . . . , Z d) for any 1 ≤ i < d and define Z<i , Z≥i, and Z≤i
+
+analogously. In addition, we denote Z∖i := ( Z1, . . . , Z i−1, Z i+1 , . . . , Z d) for any 1 ≤ i ≤ d. Using the chain rule, one can derive 
+
+KL 
+
+
+
+pZ1,...,Z d
+
+> d
+
+Y
+
+> i=1
+
+pZi
+
+
+
+=
+
+Z
+
+pZ1,...,Z d (z1, . . . , z d) log 
+
+Qdi=1 pZi|Z>i (zi | z>i )
+
+Qdi=1 pZi (zi) dz1 . . . dzd
+
+=
+
+> d−1
+
+X
+
+> i=1
+
+Z
+
+pZ<i |Z≥i (z<i | z≥i) d z<i 
+
+Z
+
+pZ≥i (z≥i) log pZi|Z>i (zi | z>i )
+
+pZi (zi) dz≥i
+
+=
+
+> d−1
+
+X
+
+> i=1
+
+Z
+
+pZi,Z >i (zi, z >i ) log pZi|Z>i (zi | z>i )
+
+pZi (zi) dzi dz>i 
+
+=
+
+> d−1
+
+X
+
+> i=1
+
+I(Zi; Z>i ),
+
+where the second step holds because pZd|Z>d (zd | z>d ) = pZd (zd). This proves (21). Turning to (22), let us fix an arbitrary j ∈ [d]. We shall apply the same identity as in (21) but choose an ordering of the random variables such that Zj placed last. Define 
+
+(Y 1, . . . , Y d) := ( Z1, . . . , Z j−1, Z j+1 , . . . , Z d, Z j ).
+
+Recognizing that the KL divergence is invariant to the ordering of the random variables, one has 
+
+KL (pZ1,...,Z d
+
+> d
+
+Y
+
+> i=1
+
+pZi ) = KL (pY 1,...,Y d
+
+> d
+
+Y
+
+> i=1
+
+pY i ) = 
+
+> d−1
+
+X
+
+> k=1
+
+I(Y k; Y >k ),
+
+where the last step applies (21) to the random sequence (Y 1, . . . , Y d).21 Note that for each 1 ≤ k < d , Y k is one of the random variables Zi with i̸ = j and Y >k ⊆ Z∖i. Therefore, by the monotonicity of mutual information, one has 
+
+I(Y k; Y >k ) ≤ I(Zi; Z∖i).
+
+Summing over all i̸ = j gives the desired bound in (22): 
+
+KL (pZ1,...,Z d
+
+> d
+
+Y
+
+> i=1
+
+pZi ) ≤ X
+
+> i̸=j
+
+I(Zi; Z∖i).
+
+This completes the proof of Lemma 1. 
+
+## A.2 Proof of Lemma 2 
+
+Preparation: auxiliary sequence. Before presenting the details, let us first make several preparations to address the statistical coupling issue mentioned in Section 4. Consider the auxiliary sampling process where we want to unmask the token sequence except the i-th token, i.e., 
+
+X∖i = ( X1, . . . , X i−1, X i+1 , . . . , X L),
+
+and run the entropy sum-based sampling procedure (Algorithm 1) according to the order induced by the auxiliary permutation in (27): 
+
+Π∖i :=  Π1, . . . , ΠΠ−1 
+
+> i−1
+
+, ΠΠ−1 
+
+> i+1
+
+, . . . , ΠL
+
+.
+
+For each t ∈ [L], let W∖it and D∖it denote the cumulative and incremental unmasking sets at iteration t
+
+in this auxiliary sampling process, respectively. In addition, we denote their sizes by W ∖it := |W ∖it | and 
+
+D∖it := |D ∖it |.Moreover, similar to the size envelopes (Dt)Lt=1 in (28), we define the size envelopes associated with the auxiliary process (D∖it )Lt=1 recursively by D∖i 
+
+> 1
+
+:= 0 , and for t ≥ 2,
+
+D∖it := 
+
+(
+
+D∖it−1, if D∖it−1 < D ∖it−1,
+
+2D∖it−1, if D∖it−1 ≥ D∖it−1. (36) Below we make several important observations about the auxiliary sampling process. 1. By construction, the auxiliary unmasking sets (D∖it )t≥1 are produced by running Algorithm 1 using the auxiliary permutation Π∖i. Hence, for any iteration t ≥ 1, the set D∖it is independent of the unmasking order Π−1 
+
+> i
+
+of token i in the original process. 2. For any iteration t ≥ 1, conditioned on Π∖i and (W∖it−1, X W∖it−1 ), the unmasking set D∖it at iteration t
+
+in the auxiliary process is deterministic. 3. Recall that ti denotes the iteration at which the token with index i is unmasked in the original sampling process. Note that before this iteration, the original sampling process never uses the information contained in the i-th token to determine unmasking sets and sample tokens. This implies that the unmasking sets and sampled tokens before iteration ti coincide between the original and auxiliary processes. In particular, W∖it = Wt and D∖it = Dt for all t < t i in both processes. To proceed, we make explicit some statistical dependence. 
+
+• After conditioning on Π∖i and X∖i, the only remaining randomness in the original sampling process that affects the iteration at which token i is unmasked is the insertion position Π−1 
+
+> i
+
+of token i in the permutation Π. To highlight this, we write 
+
+ti = ti(Π −1 
+
+> i
+
+)
+
+for the iteration at which token i is unmasked when its insertion position is Π−1 
+
+> i
+
+.22 • More generally, in the original sampling process, the unmasking set Dti containing token i depends on 
+
+Π−1 
+
+> i
+
+through both the iteration index and the order of token i within that iteration. Hence, we write 
+
+D(Π −1 
+
+> i
+
+) := Dti(Π −1 
+
+> i)
+
+(Π −1 
+
+> i
+
+) (37) to emphasize this dependence on the insertion position Π−1 
+
+> i
+
+.
+
+• Now fix an iteration s ∈ [L] and condition on (W∖is−1, X W∖is−1 ) and Π∖i. Under this conditioning, the auxiliary unmasking set D∖is and its size D∖is are deterministic. In the original sampling process, the set of insertion positions p of token i in the permutation Π that lead to ti(p) = s is precisely the unmasking set D∖is in the auxiliary process, i.e., 
+
+{p ∈ [L] : ti(p) = s} = D∖is .
+
+To see this, note that each index except the last one in D∖is has the property that the sum up to the following token is still below the threshold. Therefore, token i can be inserted at any such position without changing the iteration at which it is unmasked. On the other hand, the last index in D∖is is the one at which the cumulative sum including the following token exceeds the threshold. Therefore, for token i to be unmasked at iteration s, this is the last position at which it can be inserted. 
+
+• However, if token i is inserted at position p ∈ D ∖is so that it is unmasked at iteration s in the original sampling process, the resulting unmasking set Ds may still vary with p, because a high entropy of token i can lead to early termination of iteration s. Accordingly, for positions p ∈ D ∖is , we write 
+
+Ds(p) = |D s(p)|
+
+to denote the size of the original unmasking set at iteration s when token i is inserted at position p in the permutation Π.More precisely, the set of all other unmasked tokens in the same iteration s as token i in the original process, is a subset of the s-th unmasking set in the auxiliary process, i.e., 
+
+D(p) \ { i} = Ds(p) \ { i} ⊆ D ∖is , ∀ p ∈ D ∖is . (38) This is because inserting token i into position p ∈ D ∖is in the permutation Π can only make iteration s
+
+terminate earlier in the original process than in the auxiliary process since the entropy of token i can be large. 
+
+• To organize these insertion positions, it is convenient to index them relative to the start of the s-th auxiliary batch D∖is . Recall W ∖is := |W ∖is | and D∖is := |D ∖is |. For each absolute insertion position 
+
+q ∈ [L], let 
+
+r :=  (q − 1) mod D∖is
+
+ + 1 ,
+
+be the relative position of q within the set D∖is , and define 
+
+Drel  
+
+> s
+
+(q) := Ds(r + W ∖is−1). (39) In other words, Drel  
+
+> s
+
+(q) represents the size of the s-th original unmasking set Ds obtained when token i is inserted at relative position r within the s-th auxiliary unmasking set D∖is . In particular, we introduce the module operation in (39) to handle the case when q is larger than the auxiliary batch size D∖is .
+
+• Finally, note that conditioned on ti(p) = s, the envelope Ds is determined by the original process up to iteration s − 1, and therefore does not depend on the relative index q of the insertion position p
+
+within the s-th auxiliary batch D∖is .23 Proof of Lemma 2. Having the above preparations, we are ready to prove Lemma 2. Our goal is to analyze the contribution of token i to the expected KL sampling error in (26) by taking expectation with respect to the randomness of Π−1 
+
+> i
+
+, namely, the random insertion position Π−1 
+
+> i
+
+of token i
+
+in the permutation Π. Hence, for each p ∈ [L], define 
+
+F (p) := I(Xi; XD(p)\{ i} | W ∖iti(p)−1, X W∖iti(p)−1 , Π∖i)1H(Xi | W ∖iti(p)−1, X W∖iti(p)−1 ) ≤ η . (40) We can then express (26) as 
+
+EX, Π
+
+h
+
+I(Xi; XDti \{ i} | W ti−1, X Wti−1 , Π) 1H(Xi | W ti−1, X Wti−1 ) ≤ η
+
+i
+
+= EF (Π −1 
+
+> i
+
+) = EX∖i,Π∖i
+
+h
+
+EΠ−1
+
+> i
+
+F (Π −1 
+
+> i
+
+) | X∖i, Π∖i
+
+i
+
+. (41) In what follows, we focus on the inner expectation with respect to Π−1 
+
+> i
+
+in (41). As Π−1 
+
+> i
+
+is uniformly distributed over [L] conditioned on X∖i and Π∖i, we have 
+
+EΠ−1
+
+> i
+
+F (Π −1 
+
+> i
+
+) | X∖i, Π∖i
+
+
+
+> (i)
+
+= 1
+
+L
+
+> L
+
+X
+
+> p=1
+
+I(Xi; XD(p)\{ i} | W ∖iti(p)−1, X W∖iti(p)−1 , Π∖i)1H(Xi | W ∖iti(p)−1, X W∖iti(p)−1 ) ≤ η
+
+> (ii)
+
+= 1
+
+L
+
+> L
+
+X
+
+> s=1
+> L
+
+X
+
+> p=1
+
+1{ti(p) = s}I(Xi; XD(p)\{ i} | W ∖iti(p)−1, X W∖iti(p)−1 , Π∖i)1H(Xi | W ∖iti(p)−1, X W∖iti(p)−1 ) ≤ η
+
+> (iii)
+
+= 1
+
+L
+
+> L
+
+X
+
+> s=1
+
+X
+
+> p∈D ∖is
+
+I(Xi; XD(p)\{ i} | W ∖is−1, X W∖is−1 , Π∖i)1H(Xi | W ∖is−1, X W∖is−1 ) ≤ η
+
+> (iv)
+
+= 1
+
+L
+
+> L
+
+X
+
+> s=1
+> D∖is
+
+X
+
+> q=1
+
+I(Xi; XD(q+W ∖is−1)\{ i} | W ∖is−1, X W∖is−1 , Π∖i)1H(Xi | W ∖is−1, X W∖is−1 ) ≤ η (42) Here, (i) follows from the fact that Π−1 
+
+> i
+
+is uniformly distributed over [L] independent of X∖i and Π∖i and that conditioned on X∖i and Π∖i, ti is determined given Π−1 
+
+> i
+
+= p; (ii) rearranges the summation by grouping the insertion positions with the same iteration index ti; (iii) arises from the fact {p ∈ [L] : ti(p) = s} = D∖is ;(iv) rewrites the position p in terms of the relative position q within the auxiliary unmasking set D∖is .Next, let us swap the order of double summation in (42). The technical challenge is that the size of the second summation, or equivalently the size of the auxiliary unmasking set D∖is , varies across different iterations s. To ensure that the swapped summation is well-organized, we can leverage the dyadic size envelopes (Ds)Ls=1 to obtain an upper bound. This is established by the following lemma, whose proof is deferred to Appendix A.4. 
+
+Lemma 4. Recall the definition of Ds and Drel  
+
+> s
+
+(q) in (28) and (39) , respectively. The sum in (42) satisfies 
+
+> L
+
+X
+
+> s=1
+> D∖is
+
+X
+
+> q=1
+
+I(Xi; XD(q+W ∖is−1)\{ i} | W ∖is−1, X W∖is−1 , Π∖i)1H(Xi | W ∖is−1, X W∖is−1 ) ≤ η
+
+≤
+
+> L
+
+X
+
+> s=1
+> L
+
+X 
+
+> k=s
+> 2D∖is∧D∖ik
+
+X
+
+> q=1
+
+1{Drel  
+
+> s
+
+(q) ≥ Ds}I(Xi; XD(q+W ∖ik−1)\{ i} | W ∖ik−1, X W∖ik−1 , Π∖i)1H(Xi | W ∖ik−1, X W∖ik−1 ) ≤ η .
+
+(43) Equipped with Lemma 4, we can continue the derivation. Recall (38) that 
+
+D(p) \ { i} ⊆ D ∖ik , ∀ p ∈ D ∖ik ,
+
+24 or equivalently, rewriting the absolute position p in terms of the relative position q within the auxiliary unmasking set D∖ik , we have 
+
+D(q + W ∖ik−1) \ { i} ⊆ D ∖ik , ∀ 1 ≤ q ≤ D∖ik .
+
+Using the monotonicity of mutual information, we can upper bound the right-hand side of (43) as 
+
+> L
+
+X
+
+> s=1
+> L
+
+X 
+
+> k=s
+> 2D∖is∧D∖ik
+
+X
+
+> q=1
+
+1{Drel  
+
+> s
+
+(q) ≥ Ds}I(Xi; XD(q+W ∖ik−1)\{ i} | W ∖ik−1, X W∖ik−1 , Π∖i)1H(Xi | W ∖ik−1, X W∖ik−1 ) ≤ η
+
+≤
+
+> L
+
+X
+
+> s=1
+> L
+
+X 
+
+> k=s
+> 2D∖is∧D∖ik
+
+X
+
+> q=1
+
+1{Drel  
+
+> s
+
+(q) ≥ Ds}I(Xi; XD∖ik | W ∖ik−1, X W∖ik−1 , Π∖i)1H(Xi | W ∖ik−1, X W∖ik−1 ) ≤ η
+
+≤
+
+> L
+
+X
+
+> s=1 2D∖is
+
+X
+
+> q=1
+
+1{Drel  
+
+> s
+
+(q) ≥ Ds}
+
+> L
+
+X
+
+> k=s
+
+I(Xi; XD∖ik | W ∖ik−1, X W∖ik−1 , Π∖i)1H(Xi | W ∖ik−1, X W∖ik−1 ) ≤ η
+
+= 2 
+
+> L
+
+X
+
+> s=1
+> D∖is
+
+X
+
+> q=1
+
+1{Drel  
+
+> s
+
+(q) ≥ Ds}
+
+> L
+
+X
+
+> k=s
+
+I(Xi; XD∖ik | W ∖ik−1, X W∖ik−1 , Π∖i)1H(Xi | W ∖ik−1, X W∖ik−1 ) ≤ η
+
+= 2 
+
+> L
+
+X
+
+> s=1
+> L
+
+X
+
+> p=1
+
+1{ti(p) = s}1{Ds(p) ≥ Ds}
+
+> L
+
+X
+
+> k=s
+
+I(Xi; XD∖ik | W ∖ik−1, X W∖ik−1 , Π∖i)1H(Xi | W ∖ik−1, X W∖ik−1 ) ≤ η ,
+
+(44) where the penultimate step is due to the definition that Drel  
+
+> s
+
+(q) is a function of q modulo D∖is , and the last step is true because for q ∈ [D∖is ], it corresponds to an insertion position p such that ti(p) = s with 
+
+Ds(p) = Drel  
+
+> s
+
+(q).Putting (43)–(44) together and substituting it into (42), we obtain that conditioned on X∖i and Π∖i,
+
+EΠ−1
+
+> i
+
+F (Π −1 
+
+> i
+
+) | X∖i, Π∖i
+
+ ≤ 2
+
+L
+
+> L
+
+X
+
+> s=1
+> L
+
+X
+
+> p=1
+
+1{ti(p) = s}1{Ds(p) ≥ Ds}·
+
+> L
+
+X
+
+> k=s
+
+I(Xi; XD∖ik | W ∖ik−1, X W∖ik−1 , Π∖i)1H Xi | W ∖ik−1, X W∖ik−1 , Π∖i
+
+ ≤ η .
+
+(45) To control the sum of the mutual information in the above display, the key insight is that the auxiliary unmasking sets satisfy W∖ik = W∖ik−1 ∪ D ∖ik , which allows us to leverage the chain rule of mutual information to control the sum. This is accomplished in the following lemma, whose proof can be found in Appendix A.5. 
+
+Lemma 5. For any token index i ∈ [L] and iteration index s ∈ [L], one has 
+
+E
+
+" LX
+
+> k=s
+
+I(Xi; XD∖ik | W ∖ik−1, X W∖ik−1 , Π∖i)1H(Xi | W ∖ik−1, X W∖ik−1 ) ≤ η W∖is−1, X W∖is−1 , Π∖i
+
+#
+
+≤ H(Xi | W ∖is−1, X W∖is−1 ) ∧ η. (46) With the help of Lemma 5, let us compute the expectation over X∖i and Π∖i on both sides of (45). For each s ∈ [L], the expectation of the s-th term on the right-hand-side of (45) can be upper bounded as 
+
+E
+
+"
+
+E
+
+ LX
+
+> p=1
+
+1{ti(p) = s}1{Ds(p) ≥ Ds}·
+
+> L
+
+X
+
+> k=s
+
+I(Xi; XD∖ik | W ∖ik−1, X W∖ik−1 , Π∖i)1H Xi | W ∖ik−1, X W∖ik−1
+
+ ≤ η W∖is−1, X W∖is−1 , Π∖i
+
+#
+
+25 (i) 
+
+≤ E
+
+" LX
+
+> p=1
+
+1{ti(p) = s}1{Ds(p) ≥ Ds}· E
+
+ LX
+
+> k=s
+
+I(Xi; XD∖ik | W ∖ik−1, X W∖ik−1 , Π∖i)1H(Xi | W ∖ik−1, X W∖ik−1 ) ≤ η | W ∖is−1, X W∖is−1 , Π∖i
+
+#
+
+> (ii)
+
+≤ E
+
+" LX
+
+> p=1
+
+1{ti(p) = s}1Ds(p) ≥ Ds
+
+ H(Xi | W ∖is−1, X W∖is−1 ) ∧ η#
+
+,
+
+where (i) holds because {ti(p) = s} and {Ds(p) ≥ Ds} are determined by (W∖is−1, X W∖is−1 ) and Π∖i; (ii) applies (46) in Lemma 5. Summing the above bound over s ∈ [L] yields 
+
+EF (Π −1 
+
+> i
+
+) ≤ 2
+
+L E
+
+" LX
+
+> s=1
+> L
+
+X
+
+> p=1
+
+1{ti(p) = s}1Ds(p) ≥ Ds
+
+ H(Xi | W ∖is−1, X W∖is−1 ) ∧ η#
+
+> (i)
+
+= 2
+
+L E
+
+" LX
+
+> p=1
+
+1Dti(p) ≥ Dti(p)
+
+ H(Xi | W ti(p)−1, X Wti(p)−1 ) ∧ η#
+
+> (ii)
+
+= 2 EX∖i,Π∖i
+
+h
+
+EΠ−1
+
+> i
+
+1{Dti ≥ Dti } H(Xi | W ti−1, X Wti−1 ) ∧ η | X∖i, Π∖i
+
+i
+
+,
+
+= 2 E
+
+h
+
+1{Dti ≥ Dti } H(Xi | W ti−1, X Wti−1 ) ∧ ηi
+
+,
+
+where (i) swaps the summation order and uses the fact that W∖iti−1 = Wti−1; (ii) is true because Π−1 
+
+> i
+
+is uniformly random over [L] and independent of X∖i and Π∖i.Combining the above bound with (41), we arrive at the desired claim in (29). This completes the proof of Lemma 2. 
+
+## A.3 Proof of Lemma 3 
+
+We begin with the proof of (34). Recall from (17b) that for a fixed permutation Π = π, the data density can be expressed as 
+
+log pX0 (x) = 
+
+> τ
+
+X
+
+> t=1
+
+log p(xdt | xwt−1 ),
+
+where the realized number of iterations τ and unmasking sets (dt, w t−1)t∈[τ ] are determined by x = ( x1, . . . , x L)
+
+and π. One can then apply the same argument as in (18). Specifically, taking expectation over X ∼ pX0
+
+yields that for any fixed Π = π,
+
+H(X0) = EX∼pX0
+
+− log pX0 (X) = EX
+
+"
+
+−
+
+> T
+
+X
+
+> t=1
+
+log p(Xdt | Xwt−1 ) Π = π
+
+#
+
+= EX
+
+" TX
+
+> t=1
+
+H(Xdt | wt−1, X wt−1 , π )
+
+#
+
+.
+
+Next, let us turn to (35). Recall the density of the sampled distribution in (17a): 
+
+log pY |Π= π (x) = 
+
+> τ
+
+X
+
+> t=1
+
+X
+
+> i∈dt
+
+log p(xi | xwt−1 ).
+
+We can then express the entropy of X0 as 
+
+H(X0) = EX∼pX0
+
+
+
+− log pYT |Π= π (X) − log pX0 (X)
+
+pYT |Π= π (X)
+
+
+
+26 = EX
+
+− log pYT |Π= π (X) − KL (pX0 ∥ pYT |Π= π )= EX
+
+" TX
+
+> t=1
+
+X
+
+> i∈D t
+
+H(Xi | W t−1, X Wt−1 , π )
+
+#
+
+− KL (pX0 ∥ pYT |Π= π ).
+
+## A.4 Proof of Lemma 4 
+
+We prove Lemma 4 by showing that every term on the left-hand-side of (43) is covered by a term on the right-hand-side. Fix an arbitrary 1 ≤ k ≤ L and 1 ≤ q ≤ D∖ik . Recall the definitions of Ds and Drel  
+
+> s
+
+(q) in (28) and (39), respectively. Define 
+
+s = s(k, q ) := max u ≤ k : Du ≤ q . (47) This set is non-empty because D1 = 0 , so s is well-defined. In what follows, let us show that the right-hand-side term with the index (s, k, q ) matches the term indexed by (k, q ) on the left-hand-side. To begin with, let us verify that the indicator 1{Drel  
+
+> s
+
+(q) ≥ Ds} is 1. We first claim that the relative size 
+
+Drel  
+
+> s
+
+(q) is at least q, i.e., 
+
+Drel  
+
+> s
+
+(q) ≥ q. (48) To see this, recall that any position 1 ≤ q ≤ D∖is guarantees that token i is unmasked at iteration s. As the sampling process must first unmask the first q − 1 tokens in the batch and then unmask token i, the unmasking set size must satisfy Drel  
+
+> s
+
+(q) = |D s(q)| ≥ q. This establishes (48). We can then combine (48) with the definition of s in (47) to find 
+
+Drel  
+
+> s
+
+(q) ≥ q ≥ Ds.
+
+Thus the indicator 1{Drel  
+
+> s
+
+(q) ≥ Ds} is 1.As we choose q ≤ D∖ik , it remains to prove that 
+
+q ≤ 2D∖is .
+
+If s = k, then the above inequality holds trivially because q ≤ D∖ik ≤ 2D∖is .If s < k , by the definition of s in (47), we must have Ds+1 > q ≥ Ds. On the other hand, by the recursive definition of Ds+1 in (28), Ds+1 can only take a value in {Ds, 2Ds}. This implies that Ds+1 = 2 Ds.Moreover, because q ≤ D∖ik guarantees that token i is unmasked at iteration k with k > s , we know that 
+
+Ds = D∖is by by Observation A3. Therefore, this leads to 
+
+Ds+1 = 2 Ds = 2 D∖is > q. 
+
+Hence, in either case, we have 
+
+q ≤ 2D∖is ∧ D∖ik .
+
+This proves that each term indexed by (k, q ) on the left-hand-side corresponds to a term indexed by 
+
+(s, k, q ) on the right-hand-side, and the proof of Lemma 4 is complete. 
+
+## A.5 Proof of Lemma 5 
+
+Fix an arbitrary token index i and iteration index s. Define 
+
+k0 := min 
+
+n
+
+s ≤ k ≤ L : H(Xi | W ∖ik−1, X W∖ik−1 ) ≤ η
+
+o
+
+,
+
+with k0 = ∞ if the set is empty. If k0 = ∞, then (46) holds trivially. Thus the remainder of this section focuses on the case s ≤ k0 ≤ L.27 Since the cumulative unmasking set W∖ik is increasing in k, i.e., W∖ik−1 ⊆ W ∖ik for k ≥ 1, the con-ditional entropy H(Xi | W ∖ik , X W∖ik , Π∖i) is decreasing in k. Hence, the indicator function 1H Xi |W∖ik−1, X W∖ik−1 , Π∖i
+
+ ≤ η is 0 for k < k 0 and 1 for k ≥ k0. Consequently, we can express the sum as 
+
+E
+
+" LX
+
+> k=s
+
+I Xi; XD∖ik | W ∖ik−1, X W∖ik−1 , Π∖i
+
+1H(Xi | W ∖ik−1, X W∖ik−1 ) ≤ η
+
+#
+
+= E
+
+" LX
+
+> k=k0
+
+I Xi; XD∖ik | W ∖ik−1, X W∖ik−1 , Π∖i
+
+#
+
+. (49) Since W∖ik = W∖ik−1 ∪ D ∖ik , let us use the chain rule of mutual information to simplify the summation of mutual information terms. As a cautious note, since I Xi; XD∖ik | W ∖ik−1, X W∖ik−1 , Π∖i
+
+ is defined as pointwise mutual information, which is a function of Π∖i, W∖ik−1, and XW∖ik−1 instead of taking the expectation over their distributions, we need to apply the chain rule for pointwise mutual information, which is established in Lemma 6 below; with proof deferred to Appendix A.6. 
+
+Lemma 6. For any random variables X, Y1, Y2, and Z, the pointwise mutual information defined in (3) 
+
+satisfies 
+
+I(X; Y1, Y 2 | Z) = I(X; Y1 | Z) + EY1
+
+I(X; Y2 | Z, Y 1) | Z, (50) 
+
+and consequently, 
+
+EZ
+
+I(X; Y1, Y 2 | Z) = EZ
+
+I(X; Y1 | Z) + EY1,Z 
+
+I(X; Y2 | Z, Y 1). (51) Applying Lemma 6 by setting X = Xi, Y1 = XD∖ik , Y2 = XD∖ik+1 , and Z =  W∖ik−1, X W∖ik−1 , Π∖i
+
+, one can derive 
+
+I Xi; XD∖ik ∪D ∖ik+1 | W ∖ik−1, X W∖ik−1 , Π∖i
+
+
+
+= I Xi; XD∖ik | W ∖ik−1, X W∖ik−1 , Π∖i
+
+
+
++ EXD∖ik
+
+h
+
+I Xi; XD∖ik+1 | W ∖ik−1, X W∖ik−1 , Π∖i, X D∖ik
+
+ | W ∖ik−1, X W∖ik−1 , Π∖i
+
+i
+
+> (i)
+
+= I Xi; XD∖ik | W ∖ik−1, X W∖ik−1 , Π∖i
+
+ + EXD∖ik
+
+h
+
+I Xi; XD∖ik+1 | W ∖ik , X W∖ik , Π∖i
+
+ | W ∖ik−1, X W∖ik−1 , Π∖i
+
+i
+
+> (ii)
+
+= E
+
+h
+
+I Xi; XD∖ik | W ∖ik−1, X W∖ik−1 , Π∖i
+
+ + I Xi; XD∖ik+1 | W ∖ik , X W∖ik , Π∖i
+
+ | W ∖ik−1, X W∖ik−1 , Π∖i
+
+i
+
+,
+
+where (i) holds because conditioning on (W∖ik−1, X W∖ik−1 , Π∖i) is equivalent to conditioning on (W∖ik , X W∖ik , Π∖i);(ii) uses the tower property. Applying the above chain rule iteratively for k = k0, k 0 + 1 , . . . , L − 1 and tower property, we obtain that 
+
+E
+
+" LX
+
+> k=k0
+
+I(Xi; XD∖ik | W ∖ik−1, X W∖ik−1 , Π∖i) W∖ik0−1, X W∖ik0−1 , Π∖i
+
+#
+
+> (i)
+
+= I(Xi; X[L]\W ∖ik0−1 | W ∖ik0−1, X W∖ik0−1 , Π∖i)
+
+> (ii)
+
+≤ H(Xi | W ∖ik0−1, X W∖ik0−1 ) ∧ η
+
+> (iii)
+
+≤ H(Xi | W ∖is−1, X W∖is−1 ) ∧ η. (52) where (i) holds since SLk=k0 D∖ik = [ L] \ W ∖ik0−1; (ii) is true because mutual information is always upper bounded by entropy, the entropy of Xi is independent of Π given W∖ik0−1 and XW∖ik0−1 , and the definition of 28 k0 ensures that H(Xi | W ∖ik0−1, X W∖ik0−1 ) ≤ η; (iii) holds because H(Xi | W ∖ik−1, X W∖ik−1 ) is decreasing in k and 
+
+s ≤ k0.Finally, since W∖is ⊆ W ∖ik0 , we can take the expectation with respect to W∖is−1 and XW∖is−1 on both sides of (52) and use the tower property to conclude 
+
+E
+
+" LX
+
+> k=k0
+
+I(Xi; XD∖ik | W ∖ik−1, X W∖ik−1 , Π∖i) W∖is−1, X W∖is−1 , Π∖i
+
+#
+
+≤ H(Xi | W ∖is−1, X W∖is−1 ) ∧ η, (53) as claimed in (46). This completes the proof of Lemma 5. 
+
+## A.6 Proof of Lemma 6 
+
+Fix an arbitrary z with PZ (z) > 0. By the definition of pointwise conditional mutual information in (3), we can express 
+
+I(X; Y1, Y 2 | Z = z) = EX,Y 1,Y 2
+
+
+
+log pX,Y 1,Y 2|Z (X, Y 1, Y 2 | z)
+
+pX|Z (X | z) pY1,Y 2|Z (Y1, Y 2 | z) Z = z
+
+
+
+.
+
+Using the chain rule for conditional densities, we decompose the logarithm in the above display as 
+
+log pX,Y 1,Y 2|Z (X, Y 1, Y 2 | z)
+
+pX|Z (X | z) pY1,Y 2|Z (Y1, Y 2 | z) = log pX,Y 1|Z (X, Y 1 | z)
+
+pX|Z (X | z) pY1|Z (Y1 | z) + log pY2|X,Y 1,Z (Y2 | X, Y 1, z )
+
+pY2|Y1,Z (Y2 | Y1, z ) .
+
+Taking the expectation then gives 
+
+I(X; Y1, Y 2 | Z = z) = I(X; Y1 | Z = z) + EX,Y 1,Y 2
+
+
+
+log pY2|X,Y 1,Z (Y2 | X, Y 1, z )
+
+pY2|Y1,Z (Y2 | Y1, z ) Z = z
+
+
+
+.
+
+For the second term, applying the chain rule again yields 
+
+EX,Y 1,Y 2
+
+
+
+log pY2|X,Y 1,Z (Y2 | X, Y 1, z )
+
+pY2|Y1,Z (Y2 | Y1, z ) Z = z
+
+
+
+= EY1
+
+"
+
+EX,Y 2
+
+
+
+log pX,Y 2|Y1,Z (X, Y 2 | Y1, z )
+
+pX|Y1,Z (X | Y1, z ) pY2|Y1,Z (Y2 | Y1, z ) Y1, Z = z
+
+
+
+Z = z
+
+#
+
+= EY1
+
+I(X; Y2 | Z = z, Y 1) | Z = z.
+
+Hence, we obtain 
+
+I(X; Y1, Y 2 | Z = z) = I(X; Y1 | Z = z) + EY1
+
+I(X; Y2 | Y1, Z = z).
+
+Using the definition of pointwise mutual information in (3), we conclude 
+
+I(X; Y1, Y 2 | Z) = I(X; Y1 | Z) + EY1
+
+I(X; Y2 | Z, Y 1) | Z,
+
+as claimed in (50). Taking the expectation with respect to Z on both sides of (50) then gives (51) immediately. This completes the proof of Lemma 6. 
+
+# B Proof of Theorem 2 
+
+## B.1 Proof sketch of Theorem 2 
+
+The high-level proof strategy for Theorem 2 is similar to that for Theorem 1. Hence, we will mainly focus on the key differences in the analysis, and refer readers to Section 4.2 for the common technical details. 29 Step 1: Decompose KL error into sum of mutual information. To begin with, since the sampling process of the maximum entropy-based strategy in Algorithm 2 also admits a Markovian structure (see (11)), the KL sampling error takes the same form as (20) in Section 4.2, i.e., 
+
+EΠ
+
+KL (pX0 ∥ pYT |Π) = EΠ,X ∼pX0
+
+" TX
+
+> t=1
+
+KL 
+
+
+
+pDt (· | XWt−1 ) Y
+
+> i∈D t
+
+pi(· | XWt−1 )
+
+#
+
+.
+
+It thus suffices to control the per-iteration KL error term in (19) for the maximum entropy-based strategy. Recall that for the entropy sum-based strategy (Algorithm 1), we handle this term via the KL divergence bound in (22) from Lemma 1. Here, we instead apply the KL divergence identity (21) from the same lemma. Specifically, combining (21) with the representation of the unmasking set Dt in (15): 
+
+Dt = Wt \ W t−1 = {Π|W t−1|+1 , . . . , Π|W t|},
+
+we can express the KL error from iteration t in (19) as 
+
+KL 
+
+
+
+pdt (· | xwt−1 ) Y
+
+> i∈dt
+
+pi(· | xwt−1 )
+
+
+
+=
+
+> |dt|− 1
+
+X
+
+> k=1
+
+I Xπ|wt−1|+k ; Xπ|wt−1|+k+1 , . . . , X π|wt| (Wt−1, X Wt−1 ) = ( wt−1, x wt−1 ), Π = π. (54) That is, the contribution of iteration t is given by a sum of mutual information terms, where the k-th term measures the mutual information between the k-th unmasked token and the tokens that are unmasked later within the same iteration. In particular, the last unmasked token in the iteration Xπ|wt| does not contribute to the KL error. Substituting (54) back into the expression of the KL sampling error (20) yields 
+
+KL (pX0 ∥ pYT |Π)= E
+
+" TX
+
+> t=1
+> |D t|− 1
+
+X
+
+> k=1
+
+I(XΠ|W t−1|+k ; XΠ|W t−1|+k+1 , . . . , X Π|W t| | W t−1, X Wt−1 , Π) 
+
+#
+
+= E
+
+" LX
+
+> k=1
+
+I(XΠk ; XΠk+1 , . . . , X Π|W tΠk |
+
+| W tΠk −1, X WtΠk −1 , Π) 1H(XΠk | W tΠk −1, X WtΠk −1 ) < η 
+
+#
+
+,
+
+(55) where the second line reindexes by the absolute unmasking order k ∈ [L] instead of the relative order within each iteration. Here, we recall that ti denotes the iteration at which token i is unmasked and thus tΠk stands for the iteration at which the k-th unmasked token Πk is revealed. The indicator function arises because only non iteration-ending tokens contribute to the KL error and they satisfy the low-entropy condition by the maximum entropy-based stopping rule. We next regroup the sum by token index i ∈ [L] instead of unmasking order k ∈ [L]. To this end, let Li
+
+be the index set of the tokens that are unmasked in the same iteration as token i but are revealed after it, namely, 
+
+Li := ΠΠ−1 
+
+> i+1
+
+, ΠΠ−1 
+
+> i+2
+
+, . . . , Π|W ti | . (56) Note that Li is a deterministic function of the permutation Π and the previous iterate (Wti−1, X Wti−1 ).Rewriting the sum in (55) accordingly yields 
+
+EΠ
+
+KL (pX0 ∥ pYT |Π) =
+
+> L
+
+X
+
+> i=1
+
+E
+
+h
+
+I(Xi; XLi
+
+| W ti−1, X Wti−1 , Π) 1H(Xi | W ti−1, X Wti−1 , Π) < η 
+
+i
+
+. (57) In a nutshell, this demonstrates that the expected KL sampling error can be decomposed into a sum of mutual information terms over token index i ∈ [L], where each term measures the correlation between 30 token i and the tokens that are unmasked later within the same iteration, conditioned on the tokens revealed in prior iterations and the permutation. We note that in contrast to the analogous expression (25) for the entropy sum-based scheme, the mutual information term here involves only the tokens unmasked after token i within the iteration, i.e., XLi
+
+, rather than all other tokens in the same batch, i.e., XDt1 ∖{i}.
+
+Step 2: Bound KL error by entropy-based stopping rule. Equipped with the KL error decomposi-tion in (57), it suffices to fix a token index i ∈ [L] and focus on the i-th term: 
+
+EΠ,X 
+
+h
+
+I(Xi; XLi
+
+| W ti−1, X Wti−1 , Π) 1H(Xi | W ti−1, X Wti−1 , Π) < η 
+
+i
+
+. (58) This is established in the following lemma; with proof deferred to Appendix B.2. 
+
+Lemma 7. For any token index i ∈ [L], we have 
+
+EX, Π∖i,Π−1
+
+> i
+
+h
+
+I(Xi; XLi
+
+| W ti−1, X Wti−1 , Π) 1H(Xi | W ti−1, X Wti−1 ) < η 
+
+i
+
+≤ Smax 
+
+L η. (59) With Lemma 7 in hand, plugging (59) into (58) and summing over all token indices i ∈ [L], we find that the expected KL sampling error in (57) can be bounded as 
+
+EΠ
+
+KL (pX0 ∥ pYT |Π) ≤ Smax η. 
+
+Setting the parameters as 
+
+Smax =
+
+s
+
+εL H(X0) and η = H(X0)Smax 
+
+L =
+
+r εH (X0)
+
+L
+
+yields the desired KL error bound EΠ
+
+KL (pX0 ∥ pYT |Π) ≤ ε.
+
+Step 3: Control expected number of iterations. As for the expected total number of iterations E[T ],it is controlled by the following lemma; its proof is deferred to Appendix B.3. 
+
+Lemma 8. The expected number of iterations E[T ] is upper bounded as 
+
+E[T ] ≤ 2LSmax 
+
++ 1 . (60) In other words, the expected number of iterations is of the same order as if each iteration unmasks exactly 
+
+Smax tokens. The claim in (12) then follows by plugging in the choice of Smax into the above bound. We now complete the proof of Theorem 2. 
+
+## B.2 Proof of Lemma 7 
+
+Our strategy is first to take the expectation over Π−1 
+
+> i
+
+, the insertion position of token i in the permutation Π.As in Lemma 2, the main technical challenge lies in the statistical dependence between Li (the set of tokens unmasked after token i in iteration t) and Π−1 
+
+> i
+
+, making it difficult to take the expectation over the randomness of Π in (58). To this end, similar to the proof for Lemma 2 in Appendix A.2, we consider the auxiliary sampling process in which we unmask the entire token sequence except for the token with index i. We work with X∖i =(X1, . . . , X i−1, X i+1 , . . . , X L) and run the maximum entropy-based sampling procedure (Algorithm 2) in the order induced by the permutation 
+
+Π∖i :=  Π1, . . . , ΠΠ−1 
+
+> i−1
+
+, ΠΠ−1 
+
+> i+1
+
+, . . . , ΠL
+
+.
+
+31 This auxiliary sampling process produces a sequence of cumulative unmasking sets (W∖it )Lt=0 and a sequence of unmasking sets (D∖it )Lt=1 . Here, we slightly abuse notation and continue using W∖i and D∖i to denote the cumulative and incremental unmasking sets in the auxiliary process as in Appendix A.2, but now they are defined based on the maximum entropy-based sampling procedure instead of the entropy sum-based sampling procedure. As before, we make several key observations. 1. For any iteration t ≥ 1, conditioned on (W∖it−1, X W∖it−1 ) and Π∖i, the auxiliary sets (D∖it , W∖it ) are fully determined. In addition, they are independent of the insertion position Π−1 
+
+> i
+
+for token i.2. By definition, D∖iti stands for the index set of tokens unmasked at the iteration where token i is unmasked in the auxiliary sampling process. Because the auxiliary process never considers the token with index i, the set D∖iti consists of either all low-entropy indices up to (and including) the first high-entropy index among indices not equal to i, or low-entropy indices with size at most smax . Consequently, the index set of tokens that are unmasked in the same iteration as token i but after it in the original process must be a subset of the auxiliary unmasking set, i.e., 
+
+Li = ΠΠ−1 
+
+> i+1
+
+, . . . , Π|W ti | ⊆ D ∖iti .
+
+3. By construction, we have Wk = W∖ik and Dk = D∖ik for all 1 ≤ k < t i, and hence 
+
+I(Xi; XD∖iti | W ti−1, X Wti−1 , Π∖i, Π−1 
+
+> i
+
+) = I(Xi; XD∖iti | W ∖iti−1, X W∖iti−1 , Π∖i, Π−1 
+
+> i
+
+)
+
+H(Xi | W ti−1, X Wti−1 ) = H(Xi | W ∖iti−1, X W∖iti−1 ).
+
+In light of these observations, we can bound the target in (58) as 
+
+I(Xi; XLi
+
+| W ti−1, X Wti−1 , Π) 1H(Xi | W ti−1, X Wti−1 ) ≤ η
+
+≤ I(Xi; XD∖iti | W ti−1, X Wti−1 , Π) 1H(Xi | W ti−1, X Wti−1 ) ≤ η .
+
+= I(Xi; XD∖iti | W ∖iti−1, X W∖iti−1 , Π∖i, Π−1 
+
+> i
+
+)1H Xi | W ∖iti−1, X W∖iti−1 ) ≤ η (61) where the second line arises from Observation B2 that Li ⊆ D ∖iti and the monotonicity of mutual information; the last line holds due to Observation B3. Therefore, it suffices to control the right-hand side of (61). Towards this, we define the random variable 
+
+Gk := I Xi; XD∖ik | W ∖ik−1, X W∖ik−1 , Π∖i, Π−1
+
+> i
+
+1H(Xi | W ∖ik−1, X W∖ik−1 ) ≤ η
+
+= I Xi; XD∖ik | W ∖ik−1, X W∖ik−1 , Π∖i
+
+1H(Xi | W ∖ik−1, X W∖ik−1 ) ≤ η , (62) for each k ∈ [L]. Here, the second line arises from Observation B1, namely, conditioned on Π∖i and 
+
+(W∖ik−1, X W∖ik−1 ), D∖ik is independent of Π−1 
+
+> i
+
+. We can then write the target quantity to be controlled on the right-hand side of (61) as 
+
+I(Xi; XD∖iti | W ∖iti−1, X W∖iti−1 , Π) 1H(Xi | W ∖iti−1, X W∖iti−1 ) ≤ η = Gti =
+
+> L
+
+X
+
+> k=1
+
+1{ti = k}Gk, (63) To proceed, writing 
+
+EGti
+
+ = EX∖i,Π∖i
+
+h
+
+EΠ−1
+
+> i
+
+Gti | X∖i, Π∖i
+
+i
+
+,
+
+we focus on the inner expectation EΠ−1
+
+> i
+
+Gti | X∖i, Π∖i
+
+, where the expectation is taken over the randomness of Π−1 
+
+> i
+
+, the insertion position of token i in the permutation Π, conditioned on X∖i and Π∖i.32 By Observation B1 and the definition in (62), Gk is deterministic conditioned on Π∖i and X∖i for each 
+
+k ∈ [L]. Therefore, the inner expectation can be computed as 
+
+EΠ−1
+
+> i
+
+Gti | X∖i, Π∖i
+
+ = EΠ−1
+
+> i
+
+" LX
+
+> k=1
+
+Gk1{ti = k} | X∖i, Π∖i
+
+#
+
+=
+
+> L
+
+X
+
+> k=1
+
+GkPti = k | X∖i, Π∖i . (64) This suggests that we need to study the random iteration index ti at which token i is unmasked in the original sampling process, which is determined by the insertion position Π−1 
+
+> i
+
+of token i in the permutation Π.This is accomplished by the following lemma, whose proof is deferred to Appendix B.4. 
+
+Lemma 9. Conditioned on Π∖i and X∖i, the probability that token i is unmasked at iteration k in the original sampling process is upper bounded by 
+
+PΠ−1
+
+> i
+
+ti = k | X∖i, Π∖i ≤ smax 
+
+L , ∀ k ∈ [L].
+
+With Lemma 9 in hand, we can continue the derivation in (64) as 
+
+EΠ−1
+
+> i
+
+Gti | X∖i, Π∖i
+
+ =
+
+> L
+
+X
+
+> k=1
+
+GkPti = k | X∖i, Π∖i
+
+≤ smax 
+
+L
+
+> L
+
+X
+
+> k=1
+
+Gk
+
+= smax 
+
+L
+
+> L
+
+X
+
+> k=1
+
+I(Xi; XD∖ik | W ∖ik−1, X W∖ik−1 , Π∖i)1H(Xi | W ∖ik−1, X W∖ik−1 ) ≤ η ,
+
+where the last line follows from the definition of Gk in (62). Taking the expectation over Π∖i and X∖i on both sides, we obtain 
+
+E[Gti ] ≤ smax 
+
+L E
+
+" LX
+
+> k=1
+
+I(Xi; XD∖ik | W ∖ik−1, X W∖ik−1 , Π∖i)1H(Xi | W ∖ik−1, X W∖ik−1 ) ≤ η
+
+#
+
+. (65) Now applying Lemma 5 with s = 1 , the summation on the right-hand side of (65) satisfies 
+
+E
+
+" LX
+
+> k=1
+
+I(Xi; XD∖ik | W ∖ik−1, X W∖ik−1 , Π∖i)1H(Xi | W ∖ik−1, X W∖ik−1 ) ≤ η
+
+#
+
+≤ H(Xi) ∧ η ≤ η. 
+
+Plugging this into (65) and combining it with (63), we can bound the expectation of the right-hand side of (61) by 
+
+EI(Xi; XD∖iti | W ∖iti−1, X W∖iti−1 , Π) 1H(Xi | W ∖iti−1, X W∖iti−1 ) ≤ η  ≤ smax 
+
+L η. 
+
+Finally, putting this together with (61), we finish the proof of Lemma 7. 
+
+## B.3 Proof of Lemma 8 
+
+By the termination condition of the maximum entropy-based sampling procedure, we can split iterations into three types: 
+
+• cap iterations: end because Dt = |D t| = smax ;
+
+• high-entropy iterations: end because the stopping token has entropy exceeding η;
+
+• the final iteration, which contributes at most 1 to the total number of iterations T .33 Let Tcap and Thigh denote the number of the first two types, respectively. We have T ≤ Tcap + Thigh + 1 .For Tcap , since each cap iteration unmasks smax tokens, we have 
+
+Tcap ≤ L/s max . (66) Therefore, the remainder of the proof focuses on controlling E[Thigh ].Fix an arbitrary t ∈ [T ]. Suppose that the t-th iteration is a high-entropy iteration. Let it ∈ D t be the index of the last unmasked token at iteration t, i.e., it = Π |W t|. By the stopping rule, we know that 
+
+η < H(Xit | Π, Wt−1, X Wt−1 ) ≤ H(XDt | Π, Wt−1, X Wt−1 ),
+
+where the last inequality follows from the monotonicity of entropy. This implies that 
+
+1{iteration t is high-entropy } ≤ 1
+
+η H(XDt | Π, Wt−1, X Wt−1 ).
+
+Summing over t ∈ [T ] and taking expectation, we obtain 
+
+E[Thigh ] ≤ 1
+
+η E
+
+" TX
+
+> t=1
+
+H(XDt | Π, Wt−1, X Wt−1 )
+
+#
+
+. (67) As shown in (34) from Lemma 3, we know that the sum on the right-hand side of the above display satisfies 
+
+E
+
+" TX
+
+> t=1
+
+H(XDt | Π, Wt−1, X Wt−1 )
+
+#
+
+= H(X0),
+
+Consequently, we obtain 
+
+E[Thigh ] ≤ H(X0)
+
+η = Lsmax 
+
+, (68) where the last step is due to our choice η = H(X0)smax /L .Combining (66) and (68), we conclude that 
+
+E[T ] ≤ E[Tcap ] + E[Thigh ] + 1 ≤ 2Lsmax 
+
++ 1 .
+
+## B.4 Proof of Lemma 9 
+
+Fix an arbitrary token index i ∈ [L] and condition on an arbitrary realization of Π∖i and X∖i. Recall the auxiliary sampling process defined by removing token i. Conditioned on Π∖i and X∖i, the auxiliary unmasking sets (D∖it , W∖it )t∈[L] are deterministic. Because Π is uniformly random over all permutations of [L], after conditioning on the relative order of all indices except i, the insertion position Π−1 
+
+> i
+
+of token i is uniformly random over [L]:
+
+PΠ−1 
+
+> i
+
+= r | Π∖i, X ∖i = 1
+
+L , r = 1 , . . . , L. 
+
+Now fix an arbitrary k ∈ [L] and consider the event {ti = k}, i.e., token i is unmasked at iteration k
+
+in the original sampling process. By Observation A3, the original and auxiliary processes coincide before iteration k. In particular, both processes have unmasked the same set of tokens W∖ik−1. Therefore, token i
+
+must appear after the first W ∖ik−1 = |W ∖ik−1| tokens in the full permutation Π, implying that the insertion position of token i satisfies Π−1 
+
+> i
+
+> W ∖ik−1.Meanwhile, during iteration k, before token i is encountered, the original process sees exactly the same previously revealed tokens and the same sequence of candidate indices as the auxiliary process. Hence, before reaching token i, it cannot proceed past the stopping point of iteration k in the auxiliary process. 34 In particular, if i were inserted after the block D∖ik , then the original process would stop iteration k before unmasking token i. Thus, token i must be inserted within the block of permutation positions corresponding to D∖ik , which means that the insertion position of token i satisfies Π−1 
+
+> i
+
+≤ W ∖ik = |W ∖ik |.Combining the above two observations, we find 
+
+Pti = k | Π∖i, X ∖i ≤ PW ∖ik−1 < Π−1 
+
+> i
+
+≤ W ∖ik | Π∖i, X ∖i = D∖ik
+
+L ≤ smax 
+
+L ,
+
+where the last step holds because by construction of the maximum entropy-based scheme, each iteration unmasks at most smax tokens. As the above bound holds for any k ∈ [L], we finish the proof of Lemma 9. 35
