@@ -1,0 +1,1477 @@
+Title: GEM: A Native Graph-based Index for Multi-Vector Retrieval
+
+URL Source: https://arxiv.org/pdf/2603.20336v1
+
+Published Time: Tue, 24 Mar 2026 00:05:47 GMT
+
+Number of Pages: 15
+
+Markdown Content:
+# GEM: A Native Graph-based Index for Multi-Vector Retrieval 
+
+# Yao Tian ∗
+
+The Hong Kong University of Science and Technology Hong Kong, China ytianbc@cse.ust.hk 
+
+# Zhoujin Tian ∗
+
+The Hong Kong University of Science and Technology Hong Kong, China ztianaf@cse.ust.hk 
+
+# Xi Zhao 
+
+The Hong Kong University of Science and Technology Hong Kong, China xzhaoca@cse.ust.hk 
+
+# Ruiyuan Zhang 
+
+Hong Kong Generative AI Research & Development Center Hong Kong, China zry@hkgai.org 
+
+# Xiaofang Zhou 
+
+The Hong Kong University of Science and Technology Hong Kong, China zxf@cse.ust.hk 
+
+## Abstract 
+
+In multi-vector retrieval, both queries and data are represented as sets of high-dimensional vectors, enabling finer-grained semantic matching and improving retrieval quality over single-vector ap-proaches. However, its practical adoption is held back by the lack of effective indexing algorithms. Existing work, attempting to reuse standard single-vector indexes, often fails to preserve multi-vector semantics or remains slow. In this work, we present GEM, a native indexing framework for multi-vector representations. The core idea is to construct a proximity graph directly over vector sets, preserv-ing their fine-grained semantics while enabling efficient navigation. First, GEM designs a set-level clustering scheme. It associates each vector set with only its most informative clusters, effectively re-ducing redundancy without hurting semantic coverage. Then, it builds local proximity graphs within clusters and bridges them into a globally navigable structure. To handle the non-metric nature of multi-vector similarity, GEM decouples the graph construction metric from the final relevance score and injects semantic short-cuts to guide efficient navigation toward relevant regions. At query time, GEM launches beam search from multiple entry points and prunes paths early using cluster cues. To further enhance efficiency, a quantized distance estimation technique is used for both index-ing and search. Across in-domain, out-of-domain, and multi-modal benchmarks, GEM achieves up to 16 × speedup over state-of-the-art methods while matching or improving accuracy. 
+
+## Keywords 
+
+Multi-Vector Retrieval, Approximate Nearest Neighbor Search 
+
+## 1 Introduction 
+
+The advent of Large Language Models (LLMs) has profoundly re-shaped the information retrieval landscape in recent years. By embedding diverse data—text, images, videos, and beyond—into high-dimensional vector spaces, LLMs have made vector represen-tations a standard data format, as shown in Figure 1(left). This shifts the retrieval paradigm from lexical matching to semantic similarity. At its core lies approximate nearest neighbor (ANN) search, which 
+
+> ∗Both authors contributed equally to this research.
+> Conference’17, Washington, DC, USA
+> 2026. ACM ISBN 978-x-xxxx-xxxx-x/YYYY/MM https://doi.org/10.1145/nnnnnnn.nnnnnnn
+
+# Our Method: GEM                             
+
+> 𝑄 𝒒 𝟎 𝒒 𝟏 𝒒 𝟐 𝑃 𝒑 𝟎 𝒑 𝟏 𝒑 𝟐 𝒑 𝟑
+> MaxSim MaxSim MaxSim
+> Sum
+> 𝐿 2/inner product, etc.
+> 𝒒 𝒑
+> Embedding Model (EM) Query EM Data EM
+> 𝑄 𝑃
+> We ll -supported by many ANN algs .Index & Search remain an open challenge .
+> 012
+
+Figure 1: Single-Vector v.s. Multi-Vector Retrieval 
+
+now underpins many modern applications, such as web search [21 , 56 ], recommendation systems [ 2, 20 ], and retrieval-augmented generation (RAG) systems [ 12 , 27 , 28 , 44 ]. However, compressing rich semantics into a single embedding vector—like summarizing an entire passage with a single word—inevitably leads to the loss of fine-grained details. This loss often results in irrelevant retrievals and propagates hallucinations in downstream LLMs, especially in long-context inference scenarios [ 62 ]. To overcome this limitation, modern information systems are increasingly representing complex objects as sets of vectors [ 15 , 24 , 25 , 31 , 40 , 50 , 63 ]. ColBERT [ 24 ]is a prominent example, which produces multiple embeddings per query or document by generating one embedding per token. The relevance score is then evaluated using the MaxSim operator (see Definition 1), which aggregates the maximum similarity of each query embedding to any document embedding. As illustrated in Figure 1 (right), both query and document are represented as sets of vectors, 𝑄 = {𝑞 0, 𝑞 1, 𝑞 2 } and 𝑃 = {𝑝 0, 𝑝 1, 𝑝 2, 𝑝 3 }, where 𝑞 𝑖 , 𝑝 𝑗 ∈ R𝑑 .Then, each query vector 𝑞 𝑖 interacts with all vectors in the docu-ment 𝑃 : for example, 𝑞 0 achieves the highest similarity 0.94 with 𝑝 0,
+
+𝑞 1 best matches 𝑝 0 with score 0.7, and 𝑞 2 aligns most with 𝑝 4 at 0.22 .The final relevance score is computed by summing or averaging these individual scores, e.g., 0.94 + 0.7 + 0.22 = 1.86 . This new paradigm has demonstrated significant improvements in retrieval quality [ 22 , 51 , 52 , 59 ], interpretability [ 8, 60 ], and generalization ability [ 36 , 64 ] across various IR benchmarks, emerging as a core functionality in current industrial vector database systems, such as Weaviet [61], Vespa [57] and Pinecone [46]. However, these gains come at steep costs in storage, computation, and the complexity of indexing and retrieval. First, representing  
+
+> arXiv:2603.20336v1 [cs.IR] 20 Mar 2026 Conference’17, July 2017, Washington, DC, USA Yao Tian, Zhoujin Tian, Xi Zhao, Ruiyuan Zhang, and Xiaofang Zhou
+
+each item with multiple vectors inflates storage requirements by several orders of magnitude. Second, pairwise distance calculations across all vectors in the set-to-set comparison incur higher costs. These issues can be alleviated by low-bit quantization techniques [10 , 11 ] or by strategically retaining only the most informative vec-tors [ 15 , 34 ]; however, accurate and efficient indexing and search algorithms for multi-vector representation remain an open chal-lenge. To address this, one straightforward idea [ 4 , 24 , 42 , 49 , 50 ]is to pool all vectors from all vector sets into a single ANN index, 
+
+e.g., IVFPQ [ 19 ] or diskANN [ 18 ]. At query time, each query vec-tor retrieves its top-𝑘 NNs, generating the initial candidate pool for refinement. However, this approach leads to two issues: (1) vector-level similarity does not always imply set-level relevance, resulting in a large number of irrelevant candidates for refinement. For example, a document about "rocky beaches in Portugal" may be retrieved for the query "family-friendly beaches in Europe" due to the shared term "beaches" despite the clear mismatched intent; (2) indexing all individual vectors bloats the index. For example, 
+
+10 𝑘 documents with 100 vectors each lead to a million-level ANN task. Another proposal [ 17 ], from Google, attempted to map the vector set into a single vector using distance-preserving mappings, enabling the use of existing ANN indexes. However, a theoretically sound distance-preserving mapping requires prohibitively high dimensionality of the projection space that even well-optimized ANN indexes struggle to handle efficiently. Moreover, this approach contradicts the motivation for using multi-vector representations and begs the question of why not directly train a single-vector embedding model from the outset? DESSERT [ 7] is the first solu-tion designed natively for multi-vector retrieval. It compresses the vector set into a sketch via locality-sensitive hashing (LSH) [ 5 , 6], and retrieves top-𝑘 candidates by comparing hash codes. However, without effective sketch-level pruning, the speedup is limited, and storage pressure increases due to the large number of hash values. Motivated by the aforementioned limitations, we propose GEM, a native Graph-based ind Ex framework for Multi-vector retrieval. The key idea of GEM is set-level indexing: constructing a proximity graph where each vertex represents a vector set, in the hope of pre-serving the semantic richness of multi-vector representations while leveraging the strong pruning capability of graph-based indexes. Specifically, GEM incorporates a series of co-designed architectural and algorithmic optimizations. First, GEM designs a clustering scheme for vector sets. It evaluates the informativeness of the vec-tors in each set using a TF-IDF–style score and adaptively assigns the set only to the clusters of 𝑟 highest-scoring vectors. This design preserves semantic coverage while avoiding excessive redundancy in the subsequent graph construction. Next, GEM proposes a dual-graph structure consisting of intra-cluster graphs and a global graph. The intra-cluster graphs capture compact local structures, while sets shared across clusters naturally form bridges, yielding a glob-ally connected graph that enables efficient cross-region traversal and pruning. To reconcile the non-metric nature of the MaxSim op-erator with the metric assumption underlying graph-based search, GEM decouples the similarity measures used for graph construc-tion and search. Specifically, the graph is built using Earth Mover’s Distance (EMD) [ 48 ]. As EMD is a well-established metric that sat-isfies the triangle inequality and upper-bounds the MaxSim, the EMD-based graph could provide a stable and reliable basis for nav-igating toward high-quality results. In addition, GEM introduces semantic shortcuts to bridge the gap between the two similarity measures. These shortcuts directly connect vertices that are se-mantically similar but distant in the graph, accelerating search and helping escape local optima. Furthermore, GEM employs quantized versions of EMD and MaxSim. This replaces expensive set-to-set dis-tance calculations with efficient lookups over a centroid codebook, significantly enhancing both indexing and querying efficiency. Fi-nally, a cluster-guided multi-entry search algorithm is developed on top of the proposed index. The search begins from multiple entry points within multiple promising clusters and expands over the graph in parallel. Meanwhile, a cluster-guided pruning mechanism prevents the search from drifting into irrelevant regions, effectively balancing speed and accuracy. In summary, we make the following contributions: 
+
+• We propose GEM, the first native graph index for multi-vector retrieval. It successfully unifies the semantic richness of multi-vector representations with the pruning efficiency of graph-based indexing, delivering both high accuracy and efficiency. 
+
+• GEM introduces a series of architectural and algorithmic innova-tions tailored to the unique challenges of multi-vector search. The architecture adopts a dual graph design with metric decoupling and semantic shortcuts, ensuring a navigable graph topology for accurate search. These are integrated with a novel semantic clus-tering algorithm, a cluster-aware multi-entry search algorithm, and quantized distance estimation, achieving full end-to-end efficiency across large-scale vector-set collections. 
+
+• Extensive experiments on in-domain, out-of-domain, and multi-modal benchmarks show that GEM significantly outperforms the state-of-the-art methods in both retrieval quality and latency, with a comparable or even smaller index size and indexing time. The rest of the paper is organized as follows. Section 3 defines the problem and introduces a straightforward graph-based solution. Our GEM framework is detailed in Section 4, followed by experi-mental results in Section 5. Section 2 reviews related work, and we conclude in Section 6. 
+
+## 2 Related Work 2.1 Single-Vector ANN Search 
+
+The ANN search problem has been extensively studied in the data-base community for decades [ 53 ]. However, nearly all well-known methods make the single-vector representation assumption, i.e., 
+
+both queries and data are encoded as single high-dimensional vec-tors in the same Euclidean space. Prominent approaches include LSH-based methods [ 16 , 26 , 33 , 35 , 54 , 55 , 66 ], quantization-based methods [ 10 , 11 , 13 , 19 ], and graph-based methods [ 9 , 18 , 39 , 41 , 58 ,65 ]. LSH-based methods are well-known for the strong theoreti-cal guarantees on recall. Quantization-based methods significantly reduce memory usage and accelerate distance calculations. Graph-based methods, which construct a proximity graph among vectors and find neighbors via greedy traversal, have become the de facto state-of-the-art, demonstrating superior performance in both secch accuracy and efficiency. GEM: A Native Graph-based Index for Multi-Vector Retrieval Conference’17, July 2017, Washington, DC, USA 
+
+## 2.2 Multi-Vector ANN Search 
+
+Multi-vector search is a relatively new paradigm that has seen rapid adoption across various domains due to its high effectiveness [ 23 , 24 , 30 , 43 ]. Unlike single-vector approaches, which alleviate information loss by increasing dimensionality but exacerbate the curse of dimensionality, multi-vector models capture complex se-mantics from a different angle: they represent an object with mul-tiple simpler ( e.g., not very high-dimensional) vectors. It is first introduced for document retrieval by ColBERT [ 24 ], which rep-resents queries and documents as sets of token-level embeddings and employs a late interaction architecture to achieve strong per-formance. Subsequent work further improved the effectiveness of this paradigm, for instance, by learning different weights for vectors of varying importance [ 15 ], or expanding it to other do-mains such as visual-language retrieval tasks [ 32 , 63 ]. However, early research relies on simple inverted lists to index all individual embeddings, which hinders large-scale deployment. To improve scalability, ColBERTv2 [ 50 ] introduces a centroid-based compres-sion scheme, where each token embedding is stored using the ID of its closest centroid and a low-bit residual (1–2 bits per compo-nent), significantly reducing storage overhead. However, the search process remains costly. PLAID [ 49 ] builds on this by further exploit-ing the centroids to aggressively prune irrelevant documents via a 
+
+centroid interaction mechanism, substantially accelerating retrieval. EMVB [ 42 ] enhanced PLAID with system-level optimizations, in-cluding bit-vector filtering and SIMD-accelerated scoring. More recently, IGP [ 4] proposes to replace the inverted list with a proxim-ity graph index over centroid vectors and develops an incremental next-similar retrieval technique to efficiently filter low-relevance candidates. Alternative indexing strategies have also been explored. MUVERA [ 17 ] introduces fixed-dimensional encodings (FDEs) that approximate multi-vector similarity, enabling the use of optimized single-vector ANN indexes. While efficient, this method inevitably loses token-level alignment, risking reduced recall. DESSERT [ 7]proposes compressing vector sets into compact sketches, but its speedup is often limited by a lack of effective set-level pruning. Or-thogonal to the research on indexing and search algorithms, XTR [ 25 ] improves retrieval efficiency by simplifying the scoring mech-anism during training. CITADEL [ 29 ] reduces computation cost by selectively considering only a subset of tokens. POQD [ 34 ] enhances accuracy by optimizing query decomposition with the assistance of LLMs. Since these approaches optimize the set-level representation itself, they can complement the above indexing methods for higher search accuracy and efficiency. 
+
+## 3 Preliminary 
+
+In this section, we formulate the multi-vector retrieval problem and introduce a baseline solution. 
+
+## 3.1 Problem Definition 
+
+We first clarify the similarity measurement used throughout this paper. Following ColBERT [ 24 ] and other state-of-the-art multi-vector methods [ 4, 7, 17 , 24 , 32 , 49 ], we adopt the MaxSim operator, 
+
+a.k.a. Chamfer similarity, to compute the similarity score between two multi-vector sets. In the following, we choose the terminology Chamfer (CH) due to its historical precedence [3, 17]. 
+
+Definition 1 (Similarity score). Given two sets of vectors 𝐴, 𝐵 ⊆
+
+R𝑑 , the similarity score is defined as the sum of the maximum simi-larity between each vector in 𝐴 and all vectors in 𝐵 . Formally, 
+
+CH (𝐴, 𝐵 ) =∑︁ 
+
+> 𝑎 ∈𝐴
+
+max   
+
+> 𝑏 ∈𝐵
+
+Sim (𝑎, 𝑏 ), (1) 
+
+where cosine similarity or 𝐿 2 distance are typically used as the default choices for Sim (· , ·) in prior work. 
+
+Problem Statement (multi-vector retrieval problem). 
+
+Given a database D = {𝑃 1, 𝑃 2, . . . , 𝑃 𝑁 }, where each 𝑃 𝑖 = {𝑝 1, 𝑝 2, . . . , 𝑝 𝑚 𝑖 } is a set of vectors with each 𝑝 𝑗 ∈ R𝑑 , and a query 𝑄 = {𝑞 1, 𝑞 2, . . . , 𝑞 𝑚 𝑞 } with each 𝑞 𝑗 ∈ R𝑑 , the multi-vector retrieval problem, a.k.a. the vector set search problem, aims to return the top-𝑘 sets in D that are most similar to 𝑄 , namely: 
+
+R = 𝑘 - arg max {CH (𝑄, 𝑃 )| 𝑃 ∈ D} . (2) 
+
+Remark 1. Multi-vector retrieval has been widely adopted in vari-ous domains and systems [ 23 , 24 , 30 , 43 , 47 ]. A prominent example is ColBERT [ 24 ] for document retrieval, where queries and documents are encoded into sets of token-level vectors. Throughout this work, we use the terms "document" and "vector set" interchangeably, as well as "token" and "vector" interchangeably. However, it is worth noting that multi-vector retrieval itself is a general problem, agnostic to the data’s origin. A "vector" could represent an image patch, a chunk of text, or other forms of data. 
+
+## 3.2 A Baseline Solution 
+
+Recall the ANN search problem in the traditional single-vector setting: both data and queries are represented as high-dimensional vectors, and the goal is to find the top-𝑘 most similar ( i.e., closest) data points to a given query based on certain distance functions (e.g., 𝐿 2 distance). Formally, given a dataset D = {𝑜 1, ..., 𝑜 𝑁 } with each data object 𝑜 𝑖 ∈ R𝑑 and a query 𝑞 ∈ R𝑑 , it aims to return 
+
+R = 𝑘 - arg min {∥ 𝑞, 𝑜 𝑖 ∥2 |𝑜 𝑖 ∈ D} . (3) Among ANN solutions, graph-based methods have demonstrated the best trade-off between search accuracy and efficiency on real-world datasets. These methods organize the base vectors into an ap-proximate proximity graph (APG), where each vertex corresponds to a data vector, and edges connect vertices that are sufficiently similar. During query time, a greedy (beam) search is performed on the graph: it starts from an arbitrary vertex and iteratively traverses edges toward neighbors that are closer to the query, until conver-gence to a local optimum. Inspired by the success of graph-based indexes in the single-vector setting, we pose a question: Can we build a set-level APG? In such a graph, each vertex represents a vector set, and an edge connects two sufficiently similar vertices based on the Chamfer distance. The graph construction and search processes are the same as those in single-vector methods, so we omit them here for brevity. Unfortunately, this direct extension does not work due to two critical issues: (1) Fragmented neighbors and local optima. Chamfer distance is not a metric and lacks triangle inequality, which undermines core assumptions behind graph-based search. For example, even if 𝑄 is close to 𝑃 1 and 𝑃 1 is close to 𝑃 2, 𝑄 may still be far from 𝑃 2.As a result, the nearest neighbors of 𝑄 are scattered across the Conference’17, July 2017, Washington, DC, USA Yao Tian, Zhoujin Tian, Xi Zhao, Ruiyuan Zhang, and Xiaofang Zhou 
+
+graph, making them difficult to reach via local hops and slowing down convergence. Without strong connectivity among these neighbors, greedy search paths become oscillatory and unstable, often getting trapped in local optima—terminating early even when better candidates exist several hops away, ultimately degrading recall. (2) Lack of cheap distance approximation and pruning. While graph structures provide a powerful pruning framework, the exorbitant cost of computing the Chamfer distance remains a critical bottleneck. It is impractical to perform set-to-set com-parisons between the query and all candidate neighbors at each step of the search traversal. A practical solution, therefore, ne-cessitates a cheaper distance approximation, effective pruning strategies, and more informed entry points. We will empirically validate these analyses in Section 5, where this naive approach, named MVG, is included as a baseline. 
+
+## 4 GEM 
+
+To address the limitations of existing approaches and the challenges exposed by the naive graph-based solution, we propose GEM — a native Graph-based ind Exing framework for efficient Multi-vector retrieval. The key innovations are as follows: (1) We propose a set-level clustering scheme, where each document is assigned to only a small number of semantically relevant clus-ters, guided by adaptive TF-IDF–style weighting over centroids. This reduces index redundancy while preserving semantic cov-erage (Section 4.1 and Section 4.4.2). (2) We design a novel dual graph structure, featuring both intra-cluster graphs and a unified global graph naturally bridged by sets shared between clusters. This design guarantees global connectivity while preserving local structure (Section 4.3). (3) We decouple the similarity measures used for graph construc-tion and search: Earth Mover’s Distance (EMD) [ 48 ] is used for graph construction due to its metric properties, while Cham-fer distance is retained for search. Since EMD upper bounds Chamfer, vertices that are close under EMD are also close under Chamfer, ensuring reasonable navigation. We further augment the graph with shortcuts, directly linking semantically close pairs under Chamfer, but may require several hops under EMD, which improves search efficiency and helps escape local optima (Section 4.3.1 and Section 4.4.1). (4) We introduce quantized versions of EMD and Chamfer to al-leviate the high cost of set-to-set similarity computation. By leveraging centroid-level codebooks and quantized representa-tions derived from cluster centroids, we improve the efficiency of both the indexing and search phases (Sections 4.2.2 and Section 4.5). (5) We devise a new cluster-guided, multi-entry search strategy. The search is initialized from multiple semantically relevant clusters, enabling parallel, layer-wise expansion over the global graph. A cluster-guided early pruning mechanism aggressively culls unpromising paths, preventing the search from drifting into irrelevant regions (Section 4.5). Our Method 
+
+## …𝑃 1
+
+## …𝑃 2
+
+## …𝑃 3
+
+## …𝑃 4
+
+> ⋯
+
+Cluster  TF -IDF  Selected 
+
+𝐶 1 
+
+> ′
+
+12.6 
+
+𝐶 2 
+
+> ′
+
+18.4 
+
+𝐶 3 
+
+> ′
+
+1.6 
+
+… … …
+
+𝐶 1  
+
+> ′
+> Coarse Clusters
+> 𝒞 𝑖𝑛𝑑𝑒𝑥
+> Fine Clusters
+> 𝒞 𝑞𝑢𝑎𝑛𝑡
+
+𝐶 2
+
+> ′
+
+𝐶 3
+
+> ′
+> 𝐶 1
+> 𝐶 2
+> 𝐶 3
+> 𝐶 4
+> 𝐶 5
+> 𝐶 6
+> 𝐶 7
+> 𝐶 8
+
+All Vectors from all sets in 𝒟 𝒟 = {𝑃 1, 𝑃 2, 𝑃 3, 𝑃 4, … }
+
+𝑃 3 … 
+
+> Assigned to
+
+Figure 2: Two-Stage Clustering Our Method: G
+
+…𝑃 1
+
+…𝑃 2
+
+…𝑃 3
+
+…𝑃 4
+
+> ⋯
+
+Cluster  TF -IDF  Selected 
+
+𝐶 1 
+
+> ′
+
+12.6 
+
+𝐶 2 
+
+> ′
+
+18.4 
+
+𝐶 3 
+
+> ′
+
+1.6 
+
+… … …
+
+𝐶 1  
+
+> ′
+> Coarse Clusters
+> 𝒞 𝑖𝑛𝑑𝑒𝑥
+> Fine Clusters
+> 𝒞 𝑞𝑢𝑎𝑛𝑡
+
+𝐶 2
+
+> ′
+
+𝐶 3
+
+> ′
+> 𝐶 1
+> 𝐶 2
+> 𝐶 3
+> 𝐶 4
+> 𝐶 5
+> 𝐶 6
+> 𝐶 7
+> 𝐶 8
+
+All Vectors from all sets in 𝒟 𝒟 = {𝑃 1, 𝑃 2, 𝑃 3, 𝑃 4, … }
+
+𝑃 3 … 
+
+> Assigned to
+
+Figure 3: Cluster Assignment with TF-IDF 
+
+## 4.1 Set-Level Clustering 
+
+4.1.1 Two-Stage Clustering. To facilitate efficient filtering and quan-tization, we begin with a two-stage clustering step. In the first stage, we perform k-means clustering on a sample of vectors across all sets in D to obtain a set of centroids Cquant = {𝐶 1, 𝐶 2, . . . , 𝐶 𝑘 1 }.These centroids serve as a vocabulary for our subsequent quantized distance approximations, i.e., qEMD during graph construction to be introduced in Section 4.2.2 and qCH during search in Section 4.5.3. In the second stage, we cluster Cquant into a smaller set of coarser centroids Cindex = {𝐶 ′
+
+> 1
+
+, 𝐶 ′
+
+> 2
+
+, . . . , 𝐶 ′ 
+
+> 𝑘 2
+
+}, which defines a cluster space for set-level indexing. As illustrated in Figure 2, all vectors are first grouped into 8 fine-grained clusters, which are then orga-nized into 3 coarse clusters that serve as higher-level semantic bins. Then, we assign each vector 𝑝 ∈ 𝑃 to its nearest cluster centroid in 
+
+Cindex , denoted as NN (𝑝 ). As a result, a set 𝑃 = {𝑝 1, 𝑝 2, . . . , 𝑝 𝑚 } is approximately represented as a set of centroids: 
+
+C ( 𝑃 ) = {NN (𝑝 1 ), NN (𝑝 2 ), . . . , NN (𝑝 𝑚 ) } . (4) 
+
+To obtain a set-level clustering, a naive way is to associate a set with every cluster if one or more of its tokens are assigned to that centroid. For example, 𝑃 3 is linked to all three clusters 𝐶 ′
+
+> 1
+
+, 𝐶 ′
+
+> 2
+
+, 𝐶 ′
+
+> 3
+
+.However, this can cause a vector set to appear in an excessive num-ber of clusters, especially when it contains uninformative tokens, such as "is", "the", and "of". This leads to index redundancy and increased query-time overhead. Motivated by the unequal seman-tic contribution of tokens, we introduce a TF-IDF-guided pruning strategy in the following. 
+
+4.1.2 TF-IDF Guided Cluster Pruning. The key idea is that: retain only clusters associated with important tokens, while ignoring 
+
+uninformative ones. This way, a set is expected to be assigned to only a few salient clusters, which help reduce index redundancy while preserving the semantic richness of multi-vector representations. To achieve this, we design a TF-IDF–style importance score over the centroid vocabulary Cindex to reflect how salient the cluster is GEM: A Native Graph-based Index for Multi-Vector Retrieval Conference’17, July 2017, Washington, DC, USA MSMARCO LOTTE OKVQA EVQA 
+
+> 0
+> 50
+> 100
+> Avg. Cluster Memberships  Cluster Assignment Redundancy
+> PLAID (260K)
+> Ours(40K,w/o TF-IDF)
+> Ours(40K,w TF-IDF)
+
+Figure 4: Average # of Clusters Each Set is Assigned to 
+
+to the set 𝑃 . Specifically, we define "term frequency" (TF) as: 
+
+TF (𝐶 ′ 
+
+> 𝑗
+
+, 𝑃 ) = | { 𝑝 ∈ 𝑃 : NN (𝑝 ) = 𝐶 ′ 
+
+> 𝑗
+
+, 𝐶 ′ 
+
+> 𝑗
+
+∈ C index } | , (5) 
+
+which counts how many token vectors in 𝑃 are associated with a cluster 𝐶 𝑗 . Then, we apply an "inverse document frequency" (IDF) to downweight clusters shared across many sets: 
+
+IDF (𝐶 ′ 
+
+> 𝑗
+
+) = log 𝑁 
+
+1 + | { 𝑃 ′ ∈ D : TF (𝐶 ′ 
+
+> 𝑗
+
+, 𝑃 ′ ) > 0} | , (6) 
+
+where 𝑁 is the number of vector sets in the database. The overall TF-IDF score is: 
+
+Score (𝐶 ′ 
+
+> 𝑗
+
+, 𝑃 ) = TF (𝐶 ′ 
+
+> 𝑗
+
+, 𝑃 ) · IDF (𝐶 ′ 
+
+> 𝑗
+
+). (7) 
+
+We then construct a weighted centroid profile for each document: 
+
+S ( 𝑃 ) =
+
+h
+
+(𝐶 ′ 
+
+> 𝑗 1
+
+, 𝑠 𝑗 1 ), (𝐶 ′ 
+
+> 𝑗 2
+
+, 𝑠 𝑗 2 ), . . . , (𝐶 ′ 
+
+> 𝑗 𝑚
+
+, 𝑠 𝑗 𝑚 )
+
+i
+
+, (8) 
+
+where 𝑠 𝑗 𝑡 = Score (𝐶 ′ 
+
+> 𝑗 𝑡
+
+, 𝑃 ) indicates how strongly cluster 𝐶 ′ 
+
+> 𝑗 𝑡
+
+repre-sents the semantics of 𝑃 . Based on this profile, we assign 𝑃 to the top-𝑟 clusters with the highest TF-IDF scores: 
+
+Ctop (𝑃 ) = Top-𝑟 𝐶 ′    
+
+> 𝑗 ∈𝐶 (𝑃 )
+
+Score (𝐶 ′ 
+
+> 𝑗
+
+, 𝑃 ). (9) 
+
+Figure 3 provides a concrete example of this pruning. For 𝑃 3, our TF-IDF guided mechanism identifies that its connection to cluster 
+
+𝐶 ′ 
+
+> 3
+
+is weak (score of 1.6). Therefore, only the two clusters with high semantic relevance (scores 18 .4 and 12 .6) are selected as its indexing targets. This pruning step ensures that each document is linked only to its most representative clusters, improving both graph construction efficiency and candidate generation efficiency. 
+
+Remark 2. Clearly, there is no single 𝑟 value that works best for all: some sets are well represented by a few clusters, while others may require broader cluster coverage. We defer the details of how to determine 𝑟 adaptively to Section 4.4.2. 
+
+Discussion 1. PLAID adopts a similar clustering idea, but dif-fers from our approach in two aspects. It performs only fine-grained token-level clustering and directly assigns each document to every cluster that any of its tokens maps to. However, we found this strategy less suitable for our graph-based indexing framework. In particular, PLAID’s large number of fine-grained clusters results in very few documents per cluster ( e.g., often only dozens), making it unnecessary and inefficient to build a graph index per cluster. Moreover, the high redundancy in cluster memberships results in costly graph construc-tion and many redundant edges during query processing. Therefore, to better support our graph-based design, we adopt the fine-grained clustering in the first stage for accurate distance approximation, while second-stage coarser clusters, combined with TF-IDF pruning, signif-icantly reduce per-document cluster memberships, striking a better balance between granularity and efficiency. 
+
+Figure 4 compares the average number of clusters each document is assigned to under different strategies across four datasets. The 
+
+PLAID bars correspond to PLAID’s default configuration with 260 𝐾 
+
+fine-grained clusters, resulting in high redundancy. The Ours (40K, w/o TF-IDF) bars represent a coarser 40K-cluster setup without applying TF-IDF guided cluster filtering, while the Ours (40K, w/ TF-IDF) bars show the results after pruning. As shown, our approach dramatically reduces the number of cluster memberships, 
+
+e.g., from 43.8 to 2.9 on MSMARCO (a 93.4% reduction), from 94 to 5.8 on LOTTE (93.8%), from 76 to 3 on OKVQA (96%), and from 120.8 to 1.7 on EVQA (98.6%), alleviating index redundancy while preserving semantic coverage. 
+
+## 4.2 Metric Decoupling and Quantization 
+
+4.2.1 Metric Decoupling. As discussed in Section 3.2, multi-vector similarity lacks the metric properties required to serve as a reliable foundation for building a stable and navigable APG. To address this issue, we propose using EMD [ 48 ] as the edge weight metric, while performing search based on the original Chamfer distance. EMD is a well-established distance function that satisfies the triangle inequality, ensuring a well-structured graph topology with guaran-teed monotonicity. A key insight supporting this metric decoupling is the bounding relationship between EMD and Chamfer distance. It can be proven that for any two vector sets 𝑄 and 𝑃 :
+
+CH (𝑄, 𝑃 ) ≤ EMD (𝑄, 𝑃 ). (10) 
+
+This inequality implies that if two sets are close under EMD, they are at least as close–if not closer–under Chamfer distance. Con-sider a search path that is currently at vertex 𝑃 1, then the dis-tance from 𝑃 1 to its neighbor 𝑃 2 has a predictable upper bound: 
+
+𝐶𝐻 (𝑄, 𝑃 2) ≤ 𝐸𝑀𝐷 (𝑄, 𝑃 2) ≤ 𝐸𝑀𝐷 (𝑄, 𝑃 1) + 𝐸𝑀𝐷 (𝑃 1, 𝑃 2). Conse-quently, navigating toward the nearest neighbor under EMD is a reliable heuristic for finding a reasonable candidate in the Chamfer space. This mitigates oscillatory search behavior and the local op-tima trap. EMD is formally defined as follows: given two vector sets 
+
+𝑃 1 = {𝑝 1, . . . , 𝑝 𝑚 1 } and 𝑃 2 = {𝑝 ′
+
+> 1
+
+, . . . , 𝑝 ′ 
+
+> 𝑚 2
+
+}, and a transport plan 
+
+𝑇 = {𝑡 𝑖 𝑗 }, then 
+
+EMD (𝑃 1, 𝑃 2 ) = min 
+
+> 𝑇 𝑚 1
+
+∑︁ 
+
+> 𝑖 =1
+> 𝑚 2
+
+∑︁  
+
+> 𝑗 =1
+
+𝑡 𝑖 𝑗 · 𝑑 𝑋 (𝑝 𝑖 , 𝑝 ′ 
+
+> 𝑗
+
+) (11) 
+
+subject to the following constraints: 
+
+> 𝑚 2
+
+∑︁ 
+
+> 𝑗 =1
+
+𝑡 𝑖 𝑗 = 1
+
+𝑚 1
+
+,
+
+> 𝑚 1
+
+∑︁ 
+
+> 𝑖 =1
+
+𝑡 𝑖 𝑗 = 1
+
+𝑚 2
+
+, 𝑡 𝑖 𝑗 ≥ 0 (12) where 𝑑 𝑋 (𝑝 𝑖 , 𝑝 ′ 
+
+> 𝑗
+
+) = 1 − ⟨ 𝑝 𝑖 , 𝑝 ′ 
+
+> 𝑗
+
+⟩ when cosine similarity is used, and 
+
+𝑑 𝑋 (𝑝 𝑖 , 𝑝 ′ 
+
+> 𝑗
+
+) = ∥𝑝 𝑖 , 𝑝 ′ 
+
+> 𝑗
+
+∥2 when the 𝐿 2 distance is adopted. 
+
+4.2.2 Quantization. While EMD offers desirable properties for graph construction, its exact computation is prohibitively expen-sive [ 1 , 5, 14 , 37 , 38 ]. To make EMD practical at scale, we introduce an efficient quantized approximation. The key idea is to replace expensive token-level distance computations in EMD with efficient centroid-level approximations by leveraging the shared centroid vocabulary Cquant derived from k-means clustering (Section 4.1.1). Specifically, each token vector is first mapped to its nearest cen-troid in Cquant , and the distance between raw vectors is then ap-proximated by the distance between their corresponding assigned Conference’17, July 2017, Washington, DC, USA Yao Tian, Zhoujin Tian, Xi Zhao, Ruiyuan Zhang, and Xiaofang Zhou Our Method: GEM 
+
+𝐶 1 
+
+> ′
+> Quantized EMD
+
+𝑃 3 …
+
+𝐶 1
+
+> ′
+
+𝐶 3
+
+> ′
+
+Bridge 
+
+𝐶 3
+
+> ′
+
+Bridge 
+
+Bridge 
+
+Bridge 
+
+𝐶 1
+
+> ′
+
+𝐶 2
+
+> ′
+
+𝐶 1
+
+> ′
+
+P1 P2
+
+Q
+
+Target   
+
+> many short hops
+
+Entry  Shortcut 
+
+(a) Cluster -Level APG with qEMD  (b) Cross -Cluster Bridges  (c) Global APG w/o Shortcuts 
+
+𝐶 2
+
+> ′
+
+Figure 5: Overview of Global Graph Construction Algorithm 1: Index Construction Pipeline 
+
+Input: Database D, two-stage cluster counts 𝑘 1, 𝑘 2, degree limit 𝑀 ,parameter 𝑓 , training pairs T,
+
+Output: GEM proximity graph 𝐺  
+
+> 1
+
+Initialize 𝐺 with 𝑉 = D and 𝐸 = ∅; 
+
+> 2
+
+Cquant , Cindex , Ctop ← ClusterAndAssign (D, 𝑘 1, 𝑘 2) ;  
+
+> 3
+
+foreach 𝐶 𝑖 ∈ C index do  
+
+> 4
+
+𝐺 ← LocalGraphandBridges (𝐶 𝑖 , Cquant , Ctop , 𝑓 , 𝑀 ); ⊲ Alg. 2  
+
+> 5
+
+𝐺 ← InjectShortcuts (𝐺, T, 𝑀 ); ⊲ Alg. 4  
+
+> 6
+
+return 𝐺 
+
+centroids, formalized as: 
+
+𝑑 𝑋 (𝑝 𝑖 , 𝑝 ′ 
+
+> 𝑗
+
+) ≈ 𝑑 𝑋 (NN (𝑝 𝑖 ), NN (𝑝 ′ 
+
+> 𝑗
+
+) ) , (13) 
+
+where NN (𝑝 𝑖 ) and NN (𝑝 ′ 
+
+> 𝑗
+
+) ∈ C quant . This quantization brings two key computational benefits. First, all centroid-to-centroid distances can be precomputed and stored in a 𝑘 1 × 𝑘 1 codebook, enabling constant-time distance lookups instead of costly high-dimensional distance calculations. Second, the reduced centroid space generates significantly sparser transport plans, which further accelerate EMD computation. Formally, the quantized EMD (qEMD) is as follows: 
+
+qEMD (𝑃 1, 𝑃 2 ) = min 
+
+> 𝑇 𝑛 1
+
+∑︁ 
+
+> 𝑖 =1
+> 𝑛 2
+
+∑︁  
+
+> 𝑗 =1
+
+𝑡 𝑖 𝑗 · 𝑑 𝑋 (NN (𝑝 𝑖 ), NN (𝑝 ′ 
+
+> 𝑗
+
+) ) . (14) 
+
+## 4.3 Graph Construction 
+
+Building upon the set clustering and distance function introduced earlier, this section details the construction of GEM’s dual-graph structure. Algorithm 1 outlines the indexing pipeline. 
+
+4.3.1 Cluster-Level APG with qEMD. For each cluster 𝐶 𝑖 , we invoke 
+
+LocalGraphandBridges (Line 4 in Algorithm 1) to build a cluster-level graph while handling cross-cluster bridges. Specifically, for each vector set 𝑃 ∈ 𝐶 𝑖 , we find its top-𝑓 ANNs by performing the search algorithm (Algorithm 5) over the current cluster graph, starting from an arbitrary entry point in 𝐶 𝑖 and using qEMD as the distance metric (Line 2 in Algorithm 2). If 𝑃 is new to the current graph 𝐺 (Line 3), we directly connect it to its neighbors (Line 5) and ensure that each neighbor 𝑃 ′ does not exceed the degree limit 𝑀 by removing the least similar edges if necessary (Line 7). Otherwise, 𝑃 has already been inserted in previous clusters 
+
+{𝐶 𝑖 | 𝑖 < 𝑗, 𝐶 𝑖 ∈ C top (𝑃 )} , which means 𝑃 can serve as a cross-cluster bridge. In this case, we invoke UpdateBridges (Algotihrm 3) to merge the old and new neighbor candidates (Line 9), as detailed in the next section. 
+
+Algorithm 2: Build Cluster Graph with Cross Bridges 
+
+Input: Cluster 𝐶 𝑖 , current global graph 𝐺 = (𝑉 , 𝐸 ), Ctop (·) , 𝑓 , 𝑀 
+
+Output: Updated global graph 𝐺  
+
+> 1
+
+foreach 𝑃 ∈ 𝐶 𝑖 do  
+
+> 2
+
+𝐶 ← 𝑓 ANNs of 𝑃 in the current graph of 𝐶 𝑖 by qEMD; ⊲ Alg. 5  
+
+> 3
+
+if 𝐸 [𝑃 ] = ∅ then  
+
+> 4
+
+foreach 𝑃 ′ ∈ 𝐶 do  
+
+> 5
+
+Add a bidirectional edge (𝑃, 𝑃 ′ ) to 𝐸 ; 
+
+> 6
+
+if degree of 𝑃 ′ > 𝑀 then  
+
+> 7
+
+Remove the least similar edge from 𝐸 [𝑃 ′ ]; 
+
+> 8
+
+else  
+
+> 9
+
+𝐺 ← UpdateBridges (𝑃, 𝐶, 𝐺, Ctop (𝑃 ), 𝑀 ); ⊲ Alg. 3  
+
+> 10
+
+return 𝐺 
+
+4.3.2 Global Graph via Cross-Cluster Bridges. Cluster-level graphs offer good local navigability, but cluster-by-cluster traversal is inef-ficient and duplicating sets across clusters introduces redundancy. This motivates weaving cluster-level graphs into a single, globally connected graph via bridge sets. As shown in Algorithm 3, for a bridge set 𝑃 , we gather both the neighbors already connected to 𝑃 
+
+from earlier clusters and the new neighbors identified in the current cluster (Line 1-2). If the total number of neighbors is within the degree limit 𝑀 , we retain them all (Line 4). Otherwise, only top-𝑀 
+
+closest neighbors are retained (Line 6). To ensure 𝑃 preserves its role as bridges, we enforce that at least one neighbor from each clus-ter in Ctop (𝑃 ) is included in the final neighbor set (Line 7-10). For example, if P belongs to clusters 𝐶 ′ 
+
+> 2
+
+and 𝐶 ′
+
+> 4
+
+, this step ensures its final neighbor list will contain at least one neighbor from 𝐶 ′ 
+
+> 2
+
+and one from 𝐶 ′
+
+> 4
+
+. This prevents newly added connections from overwriting prior inter-cluster links and preserves global connectivity. Finally, the neighborhood of 𝑃 is updated to reflect the new connection set (Line 11). Note that each 𝑃 corresponds to a unique vertex in the global graph: logically assigned to multiple clusters, but physically stored as a single shared node. This design maintains intra-cluster structural coherence, supports efficient cross-cluster traversal via inter-cluster bridges, and eliminates redundant vertex duplication. 
+
+Example 1. Figure 5 further illustrates the graph construction process. In Figure 5(a), 𝑃 3 is assigned to cluster 𝐶 ′ 
+
+> 1
+
+based on its infor-mative vectors (solid-edge circles). Within the cluster, a local graph is constructed using qEMD-based similarity. Since 𝑃 3 also belongs to another cluster 𝐶 ′
+
+> 2
+
+, it becomes a natural bridge between clusters, as shown in Figure 5(b). Figure 5(c) presents a complete toy example of the resulting dual-graph structure. GEM: A Native Graph-based Index for Multi-Vector Retrieval Conference’17, July 2017, Washington, DC, USA 
+
+Algorithm 3: Update Bridges                                                                                    
+
+> Input: Set 𝑃 , new neighbors 𝐶 new ,𝐺 =(𝑉 , 𝐸 ),Ctop (𝑃 ),𝑀
+> Output: Updated global graph 𝐺
+> 1𝐶 old ←existing neighbors of 𝑃 in 𝐸 ;
+> 2𝐶 all ←𝐶 new ∪𝐶 old ;
+> 3if |𝐶 all | ≤ 𝑀 then
+> 4𝐶 final ←𝐶 all ;
+> 5else
+> 6𝐶 final ←𝑀 closest vertices of 𝑃 in 𝐶 all by qEMD;
+> 7foreach 𝐶 𝑖 ∈ C top (𝑃 )do
+> 8if 𝐶 final ∩𝐶 𝑖 =∅then
+> 9𝑆 𝑖 ← { 𝑃 ∈𝐶 all |𝑃 ∈𝐶 𝑖 };
+> 10 Replace farthest in 𝐶 final with closest node from 𝑆 𝑖 ;
+> 11 Replace 𝐸 [𝑃 ]with edges (𝑃, 𝑃 ′)for all 𝑃 ′∈𝐶 final ;
+> 12 return 𝐺
+
+Algorithm 4: Inject Shortcuts                                           
+
+> Input: Graph 𝐺 =(𝑉 , 𝐸 ), training pairs T,𝑀
+> Output: Augmented GEM graph 𝐺
+> 1foreach (𝑄, 𝑃 ) ∈ T do
+> 2𝐶 ←𝑓 ′ANN results for Q in 𝐺 ;
+> 3if 𝑃𝐼 𝐷 ∉𝐶 and both 𝑃 𝑡𝑜𝑝 , 𝑃 have degree ≤𝑀 then
+> 4𝑃 𝑡𝑜𝑝 ←1-ANN in 𝐶 ;
+> 5Add a undirected edge (𝑃 𝑡𝑜𝑝 , 𝑃 )to 𝐸 ;
+> 6return 𝐺
+
+## 4.4 Graph Enhancement 
+
+4.4.1 Inject Shortcuts. We observed that some queries may require many short hops to reach a relevant result. This issue arises because, while EMD upper-bounds the Chamfer distance, the reverse does not hold. As a result, two vector sets may be close under Chamfer but remain distant in EMD space, preventing direct connections during graph construction and leading to longer traversal paths at query time. To mitigate this, we propose a lightweight supervised graph augmentation technique that injects semantic shortcuts into the graph index. A shortcut is a direct edge connecting two vertices that are labeled as semantically close but might be distant in the graph. As detailed in Algorithm 4, we leverage training pairs (𝑄, 𝑃 ),where 𝑃 is the human-annotated ground-truth to answer the query 
+
+𝑄 , to augment the graph. Note that generating the training pairs does not require additional labeling effort or exhaustive search. In this work, we simply re-use training sets that are widely used to train LLMs for generating vector representations of data. For example, on MSMARCO dataset, to be introduced in Section 5.1.1, provides “forms of training data, usually with one positive passage per training query,” where a positive passage means “there is a direct human label that says the passage can be used to answer the query.” Here, we randomly sample from these existing training pairs to construct the shortcuts. For each pair, we run the search algorithm (Algorithm 5) over the current graph to find the query’s top-𝑓 ′ ANNs (Line 2). If 𝑃 is not among them and both 𝑃 𝑡𝑜𝑝 and 
+
+𝑃 have remaining degree capacity, we add an edge between them (Line 3-5). Since test queries are generally assumed to follow a 𝑃 3 …
+
+𝐶 1
+
+> ′
+
+𝐶 3
+
+> ′
+
+𝐶 3
+
+> ′
+
+Bridge 𝐶 2
+
+> ′
+
+Q
+
+Target    
+
+> many short qEMD hops
+
+Entry  CH Shortcut 
+
+(a) Cluster -Level APG with qEMD  (b) Cross -Cluster Bridges  (c) Global APG w/o Shortcuts 
+
+𝐶 2
+
+> ′
+
+Figure 6: Graph Enhancement via Shortcuts 
+
+similar distribution as the training data, such edges act as a shortcut, allowing future queries to reach the correct region more directly. As illustrated in Figure 6, the shortcut helps the search bypass long paths and suboptimal results. By adding EMD-based structural connectivity with Chamfer-based semantic alignment, we enhance graph reachability, search efficiency, and accuracy. 
+
+4.4.2 Adaptive Cluster Cutoff. As discussed in Section 4.1.2, a fixed cut-off threshold 𝑟 is suboptimal. To address this, we introduce an adaptive technique that employs a lightweight decision tree classifier [ 45 ] to predict an optimal per-set 𝑟 . Our key idea is to retain the minimum cluster representation required for search-time discoverability. Specifically, we first generate 𝑟 𝑙𝑎𝑏𝑒𝑙 for each training pair (𝑄, 𝑃 ). The label is defined as the rank of the first cluster in the TF-IDF-sorted profile S( 𝑃 ) that intersects with 𝑄 ’s relevant cluster set Cquery (𝑄 ). If no intersection occurs within the top-𝑟 max (default 10), the label is set to 𝑟 max . Then, the decision tree is trained with the top-𝑟 max TF-IDF scores (padded if necessary) and the number of vectors in 𝑃 as input, and learn to predict the number of clusters 𝑟 
+
+to retain. During the indexing pipeline, the trained model infers per-set 𝑟 , which is then used for final cluster assignments. This strategy effectively reduces the number of redundant assignments while preserving the necessary semantic coverage for effective retrieval. 
+
+## 4.5 Query Processing 
+
+Building on our index structure, we propose a cluster-guided beam search algorithm tailored for efficient multi-vector retrieval. The complete search procedure is detailed in Algorithm 5. At a high level, the algorithm improves upon traditional single-vector greedy search from three complementary perspectives: (1) coarse-grained cluster filtering, (2) informative multi-entry point initialization, and (3) cluster-aware early pruning during graph traversal. 
+
+4.5.1 Cluster Filtering. In multi-vector retrieval, distance compu-tations are significantly more expensive than in the single-vector setting. To reduce this cost, it is crucial to eliminate highly un-likely vector sets as early as possible—ideally before any graph traversal begins. For this purpose, we draw inspiration from the initial filtering phase of ColBERTv2, which is extremely fast for coarse candidate selection. While this strategy alone may yield a large number of false positives, our downstream graph traversal module can refine these results with high precision. This rationale leads us to retain ColBERTv2’s initial filtering strategy to gener-ate coarse-grained cluster candidates. Specifically, we compute a query–centroid relevance matrix:      
+
+> 𝑆 𝑐,𝑞 =𝐶 ·𝑄 ⊤,(15)
+
+where 𝐶 ∈ R𝑘 2 ×𝑑 is the centroid matrix and 𝑄 ∈ R𝑚 𝑞 ×𝑑 is the query token matrix. For each query token 𝑞 𝑖 , we select its top-𝑡 nearest centroids and take the union across all tokens to form a relevant cluster set Cquery ⊆ C . This early pruning step is shown in Line 1-2 Conference’17, July 2017, Washington, DC, USA Yao Tian, Zhoujin Tian, Xi Zhao, Ruiyuan Zhang, and Xiaofang Zhou 
+
+Algorithm 5: Cluster-Guided Beam Search 
+
+Input: Query 𝑄 , 𝐺 , Cquant , Cindex , parameters 𝑡, 𝑒 𝑓 , 𝑘 
+
+Output: 𝑘 ANNs to 𝑄  
+
+> 1
+
+Compute relevance scores 𝑆 𝑐,𝑞 = 𝐶 · 𝑄 ⊤; 
+
+> 2
+
+Cquery ← union of top-𝑡 centroids for each 𝑞 𝑖 ∈ 𝑄 ; 
+
+> 3
+
+𝐸 ← one random node from each 𝐶 𝑗 ∈ C query ; 
+
+> 4
+
+Initialize a shared result heap R ← 𝐸 , a shared visited set V ← 𝐸 ; 
+
+> 5
+
+Initialize a local queue W𝑒𝑝 for each 𝑒𝑝 ∈ 𝐸 ; 
+
+> 6
+
+while any W𝑒𝑝 is not empty do  
+
+> 7
+
+foreach non-empty W𝑒𝑝 in parallel do  
+
+> 8
+
+𝑃 ← pop the element in W𝑒𝑝 𝑖 cloest to 𝑄 by qCH;  
+
+> 9
+
+𝜏 ← current furthest distance in R; 
+
+> 10
+
+if qCH (𝑄, 𝑃 ) > 𝜏 then  
+
+> 11
+
+mark W𝑒𝑝 as empty;  
+
+> 12
+
+continue ; 
+
+> 13
+
+foreach 𝑃 ′ ∈ Neighbors (𝑃 ) do  
+
+> 14
+
+if 𝑃 ′ ∉ V and Ctop (𝑃 ′ ) ∩ C query ≠ ∅ then  
+
+> 15
+
+compute qCH (𝑄, 𝑃 ′ ); 
+
+> 16
+
+insert 𝑃 ′ into W𝑒𝑝 , V, and R; 
+
+> 17
+
+if | R | > 𝑒 𝑓 then  
+
+> 18
+
+Remove the furthest from 𝑅 ; 
+
+> 19
+
+update 𝜏 ; 
+
+> 20
+
+R ← rerank top-𝑘 results in R by CH;  
+
+> 21
+
+return R
+
+in Algorithm 5 and visually illustrated in Figure 7, where irrelevant clusters (in gray) are filtered out before the graph traversal. 
+
+4.5.2 Multi-Entry Point Initialization. Since relevant sets under the Chamfer distance may be distributed across multiple clusters, relying on a single entry point can lead to biased initialization and longer traversal paths. Therefore, after identifying the relevant clusters, we initialize the search from multiple entry points, one from each cluster in Cquery (Line 3). As shown in Figure 7, two yellow vertices (ep1 and ep2) from two different clusters are ran-domly selected as the initial entry points. This multi-entry strategy, combined with the semantic shortcuts on the index side, effectively mitigates the fragmentation of Chamfer nearest neighbors and enhances overall retrieval effectiveness. 
+
+4.5.3 Cluster-Guided Parallel Beam Search. Given the selected en-try points, we perform a cluster-guided, multi-path parallel search over the graph 𝐺 using quantized Chamfer distance (qCH). Similar to qEMD, qCH serves as a lightweight yet effective proxy for the expensive pairwise computation between vector sets, formalized as follows: 
+
+qCH (𝑄, 𝑃 ) =∑︁  
+
+> 𝑞 ∈𝑄
+
+min   
+
+> 𝑝 ∈𝑃
+
+𝑑 𝑋 (NN (𝑞 ), NN (𝑝 ) ) , (16) 
+
+where NN (·) is the nearest centroids in Cquant . As elaborated before, although Chamfer is not used during index construction, it is upper-bounded by the EMD metric, leading that EMD-near neighbors are also reasonable candidates under Chamfer. Line 4- 21 in Algorithm 5 details the query process. First, we initialize a global result heap 
+
+R, a global visited set V, and a local priority queue W𝑒𝑝 for each entry point 𝑒𝑝 ∈ 𝐸 (Line 4-5). The search then proceeds in parallel Our Method: GEM 
+
+Pruned 
+
+Entry 
+
+Points 
+
+…𝑄 
+
+Cluster Filtering 
+
+Parallel 
+
+Expansions 
+
+𝑜 21 
+
+𝑜 18 
+
+𝑜 17 
+
+𝑜 13 𝑜 12 𝑜 9
+
+𝑜 19 
+
+𝑜 14 
+
+𝑜 15 
+
+𝑜 11 
+
+𝑜 10 
+
+𝑜 20 
+
+𝑜 16 
+
+𝑜 8
+
+𝑜 7
+
+𝑜 3
+
+𝑜 6
+
+𝑜 2 𝑜 5
+
+𝑜 4
+
+𝑜 1
+
+𝑞  
+
+> Pruned Clusters
+
+ep1 
+
+ep2  
+
+> Pruned Vertices
+> 1
+> 1
+> 1
+> 1
+> 2
+> 2
+
+𝐶 3
+
+> ′
+
+Bridge 
+
+Bridge 
+
+Bridge 
+
+𝐶 1
+
+> ′
+
+𝐶 2
+
+> ′
+
+𝐶 1
+
+> ′
+
+𝐶 2
+
+> ′
+
+𝐶 3
+
+> ′
+
+𝐶 4
+
+> ′
+> P2
+> 2
+> 2
+> P3
+> P1
+> P4
+
+𝑄 
+
+> visit
+> expand
+
+Figure 7: Search in GEM 
+
+from these entry points. Within each thread, we repeatedly pop the element 𝑃 with the lowest qCH to the query (Line 8) until W𝑒𝑝 is empty (Line 7). We denote 𝜏 as the current furthest distance to 𝑄 in 
+
+R. If qCH (𝑄, 𝑃 ) is already worse than 𝜏 , the current path is deemed unpromising and terminated (Line 9-12). Otherwise, we continue expanding 𝑃 ’s neighbors. To boost query efficiency, we apply a cluster-aware pruning condition (Line 14). That is, if 𝑃 ′ would pull the search into an irrelevant cluster (one not in Cquery ), it is directly filtered out. If the 𝑃 ′ passes this filter, the qCH score is computed, and the local queue W𝑒𝑝 , result heap R, and visited set V are updated accordingly (Line 15-16). R maintains a maximum of 𝑒 𝑓 
+
+candidates, evicting the farthest node when necessary (Line 17-18). Note that both R and V are globally shared across threads, enabling implicit communication. If one path discovers a closer node, it updates the 𝜏 (Line 19), which allows other paths to prune their search space earlier. Similarly, once a vertex is visited by any thread, it is skipped by all others, preventing redundant computation. The search terminates when all W𝑒𝑝 queues are exhausted. In the final step, the top-𝑘 candidates in R are re-ranked using exact Chamfer distance before being returned. 
+
+Example 2. Figure 7 gives an example of the GEM search process for 1-ANN with 𝑒 𝑓 = 2. 𝑃 1 is the ground-truth nearest neighbor. Assume that the cluster filtering stage identifies two relevant clusters, 
+
+Cquery = {𝐶 ′
+
+> 1
+
+, 𝐶 ′ 
+
+> 2
+
+}, while pruning 𝐶 ′ 
+
+> 3
+
+and 𝐶 ′
+
+> 4
+
+. The search then begins in parallel from two entry points: ep1 and ep2 (yellow squares). In the first iteration (labeled with 1), the path of ep1 expands to 𝑃 2, while ep2 discovers 𝑃 3. These two candidates are inserted into the shared result heap R. In the second iteration (labeled with 2), the path from ep1 continues by expanding from 𝑃 2. When considering its neighbors, 𝑃 4 is immediately pruned without a distance calculation because it resides in a pruned cluster. Concurrently, the other path expanding from 
+
+𝑃 3 jumps directly to 𝑃 1 via a semantic shortcut (highlighted in red), bypassing what would otherwise have been a multi-hop traversal. 
+
+## 4.6 Index Maintenance 
+
+As a graph-based method, GEM naturally supports dynamic index maintenance, including both insertion and deletion of data points. To insert a new vector set into the current index, GEM first maps its vectors to the fine-to-coarse centroid hierarchy and prunes uninfor-mative clusters using the TF-IDF–guided strategy, as described in Section 4.1. Then, the set is incorporated into the graph by linking it to its nearest neighbors under the qEMD metric, followed by updating the cross-cluster bridges to maintain both local proximity GEM: A Native Graph-based Index for Multi-Vector Retrieval Conference’17, July 2017, Washington, DC, USA 
+
+Table 1: Summary of Datasets                         
+
+> Datasets # Corpus # Vectors # Queries Modality MS MARCO v1 38.8M 597M 6980 Text-only LoTTe pooled 32.4M 339M 2931 Text-only OK-VQA 3114K 14M 5046 Text + Image EVQA 350K 9.7M 3750 Text + Image
+
+and global connectivity, as detailed in Section 4.3. For deletions, we follow the lazy deletion strategy [ 39 ], which is commonly used in graph-based indexes: a vertex to be removed is simply marked as inactive, so it is skipped during search and can be physically pruned in later maintenance passes. 
+
+## 5 Experiments 
+
+In this section, we conduct extensive experiments on real-world datasets to evaluate our GEM. We implement GEM 1 in C++ com-piled with g++ using -Ofast optimization and openMP for paral-lelism. All experiments are run on a Ubuntu server with 4 Intel(R) Xeon(R) Gold 6218 CPUs (160 threads) and 1.5 TB RAM. 
+
+## 5.1 Experimental Settings 
+
+5.1.1 Datasets. We evaluate GEM’s performance on four widely-used multi-vector retrieval benchmarks, which are detailed in Table 1. MS MARCO v1 is widely used for in-domain evaluation with a retriever trained specifically for this task, while LoTTE serves as an out-of-domain benchmark. To further evaluate performance in complex multi-modal settings, we include two vision-language retrieval datasets, OK-VQA and EVQA , both involving queries with textual and visual content. All four datasets provide training and test splits, in which each query is paired with one or more human-annotated relevant document IDs. The training instances are used to enhance the graph, while queries from the test split are used to evaluate retrieval performance, with the corresponding relevance annotations treated as ground truth. For MS MARCO and LoTTE ,we employ ColBERTv2 [ 50 ] to encode queries and documents into sets of vectors. Following prior work [ 4, 7, 17 , 49 ], the dimension-ality of each individual vector is set to 𝑑 = 128 by default. For multi-modal datasets, we adopt preFLMR [ 32 ], a fine-grained late-interaction retriever that jointly encodes text and image content into multi-vector representations ( 𝑑 = 128 ). Both ColBERTv2 and preFLMR adopt the late interaction paradigm with set-to-set sim-ilarity computed via Chamfer distance, and have shown strong performance in text-only and multi-modal retrieval, respectively. 
+
+5.1.2 Competitors. We compare GEM with four representative methods in multi-vector retrieval, as mentioned in Section 2: PLAID [ 49 ], DESSERT [ 7], MUVERA [ 17 ] and IGP [ 4]. We also include a graph-based baseline as discussed in Section 3.2, denoted as the multi-vector graph (MVG). To ensure basic competitiveness, here we use qCH for both indexing and search in our experiments. 
+
+5.1.3 Parameter Settings. Parameter settings of competitors fol-low the original papers or their source codes. For PLAID, we set the number of centroids to 262 𝐾 for MSMARCO and LoTTE, 32 𝐾 
+
+> 1https://github.com/sigmod26gem/sigmod26gem
+> 3MSMARCO weblink, LoTTE webLink, OK-VQA weblink, EVQA weblink
+
+for OKVQA and EVQA. All vectors are quantized to 2 bits per di-mension for MS MARCO and LoTTE, and to 8 bits for OKVQA and EVQA. For DESSERT, we set 𝐶 = 7, 𝐿 = 64 for MSMARCO, LoTTE, and set 𝐶 = 4, 𝐿 = 768 for OKVQA, EVQA. For MU-VERA, we adopt R𝑟𝑒𝑝𝑠 = 20 , K𝑠𝑖𝑚 = 5, and D𝑝𝑟𝑜 𝑗 = 32 to generate single-vector representations, which are then compressed using PQ-256x8 and indexed with HNSW ( 𝑀 = 24 , ef_construct = 80 ). For IGP, we use 262 𝐾 centroids for MSMARCO and LoTTE, 32 𝐾 
+
+for OKVQA and EVQA, with graph construction parameters set to 𝑀 = 24 , ef_construct = 200 . For our GEM, the number of codebooks |C quant | follows the same empirical formula from prior studies [ 49 , 50 ], i.e., the nearest power of two to 16 × √#vectors .This yields |C quant | = 2⌊log 2(16 √597 𝑀 )⌋ ≈ 262 𝑘 for MASMARCO. Similarly, |C quant | = 262 𝐾 for LoTTE, and 32 𝐾 for OK-VQA and EVQA. The number of clusters |C index | is scaled with dataset size to balance granularity and indexing cost. Specifically, |C index | is set to 
+
+40 𝐾 for MSMARCO, 10 𝐾 for LoTTE, and 1𝐾 for OK-VQA and EVQA, so that each cluster contains about 10 3−10 4 objects. The graph con-struction parameters 𝑀 = 24 and ef_construction = 80 and 20% of the training instances are randomly sampled to construct the shortcuts. At query time, we set 𝑡 = 4 and vary ef_search , #𝑟𝑒𝑟𝑎𝑛𝑘 
+
+to trade off efficiency and accuracy. For MVG, we adopt the same indexing parameters as GEM. All competitors are also tuned to their best query performance. 
+
+5.1.4 Evaluation Metrics. Following previous works [ 7, 32 , 49 ], we adopt four metrics to evaluate query performance: Recall , Mean Reciprocal Rank (MRR) , Success , and query latency; and two metrics to evaluate indexing performance: indexing time and index size. Given a query set Q, with ground-truth set G𝑄 for each query 
+
+𝑄 ∈ Q , and top-𝑘 retrieved results R (𝑘 ) 
+
+> 𝑄
+
+, Recall@ 𝑘 measures the proportion of relevant items retrieved:            
+
+> R@ 𝑘 =1
+> | Q | ∑︁ 𝑄 ∈Q
+> | G 𝑄 ∩ R (𝑘 )
+> 𝑄 || G 𝑄 |.(17)
+
+MRR@ 𝑘 captures the reciprocal rank of the first relevant item:       
+
+> MRR @𝑘 =1
+> |𝑄 |∑︁ 𝑄 ∈Q
+> 1
+> rank 𝑄
+> ,(18)
+
+Success@ 𝑘 indicates whether any relevant item is present in the top-𝑘 , defined as follows:            
+
+> S@ 𝑘 =1
+> |𝑄 |∑︁ 𝑄 ∈Q
+> I[ G 𝑄 ∩ R (𝑘 )
+> 𝑄 ≠∅ ] .(19)
+
+Query latency is reported as the average runtime over 10 repeated runs for each dataset. 
+
+Remark 3. Note that the ground-truth set G𝑄 in the above defini-tions refers to results with "a direct human label that says the passage can be used to answer the query", as stated in MSMARCO. Other datasets follow the same principle. Unlike ANN benchmarks, where the ground truth is typically defined as the exact 𝑘 NN obtained by brute-force search in the embedding space, our results below directly reflect end-to-end semantic similarity retrieval performance. Conference’17, July 2017, Washington, DC, USA Yao Tian, Zhoujin Tian, Xi Zhao, Ruiyuan Zhang, and Xiaofang Zhou 
+
+Table 2: End-to-end Retrieval Performance Overview                                                                                                                    
+
+> Method MSMARCO LOTTE OKVQA EVQA R@100 S@100 MRR@10 T (ms) R@100 S@100 MRR@10 T (ms) R@100 S@100 MRR@10 T (ms) R@100 S@100 MRR@10 T (ms) PLAID 0.913 0.919 0.395 352 0.745 0.910 0.558 462 0.400 0.735 0.225 570 0.895 0.895 0.476 211 DESSERT 0.890 0.905 0.372 344 0.748 0.893 0.541 362 0.371 0.723 0.163 642 0.837 0.837 0.370 552 MUVERA 0.902 0.915 0.385 310 0.736 0.901 0.547 441 0.369 0.723 0.219 605 0.878 0.878 0.471 446 IGP 0.895 0.901 0.389 340 0.731 0.899 0.553 338 0.402 0.732 0.215 549 0.892 0.892 0.440 458 MVG 0.895 0.905 0.421 360 0.701 0.879 0.555 231 0.381 0.719 0.230 427 0.880 0.880 0.468 450
+> GEM (Ours) 0.915 0.920 0.447 140 0.749 0.910 0.592 210 0.410 0.754 0.236 165 0.895 0.895 0.477 197
+
+## 5.2 Performance Analysis 
+
+5.2.1 Query Performance . In this section, we study the end-to-end retrieval performance of all methods under default settings, as summarized in Table 2, Table 3, and Figure 8. Table 2 provides an overview of recall, success, MRR, and end-to-end latency for all methods across all datasets. Clearly, GEM offers the best overall query performance on all datasets. It adapts well to in-domain, out-of-domain, and more complex multi-modal datasets, outperforming all competitors on every query quality metric while maintaining the lowest latency. In particular, GEM achieves speedups of up to 2.5 × on MSMARCO, 2.2 × on LoTTE, 3.9 × on OKVQA, and 2.8 × on EVQA, all with better query quality. For EVQA, each query has exactly one annotated relevant docu-ment, thus G𝑄 ∩ R (𝑘 ) 
+
+> 𝑄
+
+can only be size 0 or 1. If the ground truth is in the retrieved top-𝑘 : recall = 1/1 = 1, success = 1; other-wise: recall = success = 0. Hence, its averaged recall and success reported in Table 2 and Figure 8 are always identical. These exper-imental results validate our design goal: preserving the semantic richness of multi-vector representations to achieve high accuracy, while leveraging an efficient graph index for speed. The reason GEM achieves the best performance can be concluded as follows: 1) Compared with PLAID, GEM indexes at a set-level granularity, treating the entire vector set as the basic unit. This is fundamentally different from PLAID, which indexes all vectors individually. By doing so, GEM significantly reduces the number of false positive candidates returned due to token-level matches, avoiding the need for expensive refinement and boosting efficiency. 2) Compared with DESSERT, which is often bottlenecked by an exhaustive scan of all set sketches, GEM’s graph structure provides a powerful pruning mechanism, enabling significantly faster navigation to the most promising candidates. 3) Compared with MUVERA, which suffers significant accuracy degradation by compressing a vector set into a single vector, GEM preserves set-level semantic nuances, thereby easily achieving superior query quality that MUVERA struggles to match even when its FDEs are tuned to an impractically high 
+
+20480 dimensions. 4) Compared with IGP, which extends token-level indexing into a graph structure over quantized centroids for incremental candidate filtering, GEM constructs a set-level graph where each node represents a complete vector set. This design captures inter-set relations that centroid-level graphs overlook, en-abling faster and more accurate retrieval. 5) Compared with the naive MVG, while it preserves multi-vector inputs, its naive graph suffers from fragmented neighbors, local optima, and lacks effective distance approximation and pruning strategies. 
+
+Table 3: End-to-End Retrieval Perfomance Varying 𝑘                                            
+
+> Method MSMARCO LoTTE R@10/T R@100/T R@1k/T S@10/T S@100/T S@1k/T PLAID 68.8/222 91.3/352 97.5/352 76.8/288 91.0/462 94.5/462 DESSERT 66.2/298 89.0/344 97.2/336 74.7/362 89.3/362 94.3/477 MUVERA 67.7/286 90.2/310 97.1/444 74.1/397 90.1/441 94.4/461 IGP 66.9/279 89.5/340 96.9 /399 75.5/311 89.9/338 94.0/412 MVG 69.2/293 89.5/360 94.2/436 74.7/303 87.9/331 94.2/442
+> GEM 71.1 /88 91.5 /140 97.5 /212 77.3 /133 91.0 /210 94.5 /251
+
+Table 3 reports how query quality and latency change as the number of returned results 𝑘 increases. Due to space limitations, we only present results on two datasets. Following our competi-tors [ 7, 49 ], we report recall on MSMARCO and success on LoTTE. On MSMARCO, GEM uses ef_search = 800, 2000, 8000 for 𝑘 =10, 100, 1k, respectively. On LoTTE, GEM uses ef_search = 1000, 5000, 8000 for 𝑘 = 10, 100, 1k, respectively. We make the following observations: (1) GEM consistently achieves the best query perfor-mance across all 𝑘 values, offering higher Recall@ 𝑘 and Success@ 𝑘 
+
+while maintaining significantly shorter query times. For example, on MSMARCO, GEM requires only 88 ms, 140 ms, and 212 ms for 
+
+𝑘 = 10 , 100 , and 1000 respectively, whereas the best baselines re-quire 222 ms (PLAID), 310 ms (MUVERA), and 336 ms (DESSERT) to reach comparable recall. On LoTTE, GEM completes in 133 ms, 
+
+210 ms, and 251 ms, while the fastest baselines still require 288 
+
+ms (PLAID), 338 ms (IGP), and 412 ms (IGP) to achieve similar quality. (2) Our naive solution, MVG, can compete with several well-tuned baselines for small 𝑘 . Though non-metric distance in-duces fragmented neighbors and local optima, this issue is not overly severe when the target 𝑘 is small. By slightly increasing 
+
+ef_search , greedy graph traversal can escape local minima and reach to the ground truth eventually. As a result, MVG retains the key advantage of graph-based indexes, i.e., it accesses fewer can-didates than LSH-based (DESSERT) and IVF-style (PLAID, IGP) methods to achieve the same recall. When further combined with our qCH quantization, which reduces the cost of per-candidate distance computation, MVG exhibits a favorable accuracy–latency trade-off. However, MVG does not consistently outperform other methods. For instance, on MSMARCO, other methods reach around 97% recall when 𝑘 = 1000 , while MVG saturates at 94 .2% . Even with larger ef_search and longer query time, further improvement is limited by the suboptimal graph structure resulting from the non-metric nature of Chamfer distance. This underscores the necessity GEM: A Native Graph-based Index for Multi-Vector Retrieval Conference’17, July 2017, Washington, DC, USA 80 100 120 140 160 
+
+> 0.30
+> 0.35
+> 0.40
+> 0.45
+> MRR@10
+
+MSMARCO      
+
+> 100 120 140 160 180 200
+> 0.50
+> 0.55
+> 0.60
+
+LoTTE     
+
+> 60 80 100 120 140
+> 0.15
+> 0.20
+> 0.25
+
+OKVQA     
+
+> 60 80 100 120 140
+> 0.30
+> 0.35
+> 0.40
+> 0.45
+
+EVQA     
+
+> 140 160 180 200 220
+
+Latency                   
+
+> 0.80
+> 0.85
+> 0.90
+> Success@100
+> 100 120 140 160 180 200
+> 0.85
+> 0.90
+> 100 125 150 175 200
+> 0.60
+> 0.65
+> 0.70
+> 0.75
+> 100 120 140 160 180 200
+> 0.75
+> 0.80
+> 0.85
+> 0.90
+> 140 160 180 200 220
+
+Latency      
+
+> 0.80
+> 0.85
+> 0.90
+> 0.95
+> Recall@100
+> 100 120 140 160 180 200
+
+Latency     
+
+> 0.60
+> 0.65
+> 0.70
+> 0.75
+> 100 125 150 175 200
+
+Latency      
+
+> 0.25
+> 0.30
+> 0.35
+> 0.40
+> 100 120 140 160 180 200
+
+Latency 
+
+> 0.75
+> 0.80
+> 0.85
+> 0.90
+
+GEM PLAID MUVERA DESSERT IGP MVG 
+
+Figure 8: Accuracy–Latency Trade-off Overview 
+
+of metric decoupling and other optimizations, such as shortcuts and multi-entry search, in GEM for achieving stable performance gains. (3) As expected, in the out-of-domain setting (LoTTE), retrieval is more challenging than in-domain setting (MSMARCO), and all methods require more time to achieve good quality. GEM remains consistently more accurate and faster, often requiring only 1/2 or even 1/3 of the time of other methods. Figure 8 provides a more comprehensive view of the trade-off between query accuracy and efficiency of all methods. From the figures, we have the following observations: (1) GEM consistently achieves the best trade-off. Among all methods, GEM requires the least time to reach the same MRR, success, or recall, indicating the most favorable balance between accuracy and efficiency. For the same MRR@10, GEM is up to 16x faster than DESSERT (on OKVQA), up to 10x faster than MUVERA (on OKVQA), up to 8x faster than IGP (on OKVQA), and up to 5x faster than PLAID (on MSMARCO). (2) Visual-language retrieval is inherently more chal-lenging. On OKVQA and EVQA, even with increased search time, Success@100 reaches only about 75–89%, while in text-only QA tasks, our algorithm can easily exceed 90%. Notably, this bottleneck is not on the retrieval side: even brute-force search on OKVQA and EVQA achieves only around 77–90% Success@100. This points to the need for stronger embedding models and improved multi-modal feature alignment mechanisms. (3) MVG can outperform some competitors on certain datasets, such as complex multi-modal OKVQA and EVQA datasets. This advantage can be attributed to its tailored set-level indexing structure, which preserves fine-grained semantics. In contrast, methods like MUVERA maps a multi-vector set to a single vector, inevitably causing non-trivial information loss. This loss worsens with data complexity, leading to degraded query performance. (4) GEM and PLAID are highly robust, main-taining stable performance across all datasets. PLAID is often the 
+
+Figure 9: Indexing Performance on All Datasets 
+
+second-best method. In contrast, IGP, DESSERT, and MUVERA exhibit substantial performance variation across datasets. 
+
+5.2.2 Indexing Performance . The indexing time and index size of all methods under default settings are summarized in Figure 9. Here, the index size includes only the index files, excluding raw data, to clearly highlight the differences among indexing methods. We make two key observations: (1) GEM’s index size is small ( e.g., 2 GB on MSMARCO, 27MB on OKVQA), significantly smaller than MU-VERA (10.5 GB on MSMARCO, 139 MB on OKVQA) and DESSERT (107 GB on MSMARCO, 1.8GB on OKVQA). This compactness is at-tributed to the graph structure of GEM, which primarily stores edge information. This storage overhead is independent of whether the setting is under single- or multi-vector, and is negligible compared to the dataset size. In contrast, DESSERT requires storing a large number of hash values generated by LSH, while MUVERA needs to store Fixed Dimensional Encodings (FDEs) for all vector sets, which scale directly with the dataset size and make it less suited to large-scale scenarios. GEM’s index size is comparable to that of IGP (2.3 GB on MS MARCO, 59 MB on OKVQA) and PLAID (1.5 GB Conference’17, July 2017, Washington, DC, USA Yao Tian, Zhoujin Tian, Xi Zhao, Ruiyuan Zhang, and Xiaofang Zhou 100 300 500   
+
+> Latency (ms)
+> w/o All
+> w/o EMD
+> w/o Multi-path
+> w/o Pruning
+> w/o Bridge
+> w/o Shortcut
+> GEM
+> 464
+> 141
+> 145
+> 124
+> 111
+> 88
+> 79
+> MSMARCO
+> 100 300 500
+> Latency (ms)
+> 427
+> 159
+> 123
+> 117
+> 78
+> 76
+> 73
+> OKVQA
+
+Figure 10: Ablation Study on the GEM’s Components 
+
+on MS MARCO, 34 MB on OKVQA), but GEM delivers a substan-tial advantage in both efficiency and accuracy. (2) On MSMARCO and LoTTE, all methods have comparable indexing time. This is because PLAID, DESSERT, IGP, and GEM all rely on a clustering step, which dominates the construction cost. MUVERA does not involve clustering but has to convert every vector set into a single vector, which is also time-consuming. Both clustering and vector conversion can be accelerated on GPUs, making this step less of a practical concern. On smaller datasets, OKVQA and EVQA, the clustering cost becomes less significant, and GEM’s graph construc-tion is slower than PLAID’s IVF, IGP’s single vector graph, and DESSERT’s LSH indexing. MUVERA, which requires both vector conversion and graph construction, remains the slowest. Overall, GEM achieves competitive indexing time and compact index size while providing superior retrieval performance. 
+
+## 5.3 Ablation Study 
+
+In this section, we evaluate how much each component of GEM contributes to the overall performance. We disable key modules individually and compare the query latency required to reach com-parable retrieval accuracy. Due to space constraints, we only present two representative scenarios, i.e., MRR@10 = 0.42 on MSMARCO, and MRR@10 = 0.30 on OKVQA. As shown in Figure 10, removing different components results in varying degrees of latency increase. 
+
+5.3.1 w/o EMD distance. We replace the qEMD with qCH for graph construction, which doubles the latency on both datasets. The absence of metric properties degrades the graph quality, confirming the importance of the decoupling strategy in GEM. 
+
+5.3.2 w/o multi-path strategy. We disable multi-path search from multiple entry points, instead enqueuing all entry points into a single search queue W and expanding greedily. This change increases latency by 70–80%. Without synchronized paths sharing the visited and best-found result sets, pruning is less aggressive and the search space contracts more slowly. To reach the correct results, a larger ef_search is needed, which increases latency. These results confirm that multi-entry search accelerates convergence. 
+
+5.3.3 w/o adaptive TF-IDF cluster pruning. We disable the adaptive adjustment of clusters per document and fix |C top | = 3
+
+for all documents–a value nearly identical to the average |C top | on MSMARCO and OKVQA when TF-IDF is enabled (Section 4.1.2). This setup isolates the effect of cluster granularity and allows a direct, fair comparison of adaptive v.s. fixed Ctop values. As ob-served, performance degrades because a fixed threshold hurts recall for long, topically diverse documents, while short documents suf-fer efficiency loss from retaining unnecessary clusters. This result 70 80 100 120       
+
+> Latency (ms)
+> 0.35
+> 0.40
+> 0.45
+> MRR@10
+> MSMARCO
+> 50 90 130 170
+> Latency (ms)
+> 0.35
+> 0.40
+> 0.45
+> Success@10
+> OKVQA
+> t=1 t=2 t=4 t=8
+
+Figure 11: Impact of 𝒕 on Retrieval Performance 10 20 30 40 50 60    
+
+> #rerank
+> 0.63
+> 0.65
+> 0.67
+> 0.69
+> 0.71
+> 0.73
+> Success@10
+> MSMARCO
+> 200 300 400 500
+> #rerank
+> 0.85
+> 0.87
+> 0.89
+> 0.91
+> 0.93
+> 0.95
+> Success@100
+> MSMARCO
+
+Figure 12: Impact of #rerank on Retrieval Performance 
+
+highlights the importance of dynamic TF-IDF–guided pruning in balancing accuracy and efficiency. 
+
+5.3.4 w/o bridge constraint. In this variant, when the degree of a bridge 𝑃 exceeds the limit, we retain only its 𝑀 closest neighbors, rather than enforcing it to keep at least one neighbor from each cluster in Ctop (𝑃 ). This change greatly degrades performance, with the drop on MSMARCO more pronounced than on OKVQA due to the larger corpus size. This result shows the importance of bridges in maintaining graph connectivity, especially on large datasets. 
+
+5.3.5 w/o shortcuts enhancement. We remove shortcuts that directly connect sets that may be close under Chamfer but require many hops to reach over the EMD graph. This leads to a modest degradation in query latency. While the co-designed architecture of GEM is already robust for most queries, the shortcut mechanism is a useful addition for handling a few hard-to-find cases. It is worth noting that these components are co-designed to work synergistically. The optimal performance of GEM relies on their combined effect. Removing all of them (w/o all) leads to a severe degradation, with latency increasing by 5–6x. 
+
+## 5.4 Further Analysis 
+
+5.4.1 Effect of 𝑡 . In this experiment, we study the impact of pa-rameter 𝑡 , which controls the number of nearest clusters each 𝑞 𝑖 ∈ 𝑄 
+
+identifies in the early pruning step. We vary 𝑡 ∈ { 1, 2, 4, 8} and re-port results on MSMARCO and OKVQA for brevity. Larger 𝑡 makes the pruning more conservative: pruning fewer clusters to poten-tially increase recall, but at the cost of higher latency. As shown in Figure 11, both datasets exhibit similar trends. When 𝑡 = 1, prun-ing is too aggressive, leading to insufficient accuracy. Performance improves substantially at 𝑡 = 2, while the gains begin to saturate as 𝑡 increases further to 8. Therefore, we set 𝑡 = 4 by default as it provides a favorable balance between accuracy and efficiency. GEM: A Native Graph-based Index for Multi-Vector Retrieval Conference’17, July 2017, Washington, DC, USA 85 100 115         
+
+> Latency (ms)
+> 0.35
+> 0.40
+> 0.45
+> MRR@10
+> MSMARCO
+> 125 150 175
+> Latency (ms)
+> 0.75
+> 0.85
+> 0.95
+> Success@100
+> MSMARCO
+> 024
+> Index Size (GB)
+> 1.1
+> 2.0
+> 3.8
+> 020 40
+> Index Time (hr)
+> 15.5
+> 28.0
+> 37.9
+> M=8,ef_cons=40 M=24,ef_cons=80 M=48,ef_cons=200
+
+Figure 13: Impact of 𝑴 and ef_construction 
+
+5.4.2 Effect of #rerank. In this experiment, we evaluate the im-pact of rerank_k . This parameter determines the size of the candi-date pool retrieved from the graph search, which is then re-ranked using the exact Chamfer distance to obtain the final top-k results. Figure 12 reports results for 𝑘 = 10 and 100 . For 𝑘 = 10 , the choice of 
+
+rerank_k has a clear effect on accuracy: a larger rerank_k increases the likelihood that the true best results are included and ranked near the top. For 𝑘 = 100 , increasing rerank_k has a more modest impact. This is because our algorithm is already highly effective, with a strong probability of placing the true results within its top-100 candidates, leaving limited room for further improvement. 
+
+5.4.3 Effect of Index Parameters. In this experiment, we investi-gate the impact of two key indexing parameters: the maximum num-ber of neighbors per vertex ( 𝑀 ) and the size of the candidate list dur-ing construction ( ef_construction ). As shown in Figure 13 on MS-MARCO, with 𝑀 = 8 and ef_construction = 24, the index is small and fast to build, but the graph quality is insufficient, resulting in lower query accuracy. Increasing to 𝑀 = 48 and ef_construction 
+
+= 200 significantly enlarges the index size and construction time, but query performance improves only marginally. This is because each vertex connects to too many neighbors, increasing the number of candidates to verify at each hop and thereby hurting latency. Our default configuration of 𝑀 = 24 and ef_construction = 80 achieves the best overall trade-off, offering competitive indexing performance and superior query efficiency and accuracy. 
+
+5.4.4 Effect of 𝑁 and 𝑚 . In this experiment, we evaluate scala-bility with respect to the corpus size ( 𝑁 ) and the average number of vectors per set ( 𝑚 ). We randomly sample 18 𝑁 , 14 𝑁 , 12 𝑁 , and 𝑁 
+
+vector sets from the original corpus, and randomly sample 18𝑚 , 14𝑚 ,
+
+> 12
+
+𝑚 , and 𝑚 vectors from each set to form new subsets. We vary one factor at a time. Figure 14 reports the effects of these variations on both query latency and index construction time. Increasing 𝑁 
+
+causes a slight rise in latency, e.g., from 67 ms ( 18 𝑁 ) to 85 ms ( 𝑁 ), consequently increasing indexing time (0.13 h to 1.79 h) due to the search-based construction procedure. This trend aligns with the logarithmic query cost of graph-based indexes, demonstrating GEM’s strong scalability across different corpus scales. Increasing 
+
+𝑚 exerts a much stronger impact on efficiency, e.g., query latency 0.25 N 0.5 N 0.75 N N       
+
+> 40
+> 60
+> 80
+> 100
+> Latency (ms)
+> OKVQA: N
+> 0.25 m0.5 m0.75 mm
+> 40
+> 60
+> 80
+> 100
+> Latency (ms)
+> OKVQA: m
+> 0.0 1.5 3.0
+> Index Time (hr)
+> 0.125N
+> 0.25N
+> 0.5N
+> N
+> 0.13
+> 0.36
+> 0.54
+> 1.79
+> 0.0 1.5 3.0
+> Index Time (hr)
+> 0.125m
+> 0.25m
+> 0.5m
+> m
+> 0.06
+> 0.24
+> 0.57
+> 1.79
+
+Figure 14: Impact of corpus size 𝑁 and vector set size 𝑚 80 95 110    
+
+> Latency (ms)
+> 0.40
+> 0.45
+> MRR@10
+> MSMARCO
+> 5% 10% 20% 40%
+
+Figure 15: Impact of Shortcuts 80 95 110    
+
+> Latency (ms)
+> 0.40
+> 0.45
+> MRR@10
+> MSMARCO
+> 131k 262k 524k
+
+Figure 16: Impact of |C quant |
+
+rises from 44 ms ( 18𝑚 ) to 85 ms ( 𝑚 ) and indexing time from 0.06 hto 1.79 h. The higher sensitivity to 𝑚 arises from the set-to-set distance calculations. This also explains why many studies focus on optimizing the embedding training itself to preserve semantics more effectively with fewer vectors. As discussed in Section 2, our method can be seamlessly integrated with such advances. 
+
+5.4.5 Effect of Shortcut Coverage. In this experiment, we study how the amount of training data used for shortcut construction affects query performance. We randomly sample 5%, 10%, 20%, and 40% of the training instances, resulting in approximately 10k, 20k, 40k, and 80k shortcut edges, respectively. As shown in Fig-ure 15, increasing the sampling ratio from 5% to 20% yields a better MRR–latency trade-off, whereas further increasing it to 40% de-grades performance. The recall–latency and success–latency curves are omitted as they follow almost the same trend. Such results indi-cate that sparse shortcuts provide insufficient long-range connec-tivity, limiting search performance for some hard-to-find cases. In contrast, excessive shortcuts densify the graph, forcing the search to perform more distance computations per step during traversal, thereby offsetting the gains from improved connectivity. There-fore, we set the sampling ratio to 20% by default, which provides a favorable balance between accuracy and efficiency. 
+
+5.4.6 Effect of |C quant |. In this experiment, we evaluate the ef-fect of the number of quantization centroids |𝐶 quant | on retrieval performance by varying |𝐶 quant | ∈ { 131 k, 262 k, 524 k}. Recall that 
+
+262 𝑘 is the default value for MSMARCO derived from the empir-ical formula in Section 5.1.3. As shown in Figure 16, the retrieval Conference’17, July 2017, Washington, DC, USA Yao Tian, Zhoujin Tian, Xi Zhao, Ruiyuan Zhang, and Xiaofang Zhou 
+
+performance of GEM is robust to the choices of |𝐶 quant |. Although increasing |𝐶 quant | leads to higher distance computation overhead, it yields more accurate approximations and thus requires fewer candidates for reranking. In contrast, reducing |𝐶 quant | lowers the computational cost but necessitates probing more candidates to achieve a comparable accuracy level. Therefore, we simply adopt the empirical formula suggested by prior work to set the default value of |𝐶 quant |.
+
+## 6 Conclusion 
+
+We introduced GEM, a native graph-based framework designed for multi-vector retrieval. GEM constructs a set-level dual-graph with metric decoupling to represent complex inter-set relationships, and further refines it through adaptive TF-IDF–guided clustering and semantic shortcuts. By incorporating quantized distance estima-tion and cluster-guided multi-path search, GEM jointly enhances efficiency and accuracy, effectively bridging the gap between seman-tic expressiveness and retrieval efficiency. Extensive experiments showed that GEM consistently surpasses state-of-the-art methods in retrieval quality and latency, while maintaining comparable or smaller index size and construction cost. These results confirmed GEM as a practical solution for large-scale multi-vector retrieval. For future work, integrating ultra-low-bit quantization could fur-ther reduce computational and memory costs, paving the way for broader industrial adoption. 
+
+## Acknowledgments 
+
+The research work described in this paper was supported by Hong Kong Research Grants Council (grant #16210625, T43-513/23-N), HKUST-WeBank Joint Laboratory (grant #WEB24EG01), HKUST-MetaX Joint Laboratory for Advanced AI Computing (grant #META X24EG01). It was partially conducted in JC STEM Lab of Data Sci-ence Foundations funded by The Hong Kong Jockey Club Charities Trust. 
+
+## References 
+
+[1] Alexandr Andoni, Piotr Indyk, and Robert Krauthgamer. 2008. Earth mover distance over high-dimensional spaces. In SODA . SIAM, 343–352. [2] Imad Aouali, Amine Benhalloum, Martin Bompaire, Achraf Ait Sidi Hammou, Sergey Ivanov, Benjamin Heymann, David Rohde, Otmane Sakhi, Flavian Vasile, and Maxime Vono. 2022. Reward Optimizing Recommendation using Deep Learning and Fast Maximum Inner Product Search. In KDD . ACM, 4772–4773. [3] Ainesh Bakshi, Piotr Indyk, Rajesh Jayaram, Sandeep Silwal, and Erik Waingarten. 2023. Near-Linear Time Algorithm for the Chamfer Distance. In NeurIPS .[4] Zheng Bian, Man Lung Yiu, and Bo Tang. 2025. IGP: Efficient Multi-Vector Retrieval via Proximity Graph Index (SIGIR ’25) . Association for Computing Machinery, New York, NY, USA, 2524–2533. [5] Moses Charikar. 2002. Similarity estimation techniques from rounding algorithms. In STOC . ACM, 380–388. [6] Mayur Datar, Nicole Immorlica, Piotr Indyk, and Vahab S. Mirrokni. 2004. Locality-sensitive hashing scheme based on p-stable distributions. In SCG . ACM, 253–262. [7] Joshua Engels, Benjamin Coleman, Vihan Lakshman, and Anshumali Shrivastava. 2023. DESSERT: An Efficient Algorithm for Vector Set Search with Vector Set Queries. In NeurIPS .[8] Thibault Formal, Benjamin Piwowarski, and Stéphane Clinchant. 2021. AWhite Box Analysis of ColBERT. In ECIR (2) (Lecture Notes in Computer Sci-ence, Vol. 12657) . Springer, 257–263. [9] Cong Fu, Chao Xiang, Changxu Wang, and Deng Cai. 2019. Fast Approximate Nearest Neighbor Search With The Navigating Spreading-out Graph. Proc. VLDB Endow. 12, 5 (2019), 461–474. [10] Jianyang Gao, Yutong Gou, Yuexuan Xu, Yongyi Yang, Cheng Long, and Ray-mond Chi-Wing Wong. 2025. Practical and Asymptotically Optimal Quantization of High-Dimensional Vectors in Euclidean Space for Approximate Nearest Neigh-bor Search. Proc. ACM Manag. Data 3, 3 (2025), 202:1–202:26. [11] Jianyang Gao and Cheng Long. 2024. RaBitQ: Quantizing High-Dimensional Vectors with a Theoretical Error Bound for Approximate Nearest Neighbor Search. 
+
+Proc. ACM Manag. Data 2, 3 (2024), 167. [12] Yunfan Gao, Yun Xiong, Xinyu Gao, Kangxiang Jia, Jinliu Pan, Yuxi Bi, Yi Dai, Jiawei Sun, Qianyu Guo, Meng Wang, and Haofen Wang. 2023. Retrieval-Augmented Generation for Large Language Models: A Survey. CoRR 
+
+abs/2312.10997 (2023). [13] Tiezheng Ge, Kaiming He, Qifa Ke, and Jian Sun. 2014. Optimized Product Quantization. IEEE Trans. Pattern Anal. Mach. Intell. 36, 4 (2014), 744–755. [14] Kristen Grauman and Trevor Darrell. 2006. Approximate Correspondences in High Dimensions. In NIPS . MIT Press, 505–512. [15] Sebastian Hofstätter, Omar Khattab, Sophia Althammer, Mete Sertkan, and Al-lan Hanbury. 2022. Introducing Neural Bag of Whole-Words with ColBERTer: Contextualized Late Interactions using Enhanced Reduction. In CIKM . ACM, 737–747. [16] Qiang Huang, Jianlin Feng, Yikai Zhang, Qiong Fang, and Wilfred Ng. 2015. Query-Aware Locality-Sensitive Hashing for Approximate Nearest Neighbor Search. PVLDB 9, 1 (2015), 1–12. [17] Rajesh Jayaram, Laxman Dhulipala, Majid Hadian, Jason Lee, and Vahab Mirrokni. 2024. MUVERA: Multi-Vector Retrieval via Fixed Dimensional Encoding. In 
+
+NeurIPS .[18] Suhas Jayaram Subramanya, Fnu Devvrit, Harsha Vardhan Simhadri, Ravishankar Krishnawamy, and Rohan Kadekodi. 2019. Diskann: Fast accurate billion-point nearest neighbor search on a single node. Advances in neural information pro-cessing Systems 32 (2019). [19] Hervé Jégou, Matthijs Douze, and Cordelia Schmid. 2011. Product Quantization for Nearest Neighbor Search. IEEE Trans. Pattern Anal. Mach. Intell. 33, 1 (2011), 117–128. [20] Jyun-Yu Jiang, Patrick H. Chen, Cho-Jui Hsieh, and Wei Wang. 2020. Clustering and Constructing User Coresets to Accelerate Large-scale Top-K Recommender Systems. In WWW . ACM / IW3C2, 2177–2187. [21] Vladimir Karpukhin, Barlas Oguz, Sewon Min, Patrick Lewis, Ledell Wu, Sergey Edunov, Danqi Chen, and Wen-tau Yih. 2020. Dense Passage Retrieval for Open-Domain Question Answering. In EMNLP (1) . Association for Computational Linguistics, 6769–6781. [22] Omar Khattab, Christopher Potts, and Matei Zaharia. 2021. Relevance-guided Supervision for OpenQA with ColBERT. Trans. Assoc. Comput. Linguistics 9(2021), 929–944. [23] Omar Khattab, Christopher Potts, and Matei A. Zaharia. 2021. Baleen: Robust Multi-Hop Reasoning at Scale via Condensed Retrieval. In NeurIPS . 27670–27682. [24] Omar Khattab and Matei Zaharia. 2020. ColBERT: Efficient and Effective Passage Search via Contextualized Late Interaction over BERT. In SIGIR . ACM, 39–48. [25] Jinhyuk Lee, Zhuyun Dai, Sai Meher Karthik Duddu, Tao Lei, Iftekhar Naim, Ming-Wei Chang, and Vincent Zhao. 2023. Rethinking the Role of Token Retrieval in Multi-Vector Retrieval. In NeurIPS .[26] Yifan Lei, Qiang Huang, Mohan S. Kankanhalli, and Anthony K. H. Tung. 2020. Locality-Sensitive Hashing Scheme based on Longest Circular Co-Substring. In 
+
+SIGMOD Conference . ACM, 2589–2599. [27] Patrick S. H. Lewis, Ethan Perez, Aleksandra Piktus, Fabio Petroni, Vladimir Karpukhin, Naman Goyal, Heinrich Küttler, Mike Lewis, Wen-tau Yih, Tim Rock-täschel, Sebastian Riedel, and Douwe Kiela. 2020. Retrieval-Augmented Genera-tion for Knowledge-Intensive NLP Tasks. In NeurIPS .[28] Junnan Li, Dongxu Li, Silvio Savarese, and Steven C. H. Hoi. 2023. BLIP-2: Bootstrapping Language-Image Pre-training with Frozen Image Encoders and Large Language Models. In ICML (Proceedings of Machine Learning Research, Vol. 202) . PMLR, 19730–19742. [29] Minghan Li, Sheng-Chieh Lin, Barlas Oguz, Asish Ghoshal, Jimmy Lin, Yashar Mehdad, Wen-tau Yih, and Xilun Chen. 2023. CITADEL: Conditional Token Interaction via Dynamic Lexical Routing for Efficient and Effective Multi-Vector Retrieval. In ACL (1) . Association for Computational Linguistics, 11891–11907. [30] Yulong Li, Martin Franz, Md. Arafat Sultan, Bhavani Iyer, Young-Suk Lee, and Avirup Sil. 2022. Learning Cross-Lingual IR from an English Retriever. In NAACL-HLT . Association for Computational Linguistics, 4428–4436. [31] Weizhe Lin, Jinghong Chen, Jingbiao Mei, Alexandru Coca, and Bill Byrne. 2023. Fine-grained Late-interaction Multi-modal Retrieval for Retrieval Augmented Visual Question Answering. In NeurIPS .[32] Weizhe Lin, Jingbiao Mei, Jinghong Chen, and Bill Byrne. 2024. PreFLMR: Scaling Up Fine-Grained Late-Interaction Multi-modal Retrievers. In ACL (1) . Association for Computational Linguistics, 5294–5316. [33] Wanqi Liu, Hanchen Wang, Ying Zhang, Wei Wang, Lu Qin, and Xuemin Lin. 2021. EI-LSH: An early-termination driven I/O efficient incremental c-approximate nearest neighbor search. VLDB J. 30, 2 (2021), 215–235. [34] Yaoyang Liu, Junlin Li, Yinjun Wu, and Zhen Chen. 2025. POQD: Performance-Oriented Query Decomposer for Multi-vector retrieval. CoRR abs/2505.19189 (2025). [35] Kejing Lu, Hongya Wang, Wei Wang, and Mineichi Kudo. 2020. VHP: Approxi-mate Nearest Neighbor Search via Virtual Hypersphere Partitioning. Proc. VLDB Endow. 13, 9 (2020), 1443–1455. GEM: A Native Graph-based Index for Multi-Vector Retrieval Conference’17, July 2017, Washington, DC, USA 
+
+[36] Simon Lupart, Thibault Formal, and Stéphane Clinchant. 2023. MS-Shift: An Analysis of MS MARCO Distribution Shifts on Neural Retrieval. In ECIR (1) (Lecture Notes in Computer Science, Vol. 13980) . Springer, 636–652. [37] Qin Lv, Moses Charikar, and Kai Li. 2004. Image similarity search with compact data structures. In CIKM . ACM, 208–217. [38] Qin Lv, William Josephson, Zhe Wang, Moses Charikar, and Kai Li. 2006. Ferret: a toolkit for content-based similarity search of feature-rich data. In EuroSys . ACM, 317–330. [39] Yury A. Malkov and Dmitry A. Yashunin. 2020. Efficient and Robust Approximate Nearest Neighbor Search Using Hierarchical Navigable Small World Graphs. IEEE Trans. Pattern Anal. Mach. Intell. 42, 4 (2020), 824–836. [40] Oscar R. Moll, Manuel Favela, Samuel Madden, Vijay Gadepally, and Michael J. Cafarella. 2023. SeeSaw: Interactive Ad-hoc Search Over Image Databases. Proc. ACM Manag. Data 1, 4 (2023), 260:1–260:26. [41] Javier Alvaro Vargas Muñoz, Marcos André Gonçalves, Zanoni Dias, and Ricardo da Silva Torres. 2019. Hierarchical Clustering-Based Graphs for Large Scale Approximate Nearest Neighbor Search. Pattern Recognit. 96 (2019). [42] Franco Maria Nardini, Cosimo Rulli, and Rossano Venturini. 2024. Efficient Multi-vector Dense Retrieval with Bit Vectors. In ECIR (2) (Lecture Notes in Computer Science, Vol. 14609) . Springer, 3–17. [43] Ashwin Paranjape, Omar Khattab, Christopher Potts, Matei Zaharia, and Christo-pher D. Manning. 2022. Hindsight: Posterior-guided training of retrievers for improved open-ended generation. In ICLR . OpenReview.net. [44] Shishir G. Patil, Tianjun Zhang, Xin Wang, and Joseph E. Gonzalez. 2023. Gorilla: Large Language Model Connected with Massive APIs. CoRR abs/2305.15334 (2023). [45] F. Pedregosa, G. Varoquaux, A. Gramfort, V. Michel, B. Thirion, O. Grisel, M. Blondel, P. Prettenhofer, R. Weiss, V. Dubourg, J. Vanderplas, A. Passos, D. Cour-napeau, M. Brucher, M. Perrot, and E. Duchesnay. 2011. Scikit-learn: Machine Learning in Python. Journal of Machine Learning Research 12 (2011), 2825–2830. [46] Pinecone. 2025. Multi-vector embeddings tutorial . https://www.pinecone.io/blog/ cascading-retrieval-with-multi-vector-representations/ [47] Arun Reddy, Alexander Martin, Eugene Yang, Andrew Yates, Kate Sanders, Ken-ton Murray, Reno Kriz, Celso M. de Melo, Benjamin Van Durme, and Rama Chellappa. 2025. Video-ColBERT: Contextualized Late Interaction for Text-to-Video Retrieval. In CVPR . Computer Vision Foundation / IEEE, 19691–19701. [48] Yossi Rubner, Carlo Tomasi, and Leonidas J. Guibas. 2000. The Earth Mover’s Distance as a Metric for Image Retrieval. Int. J. Comput. Vis. 40, 2 (2000), 99–121. [49] Keshav Santhanam, Omar Khattab, Christopher Potts, and Matei Zaharia. 2022. PLAID: An Efficient Engine for Late Interaction Retrieval. In CIKM . ACM, 1747– 1756. [50] Keshav Santhanam, Omar Khattab, Jon Saad-Falcon, Christopher Potts, and Matei Zaharia. 2022. ColBERTv2: Effective and Efficient Retrieval via Lightweight Late Interaction. In NAACL-HLT . Association for Computational Linguistics, 3715– 3734. [51] Katherine Thai, Yapei Chang, Kalpesh Krishna, and Mohit Iyyer. 2022. RELiC: Re-trieving Evidence for Literary Claims. In ACL (1) . Association for Computational Linguistics, 7500–7518. [52] Nandan Thakur, Nils Reimers, Andreas Rücklé, Abhishek Srivastava, and Iryna Gurevych. 2021. BEIR: A Heterogeneous Benchmark for Zero-shot Evaluation of Information Retrieval Models. In NeurIPS Datasets and Benchmarks .[53] Yao Tian, Ziyang Yue, Ruiyuan Zhang, Xi Zhao, Bolong Zheng, and Xiaofang Zhou. 2023. Approximate Nearest Neighbor Search in High Dimensional Vector Databases: Current Research and Future Directions. IEEE Data Eng. Bull. 47, 3 (2023), 39–54. [54] Yao Tian, Xi Zhao, and Xiaofang Zhou. 2022. DB-LSH: Locality-Sensitive Hashing with Query-based Dynamic Bucketing. In ICDE . IEEE, 2250–2262. [55] Yao Tian, Xi Zhao, and Xiaofang Zhou. 2024. DB-LSH 2.0: Locality-Sensitive Hashing With Query-Based Dynamic Bucketing. IEEE Trans. Knowl. Data Eng. 
+
+36, 3 (2024), 1000–1015. [56] Zhoujin Tian, Chaozhuo Li, Zhiqiang Zuo, Zengxuan Wen, Lichao Sun, Xinyue Hu, Wen Zhang, Haizhen Huang, Senzhang Wang, Weiwei Deng, Xing Xie, and Qi Zhang. 2023. PASS: Personalized Advertiser-aware Sponsored Search. In KDD .ACM, 4924–4936. [57] Vespa. 2024. Multi-vector embeddings tutorial . https://blog.vespa.ai/announcing-long-context-colbert-in-vespa/ [58] Mengzhao Wang, Weizhi Xu, Xiaomeng Yi, Songlin Wu, Zhangyang Peng, Xi-angyu Ke, Yunjun Gao, Xiaoliang Xu, Rentong Guo, and Charles Xie. 2024. Starling: An I/O-Efficient Disk-Resident Graph Index Framework for High-Dimensional Vector Similarity Search on Data Segment. Proc. ACM Manag. Data 2, 1 (2024), V2mod014:1–V2mod014:27. [59] Xiao Wang, Craig Macdonald, Nicola Tonellotto, and Iadh Ounis. 2021. Pseudo-Relevance Feedback for Multiple Representation Dense Retrieval. In ICTIR . ACM, 297–306. [60] Xiao Wang, Craig Macdonald, Nicola Tonellotto, and Iadh Ounis. 2023. Repro-ducibility, Replicability, and Insights into Dense Multi-Representation Retrieval Models: from ColBERT to Col. In SIGIR . ACM, 2552–2561. [61] Weaviate. 2025. Multi-vector embeddings tutorial . https://docs.weaviate.io/ weaviate/tutorials/multi-vector-embeddings [62] Xiao Yang, Kai Sun, Hao Xin, Yushi Sun, Nikita Bhalla, Xiangsen Chen, Sajal Choudhary, Rongze Daniel Gui, Ziran Will Jiang, Ziyu Jiang, Lingkun Kong, Brian Moran, Jiaqi Wang, Yifan Ethan Xu, An Yan, Chenyu Yang, Eting Yuan, Hanwen Zha, Nan Tang, Lei Chen, Nicolas Scheffer, Yue Liu, Nirav Shah, Rakesh Wanga, Anuj Kumar, Wen-tau Yih, and Xin Luna Dong. 2024. CRAG - Comprehensive RAG Benchmark. CoRR abs/2406.04744 (2024). [63] Lewei Yao, Runhui Huang, Lu Hou, Guansong Lu, Minzhe Niu, Hang Xu, Xiao-dan Liang, Zhenguo Li, Xin Jiang, and Chunjing Xu. 2022. FILIP: Fine-grained Interactive Language-Image Pre-Training. In ICLR . OpenReview.net. [64] Jingtao Zhan, Xiaohui Xie, Jiaxin Mao, Yiqun Liu, Jiafeng Guo, Min Zhang, and Shaoping Ma. 2022. Evaluating Interpolation and Extrapolation Performance of Neural Retrieval Models. In CIKM . ACM, 2486–2496. [65] Xi Zhao, Yao Tian, Kai Huang, Bolong Zheng, and Xiaofang Zhou. 2023. Towards Efficient Index Construction and Approximate Nearest Neighbor Search in High-Dimensional Spaces. Proc. VLDB Endow. 16, 8 (2023), 1979–1991. [66] Bolong Zheng, Xi Zhao, Lianggui Weng, Nguyen Quoc Viet Hung, Hang Liu, and Christian S. Jensen. 2020. PM-LSH: A Fast and Accurate LSH Framework for High-Dimensional Approximate NN Search. Proc. VLDB Endow. 13, 5 (2020), 643–655.

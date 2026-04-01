@@ -1,0 +1,547 @@
+Title: RouterKGQA: Specialized--General Model Routing for Constraint-Aware Knowledge Graph Question Answering
+
+URL Source: https://arxiv.org/pdf/2603.20017v1
+
+Published Time: Mon, 23 Mar 2026 01:01:03 GMT
+
+Number of Pages: 15
+
+Markdown Content:
+# RouterKGQA : Specialized–General Model Routing for Constraint-Aware Knowledge Graph Question Answering 
+
+Bo Yuan 1* Hexuan Deng 1,2* Xuebo Liu 1† Min Zhang 11Institute of Computing and Intelligence, Harbin Institute of Technology, Shenzhen, China 
+
+> 2
+
+Zhongguancun Academy, Beijing, China 
+
+23s051006@stu.hit.edu.cn, hxuandeng@gmail.com {liuxuebo,zhangmin2021}@hit.edu.cn 
+
+Abstract 
+
+Knowledge graph question answering (KGQA) is a promising approach for mitigating LLM hallucination by grounding reasoning in struc-tured and verifiable knowledge graphs. Ex-isting approaches fall into two paradigms: 
+
+retrieval-based methods utilize small special-ized models, which are efficient but often pro-duce unreachable paths and miss implicit con-straints, while agent-based methods utilize large general models, which achieve stronger structural grounding at substantially higher cost. We propose RouterKGQA , a framework for specialized–general model collaboration, in which a specialized model generates rea-soning paths and a general model performs KG-guided repair only when needed, improv-ing performance at minimal cost. We further equip the specialized with constraint-aware an-swer filtering, which reduces redundant an-swers. In addition, we design a more efficient general agent workflow, further lowering in-ference cost. Experimental results show that RouterKGQA outperforms the previous best by 3.57 points in F1 and 0.49 points in Hits@1 on average across benchmarks, while requir-ing only 1.15 average LLM calls per ques-tion. Codes and models are available at https: //github.com/Oldcircle/RouterKGQA .
+
+1 Introduction 
+
+Recent advances in large language models (LLMs) have enabled remarkable progress across natural language processing tasks (OpenAI, 2023; Team, 2024). However, LLMs remain prone to fac-tual hallucination —generating plausible but fac-tually incorrect content (Wagner et al., 2025). A promising direction for mitigating hallucination is to ground LLM reasoning in knowledge graphs (KGs), which store large-scale factual knowledge in a structured, interpretable form (Bollacker et al., 2008; Ji et al., 2024; Sui et al., 2025). 
+
+> *Equal contribution.
+> †Corresponding author.
+
+Current approaches to integrating LLMs with KGs fall into two paradigms. Agent-based meth-ods utilize general LLMs to form an agent work-flow that explores the KG through multi-round in-teractions to accumulate evidence (Sun et al., 2024; Chen et al., 2024; Dong et al., 2025). While ef-fective, this incurs high computational overhead ,leading to significant inference latency and cost. 
+
+Generation-based methods train specialized LLMs to generate structured retrieval plans for KG execution (Luo et al., 2024a,b, 2025). While more efficient, they may generate hallucinated relations 
+
+absent from the target KG (Tian et al., 2025), es-pecially under domain shift. Existing specialized LLMs also often overlook implicit constraints in the question. For example, “Who is the U.S. pres-ident?” may correspond to multiple tail entities unless a temporal constraint is specified. To address these issues, we propose 
+
+RouterKGQA , a framework of specialized– general model collaboration, which achieves better performance with lower cost. Specifically, RouterKGQA dynamically routes queries between a specialized model, which is efficient and per-forms well in-domain, and a general model, which offers stronger generalization. We further improve both components. For the specialized model, we train it to capture implicit constraint semantics in questions, enabling more precise answer filtering. For the general agent workflow, we replace costly multi-round exploration with a cheaper exploration only on relations, which further reduces cost. As a result, RouterKGQA achieves strong accuracy while substantially lowering cost compared with conventional agent workflows. Our contributions are: • We propose RouterKGQA, a specialized– general routing framework that combines ef-ficient specialized generation with general re-pair for KGQA. 1
+
+> arXiv:2603.20017v1 [cs.CL] 20 Mar 2026
+
+• We improve both systems by introducing Constraint-aware Reasoning Paths (CRPs) for specialized models, and by designing a more efficient agent workflow for general models. • Experiments on WebQSP and CWQ show that RouterKGQA achieves the highest F1 on both benchmarks with only 1.15 average LLM calls per question. 
+
+2 Related Work 
+
+Factual Hallucination of LLMs. Despite strong language capabilities, LLMs remain prone to fac-tual hallucination, producing fluent yet incorrect text (Ji et al., 2023; Huang et al., 2025). Prompting-based methods such as chain-of-thought (Wei et al., 2022) and self-consistency (Wang et al., 2023) improve coherence but cannot guarantee factual correctness (Ye and Durrett, 2022). Retrieval-augmented generation (Lewis et al., 2020; Gao et al., 2023) grounds outputs in external evidence, but standard RAG retrieves unstructured text and lacks the relational structure needed for complex reasoning. KG-augmented approaches offer a more structured alternative by constraining reasoning to verifiable triples (Pan et al., 2024; Agrawal et al., 2024). 
+
+Agent-based KGQA. Agent-based methods typ-ically utilize general LLMs, treat the LLM as an in-teractive agent that explores the KG through multi-round tool calls. ToG (Sun et al., 2024) performs it-erative beam-search expansion over entities and re-lations. StructGPT (Jiang et al., 2023) provides spe-cialized interfaces for structured data interaction. DoG (Ma et al., 2025) introduces multi-role de-bate for question decomposition. PoG (Chen et al., 2024) decomposes questions into sub-objectives with backtracking and self-correction. While of-fering strong structural grounding, these methods require complex search over entities and relations and are often time-consuming. In contrast, we use a more efficient search scheme that operates only over relations, significantly reducing cost. We fur-ther route simple questions to a small specialized model, reducing cost even further. 
+
+Retrieval-based KGQA. These methods typi-cally train specialized models to generate retrieval plans in a single pass, substantially reducing cost. 
+
+Reasoning-path methods generate relation paths for KG execution. RoG (Luo et al., 2024b) predicts relation sequences with a fine-tuned LLM and ex-ecutes them via breadth-first search. GCR (Luo et al., 2025) further constrains decoding with a KG-Trie to ensure path validity. GNN-RAG (Mavro-matis and Karypis, 2025) scores candidate entities with GNNs and extracts shortest paths as reason-ing evidence. Logical-form methods instead gen-erate executable queries, such as S-expressions or SPARQL. ChatKBQA (Luo et al., 2024a) gener-ates S-expressions that are converted to SPARQL, while MemQ (Xu et al., 2025) reconstructs rea-soning steps into query statements through tool calling. However, both paradigms struggle with im-plicit constraints within the question: path-based methods cannot explicitly encode them in special-ized models, while logical-form methods handle them in nested formal languages that are harder to learn (Tian et al., 2025). A central challenge of KGQA is relation hallu-cination , i.e., generating relations absent from the target KG (Tian et al., 2025). Existing methods mitigate this mainly by restricting the search space, such as KG-Trie-constrained decoding (Luo et al., 2025), subgraph-based path extraction (Mavroma-tis and Karypis, 2025), and training-set relation li-braries (Xu et al., 2025). However, these strategies do not address the weak out-of-domain general-ization of specialized models, which limits their performance upper bound. ChatKBQA (Luo et al., 2024a) instead repairs erroneous relations via ex-haustive post-hoc search, which is prohibitively slow for complex multi-hop queries. Our method builds on reasoning-path methods and equips them with explicit constraint genera-tion, improving accuracy. To further address OOD-induced hallucination, we route to a general model when specialized models fail to handle the ques-tion. 
+
+3 Method 
+
+3.1 Problem Formulation 
+
+A knowledge graph is defined as 
+
+G = {(s, r, o ) | s ∈ E, r ∈ R, o ∈ E ∪ L}, (1) where E, R, and L denote the sets of entities, re-lations, and literal values, respectively. Given an 
+
+N -hop question q over G, the goal is to recover the reasoning path 
+
+P = ⟨(s1, r 1, o 1), . . . , (sN , r N , o N )⟩, (2) 2where oN is the final answer to q, and adjacent triples satisfy si+1 = oi for i = 1 , . . . , N − 1.To solve this problem, we propose RouterKGQA ,as illustrated in Figure 1. The framework con-sists of three stages. First, we train a specialized model, which maps a natural-language question to a Constraint-aware Reasoning Path (CRP), which contains a main path and its associated constraints (§3.2). Second, if the main path is unreachable, an agent-based workflow repairs it via beam search, which requires fewer LLM calls than other meth-ods (§3.3). Finally, the corrected CRP is converted into a SPARQL query to retrieve the final answer (§3.4). The prompts we used are in Appendix A. 
+
+3.2 Constraint-Aware Path Generation with Specialized LLMs 
+
+We describe how the specialized model generates a CRP from a natural-language question, and reacha-bility verification that determines whether repair is needed (Stage 1). 
+
+Initial entity. A CRP starts from a topic entity name s1. We let the specialized model first generate the initial entity, then ground this predicted name to its corresponding entity using ELQ (Li et al., 2020), yielding the grounded topic entity s1 ∈ E.
+
+Main path. Following Luo et al. (2024b), we represent the reasoning path as a flat sequence of relations rather than as a nested logical form. This format is easier for small LLMs to learn be-cause it avoids recursive syntax and function to-kens, and it keeps the main path separate from con-straints, enabling independent reachability verifica-tion and progressive constraint relaxation. Specif-ically, from P we extract the relation sequence 
+
+R = ⟨r1, r 2, . . . , r N ⟩ as the main path. Starting from s1, we follow the relations in R hop by hop to reach the answer oN .
+
+Constraint set. However, a relation path alone is often insufficient because, in a KG, a pair (s, r )
+
+may correspond to multiple objects, yielding mul-tiple candidate answers. To resolve this ambigu-ity, building on prior work, we equip the special-ized model with the ability to generate constraints. We generate constraints over intermediate entities, which is defined as C = ( i, r ci , o ci ), requiring oi
+
+to satisfy relation rci with value or condition oci .Formally, this restricts oi to 
+
+Eci = {e ∈ E | (e, r ci , o ci ) ∈ G}. (3) For example, for the question “Which U.S. president graduated from Harvard and assumed office after 2000?”, the main path R =
+
+⟨country.presidents , president.office_holder ⟩ re-trieves candidate presidents. We then generate 
+
+C = (2 , education.institution , Harvard ) to re-quire the candidate to be linked to Harvard , and 
+
+C = (2 , position.from , ≥“2000” ) to retain only those whose term started in or after 2000. 
+
+Specialized Model Training. To construct in-struction fine-tuning data, we convert the SPARQL annotations in the training set into gold CRPs us-ing the deterministic procedure described in Ap-pendix B. Each training instance pairs a natural-language question as input with the processed gold CRP as output, following the instruction template in Appendix A.1. We fine-tune the specialized model with LoRA (Hu et al., 2022); implementa-tion details are provided in Section 4.1. 
+
+Reachability verification. The generated main path may still be inconsistent with the KG because of relation errors, direction mismatches, or struc-tural mistakes. We therefore execute the skeleton query induced by R on G. If it returns a non-empty result set, the main path is reachable. Otherwise, we assume that the specialized model has failed on this case and invoke the general model. 
+
+3.3 Efficient Path Repair with General LLMs 
+
+The specialized model is accurate and cost-effective on in-domain questions, but often fails under domain shift. When reachability verification fails, we treat the case as beyond the capability of the specialized model and route the question to a stronger agent workflow (Stage 2). To keep this stage efficient, we avoid iterative search over enti-ties and relations. Instead, we first ask the general model to generate a sequence of high-level sub-tasks in one shot, and then recover an executable relation path via KG-guided beam search. 
+
+Reasoning blueprint generation. Given a ques-tion q, the general model decomposes it into a se-quence of textual subtasks 
+
+T = ⟨t1, t 2, . . . , t M ⟩, (4) where each tk describes one semantic step in the reasoning process. These blueprints provide se-mantic guidance for search, but are not assumed to align one-to-one with KG relations. 3Stage 1: Specialized LLM      
+
+> Knowledge
+> Graph
+> ?c
+> subject
+> ?y ?x
+> roster team
+> Generated Multi-Constraint Reasoning Path
+> ?from <= "2015-01-01" ?to >= "2015-12-31"
+> Yes (Reachable)
+> General LLM
+
+Stage 3: Progressive Query Execution  
+
+> SPARQL Query Construction
+> Corrected Main Path
+> KG
+> Reachabilit Check
+> (Main Path) No (Unreachable)
+
+Stage 2: General LLM     
+
+> ?c ?y ?x
+> roster team
+> Constraint
+> Relaxation
+> Strategy
+> Execute
+> on KG
+> Step1: find the key actor featured in the film
+> Failure
+> Answer:
+> Chicago
+> Bulls Success
+> Final
+> Selection
+> Step2: find the basketball team he played for.
+> Depth 1
+> actor
+> writer
+> from Step1
+> genre
+> sport
+> from Step2
+> LLM filtering + SBERT filtering
+> director
+> Depth 2
+> starring
+> from Step1
+> cast
+> from Step2
+> actor
+> roster
+> sport
+> school
+> league
+> Depth 3
+> from Step1
+> from Step2
+> ...
+> team
+> position
+> number
+> actor
+
+Figure 1: Overview of the RouterKGQA framework. 
+
+Beam search over relation paths. To map the above subtasks to a relation path, we search over relation sequences rather than joint entity–relation states. Let 
+
+Bi−1 = {Ri−1,1, . . . , Ri−1,w } (5) denote the beam at depth i − 1, where w is the beam width and 
+
+Ri−1,j = ⟨r1,j , r 2,j , . . . , r i−1,j ⟩ (6) is the j-th partial relation path. For each partial path Ri−1,j , we first compute the set of entities reachable from the topic entity 
+
+s1:
+
+Ei−1,j = Reach( s1, Ri−1,j ), (7) where Reach( s1, R) denotes the set of entities reached by following the relation sequence R from 
+
+s1 on G. For initialization, E0,1 = {s1}. We then enumerate all outgoing relations from these reach-able entities: 
+
+Rnext 
+
+i,j = { r | ∃ e ∈ E i−1,j , ∃o, (e, r, o ) ∈ G }.
+
+(8) 
+
+Relation selection. We first perform coarse filter-ing to retain relations that are most relevant to the blueprint. Because blueprint steps and KG relations are not always perfectly aligned, we score each candidate relation against every blueprint tk using sentence-BERT (SBERT; Reimers and Gurevych, 2019) and keep the top-x relations: 
+
+eRi,j,k = Top x
+
+ Rnext 
+
+i,j ; sim( tk, r ), (9) where Top x(S; f (r)) denotes the subset of S con-taining the x elements with the largest values of 
+
+f (r), where r ∈ S . sim( tk, r ) is the cosine simi-larity between the SBERT embeddings of tk and 
+
+r.We then expand each partial path with the fil-tered relations and obtain the candidate set 
+
+ePi =
+
+w[
+
+j=1 
+
+{ Ri−1,j ⊕ r | ∃ k, r ∈ eRi,j,k }, (10) where ⊕ appends a relation to a path. 
+
+Path selection. To further reduce the search space, we score each expanded path against the full question q and retain the top-y candidates: 
+
+bPi = Top y( ePi; sim( q, R)) , (11) where each path R is linearized by concatenating its relation names. Finally, the general model further reduces the candidate set by selecting the best w paths from 
+
+bPi, forming the next beam Bi. Each search step therefore requires only one LLM call, while the remaining filtering is handled by small SBERT at negligible cost. Including the initial blueprint gen-eration, the total number of LLM calls is at most 4d+1 , where d is the maximum search depth. More-over, because every expansion is derived from KG-reachable entities, all candidate paths in the beam remain executable. 
+
+Stopping criterion. To determine when to stop the search, we use the hop count predicted by the specialized model as the maximum search depth 
+
+d. Even when the specialized model predicts an incorrect relation path, its depth prediction remains highly reliable: with Llama-2-7B, the predicted depth matches the ground-truth depth in 97.20% of cases on CWQ and 98.70% on WebQSP. After depth d, we reduce the beam size to 1 and return the remaining path as the corrected main path R.
+
+3.4 Progressive Query Execution 
+
+In this section, we explain how the corrected CRP is converted into an executable SPARQL query and retrieve answers from the KG. We also describe the progressive constraint relaxation strategy for im-proving robustness when full execution fails (Stage 3). 
+
+Execution with full constraints. After correc-tion, we deterministically convert the CRP into an executable SPARQL query. The main path 
+
+R = ⟨r1, . . . , r N ⟩ is mapped to a chain of triple patterns rooted at the topic entity s1, with each 
+
+ri corresponding to one hop. Each constraint 
+
+C = (i, r ci , o ci ) is then translated into an addi-tional condition: entity constraints are converted into triple patterns requiring the intermediate entity 
+
+oi to connect to oci via rci , numeric constraints are converted into FILTER clauses imposing inequal-ity conditions on numeric or temporal attributes, and string constraints, when present, are converted into literal-matching FILTER clauses. Executing the resulting query yields the answer set 
+
+A ← Execute(ConvertCRP(CRP) , G).
+
+If execution succeeds, we return A directly. Details on constructing gold CRPs from SPARQL annota-tions for training are provided in Appendix B. 
+
+Constraint relaxation. If execution with all con-straints fails, e.g., due to noisy constraint predic-tions or KG incompleteness, we progressively re-lax lower-priority constraints while keeping the corrected main path fixed, and re-execute the sim-plified query. This strategy improves robustness without discarding the core reasoning chain. 
+
+4 Experiments 
+
+4.1 Experimental Setup Datasets. We evaluate on two widely used KBQA benchmarks: WebQuestionsSP (We-bQSP) (Yih et al., 2016) and Complex WebQues-tions (CWQ) (Talmor and Berant, 2018), using Freebase (Bollacker et al., 2008) as the underlying KG. Compared with WebQSP, CWQ generally con-tains questions with greater hop depth and more complex constraints, and is therefore substantially more challenging. More detailed dataset statistics and descriptions are provided in Appendix C.1. 
+
+Metrics and baselines. Following prior work, we report Hits@1 and F1. Hits@1 measures the proportion of questions for which the predicted answer set overlaps with the gold answer set, while F1 is the mean F1 score between the predicted and gold answer sets. We compare against three categories: (1) LLM-only methods; (2) IR-based methods using subgraph retrieval; and (3) LLM-based methods, including agent-based and retrieval-based approaches. Detailed metric definitions are provided in Appendix C.2. 
+
+Configuration of RouterKGQA. RouterKGQA uses a LoRA-tuned Llama-2-7B (Touvron et al., 2023) or Llama-3.1-8B (Team, 2024) special-ized model for CRP generation, and GPT-4o-mini (T =0 ) for path repair. The specialized model is trained on (question, gold CRP) pairs derived from SPARQL annotations. Unless otherwise noted, we use the same optimization settings for the special-ized model, including a learning rate of 5 × 10 −5,cosine scheduler, batch size 4, gradient accumula-tion 4, and bf16. For Stage 2, we set the relation filter size to x=4 , the path filter size to y=10 , and the beam width to w=3 , and use SBERT (nomic-embed-text-v1; Nussbaum et al., 2025) for seman-tic matching. In Stage 3, constraints are relaxed in the order string → numeric → entity. All experi-ments use seed 42. Additional implementation and reproduction details are provided in Appendix D. 
+
+4.2 Main Results RouterKGQA improves F1 while preserving strong Hits@1. Table 1 shows that RouterKGQA consistently improves F1 without sacrificing Hits@1, indicating that constraint-aware execution effectively filters spurious candidates. Compared with the strongest prior F1 baseline, RouterKGQA improves F1 by 4.30 points on WebQSP and 2.84 5Category Method WebQSP CWQ                                                                                        
+
+> Hits@1 F1 Hits@1 F1 LLM-only Llama-2-7B (Touvron et al., 2023) 53.87 35.67 22.74 18.11 Llama-3.1-8B (Team, 2024) 55.96 31.61 30.81 21.83 GPT-4o-mini 64.86 48.59 40.89 40.89 IR-based KV-Mem (Miller et al., 2016) 46.70 34.50 21.10 15.70 PullNet (Sun et al., 2019) 68.10 –47.20 –EmbedKGQA (Saxena et al., 2020) 66.60 –44.70 –NSM+h (He et al., 2021) 74.30 67.40 48.80 44.00 TransferNet (Shi et al., 2021) 71.40 –48.60 –Subgraph Retrieval (Sun et al., 2020) 69.50 64.10 50.20 47.10 LLM-based ToG (GPT-4o-mini) (Sun et al., 2024) 77.20 50.04 60.67 41.90 PoG (GPT-4o-mini) (Chen et al., 2024) 83.13 61.15 64.67 55.56 InteractiveKBQA (GPT-4) (Xiong et al., 2024) 72.47 –59.17 –EffiQA (Dong et al., 2025) 82.90 –69.50 –RoG (Llama-2-7B) (Luo et al., 2024b) 86.18 70.24 61.71 54.98 ChatKBQA (Llama-2-7B) (Luo et al., 2024a) 86.33 82.13 85.16 80.94 MemQ (Xu et al., 2025) 88.74 77.90 88.16 75.56 GNN-RAG (Mavromatis and Karypis, 2025) 90.73 73.49 68.65 60.45 GCR (Llama-3.1-8B + GPT-4o-mini) (Luo et al., 2025) 91.68 75.27 74.64 62.94
+> Ours RouterKGQA (Llama-2-7B + GPT-4o-mini) 90.73 86.43 88.96 83.72 RouterKGQA (Llama-3.1-8B + GPT-4o-mini) 91.15 86.38 89.66 83.78
+
+Table 1: Performance comparison on WebQSP and CWQ (%). Results for methods without public code are taken from the original papers; all other results are reproduced in our environment using the same Freebase snapshot. See Appendix C.2 for unified metric definitions and Appendix D for reproduction settings and implementation details. 
+
+points on CWQ. At the same time, its Hits@1 re-mains comparable to the strongest prior baseline on WebQSP and surpasses it on CWQ, showing that the F1 gains come from better candidate filtering while preserving the correct answer in most cases. 
+
+Agent-based methods are often more effec-tive, but substantially more expensive. Table 2 shows that representative agent-based methods, such as ToG and PoG, outperform simple LLM-only baselines on average, reflecting the benefit of explicit multi-step KG exploration. However, this gain comes at a substantial efficiency cost: com-pared with retrieval-based methods, agent-based methods require 5.80 × more LLM calls and incur 26.67 × higher cost on average. 
+
+Our agent-based path repair is much cheaper, and model routing reduces the cost further. 
+
+RouterKGQA (Stage 2+3), i.e., the agent-based-only configuration, already outperforms represen-tative agent-based baselines while reducing cost by 3.14 × relative to PoG and 7.53 × relative to ToG. Adding model routing further improves the trade-off: compared with the agent-based-only setting, RouterKGQA (Full) reduces cost by 4.51 × and LLM calls by 2.88 ×, while improving F1 by 15.70 points. This shows that routing between retrieval-based generation and agent-based repair is more effective than relying on either strategy alone. 
+
+4.3 Ablation Study 
+
+We examine the effects of model routing, stopping criteria, constraint modeling, and representation design. 
+
+Agent-based repair brings marginal gains. Ta-ble 3 shows that Stage 1 is the primary source of performance, while Stage 2 provides reliable addi-tional improvements. Removing Stage 2 leads to smaller drops than stage 1 on both benchmarks, but the drop is consistent. This shows that agent-based path repair delivers meaningful marginal gains by correcting unreachable relation paths that the spe-cialized model fails to recover. 
+
+Depth prediction is robust. In the main experi-ments, we use the hop count predicted by the spe-cialized model as the stopping criterion. We com-pare it with two alternative variants as stopping criterion. Using blueprint step count consistently underperforms, indicating that semantic subtasks do not align perfectly with KG hop structure. We further let the general LLM self-judge when to stop. This variant performs closer to the default setting, but is still slightly worse and requires an additional LLM call. These results support using the specialized model to control the depth of agent-based search, achieving the best performance with minimal cost. 6Category Method Hits@1 F1 Avg. # LLM Calls Avg. # Tokens Avg. Cost (USD) / 10K Qs Retrieval-based                                                
+
+> GNN-RAG 90.73 73.49 2.00 778.17 0.56 RoG 86.18 70.24 2.00 592.55 0.45 ChatKBQA 86.33 82.13 1.00 208.08 0.46 GCR 91.68 75.27 2.00 725.57 0.89 MemQ 88.74 77.90 1.00 175.62 0.21
+> Agent-based ToG 77.20 50.04 10.91 8,426.59 19.35 PoG 83.13 61.15 7.64 4,704.47 8.07
+> Ours RouterKGQA (Stage 2+3) 86.07 70.68 3.31 1,353.78 2.57 RouterKGQA (Full) 91.15 86.38 1.15 612.68 0.57
+
+Table 2: Efficiency and performance comparison on WebQSP (%). RouterKGQA (Full) achieves the best F1 at a cost comparable to retrieval-based methods, while RouterKGQA (Stage 2+3), i.e., the agent-based-only configuration, remains substantially cheaper than representative agent-based baselines. Costs are estimated using Llama-2-7B pricing ($0.05/1M input, $0.25/1M output) and Llama-3.1-8B pricing ($0.10/1M input, $0.10/1M output) from Artificial Analysis, and official GPT-4o-mini pricing ($0.15/1M input, $0.60/1M output) from OpenAI, all accessed 2026-02-14.                                          
+
+> Variants WebQSP CWQ Hits@1 F1 Hits@1 F1
+> RouterKGQA 91.15 86.38 89.66 83.78
+> Stage-level ablations
+> w/o Stage 1 (Stage 2+3) 86.07 70.68 70.67 59.30 w/o Stage 2 (Stage 1+3) 89.02 84.68 88.05 82.12
+> Stopping criterion variants
+> w/ blueprint step count 88.47 83.96 88.59 82.81 w/ LLM self-judge 90.76 86.11 89.44 83.40
+> Constraint ablations (on Stage 1+3)
+> w/o Entity Constraint 88.65 78.21 87.20 58.32 w/o Numeric Constraint 89.62 81.66 88.67 71.15 w/o String Constraint 89.02 84.58 87.96 80.72 w/o All Constraints 89.45 75.56 88.28 46.60
+
+Table 3: Ablation study of RouterKGQA (%). Con-straint ablations are conducted on Stage 1+3. Stage 1: retrieval-based CRP generation; Stage 2: agent-based KG-guided repair; Stage 3: progressive query execu-tion. 
+
+Constraints mainly improve precision. Within Stage 1+3, removing all constraints leaves Hits@1 nearly unchanged but substantially reduces F1. This shows that constraints primarily improve pre-cision by filtering spurious candidates rather than changing top-1 reachability. Among the constraint types, entity constraints contribute the most, fol-lowed by numeric constraints. To further verify the effectiveness of our con-straints, we apply them to the baseline GCR, with results shown in Table 4. The results show that re-moving GCR filtering yields relatively high Hits@1 but much lower F1, while adding our generated constraint filtering further strengthens this effect, especially on the harder CWQ benchmark. This suggests that its filtering mechanism remains insuf-                     
+
+> Variants WebQSP CWQ Hits@1 F1 Hits@1 F1
+> GCR (w/o LLM Filter) 92.13 57.00 74.99 49.65 GCR 91.68 75.27 74.64 62.94 GCR (w/ RouterKGQA Filter) 87.13 83.95 80.46 68.05 RouterKGQA 91.15 86.38 89.66 83.78
+
+Table 4: Reference comparison with GCR variants (%). RouterKGQA is included for reference.              
+
+> Dataset Metric ChatKBQA RouterKGQA
+> WebQSP Skeleton Accuracy 82.43 85.78
+> Exact Match 62.42 69.68
+> CWQ Skeleton Accuracy 74.00 75.62
+> Exact Match 54.23 54.63
+
+Table 5: First-prediction generation accuracy (%) of ChatKBQA (S-expression) and RouterKGQA (CRP), both using Llama-2-7B. 
+
+ficient. Besides, even the best GCR variant remains clearly below RouterKGQA, suggesting that our explicit CRP formulation is more effective than post-hoc filtering over monolithic outputs. 
+
+CRPs are easier to generate. We further com-pare whether CRP generation offers intrinsic ad-vantages over the S-expression format, e.g., ChatK-BQA (Luo et al., 2024a). Using the same back-bone (Llama-2-7B), we measure: (1) skeleton ac-curacy —whether the predicted structure matches the gold, ignoring entity/literal values; and (2) ex-act match —whether the prediction is fully correct. As shown in Table 5, CRP achieves higher skele-ton accuracy on both benchmarks (+3.35% on We-bQSP, +1.62% on CWQ), indicating that the flat 7Dimension Category N Full S1+S3 ∆F1 GCR                                
+
+> Composition Type Conjunction 1575 85.95 83.18 +2.77 67.52 Composition 1546 82.34 81.91 +0.43 62.39 Comparative 213 82.02 80.88 +1.14 49.62 Superlative 197 79.70 76.53 +3.17 45.05 Constraint Complexity 01176 85.26 84.70 +0.56 65.33 11511 84.90 82.94 +1.96 61.03 2633 78.72 75.76 +2.96 63.73 3+ 211 82.76 80.88 +1.88 61.04
+
+Table 6: CWQ performance by query complexity (F1, %). ∆F1 = Full − Stage 1+3 (i.e., the contribution of Stage 2 correction). GCR results are included for cross-method comparison. 
+
+triple-sequence format is structurally easier for a 7B model to learn than nested S-expressions with function keywords. The advantage is more pro-nounced on exact match (+7.26% on WebQSP), confirming that CRP’s explicit constraint separa-tion also improves value-level prediction. 
+
+4.4 Analysis by Query Complexity 
+
+Table 6 jointly analyzes RouterKGQA’s perfor-mance across two complexity dimensions on CWQ. 
+
+Advantage over GCR across composition types. 
+
+RouterKGQA achieves consistent and large im-provements over GCR across all four CWQ compo-sition types. The advantage is most pronounced on 
+
+comparative (+32.40 F1) and superlative (+34.65 F1) queries—precisely the types that demand ex-plicit numeric and ordering constraints, where GCR’s constraint-free path generation is most in-adequate. Even on simpler conjunction and com-position types, RouterKGQA maintains substantial margins (+18.43 and +19.95 F1), demonstrating broad improvements across all query structures. 
+
+Stage 2 contribution amplified by constraints. 
+
+Stage 2’s correction contributes most on superla-tive queries ( ∆F1 = +3.17), where precise paths are essential for executing ordering constraints, and on conjunction queries ( ∆F1 = +2.77), which in-volve multiple joined conditions. The breakdown by constraint complexity reveals a clear trend: the gain is largest on questions of moderate difficulty, i.e., those with 2 constraints. For overly simple questions, the specialized model already handles them well, while for overly difficult questions, the repair success rate also decreases. This analysis further provides insight into when Stage 2 repair is most effective.                                           
+
+> Role Model WebQSP CWQ Hits@1 F1 Hits@1 F1
+> Specialized (Stage 1) Qwen2.5-7B 88.04 84.67 88.19 81.32 Qwen3-8B 88.04 84.80 89.32 83.32 Llama-2-7B 90.73 86.43 88.96 83.72 Llama-3.1-8B 91.15 86.38 89.66 83.78
+> General (Stage 2) Qwen-2.5-7B 90.79 86.25 89.49 83.63 Llama-2-7B 89.63 85.30 88.25 82.67 Llama-3.1-8B 89.57 86.90 89.47 83.35 ChatGPT 89.38 85.20 89.21 83.49 GPT-4o-mini 91.15 86.38 89.66 83.78
+
+Table 7: Impact of model choice in RouterKGQA’s specialized and general roles. 
+
+4.5 Specialized–General Model Analysis 
+
+Table 7 examines the impact of model choice in each role. When varying the specialized model (fix-ing GPT-4o-mini as the general model), stronger models produce substantially better results: Llama-3.1-8B outperforms Qwen2.5-7B by +3.11 Hits@1 on WebQSP and +2.46 F1 on CWQ. This confirms that CRP generation quality—which benefits from fine-tuning on KG-structured data—is the primary driver of end-to-end performance. When varying the general model (fixing Llama-3.1-8B as specialized), the gap between models is notably smaller. Even Llama-2-7B as the general achieves 89.63% Hits@1 on WebQSP, a gap of only 1.52 points with GPT-4o-mini. Among stronger generals, performance differences are within 1.8 points. This is because RouterKGQA’s correction task is relatively simple—selecting the best path from a small candidate set—rather than generating answers from scratch, making RouterKGQA de-ployable with fully open-source models at minimal performance loss. Appendix E further shows that RouterKGQA yields reasoning paths that are more semantically consistent with the original question. 
+
+5 Conclusion 
+
+We proposed RouterKGQA, a framework for knowledge graph question answering based on specialized–general model routing, which com-bines efficient specialized generation with general model repair. We further improve both components: for the specialized model, we introduce Constraint-aware Reasoning Paths for deterministic answer filtering. For the general workflow, we design an efficient KG-guided repair procedure that reduces the cost of multi-round exploration. Experiments on WebQSP and CWQ show that RouterKGQA achieves strong performance gains, while requiring 8only 1.15 average LLM calls per question. Fur-ther analysis shows that the repair stage provides consistent gains at low cost, and that the overall framework remains effective across different query types and model choices. 
+
+Limitations 
+
+RouterKGQA has several limitations. First, the current CRP representation supports only flat en-tity, numeric, and string constraints. This keeps the representation simple and easier for specialized models to learn, but does not explicitly capture more nested or compositional constraint structures. Second, the current routing decision uses main-path reachability as a simple and efficient signal. However, a reachable path may still be semantically incorrect. Incorporating finer-grained signals, such as generation confidence or semantic consistency, could further improve robustness. Third, like other KGQA pipelines, our framework benefits from ac-curate entity linking and a sufficiently complete underlying KG; errors in topic-entity disambigua-tion or missing relations or literals may still affect both correction and final answer filtering. Fourth, our experiments are limited to English benchmarks on Freebase (WebQSP and CWQ). Although the framework is general, its transferability to other knowledge graphs, domains, or multilingual set-tings remains to be validated. Finally, although pro-gressive constraint relaxation improves robustness when full query execution fails, it may occasion-ally return broader answer sets than desired when important constraints are removed. 
+
+Ethical considerations 
+
+Our work adheres to the ACL Ethics Policy and uses publicly available datasets for reproducibility. LLMs may exhibit racial and gender biases, so we strongly recommend users assess potential biases before applying the models in specific contexts. Additionally, due to the difficulty of controlling LLM outputs, users should be cautious of issues arising from hallucinations. 
+
+References 
+
+Garima Agrawal, Tharindu Kumarage, Zeyad Alghamdi, and Huan Liu. 2024. Can knowledge graphs reduce hallucinations in llms? : A survey. In Proceedings of the 2024 Conference of the North American Chap-ter of the Association for Computational Linguistics: Human Language Technologies (Volume 1: Long Papers), NAACL 2024, Mexico City, Mexico, June 16-21, 2024 , pages 3947–3960, Mexico City, Mexico. Association for Computational Linguistics. Kurt Bollacker, Colin Evans, Praveen K. Paritosh, Tim Sturge, and Jamie Taylor. 2008. Freebase: a collabo-ratively created graph database for structuring human knowledge. In Proceedings of the ACM SIGMOD International Conference on Management of Data, SIGMOD 2008, Vancouver, BC, Canada, June 10-12, 2008 , pages 1247–1250. ACM. Liyi Chen, Panrong Tong, Zhongming Jin, Ying Sun, Jieping Ye, and Hui Xiong. 2024. Plan-on-graph: Self-correcting adaptive planning of large language model on knowledge graphs. In Advances in Neural Information Processing Systems 38: Annual Confer-ence on Neural Information Processing Systems 2024, NeurIPS 2024, Vancouver, BC, Canada, December 10 - 15, 2024 .Zixuan Dong, Baoyun Peng, Yufei Wang, Jia Fu, Xi-aodong Wang, Xin Zhou, Yongxue Shan, Kangchen Zhu, and Weiguo Chen. 2025. Effiqa: Efficient question-answering with strategic multi-model col-laboration on knowledge graphs. In Proceedings of the 31st International Conference on Computa-tional Linguistics, COLING 2025, Abu Dhabi, UAE, January 19-24, 2025 , pages 7180–7194, Abu Dhabi, UAE. Association for Computational Linguistics. Yunfan Gao, Yun Xiong, Xinyu Gao, Kangxiang Jia, Jinliu Pan, Yuxi Bi, Yi Dai, Jiawei Sun, Qianyu Guo, Meng Wang, et al. 2023. Retrieval-augmented gen-eration for large language models: A survey. CoRR ,abs/2312.10997. Gaole He, Yunshi Lan, Jing Jiang, Wayne Xin Zhao, and Ji-Rong Wen. 2021. Improving multi-hop knowledge base question answering by learning intermediate supervision signals. In WSDM ’21, The Fourteenth ACM International Conference on Web Search and Data Mining, Virtual Event, Israel, March 8-12, 2021 ,pages 553–561. ACM. Edward J. Hu, Yelong Shen, Phillip Wallis, Zeyuan Allen-Zhu, Yuanzhi Li, Shean Wang, Lu Wang, and Weizhu Chen. 2022. Lora: Low-rank adaptation of large language models. In The Tenth International Conference on Learning Representations, ICLR 2022, Virtual Event, April 25-29, 2022 . OpenReview.net. Lei Huang, Weijiang Yu, Weitao Ma, Weihong Zhong, Zhangyin Feng, Haotian Wang, Qianglong Chen, Weihua Peng, Xiaocheng Feng, Bing Qin, et al. 2025. A survey on hallucination in large language models: Principles, taxonomy, challenges, and open questions. 
+
+ACM Trans. Inf. Syst. , 43(2):42:1–42:55. Yixin Ji, Kaixin Wu, Juntao Li, Wei Chen, Mingjie Zhong, Jia Xu, and Min Zhang. 2024. Retrieval and reasoning on kgs: Integrate knowledge graphs into large language models for complex question answer-ing. In Findings of the Association for Computa-tional Linguistics: EMNLP 2024, Miami, Florida, 
+
+9USA, November 12-16, 2024 , volume EMNLP 2024 of Findings of ACL , pages 7598–7610, Miami, Florida, USA. Association for Computational Lin-guistics. Ziwei Ji, Nayeon Lee, Rita Frieske, Tiezheng Yu, Dan Su, Yan Xu, Etsuko Ishii, Yejin Bang, Andrea Madotto, and Pascale Fung. 2023. Survey of halluci-nation in natural language generation. ACM Comput. Surv. , 55(12):248:1–248:38. Jinhao Jiang, Kun Zhou, Zican Dong, Keming Ye, Xin Zhao, and Ji-Rong Wen. 2023. Structgpt: A general framework for large language model to reason over structured data. In Proceedings of the 2023 Con-ference on Empirical Methods in Natural Language Processing, EMNLP 2023, Singapore, December 6-10, 2023 , pages 9237–9251, Singapore. Association for Computational Linguistics. Patrick Lewis, Ethan Perez, Aleksandra Piktus, Fabio Petroni, Vladimir Karpukhin, Naman Goyal, Hein-rich Küttler, Mike Lewis, Wen-tau Yih, Tim Rock-täschel, et al. 2020. Retrieval-augmented generation for knowledge-intensive NLP tasks. In Advances in Neural Information Processing Systems 33: An-nual Conference on Neural Information Processing Systems 2020, NeurIPS 2020, December 6-12, 2020, virtual , pages 9459–9474. Belinda Z. Li, Sewon Min, Srinivasan Iyer, Yashar Mehdad, and Wen-tau Yih. 2020. Efficient one-pass end-to-end entity linking for questions. In Proceed-ings of the 2020 Conference on Empirical Methods in Natural Language Processing, EMNLP 2020, Online, November 16-20, 2020 , pages 6433–6441, Online. Association for Computational Linguistics. Haoran Luo, Haihong E, Zichen Tang, Shiyao Peng, Yikai Guo, Wentai Zhang, Chenghao Ma, Guanting Dong, Meina Song, Wei Lin, et al. 2024a. Chatk-bqa: A generate-then-retrieve framework for knowl-edge base question answering with fine-tuned large language models. In Findings of the Association for Computational Linguistics, ACL 2024, Bangkok, Thailand and virtual meeting, August 11-16, 2024 ,volume ACL 2024 of Findings of ACL , pages 2039– 2056, Bangkok, Thailand. Association for Computa-tional Linguistics. Linhao Luo, Yuan-Fang Li, Gholamreza Haffari, and Shirui Pan. 2024b. Reasoning on graphs: Faithful and interpretable large language model reasoning. In 
+
+The Twelfth International Conference on Learning Representations, ICLR 2024, Vienna, Austria, May 7-11, 2024 . OpenReview.net. Linhao Luo, Zicheng Zhao, Gholamreza Haffari, Yuan-Fang Li, Chen Gong, and Shirui Pan. 2025. Graph-constrained reasoning: Faithful reasoning on knowl-edge graphs with large language models. In Forty-second International Conference on Machine Learn-ing, ICML 2025, Vancouver, BC, Canada, July 13-19, 2025 , volume 267 of Proceedings of Machine Learning Research , pages 41540–41565. PMLR / OpenReview.net. Jie Ma, Zhitao Gao, Qi Chai, Wangchun Sun, Pinghui Wang, Hongbin Pei, Jing Tao, Lingyun Song, Jun Liu, Chen Zhang, et al. 2025. Debate on graph: A flexible and reliable reasoning framework for large language models. In AAAI-25, Sponsored by the Association for the Advancement of Artificial Intelli-gence, February 25 - March 4, 2025, Philadelphia, PA, USA , pages 24768–24776. AAAI Press. Costas Mavromatis and George Karypis. 2025. GNN-RAG: graph neural retrieval for efficient large lan-guage model reasoning on knowledge graphs. In 
+
+Findings of the Association for Computational Lin-guistics, ACL 2025, Vienna, Austria, July 27 - August 1, 2025 , volume ACL 2025 of Findings of ACL , pages 16682–16699, Vienna, Austria. Association for Com-putational Linguistics. Alexander H. Miller, Adam Fisch, Jesse Dodge, Amir-Hossein Karimi, Antoine Bordes, and Jason Weston. 2016. Key-value memory networks for directly read-ing documents. In Proceedings of the 2016 Confer-ence on Empirical Methods in Natural Language Pro-cessing, EMNLP 2016, Austin, Texas, USA, Novem-ber 1-4, 2016 , pages 1400–1409, Austin, Texas. The Association for Computational Linguistics. Zach Nussbaum, John Xavier Morris, Andriy Mulyar, and Brandon Duderstadt. 2025. Nomic embed: Train-ing a reproducible long context text embedder. Trans. Mach. Learn. Res. , 2025. OpenAI. 2023. GPT-4 technical report. CoRR ,abs/2303.08774. Shirui Pan, Linhao Luo, Yufei Wang, Chen Chen, Ji-apu Wang, and Xindong Wu. 2024. Unifying large language models and knowledge graphs: A roadmap. 
+
+IEEE Trans. Knowl. Data Eng. , 36(7):3580–3599. Nils Reimers and Iryna Gurevych. 2019. Sentence-bert: Sentence embeddings using siamese bert-networks. In Proceedings of the 2019 Conference on Empiri-cal Methods in Natural Language Processing and the 9th International Joint Conference on Natural Language Processing, EMNLP-IJCNLP 2019, Hong Kong, China, November 3-7, 2019 , pages 3980–3990, Hong Kong, China. Association for Computational Linguistics. Apoorv Saxena, Aditay Tripathi, and Partha P. Talukdar. 2020. Improving multi-hop question answering over knowledge graphs using knowledge base embeddings. In Proceedings of the 58th Annual Meeting of the As-sociation for Computational Linguistics, ACL 2020, Online, July 5-10, 2020 , pages 4498–4507, Online. Association for Computational Linguistics. Jiaxin Shi, Shulin Cao, Lei Hou, Juanzi Li, and Han-wang Zhang. 2021. Transfernet: An effective and transparent framework for multi-hop question an-swering over relation graph. In Proceedings of the 2021 Conference on Empirical Methods in Natural Language Processing, EMNLP 2021, Virtual Event / Punta Cana, Dominican Republic, 7-11 November, 
+
+10 2021 , pages 4149–4158, Online and Punta Cana, Do-minican Republic. Association for Computational Linguistics. Yuan Sui, Yufei He, Nian Liu, Xiaoxin He, Kun Wang, and Bryan Hooi. 2025. Fidelis: Faithful reasoning in large language models for knowledge graph ques-tion answering. In Findings of the Association for Computational Linguistics, ACL 2025, Vienna, Aus-tria, July 27 - August 1, 2025 , volume ACL 2025 of 
+
+Findings of ACL , pages 8315–8330, Vienna, Austria. Association for Computational Linguistics. Haitian Sun, Andrew O. Arnold, Tania Bedrax-Weiss, Fernando Pereira, and William W. Cohen. 2020. Faithful embeddings for knowledge base queries. In 
+
+Advances in Neural Information Processing Systems 33: Annual Conference on Neural Information Pro-cessing Systems 2020, NeurIPS 2020, December 6-12, 2020, virtual .Haitian Sun, Tania Bedrax-Weiss, and William W. Co-hen. 2019. Pullnet: Open domain question answering with iterative retrieval on knowledge bases and text. In Proceedings of the 2019 Conference on Empiri-cal Methods in Natural Language Processing and the 9th International Joint Conference on Natural Language Processing, EMNLP-IJCNLP 2019, Hong Kong, China, November 3-7, 2019 , pages 2380–2390, Hong Kong, China. Association for Computational Linguistics. Jiashuo Sun, Chengjin Xu, Lumingyuan Tang, Saizhuo Wang, Chen Lin, Yeyun Gong, Lionel M. Ni, Heung-Yeung Shum, and Jian Guo. 2024. Think-on-graph: Deep and responsible reasoning of large language model on knowledge graph. In The Twelfth Inter-national Conference on Learning Representations, ICLR 2024, Vienna, Austria, May 7-11, 2024 . Open-Review.net. Alon Talmor and Jonathan Berant. 2018. The web as a knowledge-base for answering complex questions. In Proceedings of the 2018 Conference of the North American Chapter of the Association for Computa-tional Linguistics: Human Language Technologies, NAACL-HLT 2018, New Orleans, Louisiana, USA, June 1-6, 2018, Volume 1 (Long Papers) , pages 641– 651, New Orleans, Louisiana. Association for Com-putational Linguistics. Llama Team. 2024. The llama 3 herd of models. CoRR ,abs/2407.21783. Yuhang Tian, Dandan Song, Zhijing Wu, Pan Yang, Changzhi Zhou, Jun Yang, Hao Wang, Huipeng Ma, Chenhao Li, and Luan Zhang. 2025. Compkbqa: Component-wise task decomposition for knowledge base question answering. In Proceedings of the 2025 Conference on Empirical Methods in Natural Lan-guage Processing, EMNLP 2025, Suzhou, China, November 4-9, 2025 , pages 293–309, Suzhou, China. Association for Computational Linguistics. Hugo Touvron, Louis Martin, Kevin Stone, Peter Al-bert, Amjad Almahairi, Yasmine Babaei, Nikolay Bashlykov, Soumya Batra, Prajjwal Bhargava, Shruti Bhosale, et al. 2023. Llama 2: Open foundation and fine-tuned chat models. CoRR , abs/2307.09288. Robin Wagner, Emanuel Kitzelmann, and Ingo Boersch. 2025. Mitigating hallucination by integrating knowl-edge graphs into LLM inference - a systematic litera-ture review. In Proceedings of the 63rd Annual Meet-ing of the Association for Computational Linguistics (Volume 4: Student Research Workshop), ACL 2025, Vienna, Austria, July 27 - August 1, 2025 , pages 795– 805, Vienna, Austria. Association for Computational Linguistics. Xuezhi Wang, Jason Wei, Dale Schuurmans, Quoc V. Le, Ed H. Chi, Sharan Narang, Aakanksha Chowd-hery, and Denny Zhou. 2023. Self-consistency improves chain of thought reasoning in language models. In The Eleventh International Conference on Learning Representations, ICLR 2023, Kigali, Rwanda, May 1-5, 2023 . OpenReview.net. Jason Wei, Xuezhi Wang, Dale Schuurmans, Maarten Bosma, Brian Ichter, Fei Xia, Ed H. Chi, Quoc V. Le, and Denny Zhou. 2022. Chain-of-thought prompt-ing elicits reasoning in large language models. In 
+
+Advances in Neural Information Processing Systems 35: Annual Conference on Neural Information Pro-cessing Systems 2022, NeurIPS 2022, New Orleans, LA, USA, November 28 - December 9, 2022 , pages 24824–24837. Guanming Xiong, Junwei Bao, and Wen Zhao. 2024. Interactive-kbqa: Multi-turn interactions for knowl-edge base question answering with large language models. In Proceedings of the 62nd Annual Meeting of the Association for Computational Linguistics (Vol-ume 1: Long Papers), ACL 2024, Bangkok, Thailand, August 11-16, 2024 , pages 10561–10582, Bangkok, Thailand. Association for Computational Linguistics. Mufan Xu, Gewen Liang, Kehai Chen, Wei Wang, Xun Zhou, Muyun Yang, Tiejun Zhao, and Min Zhang. 2025. Memory-augmented query reconstruction for llm-based knowledge graph reasoning. In Findings of the Association for Computational Linguistics, ACL 2025, Vienna, Austria, July 27 - August 1, 2025 , vol-ume ACL 2025 of Findings of ACL , pages 24068– 24084, Vienna, Austria. Association for Computa-tional Linguistics. Xi Ye and Greg Durrett. 2022. The unreliability of ex-planations in few-shot prompting for textual reason-ing. In Advances in Neural Information Processing Systems 35: Annual Conference on Neural Informa-tion Processing Systems 2022, NeurIPS 2022, New Orleans, LA, USA, November 28 - December 9, 2022 ,pages 30378–30392. Wen-tau Yih, Matthew Richardson, Christopher Meek, Ming-Wei Chang, and Jina Suh. 2016. The value of semantic parse labeling for knowledge base question answering. In Proceedings of the 54th Annual Meet-ing of the Association for Computational Linguistics, 
+
+11 ACL 2016, August 7-12, 2016, Berlin, Germany, Vol-ume 2: Short Papers , pages 201–206, Berlin, Ger-many. The Association for Computer Linguistics. 
+
+A Prompt Templates 
+
+This appendix provides the full prompt templates used in each stage of RouterKGQA. Placeholders are shown in <angle brackets> .
+
+A.1 Stage 1: CRP Generation (specialized) 
+
+The specialized model is fine-tuned on (question, gold CRP) pairs using the following instruction format: CRP Generation Prompt      
+
+> Instruction: Generate a reasoning path that retrieves the information corresponding to the given question.
+> Input: Question: { <question> }
+> Output: <structured CRP>
+
+A.2 Stage 2: Reasoning Blueprint Generation (general) 
+
+When the specialized-generated main path is un-reachable on the KG, the general LLM decomposes the question into a sequence of single-hop reason-ing steps via the following few-shot prompt: Reasoning Blueprint Prompt  
+
+> Given a question, generate the reasoning steps with-out providing the final answer or specific entities. Q: What countries are located in Eastern Europe and have the country calling code +373? A: #1 Identify the countries located in Eastern Eu-rope. #2 Determine which of these countries has the coun-try calling code +373. Q: What country that trades with Turkey has an ISO numeric code lower than 012? A: #1 Identify the countries that are trade partners of Turkey. #2 Determine which of these countries has an ISO numeric code lower than 012. Q: Who were the inspirations for the author of This Side of Paradise? A: #1 Identify the author of This Side of Paradise. #2 Determine the individuals or works that influenced the author. Q: What countries border the location where the film Amen is set? A: #1 Identify the location where the film Amen is set. #2 Determine the countries that border this location. Q: Lou Seal is the mascot for the team that last won the World Series when? A: #1 Identify the team for which Lou Seal is the mascot. #2 Determine the year this team last won the World Series.
+> Here is the question. Q: <question>
+> A:
+
+A.3 Stage 2: Path Selection 
+
+At each beam search step, after SBERT-based coarse filtering, the general LLM selects the most promising paths from the candidate set. The same prompt template is used for both intermediate steps (selecting up to w paths) and the final step (select-ing 1 path), with only the value of n varying: Path Selection Prompt             
+
+> Q: ‘ <question> ’Paths from ‘ <start_entity_names> ’: Path 1: <entity> -> <relation_1> -> . . . ->
+> <end_entity> . . . Path 2: <entity> -> <relation_1> -> . . . ->
+> <end_entity> . . . . . . Select up to <n> paths most likely to reach the FINAL answer (not intermediate entities). Reply with path numbers only, e.g.: Path 1, Path 2
+
+During intermediate beam search steps, n is set to the beam width w; at the final step (maximum depth reached), n=1 to select a single best path. 
+
+B SPARQL-to-CRP Conversion 
+
+Gold CRPs used for specialized training are deter-ministically derived from SPARQL annotations via the following rule-based procedure. 
+
+Step 1: Subgraph construction and main path extraction. We construct a directed graph from all triple patterns in the WHERE clause, where each variable or named entity is a node and each triple pattern (s, r, o ) forms a directed edge. The topic entity s1 is identified as the Freebase MID that lies on the path to the SELECT target variable oN . We then extract the path from s1 to oN in this graph; the relation sequence along this path forms the main path R = ⟨r1, . . . , r N ⟩. Since constraint branches attach to intermediate variables but do not connect to oN , this path is unique in the constructed graph. 
+
+Step 2: Constraint classification. All triple pat-terns and FILTER clauses not on the main path are classified into three constraint types, each repre-sented as C = ( i, r ci , o ci ):• Entity restrictions. Starting from each inter-mediate entity oi on the main path, we search over the remaining subgraph. Any branch that 12 terminates at a named KG entity (i.e., a Free-base MID not on the main path) yields an entity restriction, where oci is the target entity. • Numeric restrictions. Triples whose ob-ject is a numeric or temporal literal (e.g., 
+
+xsd:dateTime , xsd:float ) yield a numeric restriction, where oci encodes both the compar-ison operator ( =, ≥, ≤, >) and the threshold value, extracted from the associated FILTER 
+
+clause. ORDER BY clauses with LIMIT 1 are also converted to numeric restrictions with oci
+
+set to argmax or argmin .• String restrictions. Triples whose object is a string literal (optionally with a language tag) yield a string restriction, where oci is the literal string value. 
+
+Round-trip verification. We verify the fidelity of this conversion by round-trip testing (SPARQL 
+
+→ CRP → SPARQL): both directions use deter-ministic rules. 
+
+C Experimental Setup Details 
+
+C.1 Dataset Details 
+
+We evaluate RouterKGQA on two standard Freebase-based KBQA benchmarks: WebQues-tionsSP (WebQSP) (Yih et al., 2016) and Com-plex WebQuestions (CWQ) (Talmor and Berant, 2018). WebQSP contains 4,737 questions and is commonly used to evaluate KBQA systems on rel-atively simpler semantic parsing and multi-hop rea-soning cases. CWQ is substantially larger, with 34,689 questions, and is designed to emphasize more complex compositional reasoning. Compared with WebQSP, CWQ contains a much larger propor-tion of deeper multi-hop questions and questions with richer constraints, making it a more challeng-ing benchmark for constraint-aware KGQA. Ta-ble 8 reports the distributions of question depth and constraint complexity on the test sets of the two benchmarks. 
+
+C.2 Metric Definitions 
+
+Prior KBQA methods adopt inconsistent defini-tions of Hits@1, which complicates fair compar-ison across approaches. We identify two answer-retrieval paradigms and describe how each has com-puted this metric.                                   
+
+> Aspect Category CWQ WebQSP #%#%
+> Depth 1-hop 854 24.19 1,042 63.58 2-hop 1,859 52.65 592 36.12 3-hop+ 818 23.17 50.31 Constraints 01,176 33.31 1,169 71.32 11,511 42.79 332 20.26 2633 17.92 92 5.61 3+ 211 5.98 46 2.81
+> Table 8: Test-set distributions of question depth and constraint complexity on WebQSP and CWQ.
+
+Query-based methods. These methods retrieve answers by executing a structured query (e.g., SPARQL) against the KG. The returned answer set is inherently unordered . ChatKBQA (Luo et al., 2024a) counts Hits@1 =1 if the answer set of the first executable predicted query intersects with the gold answer set. In contrast, MemQ (Xu et al., 2025) considers only the first returned entity— whose position is determined by the query engine and does not carry ranking semantics—and checks whether it belongs to the gold answer set. 
+
+LLM-filtering methods. These methods use an LLM to select or generate answers from candi-date entities. Both RoG (Luo et al., 2024b) and GCR (Luo et al., 2025) compute the metric identi-cally: checking whether the LLM-filtered answer set has a non-empty intersection with the gold an-swer set. However, RoG labels this metric Hits@1, while GCR refers to it as Hit, despite the underlying computation being the same. 
+
+Unified evaluation protocol. To ensure a fair comparison across methods, we standardize the computation as follows: • For query-based methods , Hits@1 =1 if the answer set returned by the first executable query has a non-empty intersection with the gold answer set. • For LLM-filtering methods , Hits@1 =1 if the answer set generated by the first LLM rea-soning step has a non-empty intersection with the gold answer set. F1 is computed using standard set-level preci-sion and recall between the predicted and gold answer sets. This unified protocol ensures that Hits@1 reflects answer correctness rather than implementation-specific ordering effects. 13 D Implementation Details 
+
+D.1 Training Details 
+
+The specialized CRP generation model is fine-tuned using LLaMA-Factory 1 with LoRA (Hu et al., 2022). We train dataset-specific special-ized models for evaluation on WebQSP and CWQ. We apply the same training recipe to both Llama-2-7B and Llama-3.1-8B backbones unless other-wise specified. The main optimization settings are shared across datasets, while the number of train-ing epochs differs between WebQSP and CWQ. Table 9 summarizes the main training hyperparam-eters.                                       
+
+> Hyperparameter WebQSP CWQ
+> Stage 1: CRP Generation (Specialized Model)
+> Fine-tuning Type LoRA LoRA Learning Rate 5e-5 5e-5 LR Scheduler Cosine Cosine Train Batch Size 44Gradient Accum. Steps 44Effective Batch Size 16 16 Train Epochs 50 10 Precision bf16 bf16
+> Stage 2: Path Repair (General Model)
+> General Model GPT-4o-mini GPT-4o-mini Temperature T00Beam Width w33Relation Filter Size x44Path Filter Size y10 10 Semantic Matching nomic-embed-text-v1
+> Stage 3: Progressive Query Execution
+> Relaxation Order string →numeric →entity
+
+Table 9: Implementation details of RouterKGQA. Stage 1 settings are shared across Llama-2-7B and Llama-3.1-8B unless otherwise noted. 
+
+D.2 Baseline Reproduction 
+
+Table 10 summarizes the reproduction status of all compared methods. For methods with publicly available code, we reproduce results in our environ-ment using the same Freebase snapshot to ensure fair comparison. All reproduced methods follow the original paper’s settings unless otherwise noted. For methods without public code, we report results directly from the original papers. 
+
+E Sub-Question Consistency Analysis 
+
+To assess the semantic alignment between pre-dicted reasoning paths and the original question,                                        
+
+> 1https://github.com/hiyouga/LLaMA-Factory
+> Category Method Reprod. Notes
+> LLM-only Llama-2-7B ✓Direct inference Llama-3.1-8B ✓Direct inference GPT-4o-mini ✓Direct inference IR-based KV-Mem ✗Original paper PullNet ✗Original paper EmbedKGQA ✗Original paper NSM+h ✗Original paper TransferNet ✗Original paper Subgraph Retrieval ✗Original paper LLM-based ToG ✓GPT-4o-mini PoG ✓GPT-4o-mini InteractiveKBQA ✗Original paper EffiQA ✗Original paper RoG ✓Official code ChatKBQA ✓Modified †
+> MemQ ✓Official code GNN-RAG ✓Official code GCR ✓Official code
+
+Table 10: Baseline reproduction status. ✓: reproduced in our environment; ✗: results from the original paper. 
+
+> †
+
+The original ChatKBQA uses Llama-2-13B on CWQ and Llama-2-7B on WebQSP; we unify both to Llama-2-7B for fair comparison under the same model scale. 
+
+we reconstruct each predicted path into a natural-language question qr using an LLM and decom-pose both qr and the original question q into sub-question sets, denoted by A and B, respectively, following the decomposition style of CWQ (Tal-mor and Berant, 2018). Based on the set rela-tionship between A and B, we classify each ex-ample into four categories: EXACT_EQUAL (A = B), RECON_SUBSET ( A ⊂ B), PAR-TIAL_OVERLAP ( A ∩ B̸ = ∅, with neither set containing the other), and DISJOINT ( A∩B = ∅). Figure 2(b) confirms that semantic alignment directly determines downstream performance: EX-ACT_EQUAL yields the best results across all methods, while DISJOINT yields the worst. Fig-ure 2(a) shows that RouterKGQA substantially in-creases the proportion of EXACT_EQUAL pre-dictions (34.7% vs. 10.8% for GCR and 5.9% for GNN-RAG) while reducing DISJOINT to 1.4% (vs. 24.9% and 46.0%). This demonstrates that RouterKGQA generates reasoning paths that are semantically equivalent or highly consistent with the original question intent. 14 Exact Equal 
+
+Recon Subset 
+
+Partial Overlap 
+
+Disjoint 
+
+0
+
+10 
+
+20 
+
+30 
+
+40 
+
+50 
+
+60 
+
+70   
+
+> Proportion (%)
+> 34.7
+> 61.4
+> 10.8 12.4
+> 52.0
+> 24.9
+> 5.9 6.9
+> 41.1
+> 46.0
+
+(a) Distribution of Sub-Question Categories 
+
+RouterKGQA 
+
+GCR 
+
+GNN-RAG 
+
+Exact Equal 
+
+Recon Subset 
+
+Partial Overlap 
+
+Disjoint 
+
+40 
+
+50 
+
+60 
+
+70 
+
+80 
+
+90 
+
+100 
+
+> Score (%)
+
+(b) Hits@1 and F1 by Category 
+
+> RouterKGQA
+> GCR
+> GNN-RAG
+> Hits@1 (solid)
+> F1 (dotted)
+
+Figure 2: Sub-question consistency analysis on CWQ. (a) Distribution of sub-question set relationship categories across methods. (b) Hits@1 (solid) and F1 (dotted) by sub-question relationship category. 
+
+15
