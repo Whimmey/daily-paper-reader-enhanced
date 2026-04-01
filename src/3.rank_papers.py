@@ -314,17 +314,32 @@ def rerank_by_chat(
       result = json_lib.loads(cleaned_content)
       results = result.get("results", [])
 
-      # 补充 document 字段
+      # 清洗并补充字段：防御 LLM 返回非法 index/score
+      cleaned = []
       for item in results:
-        idx = item.get("index")
-        if isinstance(idx, int) and 0 <= idx < len(documents):
-          item["document"] = documents[idx]
+        raw_idx = item.get("index")
+        try:
+          idx = int(raw_idx)
+        except (ValueError, TypeError):
+          continue
+        if idx < 0 or idx >= len(documents):
+          continue
+        raw_score = item.get("relevance_score", item.get("score", 0.0))
+        try:
+          score = float(raw_score)
+        except (ValueError, TypeError):
+          score = 0.0
+        cleaned.append({
+          "index": idx,
+          "relevance_score": max(0.0, min(1.0, score)),
+          "document": documents[idx],
+        })
 
       # 应用 top_n 截断
       if top_n is not None and top_n > 0:
-        results = results[:top_n]
+        cleaned = cleaned[:top_n]
 
-      return {"results": results}
+      return {"results": cleaned}
 
     except json_lib.JSONDecodeError as je:
       # JSON 解析失败，记录原始内容用于调试
@@ -471,7 +486,10 @@ def process_file(
           reverse=True,
         )
         for rank_idx, item in enumerate(ranked, start=1):
-          idx = int(item.get("index", -1))
+          try:
+            idx = int(item.get("index") or -1)
+          except (ValueError, TypeError):
+            continue
           if idx < 0 or idx >= len(batch_indices):
             continue
           orig_idx = batch_indices[idx]
