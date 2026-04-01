@@ -6,77 +6,69 @@
 </div>
 
 ## 每次日报
-- 最新运行日期：2026-03-29
-- 运行时间：<span class="dpr-runtime" data-beijing="03-30 03:54 (UTC+8)" data-utc="03-29 19:54 UTC">03-30 03:54 (UTC+8) / 03-29 19:54 UTC</span>
+- 最新运行日期：2026-03-30
+- 运行时间：<span class="dpr-runtime" data-beijing="03-31 04:36 (UTC+8)" data-utc="03-30 20:36 UTC">03-31 04:36 (UTC+8) / 03-30 20:36 UTC</span>
 - 运行状态：成功
 - 本次总论文数：17
 - 精读区：6
 - 速读区：11
 
 ### 今日简报（AI）
-今日研读17篇AI前沿论文，聚焦大模型优化、视觉检测与推荐系统创新。大模型结构编码器提升预测精度与卫星图像多阶段损伤检测框架最具突破性。关注AI在专业领域的落地应用，尤其是医疗影像与电商推荐的实际进展。
-- 详情：[/202603/29/README](/202603/29/README)
+今日研究聚焦小模型效率优势、自动提示优化及LLM内存管理等前沿方向。研究发现特定任务中小型模型可能超越大型模型，且自进化记忆可显著提升提示优化效果。普通读者可关注小模型高效应用场景，探索适合自身需求的AI解决方案。
+- 详情：[/202603/30/README](/202603/30/README)
 
 ### 精读区论文标签
-1. [Improving LLM Predictions via Inter-Layer Structural Encoders](/202603/29/2603.22665v1-improving-llm-predictions-via-inter-layer-structural-encoders)  
+1. [Task-Specific Efficiency Analysis: When Small Language Models Outperform Large Language Models](/202603/30/2603.21389v1-task-specific-efficiency-analysis-when-small-language-models-outperform-large-language-models)  
    标签：评分：9.0/10、query:dl-cv
-   evidence：LLM的层间结构编码器
-2. [From Pixels to Semantics: A Multi-Stage AI Framework for Structural Damage Detection in Satellite Imagery](/202603/29/2603.22768v1-from-pixels-to-semantics-a-multi-stage-ai-framework-for-structural-damage-detection-in-satellite-imagery)  
+   evidence：语言模型尺寸的效率分析
+2. [Generalizable Self-Evolving Memory for Automatic Prompt Optimization](/202603/30/2603.21520v1-generalizable-self-evolving-memory-for-automatic-prompt-optimization)  
    标签：评分：9.0/10、query:dl-cv
-   evidence：结合图像修复与视觉语言模型
-3. [LLMORPH: Automated Metamorphic Testing of Large Language Models](/202603/29/2603.23611v1-llmorph-automated-metamorphic-testing-of-large-language-models)  
+   evidence：面向大语言模型的记忆驱动提示优化框架
+3. [InstanceRSR: Real-World Super-Resolution via Instance-Aware Representation Alignment](/202603/30/2603.24240v1-instancersr-real-world-super-resolution-via-instance-aware-representation-alignment)  
    标签：评分：9.0/10、query:dl-cv
-   evidence：提出LLM自动化测试框架
-4. [How Vulnerable Are Edge LLMs?](/202603/29/2603.23822v1-how-vulnerable-are-edge-llms)  
+   evidence：面向图像修复的实例感知超分辨率
+4. [RealRestorer: Towards Generalizable Real-World Image Restoration with Large-Scale Image Editing Models](/202603/30/2603.25502v1-realrestorer-towards-generalizable-real-world-image-restoration-with-large-scale-image-editing-models)  
    标签：评分：9.0/10、query:dl-cv
-   evidence：边缘LLM安全分析
-5. [AuthorityBench: Benchmarking LLM Authority Perception for Reliable Retrieval-Augmented Generation](/202603/29/2603.25092v1-authoritybench-benchmarking-llm-authority-perception-for-reliable-retrieval-augmented-generation)  
-   标签：评分：9.0/10、query:dl-cv
-   evidence：LLM权威感知基准
-6. [MzansiText and MzansiLM: An Open Corpus and Decoder-Only Language Model for South African Languages](/202603/29/2603.20732v1-mzansitext-and-mzansilm-an-open-corpus-and-decoder-only-language-model-for-south-african-languages)  
+   evidence：使用大规模编辑模型进行真实世界图像修复
+5. [Helix: A Dual-Helix Co-Evolutionary Multi-Agent System for Prompt Optimization and Question Reformulation](/202603/30/2603.19732v1-helix-a-dual-helix-co-evolutionary-multi-agent-system-for-prompt-optimization-and-question-reformulation)  
    标签：评分：8.0/10、query:dl-cv
-   evidence：低资源语言的语言模型
+   evidence：大语言模型的多智能体提示优化系统
+6. [User Preference Modeling for Conversational LLM Agents: Weak Rewards from Retrieval-Augmented Interaction](/202603/30/2603.20939v1-user-preference-modeling-for-conversational-llm-agents-weak-rewards-from-retrieval-augmented-interaction)  
+   标签：评分：8.0/10、query:dl-cv
+   evidence：对话式LLM代理的用户偏好建模
 
 ### 速读区论文标签
-1. [Accelerating Diffusion Decoders via Multi-Scale Sampling and One-Step Distillation](/202603/29/2603.19570v1-accelerating-diffusion-decoders-via-multi-scale-sampling-and-one-step-distillation)  
+1. [PoC: Performance-oriented Context Compression for Large Language Models via Performance Prediction](/202603/30/2603.19733v1-poc-performance-oriented-context-compression-for-large-language-models-via-performance-prediction)  
    标签：评分：8.0/10、query:dl-cv
-   evidence：加速扩散解码器用于图像重建
-2. [GenFacet: End-to-End Generative Faceted Search via Multi-Task Preference Alignment in E-Commerce](/202603/29/2603.19665v1-genfacet-end-to-end-generative-faceted-search-via-multi-task-preference-alignment-in-e-commerce)  
+   evidence：大型语言模型上下文压缩
+2. [From Plausibility to Verifiability: Risk-Controlled Generative OCR for Vision-Language Models](/202603/30/2603.19790v1-from-plausibility-to-verifiability-risk-controlled-generative-ocr-for-vision-language-models)  
    标签：评分：8.0/10、query:dl-cv
-   evidence：用于分面搜索的端到端生成框架
-3. [From Token to Item: Enhancing Large Language Models for Recommendation via Item-aware Attention Mechanism](/202603/29/2603.19693v1-from-token-to-item-enhancing-large-language-models-for-recommendation-via-item-aware-attention-mechanism)  
+   evidence：VLMs的风险控制生成OCR
+3. [Memori: A Persistent Memory Layer for Efficient, Context-Aware LLM Agents](/202603/30/2603.19935v1-memori-a-persistent-memory-layer-for-efficient-context-aware-llm-agents)  
    标签：评分：8.0/10、query:dl-cv
-   evidence：通过项目感知注意力机制增强语言模型推荐能力
-4. [AIGQ: An End-to-End Hybrid Generative Architecture for E-commerce Query Recommendation](/202603/29/2603.19710v1-aigq-an-end-to-end-hybrid-generative-architecture-for-e-commerce-query-recommendation)  
+   evidence：LLM代理的持久记忆层
+4. [ReViSQL: Achieving Human-Level Text-to-SQL](/202603/30/2603.20004v1-revisql-achieving-human-level-text-to-sql)  
    标签：评分：8.0/10、query:dl-cv
-   evidence：端到端生成式查询推荐
-5. [An Industrial-Scale Retrieval-Augmented Generation Framework for Requirements Engineering: Empirical Evaluation with Automotive Manufacturing Data](/202603/29/2603.20534v1-an-industrial-scale-retrieval-augmented-generation-framework-for-requirements-engineering-empirical-evaluation-with-automotive-manufacturing-data)  
+   evidence：通过清洁训练数据实现人类级文本转SQL
+5. [Training-Free Instance-Aware 3D Scene Reconstruction and Diffusion-Based View Synthesis from Sparse Images](/202603/30/2603.21166v1-training-free-instance-aware-3d-scene-reconstruction-and-diffusion-based-view-synthesis-from-sparse-images)  
    标签：评分：7.0/10、query:dl-cv
-   evidence：工业需求工程的RAG框架
-6. [Can AI Agents Answer Your Data Questions? A Benchmark for Data Agents](/202603/29/2603.20576v1-can-ai-agents-answer-your-data-questions-a-benchmark-for-data-agents)  
+   evidence：使用扩散进行无需训练的3D场景重建
+6. [LLM-Powered Workflow Optimization for Multidisciplinary Software Development: An Automotive Industry Case Study](/202603/30/2603.21439v2-llm-powered-workflow-optimization-for-multidisciplinary-software-development-an-automotive-industry-case-study)  
    标签：评分：7.0/10、query:dl-cv
-   evidence：数据查询的AI代理
-7. [Cerebra: Aligning Implicit Knowledge in Interactive SQL Authoring](/202603/29/2603.21363v1-cerebra-aligning-implicit-knowledge-in-interactive-sql-authoring)  
+   evidence：LLM驱动的工作流优化
+7. [Dyadic: A Scalable Platform for Human-Human and Human-AI Conversation Research](/202603/30/2603.22227v1-dyadic-a-scalable-platform-for-human-human-and-human-ai-conversation-research)  
    标签：评分：7.0/10、query:dl-cv
-   evidence：LLM驱动的SQL查询生成工具
-8. [Enterprise Sales Copilot: Enabling Real-Time AI Support with Automatic Information Retrieval in Live Sales Calls](/202603/29/2603.21416v1-enterprise-sales-copilot-enabling-real-time-ai-support-with-automatic-information-retrieval-in-live-sales-calls)  
+   evidence：人机对话研究平台
+8. [The Dual Mechanisms of Spatial Reasoning in Vision-Language Models](/202603/30/2603.22278v1-the-dual-mechanisms-of-spatial-reasoning-in-vision-language-models)  
    标签：评分：7.0/10、query:dl-cv
-   evidence：使用LLM进行实时问题检测和信息检索
-9. [Functional Estimation of Manifold-Valued Diffusion Processes](/202603/29/2603.20945v1-functional-estimation-of-manifold-valued-diffusion-processes)  
+   evidence：视觉语言模型中的空间推理
+9. [A Solicit-Then-Suggest Model of Agentic Purchasing](/202603/30/2603.20972v1-a-solicit-then-suggest-model-of-agentic-purchasing)  
    标签：评分：6.0/10、query:dl-cv
-   evidence：流形值扩散过程的估计
-10. [Active Inference Agency Formalization, Metrics, and Convergence Assessments](/202603/29/2603.21319v1-active-inference-agency-formalization-metrics-and-convergence-assessments)  
+   evidence：AI购物代理的经济模型
+10. [TaigiSpeech: A Low-Resource Real-World Speech Intent Dataset and Preliminary Results with Scalable Data Mining In-the-Wild](/202603/30/2603.21478v1-taigispeech-a-low-resource-real-world-speech-intent-dataset-and-preliminary-results-with-scalable-data-mining-in-the-wild)  
    标签：评分：6.0/10、query:dl-cv
-   evidence：AI安全代理形式化
-11. [DATASHI: A Parallel English-Tashlhiyt Corpus for Orthography Normalization and Low-Resource Language Processing](/202603/29/2603.21571v1-datashi-a-parallel-english-tashlhiyt-corpus-for-orthography-normalization-and-low-resource-language-processing)  
+   evidence：基于大语言模型的语音数据挖掘
+11. [From Synthetic to Native: Benchmarking Multilingual Intent Classification in Logistics Customer Service](/202603/30/2603.23172v1-from-synthetic-to-native-benchmarking-multilingual-intent-classification-in-logistics-customer-service)  
    标签：评分：6.0/10、query:dl-cv
-   evidence：低资源语言处理语料库
+   evidence：使用LLM进行数据集质量控制
 
-
-<div class="dpr-home-promo-card">
-  <h3 class="dpr-home-promo-title">💬 社区与支持</h3>
-  <ul class="dpr-home-promo-list">
-    <li>欢迎 Star / Fork / Issue / PR</li>
-    <li>QQ群：583867967（欢迎交流，已有：1151人）</li>
-  </ul>
-</div>
