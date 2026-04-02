@@ -1,0 +1,341 @@
+Title: Transmittance-Guided Structure-Texture Decomposition for Nighttime Image Dehazing
+
+URL Source: https://arxiv.org/pdf/2603.29507v1
+
+Published Time: Wed, 01 Apr 2026 00:57:43 GMT
+
+Number of Pages: 18
+
+Markdown Content:
+# Transmittance-Guided Structure-Texture Decomposition for Nighttime Image Dehazing 
+
+## Francesco Moretti Giulia Bianchi Andrea Gallo ∗
+
+## Maharaja Agrasen University 
+
+## {francesco.moretti, giulia.bianchi, andrea.gallo}@mau.edu.mk 
+
+Abstract 
+
+Nighttime images captured under hazy conditions suffer from severe quality degradation, in-cluding low visibility, color distortion, and reduced contrast, caused by the combined effects of atmospheric scattering, absorption by suspended particles, and non-uniform illumination from arti-ficial light sources. While existing nighttime dehazing methods have achieved partial success, they typically address only a subset of these issues, such as glow suppression or brightness enhancement, without jointly tackling the full spectrum of degradation factors. In this paper, we propose a two-stage nighttime image dehazing framework that integrates transmittance correction with structure-texture layered optimization. In the first stage, we introduce a novel transmittance correction method that es-tablishes boundary-constrained initial transmittance maps and subsequently applies region-adaptive compensation and normalization based on whether image regions correspond to light source areas. A quadratic Gaussian filtering scheme operating in the YUV color space is employed to estimate the spatially varying atmospheric light map. The corrected transmittance map and atmospheric light map are then used in conjunction with an improved nighttime imaging model to produce the initial de-hazed image. In the second stage, we propose a STAR-YUV decomposition model that separates the dehazed image into structure and texture layers within the YUV color space. Gamma correction and MSRCR-based color restoration are applied to the structure layer for illumination compensation and color bias correction, while Laplacian-of-Gaussian filtering is applied to the texture layer for detail enhancement. A novel two-phase fusion strategy, comprising nonlinear Retinex-based fusion of the enhanced layers followed by linear blending with the initial dehazing result, yields the final output. Extensive experiments on two benchmark datasets (ZS330 and HC770) demonstrate that the pro-posed method achieves average PSNR, SSIM, AG, IE, and NIQE scores of 17.024 dB, 0.765, 7.604, 7.528, and 2.693, respectively, consistently outperforming six state-of-the-art methods across both full-reference and no-reference quality metrics, while effectively recovering natural colors, enriching fine details, and improving overall scene brightness. 
+
+# 1 Introduction 
+
+Hazy weather conditions present significant challenges for intelligent imaging systems operating around the clock, such as those deployed in pedestrian detection [36], autonomous driving, and remote surveil-lance. While daytime dehazing has received extensive attention, nighttime image dehazing poses sub-stantially greater difficulties due to the concurrent presence of atmospheric scattering, low ambient il-lumination, non-uniform artificial lighting, and pronounced color deviations [54]. The degradation ob-served in nighttime hazy images is a compounded effect: suspended atmospheric particles scatter and ab-sorb light, reducing visibility and contrast, while colored artificial light sources introduce spatially vary-ing illumination and chromatic distortions that are absent in daytime scenarios [26]. These compounded challenges have driven the increasing demand for effective nighttime image dehazing techniques. Current image dehazing algorithms can be broadly categorized into daytime methods and nighttime methods. Daytime dehazing approaches are further divided into traditional model-based methods and deep learning-based methods [57]. Traditional approaches, such as histogram equalization [21], can effectively balance overall color distributions and brightness levels but often introduce local color distor-tions and loss of fine details. The Retinex theory [31], which models human visual perception of color 1
+
+> arXiv:2603.29507v1 [cs.CV] 31 Mar 2026
+
+constancy, has inspired a family of enhancement methods. Multi-Scale Retinex with Color Restoration (MSRCR) [17] extends this framework by incorporating a color restoration factor that simultaneously en-hances image quality and prevents color desaturation. Additionally, numerous researchers have leveraged the atmospheric scattering model proposed by McCartney and Hall [32] to estimate model parameters from prior information and subsequently recover clear images through model inversion [59]. A landmark contribution in this direction is the dark channel prior (DCP) proposed by He et al. [14], which exploits the observation that in non-sky regions, at least one color channel contains pixels with intensities close to zero. While many subsequent works have refined the dark channel or optimized model parameters—for instance, Meng et al. [33] introduced boundary constraints to mitigate color distortion artifacts in sky regions—these daytime-oriented methods fundamentally neglect the influence of artificial light sources and thus produce results with insufficient brightness and persistent color shifts when applied to nighttime imagery. Deep learning has also transformed the dehazing landscape. Cai et al. [3] proposed DehazeNet, a trainable end-to-end convolutional neural network for transmittance estimation that recovers clear images via the atmospheric scattering model. Recent advances in generative architectures, including diffusion models [15, 37] and vision transformers [28], have further expanded the capabilities of learning-based image restoration. In particular, NightHazeFormer [56] introduced a prior query transformer for end-to-end nighttime haze removal, while NightHaze [23] demonstrated that self-prior learning through severe augmentation produces strong network priors resilient to real-world nighttime degradation. Retinex-Former [4] advanced one-stage Retinex-based transformer architectures for low-light image enhance-ment. However, these methods often suffer from limited interpretability, require large-scale paired train-ing data and substantial computational resources, and may not generalize well to the distinct character-istics of nighttime scenes [38]. Nighttime dehazing algorithms specifically target the additional complexities introduced by artificial illumination, including glow effects, localized overexposure, severe color bias, and non-uniform bright-ness distributions. Traditional nighttime approaches typically extend the daytime atmospheric scattering model to accommodate these factors. Li et al. [20] incorporated the atmospheric point spread function as a glow model and proposed a method for removing glow and multiple light colors (GMLC), which effectively suppresses glow but may produce dim results with edge artifacts. Tang et al. [48] treated the atmospheric light as a spatially varying function and introduced a hybrid filtering method combined with highlight-region transmittance compensation to mitigate overexposure, though residual color bias remained. Fusion-based enhancement methods have also emerged: Xu et al. [55] proposed the Struc-ture and Texture Aware Retinex (STAR) model, achieving notable results in low-light enhancement and color correction; Liu et al. [25] developed a unified variational decomposition model that effectively suppresses noise but leaves haze residue; and Liu et al. [24] proposed the Joint Contrast Enhancement and Exposure Fusion (CEEF) framework, which enhances contrast and preserves details but can amplify glow artifacts. Deep learning methods for nighttime dehazing learn mappings between hazy and haze-free image pairs. Liao et al. [22] proposed HDP-Net, a CNN-based haze density prediction network; Kuanar et al. [18] introduced a DeGlow-DeHaze iterative architecture; and Cui et al. [6] proposed the Illumina-tion Adaptive Transformer (IAT), which effectively improves brightness and contrast but fails to account for glow effects, resulting in overexposure. Deng et al. [7] proposed contrastive and adversarial learn-ing for real-world nighttime dehazing, and Yu et al. [60] developed a multi-scale gated fusion network specifically designed for nighttime conditions. Despite these advances, current methods typically ad-dress only specific degradation factors, such as glow suppression or illumination enhancement, without comprehensively handling the full range of nighttime image degradation [39]. Furthermore, learning-based approaches generally overlook the physical principles underlying haze formation, limiting their interpretability [38]. To address these limitations, we propose a two-stage nighttime image dehazing framework that in-tegrates physically-grounded transmittance correction with structure-texture layered optimization. Our approach jointly tackles the interrelated problems of haze removal, illumination compensation, color 2bias correction, and detail enhancement within a unified pipeline. Recent progress in multimodal under-standing [1, 10] and vision-language models [46, 63] has demonstrated the power of combining visual and semantic reasoning for image analysis tasks. In particular, advances in universal document pars-ing [11, 9, 12], comprehensive visual benchmarking [13, 64, 40], efficient visual representation learning [51, 27], and layout-aware document understanding [29, 50] further motivate the development of princi-pled visual processing frameworks that bridge the gap between low-level image restoration and high-level scene understanding. The main contributions of this paper are summarized as follows: 1. We propose a novel transmittance correction method that applies region-adaptive compensation and normalization to boundary-constrained transmittance maps, combined with an atmospheric light estimation approach based on quadratic Gaussian filtering in the YUV color space, enabling effective dehazing of nighttime images containing artificial light sources. 2. We introduce the STAR-YUV decomposition model that decomposes the Y channel into struc-ture and texture layers, applying targeted enhancement—gamma correction with MSRCR color restoration for the structure layer and Laplacian-of-Gaussian filtering for the texture layer—to jointly address color deviation, low illumination, and detail loss. 3. We design a two-phase fusion strategy consisting of nonlinear Retinex-based fusion of the en-hanced structure and texture layers, followed by linear blending with the initial dehazing result, which balances brightness enhancement and color fidelity while preserving fine-grained details. 4. Extensive experiments on both real-world and synthetic nighttime hazy image datasets demon-strate that our method consistently outperforms state-of-the-art daytime and nighttime dehazing algorithms across five evaluation metrics, achieving superior performance in color recovery, detail preservation, and overall visual quality. 
+
+# 2 Related Work 
+
+## 2.1 Atmospheric Scattering Models for Image Dehazing 
+
+The foundational framework for image dehazing is the atmospheric scattering model introduced by Mc-Cartney and Hall [32], which characterizes the degradation process of light traveling through a scattering medium. This model has been widely adopted in the dehazing community [59] and is formally expressed as: 
+
+I(x) = J(x)t(x) + A(1 − t(x)) (1) where I(x) denotes the observed hazy image, J(x) represents the latent clear image, t(x) is the transmit-tance map encoding the proportion of scene radiance reaching the camera, A is the global atmospheric light, and x indexes the spatial position. While this model adequately describes daytime haze, it assumes a spatially uniform atmospheric light—an assumption that breaks down in nighttime scenarios where artificial light sources produce highly non-uniform illumination patterns. He et al. [14] proposed the dark channel prior (DCP), which estimates both the atmospheric light and transmittance from the observation that at least one color channel in non-sky local patches contains near-zero intensity values. While DCP achieves remarkable results on daytime images, it is prone to failure near light source regions in nighttime scenes, where the dark channel assumption is violated. Meng et al. [33] improved upon DCP by introducing boundary constraints that produce more structured transmittance maps and mitigate color distortions in sky regions; their formulation establishes upper and lower bounds for the transmittance through: 
+
+t(x) = min 
+
+
+
+max 
+
+ A − I(x)
+
+A − C0
+
+
+
+, A − I(x)
+
+A − C1
+
+, 1
+
+
+
+(2) 3where C0 = (20 , 20 , 20) ⊤ and C1 = (300 , 300 , 300) ⊤ are the boundary parameters. This formulation provides a solid foundation for transmittance estimation but does not account for the spatially varying nature of nighttime atmospheric light. To address the non-uniform illumination in nighttime scenes, Tang et al. [48] reformulated the atmo-spheric light as a spatially varying function A(x), yielding the improved nighttime imaging model: 
+
+I(x) = J(x)t(x) + A(x)(1 − t(x)) (3) which allows the recovery of the clear image as: 
+
+J(x) = I(x) − A(x)
+
+t(x) + A(x) (4) This nighttime-adapted formulation serves as the basis for our proposed dehazing pipeline, where we develop novel methods for accurate estimation of both t(x) and A(x).
+
+## 2.2 Retinex-Based Image Enhancement 
+
+The Retinex theory, originally proposed to model human color perception, decomposes an observed image into illumination and reflectance components [31]: 
+
+I(x) = L(x) · R(x) (5) where L(x) represents the illumination component and R(x) represents the reflectance component. Xu et al. [55] extended this framework to propose the Structure and Texture Aware Retinex (STAR) model, which observes that the converged illumination component L(x) is smooth and represents scene structure S(x), while the reflectance R(x) captures texture information T (x). The STAR model converts RGB images to the HSV color space and performs decomposition on the V channel by solving: 
+
+min  
+
+> L,R
+
+∥I(x) − L(x)R(x)∥2 
+
+> F
+
++ α∥S0(x)∇L(x)∥2 
+
+> F
+
++ β∥T0(x)∇R(x)∥2 
+
+> F
+
+(6) where α = 0 .001 and β = 0 .0001 are regularization weights, S0(x) and T0(x) are guidance maps for structure and texture, and K = 20 iterations of alternating optimization are performed. This decompo-sition has proven highly effective for separating structural features from textural details, motivating our extension to the YUV color space for nighttime processing. Multi-Scale Retinex with Color Restoration (MSRCR) [17] further enhances images by computing the illumination component through Gaussian filtering and applying a color restoration factor. Given a Gaussian function H(x) with a specified scale parameter, the illumination estimate is obtained via convolution: B(x) = I(x) ∗ H(x), and the MSRCR output is computed as: 
+
+IMSRCR (x) = G Dn(x) 1
+
+n
+
+X
+
+> n
+
+(log I(x) − log B(x)) + p
+
+!
+
+(7) where n = 3 scales are used with scale parameters of 15, 80, and 250, the gain coefficient G = 192 , and the offset p = −30 [17]. 
+
+## 2.3 Deep Learning for Nighttime Image Processing 
+
+The application of deep learning to nighttime image processing has attracted growing attention. Cai et al. [3] pioneered end-to-end CNN-based transmittance estimation with DehazeNet. Liao et al. [22] proposed HDP-Net for haze density prediction using convolutional architectures. Kuanar et al. [18] introduced the DeGlow-DeHaze iterative framework, employing CNNs to first remove glow artifacts before performing dehazing. More recently, Cui et al. [6] proposed the Illumination Adaptive Transformer (IAT), which leverages self-attention mechanisms to adaptively enhance illumination but does not explicitly model 4glow effects, leading to overexposure artifacts. Zhou et al. [67] developed a frequency-based model with structure-texture decomposition for low-light image enhancement, demonstrating the benefits of frequency-domain processing. Yan et al. [56] proposed NightHazeFormer, an end-to-end prior query transformer that incorporates nighttime-specific degradation priors through learnable queries, achieving notable improvements on both synthetic and real nighttime hazy images. Lin et al. [23] introduced NightHaze, demonstrating that self-prior learning via MAE-like severe augmentation produces network priors that are inherently resilient to nighttime haze, glow, and noise. RetinexFormer [4] unified the Retinex model with transformer blocks in a single-stage framework for low-light image enhancement, while Banerjee et al. [2] provided a comprehensive review and quantitative benchmarking of nighttime image dehazing methods. Despite the impressive capabilities of deep learning approaches, they typically require large-scale paired training datasets that are difficult to obtain for nighttime hazy scenes [38]. Furthermore, many methods operate as black boxes without incorporating physical priors, limiting their interpretability and generalization to diverse nighttime conditions [39]. Recent developments in attention mechanisms [43], multi-scale feature extraction [44], and multimodal learning [47, 65, 66] have demonstrated promising directions for improving the robustness and adaptability of vision systems. The success of universal visual document understanding [9], object removal via self-attention redirection [41], comprehensive visual table parsing [64], and efficient single-point annotation strategies [27, 42] highlights the broader trend of integrating diverse visual priors with deep architectures. Moreover, bridging partial and global visual representations through multi-granularity alignment [49], real-world document understanding in unconstrained settings [50], and character-level recognition benchmarking for complex visual scenes [45] further underscore the importance of robust visual feature extraction and structural reasoning. Mean-while, advances in diffusion model acceleration via trajectory-consistent approximation [5], heteroge-neous multi-expert reinforcement learning [16], certainty-based adaptive reasoning routing [30], sequen-tial numerical prediction in autoregressive models [8], video-based multimodal benchmarking [35], and domain-specific document analysis [58] collectively demonstrate the rapid evolution of multimodal AI systems. These insights continue to inform the design of principled image processing pipelines, includ-ing our physically-grounded nighttime dehazing framework. 
+
+# 3 Method 
+
+## 3.1 Overview 
+
+To address the intertwined problems of haze, color deviation, and low illumination in nighttime images, we propose a two-stage nighttime image enhancement framework, as illustrated in Figure 1. The overall pipeline consists of the following steps: 1. Stage 1: Transmittance-Based Dehazing. We first apply the proposed transmittance correction method to compensate the boundary-constrained initial transmittance map, while simultaneously employing quadratic Gaussian filtering on the Y channel of the YUV color space to obtain the atmospheric light map. The corrected transmittance and atmospheric light maps are combined through the improved nighttime imaging model to produce the initial dehazed image. 2. Stage 2: Structure-Texture Layered Optimization. The dehazed image is decomposed into structure and texture layers using our STAR-YUV model. The structure layer undergoes gamma correction for illumination compensation and MSRCR-based color correction, while the texture layer is enhanced via Laplacian-of-Gaussian filtering to recover fine details. 3. Two-Phase Fusion. The enhanced structure and texture layers are first merged through nonlinear Retinex-based fusion, and the result is then linearly blended with the initial dehazing output to produce the final enhanced image. This integrated framework effectively addresses haze removal, color bias correction, illumination enhancement, and detail recovery, producing clear and natural nighttime images. 5Algorithm Pipeline: Input → Transmittance Correction → Atmospheric Light Estimation → Nighttime Imaging Model → STAR-YUV Decomposition → Structure Enhancement + Texture Enhancement →    
+
+> Nonlinear Fusion →Linear Fusion →Output
+
+Figure 1: Overview of the proposed two-stage nighttime image dehazing framework. Stage 1 performs transmittance-based dehazing, while Stage 2 applies structure-texture layered optimization with two-phase fusion. 
+
+## 3.2 Nighttime Imaging Model Parameter Estimation 
+
+3.2.1 Transmittance Correction 
+
+The estimation of an accurate transmittance map is critical for effective dehazing. Our approach begins by computing the global atmospheric light value A using the dark channel prior—specifically, we select the top 0.1% brightest pixels in the dark channel and identify the corresponding brightest pixel in the original hazy image. The initial transmittance map t(x) is then obtained via the boundary constraint formulation of Equation 2. However, the raw boundary-constrained transmittance map is inadequate for nighttime images, as it fails to account for the varying characteristics of bright regions and light source areas. We therefore propose a region-adaptive transmittance correction scheme comprising three components: 
+
+Bright-Region Compensation. Since the transmittance tends to decrease as t(x) increases—meaning larger transmittance values yield clear images closer to the original input—we introduce a compensation function for bright regions to enhance the dehazing effect: 
+
+tX (x) = 
+
+
+
+0 if t(x) < η 1
+
+η1 if t(x) = η1
+
+t(x) − 0.25 if t(x) > η 1
+
+(8) where η1 = 0 .3 is the threshold distinguishing bright from non-bright regions, determined through extensive experimentation within the interval [0 , 0.5] .
+
+Light-Source Compensation. Nighttime dehazing often causes overexposure or boundary expansion near light sources. To prevent excessively low transmittance estimates in these regions—which would amplify pixel values and create diffusion artifacts—we propose a light-source compensation function. Leveraging the observation that nighttime light sources are typically colored, we use the product of the three RGB channels as a discriminator: 
+
+tb(x) = 
+
+
+
+0.05 if Ir(x)Ig(x)Ib(x) < η 2
+
+η2 if Ir(x)Ig(x)Ib(x) = η2
+
+0.1 if Ir(x)Ig(x)Ib(x) > η 2
+
+(9) where Ir(x), Ig(x), Ib(x) are the R, G, B channel pixel values, and η2 = 0 .4 is the light-source discrim-ination threshold determined through experiments within [0 .5, 1] .
+
+Normalization. To further optimize the transmittance map and prevent extreme values, we apply nor-malization to constrain the corrected transmittance within a bounded range: 
+
+tz (x) = th(x) − min( th(x)) max( th(x)) − min( th(x)) (t1 − t0) + t0 (10) where th(x) = tX (x) + tb(x), and the normalization bounds are set to t0 = 0 .2 and t1 = 0 .85 , building upon the daytime range [0 .1, 0.95] established by He et al. [14] and refined through extensive experi-mentation on nighttime images. 63.2.2 Atmospheric Light Map Estimation via Quadratic Gaussian Filtering 
+
+Due to the non-uniform distribution of atmospheric light at night, a single global atmospheric light value cannot produce accurate dehazing results. The gray haze-line prior (GHLP) [52] demonstrates that haze concentrates on the haze line in RGB color space and can be precisely projected onto the gray component of the Y channel in the YUV color space. Leveraging this relationship, we estimate the atmospheric light map in the YUV domain. To account for the spatially varying nature of nighttime atmospheric light, we apply quadratic Gaus-sian filtering—first filtering the Y channel to extract coarse illumination patterns, then applying a second Gaussian filter across all channels for refinement: 
+
+A(x) = ϕ
+
+Wr
+
+
+
+VyIr(x)
+
+VyIg(x)
+
+VyIb(x)
+
+ (11) where ϕ[·] denotes the Gaussian filter, Vy is the RGB-to-YUV conversion matrix, and Wr is the inverse YUV-to-RGB conversion matrix: 
+
+Vy =
+
+
+
+0.30 0.59 0.11 
+
+−0.15 −0.29 0.44 0.62 −0.52 −0.10 
+
+ , Wr =
+
+
+
+1.00 0.00 1.14 1.00 −0.39 −0.58 1.00 2.03 0.00 
+
+ (12) The final dehazed image Jh(x) is then obtained by solving the improved nighttime imaging model of Equation 3 using the corrected transmittance tz (x) and estimated atmospheric light A(x) via Equation 4. 
+
+## 3.3 Structure-Texture Layered Decomposition and Enhancement 
+
+3.3.1 STAR-YUV Decomposition Model 
+
+We observe that the Y channel in the YUV color space, similar to the V channel in HSV, effectively captures illumination information across image regions [55]. To maintain consistency with our atmo-spheric light estimation process and leverage the properties of the YUV representation, we extend the STAR model from HSV to YUV color space. The STAR-YUV model performs decomposition on the Y component of the dehazed image: 
+
+min  
+
+> L,R
+
+∥VyI(x) − L(x)R(x)∥2 
+
+> F
+
++ α∥VyS0(x)∇L(x)∥2 
+
+> F
+
++ β∥VyT0(x)∇R(x)∥2 
+
+> F
+
+(13) where Vy is the RGB-to-YUV conversion coefficient from Equation 12, and all other parameters remain identical to the original STAR formulation ( α = 0 .001 , β = 0 .0001 , K = 20 ). 
+
+3.3.2 Structure Layer Enhancement 
+
+The structure layer extracted by the STAR-YUV model retains the majority of the scene’s structural and color information. We apply two complementary enhancement operations to this layer: 
+
+Gamma Correction for Illumination Compensation. Since nighttime dehazing typically reduces scene brightness, we apply gamma correction to boost overall illumination while avoiding overexpo-sure: 
+
+S1(x) = ( S(x)) γ (14) where γ = 0 .4 is selected through extensive experimentation to maximize brightness improvement while preserving the color structure. 7MSRCR-Based Color Correction. To address the inherent color bias in nighttime images, we apply MSRCR color correction to the gamma-corrected structure layer: 
+
+Sz (x) = G Dn(x) 1
+
+n
+
+X
+
+> n
+
+(log S1(x) − log B(x)) + p
+
+!
+
+(15) with parameters identical to those specified in Equation 7. 
+
+3.3.3 Texture Layer Enhancement 
+
+The texture layer captures fine-grained detail information. We apply Laplacian-of-Gaussian (LoG) filter-ing to sharpen complex details while preserving edge and texture structures: 
+
+Tz (x) = φ[T (x)] (16) where φ[·] denotes the LoG filter, which effectively enhances image details and sharpens edges without destroying the overall image structure. 
+
+## 3.4 Two-Phase Fusion 
+
+3.4.1 Phase 1: Nonlinear Retinex-Based Fusion 
+
+Following the STAR-YUV decomposition principles and Retinex theory, the enhanced structure and texture layers are fused through nonlinear multiplication: 
+
+Jrh (x) = Sz (x) · Tz (x) (17) This nonlinear fusion preserves the structural details from the structure layer and the fine features from the texture layer, consistent with the multiplicative relationship between illumination and reflectance in Retinex theory. 
+
+3.4.2 Phase 2: Linear Blending 
+
+To achieve optimal visual quality by balancing the complementary strengths of the dehazing stage and the enhancement stage, we perform linear fusion of the two intermediate results: 
+
+Jz (x) = ξ(Jh(x) + Jrh (x)) (18) where ξ = 0 .5 is determined through extensive experimentation. This two-phase fusion strategy miti-gates the low brightness and insufficient detail clarity of the dehazing result, while simultaneously ad-dressing the over-brightening and whitening artifacts that may arise from the first-phase Retinex fusion alone, thereby producing a high-quality and visually appealing final image. 
+
+# 4 Experiments 
+
+## 4.1 Experimental Setup 
+
+4.1.1 Datasets 
+
+To comprehensively evaluate the proposed method, we conduct extensive experiments on two publicly available datasets: • 3R Dataset [62]: Contains both real-world nighttime hazy images and synthetically generated hazy images, providing a diverse testbed for evaluating dehazing algorithms under various night-time conditions. 8• RESIDE Dataset [19]: A large-scale benchmark primarily containing daytime hazy images along with a smaller collection of nighttime hazy images, originally designed for realistic single-image dehazing evaluation. We extract all nighttime hazy images from RESIDE and merge them with the 3R dataset. The combined dataset is then randomly partitioned into test subsets: HC770 comprising 775 pairs of synthetic images (with corresponding ground-truth clear images), and ZS330 comprising 334 real-world nighttime images (without ground-truth references). 
+
+4.1.2 Comparison Methods 
+
+We compare our method against six representative algorithms spanning both daytime and nighttime dehazing: • Daytime methods : DCP [14], DehazeNet [3]; • Nighttime methods : GMLC [20], CEEF [24], IAT [6], Fb [67]. 
+
+4.1.3 Evaluation Metrics 
+
+We employ five widely used image quality assessment metrics: • PSNR (Peak Signal-to-Noise Ratio): Measures pixel-level fidelity relative to the ground truth (full-reference). • SSIM [53] (Structural Similarity Index): Assesses structural similarity between the processed and reference images (full-reference). • AG (Average Gradient): Quantifies the sharpness and edge detail richness of the processed image (no-reference). • IE (Information Entropy): Measures the information content and richness of the image (no-reference). • NIQE [34] (Natural Image Quality Evaluator): Evaluates perceptual quality without reference images, where lower values indicate better quality (no-reference). Since ZS330 consists of real-world images without ground-truth references, only the three no-reference metrics (AG, IE, NIQE) are computed for this subset. HC770, with paired synthetic data, is evaluated using all five metrics. 
+
+4.1.4 Implementation Details 
+
+All experiments are conducted on a Windows 10 system equipped with 16 GB RAM and a 2.5 GHz CPU, using MATLAB 2022b or PyCharm 2023.1.2. 
+
+## 4.2 Color Restoration Evaluation 
+
+To verify the effectiveness of our color correction approach, we design a controlled color restoration experiment. A real color chart image [61] is printed on high-quality photo paper, and 10 clear images are captured using an iPhone 13 under nighttime hazy conditions. Three representative images are randomly selected for evaluation, with smooth color regions extracted from all algorithm outputs to exclude noise interference. As shown in Table 1, DCP and DehazeNet—designed for daytime conditions—show the weakest color restoration, with overall color shifts persisting across all test images. CEEF effectively enhances contrast but amplifies color bias, producing oversaturated and reddish results. GMLC recovers certain 9Table 1: CIEDE2000 color difference evaluation (lower is better). Bold and underlined values indicate the best and second-best results, respectively.                                 
+
+> Method Image1 Image2 Image3 Average
+> DCP 20.506 37.320 15.277 24.368 DehazeNet 19.221 34.211 15.783 23.072 CEEF 26.025 29.485 25.481 26.997 GMLC 17.690 35.502 15.661 22.951 Fb 19.849 20.973 17.238 19.353 IAT 21.684 20.519 16.871 19.691
+> Ours 13.732 20.238 12.427 15.466
+
+Table 2: Subjective evaluation scores (1–5 scale) by 30 human assessors. Bold values indicate the best results per column.                                         
+
+> Method Detail Color Natural. Visual Overall
+> DCP 3.2 3.4 3.6 3.3 3.4 DehazeNet 3.0 3.2 3.5 3.2 3.2 CEEF 3.6 4.0 3.8 3.7 3.8 GMLC 4.2 3.2 4.0 3.9 4.2 Fb 3.1 4.1 3.8 4.0 3.8 IAT 3.0 4.0 3.9 3.9 3.7
+> Ours 4.0 4.3 4.0 4.2 4.1
+
+colors well (particularly red, blue, and white) but struggles under extremely low illumination. Both Fb and IAT improve scene brightness but introduce a yellow cast with severe distortion in red, blue, and green channels. In contrast, our method achieves the best CIEDE2000 scores across all images, with an average color difference of 15.466, representing a 20.1% improvement over the second-best method (Fb at 19.353), demonstrating superior color fidelity and restoration accuracy. 
+
+## 4.3 Subjective Evaluation 
+
+We present qualitative comparisons on both the ZS330 (real-world) and HC770 (synthetic) test sets. On the ZS330 dataset, DCP and DehazeNet produce marginal improvements, failing to address low brightness and color bias. CEEF effectively removes haze and improves contrast but amplifies color distortion, particularly at color boundaries. GMLC successfully corrects color bias and removes haze, improving depth perception. However, it tends to over-brighten already bright regions while darkening shadows excessively, resulting in detail loss. Fb effectively increases scene brightness while maintaining light source shapes, but fails to address residual haze. IAT significantly enhances illumination for multi-source images but disrupts light source structures and causes overexposure. Our method simultaneously improves brightness, removes haze, preserves object contrast, and recovers natural colors, with rich details visible in shadow regions. On the HC770 dataset, similar patterns emerge: DCP provides limited contrast improvement without resolving overall dimness; CEEF removes haze but darkens images and worsens color shifts; GMLC improves brightness and color but introduces sky-region distortion; Fb softens images while losing de-tails; IAT restores colors effectively but causes edge artifacts. Our method produces results closest to the ground-truth clear images, with balanced brightness, faithful colors, and rich details. Furthermore, subjective evaluation by 30 human assessors scoring image detail, color richness, nat-uralness, and visual appeal confirms the superiority of our approach: As shown in Table 2, our method achieves the highest scores across all five subjective criteria, con-firming its effectiveness in producing visually natural and detail-rich nighttime dehazed images. 10 Table 3: Quantitative comparison on representative images from ZS330 (no-reference only) and HC770 (all metrics). ↑: higher is better; ↓: lower is better. Bold and underlined values indicate best and second-best results.                                                                  
+
+> ZS330 Samples HC770 Samples Method AG ↑IE ↑NIQE ↓PSNR ↑SSIM ↑AG ↑IE ↑NIQE ↓
+> DCP 3.789 6.535 4.310 14.053 0.611 4.292 6.659 2.461 DehazeNet 3.122 5.596 4.782 13.422 0.441 3.613 5.740 2.692 CEEF 6.763 7.057 4.296 15.920 0.669 7.076 7.176 2.205 GMLC 7.548 6.990 4.380 15.570 0.398 7.814 6.936 2.464 Fb 3.347 6.934 4.344 14.290 0.612 4.335 7.100 2.515 IAT 4.179 7.384 3.661 16.013 0.614 5.399 7.489 2.518
+> Ours 8.466 7.542 4.282 17.899 0.623 9.444 7.526 2.419
+
+Table 4: Quantitative comparison on the full ZS330 and HC770 test sets. ↑: higher is better; ↓: lower is better. Bold and underlined values indicate best and second-best results.                                                                  
+
+> ZS330 HC770 Method AG ↑IE ↑NIQE ↓PSNR ↑SSIM ↑AG ↑IE ↑NIQE ↓
+> DCP 4.526 6.764 2.779 9.899 0.556 3.968 6.835 2.775 DehazeNet 3.807 6.100 3.127 12.105 0.592 3.229 6.663 3.054 CEEF 6.503 7.042 2.600 11.469 0.618 6.592 7.078 2.721 GMLC 7.020 8.321 2.689 14.096 0.460 7.083 6.676 2.640 Fb 3.235 6.795 3.136 13.536 0.693 2.590 6.684 3.392 IAT 4.231 7.056 2.981 14.706 0.718 3.941 6.978 2.952
+> Ours 7.836 7.461 2.683 17.024 0.765 7.371 7.595 2.702
+
+## 4.4 Objective Evaluation 
+
+We conduct quantitative evaluation using all five metrics on representative image pairs and the complete test sets. Table 3 presents the metric comparison on selected representative images, while Table 4 reports the comprehensive results across the full ZS330 and HC770 test sets. As demonstrated in Tables 3 and 4, our method consistently achieves the best or second-best perfor-mance across all metrics on both test sets. Specifically: • PSNR and IE achieve the best values in both the sample-level and dataset-level comparisons, indicating that our dehazed results are closest to the ground-truth images in terms of pixel fidelity and information content. • NIQE achieves the second-best values across all comparisons, and unlike individual competing methods (e.g., CEEF, GMLC, IAT), which may excel on one metric but falter on others, our method maintains consistently strong performance, demonstrating superior generalizability and stability. • AG achieves the best values on both HC770 (sample and full-set) and second-best on ZS330, con-firming our method’s effectiveness in recovering edge information and enhancing image gradients. • SSIM achieves the best value on HC770 and competitive performance on sample images, indicat-ing structural fidelity closest to the real nighttime haze-free images. 
+
+## 4.5 Ablation Study 
+
+To validate the contribution of each core component, we conduct ablation experiments by systematically removing individual modules: • w/o T : Without transmittance correction; 11 Table 5: Ablation study results on the ZS330 and HC770 test sets. Bold and underlined values indicate best and second-best results.                                          
+
+> ZS330 HC770 Method AG ↑IE ↑NIQE ↓PSNR ↑SSIM ↑AG ↑IE ↑NIQE ↓
+> w/o T 19.065 16.289 5.314 12.959 0.380 5.046 7.701 7.607 w/o Dehaze 7.304 7.500 4.226 15.547 0.592 6.330 7.501 4.357 w/o STAR 5.723 7.113 3.748 16.387 0.779 5.834 7.394 3.711
+> Full Model 7.836 7.461 2.683 17.024 0.765 7.371 7.595 2.702
+
+Table 6: Runtime comparison (in seconds) across different image resolutions. Bold values indicate the fastest method.                                 
+
+> Method 480 ×360 550 ×733 1000 ×653 Average
+> DCP 8.54 21.04 33.52 21.03 DehazeNet 1.16 3.71 4.25 3.04
+> CEEF 0.64 2.36 2.55 1.85 GMLC 6.08 13.90 40.74 20.24 Fb 5.51 17.49 27.56 16.85 IAT 8.85 19.24 32.63 20.24
+> Ours 5.93 16.37 28.39 16.90
+
+• w/o Dehaze : Without the transmittance-based dehazing module; • w/o STAR : Without the STAR-YUV structure-texture layered optimization. The ablation results in Table 5 reveal the following insights: • w/o T : Removing transmittance correction produces images with enhanced brightness and en-riched details but introduces substantial noise, as evidenced by the abnormally high AG and IE values (which actually reflect noise amplification rather than genuine detail recovery). The NIQE score of 5.314/7.607 confirms severe quality degradation. • w/o Dehaze : Omitting the dehazing module yields effective color correction and brightness en-hancement but results in overall whitening and overexposure in light source regions, as the haze layer is not removed. • w/o STAR : Removing the structure-texture optimization achieves effective haze removal but leaves color bias and low-brightness problems unresolved, with insufficient detail enrichment. The SSIM value of 0.779 is close to the full model’s 0.765, indicating that the dehazing module alone pre-serves structural similarity but cannot address color and illumination issues. • Full Model : The complete pipeline achieves the best overall performance by synergistically com-bining all three components, demonstrating that transmittance correction, dehazing, and structure-texture optimization are complementary and jointly necessary for high-quality nighttime image dehazing. 
+
+## 4.6 Runtime Analysis 
+
+To assess computational efficiency, we measure execution times for images of varying resolutions: As shown in Table 6, while our method is not the fastest (CEEF and DehazeNet are faster due to their simpler processing pipelines), it achieves a competitive runtime compared to DCP, GMLC, and IAT, while delivering substantially superior visual quality. The additional computational overhead stems from the transmittance correction, STAR-YUV decomposition, and two-phase fusion stages. Future work will explore algorithmic optimization and hardware acceleration strategies to further reduce processing time. 12 5 Conclusion 
+
+In this paper, we have presented a two-stage nighttime image dehazing framework that synergistically combines transmittance correction with structure-texture layered optimization to comprehensively ad-dress the intertwined challenges of haze, low illumination, color deviation, and detail loss in nighttime imagery. The first stage introduces a novel region-adaptive transmittance correction method, incorporat-ing bright-region compensation, light-source compensation, and normalization, paired with a quadratic Gaussian filtering scheme in the YUV color space for atmospheric light estimation, enabling effective haze removal through an improved nighttime imaging model. The second stage proposes the STAR-YUV decomposition model, which separates the dehazed image into structure and texture layers within the YUV domain, applying gamma correction with MSRCR color restoration to the structure layer and Laplacian-of-Gaussian filtering to the texture layer, followed by a two-phase fusion strategy that nonlin-early merges the enhanced layers and linearly blends the result with the initial dehazing output. Exten-sive experiments on two benchmark test sets—ZS330 (334 real-world images) and HC770 (775 synthetic pairs)—demonstrate that the proposed method achieves average PSNR, SSIM, AG, IE, and NIQE scores of 17.024 dB, 0.765, 7.604, 7.528, and 2.693, respectively, consistently outperforming six state-of-the-art daytime and nighttime dehazing algorithms across five evaluation metrics, with particularly strong advantages in color fidelity (20.1% improvement in CIEDE2000), structural preservation, and detail richness, while maintaining competitive computational efficiency. Future work will focus on reducing runtime through algorithmic optimization and hardware acceleration, as well as extending the framework to video-based nighttime dehazing scenarios. 13 References 
+
+[1] Josh Achiam, Steven Adler, Sandhini Agarwal, Lama Ahmad, Ilge Akkaya, Florencia Leoni Ale-man, Diogo Almeida, Janko Altenschmidt, Sam Altman, Shyamal Anadkat, et al. GPT-4 technical report. arXiv preprint arXiv:2303.08774 , 2023. [2] Shuvam Banerjee and Subhasis Chaudhuri. Nighttime image-dehazing: A review and quantita-tive benchmarking. Archives of Computational Methods in Engineering , 2024. doi: 10.1007/ s11831-024-10125-3. [3] Bolun Cai, Xiangmin Xu, Kui Jia, Chunmei Qing, and Dacheng Tao. DehazeNet: An end-to-end system for single image haze removal. IEEE Transactions on Image Processing , 25(11):5187–5198, 2016. doi: 10.1109/TIP.2016.2598681. [4] Yuanhao Cai, Hao Bian, Jing Lin, Haoqian Wang, Radu Timofte, and Yulun Zhang. RetinexFormer: One-stage Retinex-based transformer for low-light image enhancement. In Proceedings of the IEEE/CVF International Conference on Computer Vision , pages 12504–12513, 2023. [5] Benlei Cui, Shengqu He, Bohan Huang, Zhenyu Ye, Yongwei Sun, Lei Huang, Hanwen Xue, Yi-hua Yang, Jingqun Tang, et al. TC-Padé: Trajectory-consistent Padé approximation for diffusion acceleration. arXiv preprint arXiv:2603.02943 , 2026. [6] Wenjing Cui, Wenqi Ren, Shenghao Yang, Xiaochun Cao, and Alois Knoll. Illumination-adaptive unpaired low-light enhancement. IEEE Transactions on Circuits and Systems for Video Technology ,32(12):8588–8601, 2022. doi: 10.1109/TCSVT.2022.3191766. [7] Chenggang Deng, Guosheng Li, Haoyu Liu, and Xin Wang. Real-world nighttime image dehazing using contrastive and adversarial learning. Pattern Recognition , 165:111596, 2025. doi: 10.1016/j. patcog.2025.111596. [8] Xiaoyu Fei, Jinghui Lu, Qiushi Sun, Hao Feng, Yanjie Wang, Wenqiang Shi, Anlei Wang, Jingqun Tang, and Can Huang. Advancing sequential numerical prediction in autoregressive models. In 
+
+Proceedings of the 63rd Annual Meeting of the Association for Computational Linguistics , 2025. [9] Hao Feng, Zijian Wang, Jingqun Tang, Jinghui Lu, Wengang Zhou, Houqiang Li, and Can Huang. UniDoc: A universal large multimodal model for simultaneous text detection, recognition, spotting and understanding. arXiv preprint arXiv:2308.11592 , 2023. [10] Hao Feng, Qi Liu, Hao Liu, Jingqun Tang, Wengang Zhou, Houqiang Li, and Can Huang. Doc-pedia: Unleashing the power of large multimodal model in the frequency domain for versatile document understanding. Science China Information Sciences , 67(12):1–14, 2024. [11] Hao Feng, Shu Wei, Xiaoyu Fei, Wenqiang Shi, Yan Han, Lei Liao, Jinghui Lu, Binghong Wu, Qi Liu, Chunhui Lin, Jingqun Tang, and Can Huang. Dolphin: Document image parsing via het-erogeneous anchor prompting. In Findings of the Association for Computational Linguistics: ACL 2025 , pages 21919–21936, 2025. [12] Hao Feng, Wenqiang Shi, Kaixin Zhang, Xiaoyu Fei, Lei Liao, Dian Yang, Yuhui Du, Xiaocong Wu, Jingqun Tang, Yuliang Liu, et al. Dolphin-v2: Universal document parsing via scalable anchor prompting. arXiv preprint arXiv:2602.05384 , 2026. [13] Ling Fu, Zhebin Kuang, Jiajun Song, Mingxin Huang, Biao Yang, Yuzhe Li, Linghao Zhu, Qidi Luo, Xinyu Wang, Hao Lu, Guozhi Tang, Bin Shan, Chunhui Lin, Qi Liu, Binghong Wu, Hao Feng, Hao Liu, Can Huang, Jingqun Tang, Wei Chen, Lianwen Jin, Yuliang Liu, and Xiang Bai. OCRBench v2: An improved benchmark for evaluating large multimodal models on visual text localization and reasoning. arXiv preprint arXiv:2501.00321 , 2024. 14 [14] Kaiming He, Jian Sun, and Xiaoou Tang. Single image haze removal using dark channel prior. In 
+
+IEEE Transactions on Pattern Analysis and Machine Intelligence , volume 33, pages 2341–2353, 2011. doi: 10.1109/TPAMI.2010.168. [15] Jonathan Ho, Ajay Jain, and Pieter Abbeel. Denoising diffusion probabilistic models. Advances in Neural Information Processing Systems , 33:6840–6851, 2020. [16] Wei Jia, Jinghui Lu, Haiyang Yu, Siqi Wang, Guozhi Tang, Anlei Wang, Weirui Yin, Dian Yang, Yicheng Nie, et al. MEML-GRPO: Heterogeneous multi-expert mutual learning for RLVR ad-vancement. In Proceedings of the AAAI Conference on Artificial Intelligence , volume 40, page 31283, 2026. [17] Daniel J Jobson, Zia-ur Rahman, and Glenn A Woodell. A multiscale Retinex for bridging the gap between color images and the human observation of scenes. IEEE Transactions on Image Processing , 6(7):965–976, 1997. doi: 10.1109/83.597272. [18] Sanjay Kuanar, K Ranga Rao, Dwarikanath Mahapatra, and Monalisa Bilas. Night time haze and glow removal using deep dilated convolutional network. arXiv preprint arXiv:1902.00855 , 2019. [19] Boyi Li, Wenqi Ren, Dengpan Fu, Dacheng Tao, Dan Feng, Wenjun Zeng, and Zhangyang Wang. Benchmarking single-image dehazing and beyond. IEEE Transactions on Image Processing , 28 (1):492–505, 2019. doi: 10.1109/TIP.2018.2867951. [20] Yu Li, Robby T Tan, and Michael S Brown. Nighttime haze removal with glow and multiple light colors. In Proceedings of the IEEE International Conference on Computer Vision , pages 226–234, Santiago, Chile, 2015. doi: 10.1109/ICCV.2015.34. [21] Zhulin Li, Wenwen Che, Menghang Qian, and Xueli Xu. An improved image defogging algorithm based on histogram equalization. Henan Science , 39(1):1–6, 2021. doi: 10.3969/j.issn.1004-3918. 2021.01.001. [22] Yonghong Liao, Zhuo Su, Xiaoguang Liang, and Bilian Qiu. HDP-Net: Haze density prediction network for nighttime dehazing. In Proceedings of the 19th Pacific-Rim Conference on Multimedia ,pages 469–480, Hefei, China, 2018. Springer. doi: 10.1007/978-3-030-00776-8_43. [23] Beibei Lin, Yeying Jin, Wending Yan, Wei Ye, Yuan Yuan, and Robby T Tan. NightHaze: Night-time image dehazing via self-prior learning. In Proceedings of the AAAI Conference on Artificial Intelligence , 2025. arXiv preprint arXiv:2403.07408. [24] Xiaonan Liu, Hang Li, and Ce Zhu. Joint contrast enhancement and exposure fusion for real-world image dehazing. IEEE Transactions on Multimedia , 24:3934–3946, 2022. doi: 10.1109/TMM. 2021.3110483. [25] Yu Liu, Zhesi Yan, Tao Ye, Aimin Wu, and Yongchi Li. Single nighttime image dehazing based on unified variational decomposition model and multi-scale contrast enhancement. Engineering Applications of Artificial Intelligence , 116:105373, 2022. doi: 10.1016/j.engappai.2022.105373. [26] Yu Liu, Zhesi Yan, Jianguo Tan, and Yongchi Li. Multi-purpose oriented single nighttime image haze removal based on unified variational Retinex model. IEEE Transactions on Circuits and Systems for Video Technology , 33(4):1643–1657, 2023. doi: 10.1109/TCSVT.2022.3214430. [27] Yuliang Liu, Jiaxin Zhang, Dezhi Peng, Mingxin Huang, Xinyu Wang, Jingqun Tang, Can Huang, Dahua Lin, Chunhua Shen, Xiang Bai, and Lianwen Jin. SPTS v2: Single-point scene text spotting. 
+
+IEEE Transactions on Pattern Analysis and Machine Intelligence , 45(12):15038–15055, 2023. doi: 10.1109/TPAMI.2023.3312285. 15 [28] Yunbo Liu, Xukui Qin, Yifan Gao, Xiang Li, and Chengwei Feng. SETransformer: A hybrid attention-based architecture for robust human activity recognition. INNO-PRESS: Journal of Emerging Applied AI , 1(1), 2025. [29] Jinghui Lu, Haiyang Yu, Yanjie Wang, Yongjie Ye, Jingqun Tang, Ziwei Yang, Binghong Wu, Qi Liu, Hao Feng, Han Wang, et al. A bounding box is worth one token: Interleaving layout and text in a large language model for document understanding. In Findings of the Association for Computational Linguistics: ACL 2025 , pages 7252–7273, 2025. [30] Jinghui Lu, Haiyang Yu, Shuai Xu, Shuangquan Ran, Guozhi Tang, Siqi Wang, Bin Shan, Tongji Fu, Hao Feng, Jingqun Tang, et al. Prolonged reasoning is not all you need: Certainty-based adaptive routing for efficient LLM/MLLM reasoning. arXiv preprint arXiv:2505.15154 , 2025. [31] Wei Lu, Tao Gao, Cuicui Wang, Benhao Chen, and Sai Zhang. Low illumination color image enhancement algorithm based on fusion idea under Retinex theory. Science Technology and Engi-neering , 19(13):151–157, 2019. doi: 10.3969/j.issn.1671-1815.2019.13.024. [32] Earl J McCartney and Fred F Hall. Optics of the atmosphere: Scattering by molecules and particles. 
+
+Physics Today , 30(5):76–77, 1977. doi: 10.1063/1.3037551. [33] Gaofeng Meng, Ying Wang, Jiangyong Duan, Shiming Xiang, and Chunhong Pan. Efficient im-age dehazing with boundary constraint and contextual regularization. In Proceedings of the IEEE International Conference on Computer Vision , pages 617–624, Sydney, Australia, 2013. doi: 10.1109/ICCV.2013.82. [34] Anish Mittal, Rajiv Soundararajan, and Alan C Bovik. Making a “completely blind” image quality analyzer. IEEE Signal Processing Letters , 20(3):209–212, 2013. doi: 10.1109/LSP.2012.2227726. [35] Yicheng Nie, Haotian Wang, Yongjie Ye, Haiyang Yu, Wei Jia, Tao Zeng, Hao Feng, Xiaoyu Fei, Yichao Li, Xiaotao Lv, Jingqun Tang, et al. ChineseVideoBench: Benchmarking multi-modal large models for chinese video question answering. arXiv preprint arXiv:2511.18399 , 2025. [36] Joseph Redmon, Santosh Divvala, Ross Girshick, and Ali Farhadi. You only look once: Unified, real-time object detection. arXiv preprint arXiv:1506.02640 , 2016. doi: 10.48550/arXiv.1506. 02640. [37] Robin Rombach, Andreas Blattmann, Dominik Lorenz, Patrick Esser, and Björn Ommer. High-resolution image synthesis with latent diffusion models. In Proceedings of the IEEE/CVF Confer-ence on Computer Vision and Pattern Recognition , pages 10684–10695, 2022. [38] Gaurav Sahu, Ayan Seal, Debotosh Bhattacharjee, Mita Nasipuri, Peter Brida, and Ondrej Krejcar. Trends and prospects of techniques for haze removal from degraded images: A survey. IEEE Transactions on Emerging Topics in Computational Intelligence , 6(4):762–782, 2022. doi: 10. 1109/TETCI.2022.3173443. [39] Gaurav Sahu, Ayan Seal, Debotosh Bhattacharjee, Robert Frischer, and Ondrej Krejcar. A novel parameter adaptive dual channel MSPCNN based single image dehazing for intelligent transporta-tion systems. IEEE Transactions on Intelligent Transportation Systems , 24(3):3027–3047, 2023. doi: 10.1109/TITS.2022.3225797. [40] Bin Shan, Xiaoyu Fei, Wenqiang Shi, Anlei Wang, Guozhi Tang, Lei Liao, Jingqun Tang, Xiang Bai, and Can Huang. MCTBench: Multimodal cognition towards text-rich visual scenes bench-mark. arXiv preprint arXiv:2410.11538 , 2024. [41] Wenhao Sun, Benlei Cui, Jingqun Tang, and Xue-Mei Dong. Attentive eraser: Unleashing diffusion model’s object removal potential via self-attention redirection guidance. In Proceedings of the AAAI Conference on Artificial Intelligence , 2025. arXiv preprint arXiv:2412.12974. 16 [42] Jingqun Tang, Wenqing Qian, Luchuan Song, Xiaozhong Dong, Lanfang Li, and Xiang Bai. Opti-mal boxes: Boosting end-to-end scene text recognition by adjusting annotated bounding boxes via reinforcement learning. In European Conference on Computer Vision , pages 233–248. Springer, 2022. [43] Jingqun Tang, Su Qiao, Benlei Cui, Yuhang Ma, Sheng Zhang, and Dimitrios Kanoulas. You can even annotate text with voice: Transcription-only-supervised text spotting. In Proceedings of the 30th ACM International Conference on Multimedia , pages 4154–4163, 2022. doi: 10.1145/ 3503161.3547787. [44] Jingqun Tang, Wenqing Zhang, Hongye Liu, MingKun Yang, Bo Jiang, Guanglong Hu, and Xiang Bai. Few could be better than all: Feature sampling and grouping for scene text detection. In 
+
+Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition , pages 4563–4572, 2022. [45] Jingqun Tang, Weijia Du, Bin Wang, Wengang Zhou, Song Mei, Tong Xue, Xin Xu, and Hao Zhang. Character recognition competition for street view shop signs. National Science Review , 10 (6):nwad141, 2023. doi: 10.1093/nsr/nwad141. [46] Jingqun Tang, Chunhui Lin, Zhen Zhao, Shu Wei, Binghong Wu, Qi Liu, Hao Feng, Yang Li, Siqi Wang, Lei Liao, et al. TextSquare: Scaling up text-centric visual instruction tuning. arXiv preprint arXiv:2404.12803 , 2024. [47] Jingqun Tang, Qi Liu, Yongjie Ye, Jinghui Lu, Shu Wei, Chunhui Lin, Wanqing Li, Mohamad Fitri Faiz Bin Mahmood, Hao Feng, Zhen Zhao, et al. MTVQA: Benchmarking multilingual text-centric visual question answering. arXiv preprint arXiv:2405.11985 , 2024. [48] Yaqin Tang, Yin Xiang, and Guofang Chen. A nighttime and daytime single-image dehazing method. Applied Sciences , 13(1):255, 2023. doi: 10.3390/app13010255. [49] Anlei Wang, Bin Shan, Wenqiang Shi, Kai-Yin Lin, Xiaoyu Fei, Guozhi Tang, Lei Liao, Jingqun Tang, Can Huang, et al. PARGO: Bridging vision-language with partial and global views. In Pro-ceedings of the AAAI Conference on Artificial Intelligence , 2025. arXiv preprint arXiv:2408.12928. [50] Anlei Wang, Jingqun Tang, Lei Liao, Hao Feng, Qi Liu, Xiaoyu Fei, Jinghui Lu, Han Wang, Hao Liu, Yuliang Liu, et al. WildDoc: How far are we from achieving comprehensive and robust document understanding in the wild? In Proceedings of the 2025 Conference on Empirical Methods in Natural Language Processing , 2025. [51] Haotian Wang, Yongjie Ye, Bingning Li, Yicheng Nie, Jinghui Lu, Jingqun Tang, Yaxing Wang, and Can Huang. Vision as LoRA. arXiv preprint arXiv:2503.20680 , 2025. [52] Wenhan Wang, Ainan Wang, and Chang Liu. Variational single nighttime image haze removal with a gray haze-line prior. IEEE Transactions on Image Processing , 31:1349–1363, 2022. doi: 10.1109/TIP.2022.3141252. [53] Zhou Wang, Alan C Bovik, Hamid R Sheikh, and Eero P Simoncelli. Image quality assessment: From error visibility to structural similarity. IEEE Transactions on Image Processing , 13(4):600– 612, 2004. doi: 10.1109/TIP.2003.819861. [54] Yiqun Wu, Dapeng Tao, Yongbing Zhan, and Chongyang Zhang. BiN-Flow: Bidirectional nor-malizing flow for robust image dehazing. IEEE Transactions on Image Processing , 31:6635–6648, 2022. doi: 10.1109/TIP.2022.3214093. [55] Jun Xu, Yingkun Hou, Dongwei Ren, Li Liu, Fan Zhu, Mengyang Yu, Haoqian Wang, and Ling Shao. STAR: A structure and texture aware Retinex model. IEEE Transactions on Image Process-ing , 29:5022–5037, 2020. doi: 10.1109/TIP.2020.2974060. 17 [56] Yun Yan, Wending Ren, Xianyu Cao, and Junlin Chen. NightHazeFormer: Single nighttime haze removal using prior query transformer. In Proceedings of the 31st ACM International Conference on Multimedia , pages 4119–4128, 2023. doi: 10.1145/3581783.3611744. [57] Yan Yang and Wenbo Zhang. Dehazing algorithm with atmospheric light veil estimation based on haze distribution. Chinese Journal of Liquid Crystals and Displays , 38(4):534–542, 2023. doi: 10.37188/CJLCD.2022-0237. [58] Haiyang Yu, Yongping Wu, Feifan Shi, Lei Liao, Jinghui Lu, Xiaocui Ge, Han Wang, Mengfei Zhuo, Xiaocong Wu, Xiaoyu Fei, Jingqun Tang, et al. Benchmarking vision-language models on chinese ancient documents: From OCR to knowledge reasoning. arXiv preprint arXiv:2509.09731 ,2025. [59] Jing Yu, Dongbin Xu, and Qingmin Liao. Image defogging: A survey. Journal of Image and Graphics , 16(9):1561–1576, 2011. doi: 10.11834/jig.20110920. [60] Sheng Yu, Yanjie Li, Zhiming Shen, and Ronghua Liang. Nighttime image dehazing based on multi-scale gated fusion network. Electronics , 11(22):3723, 2022. doi: 10.3390/ electronics11223723. [61] Jing Zhang, Yang Cao, and Zhengfang Wang. Nighttime haze removal based on a new imaging model. In Proceedings of the IEEE International Conference on Image Processing , pages 4557– 4561, Paris, France, 2014. doi: 10.1109/ICIP.2014.7025924. [62] Jing Zhang, Yang Cao, Zheng-Jun Zha, and Dacheng Tao. Nighttime dehazing with a synthetic benchmark. In Proceedings of the 28th ACM International Conference on Multimedia , pages 2355– 2363, Seattle, USA, 2020. doi: 10.1145/3394171.3413763. [63] Weixia Zhang, Guangtao Zhai, Ying Wei, Xiaokang Yang, and Kede Ma. Blind image quality assessment via vision-language correspondence: A multitask learning perspective. In Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition , pages 14071–14081, 2023. [64] Weichao Zhao, Hao Feng, Qi Liu, Jingqun Tang, Shu Wei, Binghong Wu, Lei Liao, Yongjie Ye, Hao Liu, Wengang Zhou, Houqiang Li, and Can Huang. TabPedia: Towards comprehensive visual table understanding with concept synergy. In Advances in Neural Information Processing Systems ,volume 37, 2024. [65] Zhen Zhao, Jingqun Tang, Chunhui Lin, Binghong Wu, Can Huang, Hao Liu, Xin Tan, Zhizhong Zhang, and Yuan Xie. Multi-modal in-context learning makes an ego-evolving scene text recog-nizer. In Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition ,pages 15567–15576, 2024. [66] Zhen Zhao, Jingqun Tang, Binghong Wu, Chunhui Lin, Shu Wei, Hao Liu, Xin Tan, Zhizhong Zhang, Can Huang, and Yuan Xie. Harmonizing visual text comprehension and generation. arXiv preprint arXiv:2407.16364 , 2024. [67] Menglan Zhou, Haiyu Leng, Bin Fang, Tianlei Xiang, Xiaokang Wei, and Wenjing Jia. Low-light image enhancement via a frequency-based model with structure and texture decomposition. ACM Transactions on Multimedia Computing, Communications and Applications , 19(6):187, 2023. doi: 10.1145/3590965. 18

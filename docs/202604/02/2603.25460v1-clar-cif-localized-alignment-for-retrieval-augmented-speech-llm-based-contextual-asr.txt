@@ -1,0 +1,294 @@
+Title: CLAR: CIF-Localized Alignment for Retrieval-Augmented Speech LLM-Based Contextual ASR
+
+URL Source: https://arxiv.org/pdf/2603.25460v1
+
+Published Time: Fri, 27 Mar 2026 01:06:20 GMT
+
+Number of Pages: 5
+
+Markdown Content:
+# CLAR: CIF-Localized Alignment for Retrieval-Augmented Speech LLM-Based Contextual ASR 
+
+# Shangkun Huang 1, Huan Shen 1, Wei Zou 1,∗∗ , Yunzhang Chen 11 BRVoice Team, Bairong, Inc., China 
+
+shangkun.huang@brgroup.com, wei.zou@brgroup.com 
+
+# Abstract 
+
+Speech LLM-based ASR often struggles with named entities and long-tail words due to strong internal language-model pri-ors. Retrieval-augmented biasing can help, but its effective-ness depends on accurate hotword localization in full-utterance speech under weak supervision. We propose CLAR, a dual-encoder speech-text retriever that uses Continuous Integrate-and-Fire (CIF) to learn monotonic token-level alignments with-out timestamps. With length-aware localized matching, CLAR anchors short-entity acoustic cues and reduces representation dilution and attention drift. The retriever is trained with a multi-granularity objective combining global and local segment-level contrastive losses and a CIF quantity constraint. At inference, top-ranked hotwords are injected as contextual prompts for the Speech LLM, improving recognition without shallow fusion. Experiments show that CLAR significantly improves hotword retrieval and reduces both CER and B-WER against strong con-textual ASR baselines. 
+
+Index Terms : Contextual ASR, Retrieval-Augmented Speech Recognition, Hotword Retrieval, CIF, Weakly Supervised Alignment 
+
+# 1. Introduction 
+
+Generative large language models (LLMs) have driven remark-able progress in general-domain ASR [1–8]. However, in open-domain settings, accurate recognition of named entities and long-tail words remains a formidable challenge. These terms are typically low-frequency, sparsely distributed, and lack rich semantic context. As a result, strong internal language-model priors often dominate end-to-end decoding, overwhelm weak acoustic evidence, and bias outputs toward high-frequency com-mon words. This “semantic over-reliance” can induce entity substitutions and hallucinations, substantially undermining the robustness and reliability of downstream applications such as information retrieval, question answering, and conversational interaction. To mitigate recognition failures caused by overly strong semantic priors, prior work frames Speech-LLM decoding as prompt-conditioned generation with contextual biasing or retrieval-augmented generation (RAG). Injecting hotword can-didates or few-shot examples can improve access to low-frequency words [9], but performance remains sensitive to candidate-list precision and may degrade when the list grows [4, 10]. Representative solutions include CTC-based auxiliary filtering, local context correction, and multi-domain modeling [2, 11, 12], as well as RAG pipelines using textual context min-ing, entity detection, vector retrieval, or phoneme-level edit-
+
+> **
+
+indicates the corresponding author. LLM Decoder LoRA          
+
+> ...
+> 新京报
+> 紫各庄村
+> 邓郁松
+> CLAR
+> RAG Adapter
+> Audio
+> Encoder
+> Speech Embedding Context (Bias) Instruct Transcription
+> ...
+> 大兴区紫各庄村
+> Hotword Vocabulary
+> Embedding
+> Candidate
+> Top-K Scores
+
+Figure 1: CLAR retrieval-augmented contextual ASR: CIF-Localized Alignment retriever for localized hotword matching and prompt-based decoding with a Speech LLM. 
+
+distance matching [13–16]. Ultimately, the efficacy of these contextual and retrieval-augmented methods hinges on the front-end retriever’s abil-ity to stably and accurately localize hotword segments within full-utterance speech. Under weak supervision (without times-tamps), existing approaches still face two critical bottlenecks. First, a mismatch in representation granularity causes fea-ture “dilution”: conventional dual-tower retrievers apply global pooling, compressing variable-length speech into a single utterance-level vector. In full-utterance speech, the brief acous-tic cues of short entities (often lasting only a few hundred milliseconds) are easily averaged out by background noise or irrelevant content, and this issue is further aggravated when speech–text mapping is learned primarily from TTS-generated data [3, 17]. This mismatch can further weaken robustness un-der real-world acoustic scenarios. Second, weak supervision induces alignment deviation. Lacking explicit temporal con-straints, unconstrained soft-matching paradigms capture global semantic co-occurrence rather than strict temporal correspon-dence, causing focus drift and misaligned local aggregation. As shown in Figure 1, we propose CLAR, a dual-encoder speech–text retriever for localized hotword matching, whose top candidates are injected as prompts into a Speech LLM for contextual ASR; the details are provided in subsection 2.1. The core technical insight of CLAR is a CIF-Localized Align-ment module that learns token-level monotonic boundaries without timestamps. This enables length-aware localized win-dow matching that precisely anchors short-entity cues, sub-stantially reducing representation dilution and attention drift, as illustrated in Figure 2. To decouple global semantics from fine-grained details while reducing reliance on synthetic data, we optimize the retriever on real ASR speech using a multi-  
+
+> arXiv:2603.25460v1 [cs.SD] 26 Mar 2026 Length-aware
+> Localized Matching
+> Token-level Boundaries
+> Localized
+> Mean-Slice
+> Sliding Win dow Text
+> Encoder
+> CIF
+> Predictor
+> Audio
+> Encoder
+> Audio Embedding
+> Text Embedding
+> M
+> L
+> P
+> M
+> L
+> P
+> Hotword
+> Vocabulary
+> Final Retrieval
+> Score: 紫各庄村 ...
+
+Figure 2: The CLAR retriever with dual encoders, CIF-based monotonic alignment, and length-aware localized matching for hotword retrieval. 
+
+granularity objective that combines global and fragment-level contrastive losses with a CIF quantity constraint. Our main contributions are summarized as follows: • We propose CLAR, a CIF-localized dual-encoder retriever that learns monotonic token-level alignments and performs length-aware local matching under weak supervision, while remaining plug-and-play across Speech LLM backbones. • We design a multi-granularity training objective that couples global contrastive loss, segment-level contrastive loss, and a CIF quantity constraint to improve fine-grained retrieval ac-curacy. • We show that CLAR delivers consistent gains in both hot-word retrieval and contextual ASR, achieving state-of-the-art contextual ASR results over strong baselines. 
+
+# 2. Proposed Method 
+
+2.1. Overall Framework 
+
+Figure 1 shows the retrieval-augmented pipeline, where a CIF-Localized Alignment CLAR module retrieves hotword can-didates and a Speech LLM decodes the final transcript with prompt-based biasing. Figure 2 details the retriever, includ-ing the dual-encoder backbone, CIF-based monotonic align-ment, and localized matching for fine-grained hotword retrieval. The framework consists of two components: (1) a dual-encoder CLAP-style retriever with a CIF alignment mechanism to pro-vide token-level temporal boundaries; and (2) a general-purpose Speech LLM, which consumes the retrieved candidates as con-textual prompts to improve entity recognition. We next describe the retriever and alignment mechanism, then detail the localized matching objective and training strategy; the full retrieval pro-cedure is summarized in Algorithm 1. 
+
+2.2. CLAP-Style Dual-Encoder and CIF-Localized Align-ment Dual-encoder architecture. The CLAR module follows the CLAP [18] framework and adopts a dual-tower design con-sisting of a speech encoder and a text encoder. The speech encoder is instantiated as a Paraformer [19] encoder based on the Self-Attention with Non-autoregressive Modeling architec-ture. It takes log-mel filterbank features X ∈ RT0×F as input and produces frame-level hidden representations H =[h1, . . . , hT ] ∈ RT ×Denc , where T denotes the downsampled frame count and Denc is the encoder hidden dimension. The text encoder is initialized from Chinese-RoBERTa-wwm-ext, a pre-trained RoBERTa-based Transformer encoder that maps a token sequence to contextualized representations, and a sentence-level 
+
+Algorithm 1: CIF-Localized Alignment CLAR for hotword re-trieval Input: speech features X, hotword candidates {yj }Mj=1 , candidate token lengths Lj , and top-K.
+
+Output: ranked hotword list CK .
+
+1. Encode speech and predict CIF alignment: H ← SpeechEnc (X),
+
+α ← CIFPred (H), and obtain token boundaries {(bs, e s)}Ss=1 .
+
+2. Project and normalize embeddings: at ← Norm (fa(ht)) and 
+
+ej ← Norm (ft(TextEnc (yj ))) .
+
+3. Compute frame–candidate similarity: St,j ← τ a⊤ 
+
+> t
+
+ej .
+
+4. For each candidate j, perform length-aware localized scoring: score j (s) = 1 
+
+> es+Lj−1−bs+1
+
+Pes+Lj −1 
+
+> t=bs
+
+St,j , and set ˆrj ←
+
+max s score j (s).
+
+5. Rank by ˆrj and return CK ← TopK ({ˆrj }, K ).
+
+embedding is obtained via masked mean pooling over valid to-ken positions. Both modalities are mapped into a shared embedding space of dimension D through dedicated projection layers. Specif-ically, the audio projection fa(·) and the text projection ft(·)
+
+are each realized as a two-layer feed-forward network with a ReLU activation: 
+
+at = fa(ht)
+
+∥fa(ht)∥2
+
+, ej = ft(zj )
+
+∥ft(zj )∥2
+
+, (1) where zj denotes the pooled output of the text encoder for the j-th candidate, and the resulting embeddings at, ej ∈ RD
+
+are ℓ2-normalized. 
+
+CIF-based monotonic alignment . A central component of our system is the CIF predictor [20], which operates on encoder outputs H to produce frame-level weights α = [ α1, . . . , α T ],where αt ∈ (0 , 1) . The weights are generated by a 1D convo-lution, followed by a linear layer and sigmoid activation: 
+
+αt = σ  Linear (ReLU (LayerNorm (Conv1d (H)))) t
+
+ . (2) CIF accumulates these weights through a counter Ct = Ct−1 +
+
+αt. A fire event is triggered when Ct ≥ θ (default θ = 1 .0), which defines a monotonic acoustic boundary; the residual is carried over by Ct ← Ct − θ. For structured processing, frame 
+
+t can be mapped to a token index by counting prior fire events, tok (t) = 1 + 
+
+> t−1
+
+X
+
+> j=1
+
+1[Cj ≥ θ], (3) which yields a non-decreasing frame-to-token mapping and supports length-aware local windows for downstream speech– text matching. During training, the CIF predictor uses a scaling strategy in which the predicted weight sequence α is multiplied by a scalar so that the total accumulated weight P 
+
+> t
+
+αt matches the ground-truth token length; this teacher-forcing constraint stabi-lizes alignment learning. The CIF-related parameters are ini-tialized from the corresponding Paraformer component. 
+
+2.3. CIF-Localized Hotword Retrieval 
+
+This subsection presents the core contribution of our method: a CIF-localized hotword retrieval mechanism that leverages token-level alignment for fine-grained, variable-length cross-modal matching. 
+
+Cross-modal similarity matrix . Given a speech utter-ance with projected, normalized frame-level embeddings A =[a1, . . . , aT ] ∈ RT ×D and a hotword vocabulary bank E =[e1, . . . , eN ] ∈ RN ×D containing N precomputed text em-beddings, the frame-level cross-modal similarity matrix is com-puted as: 
+
+S = τ · AE ⊤ ∈ RT ×N , (4) where τ is a learnable logit-scale parameter (the inverse temper-ature) that controls the sharpness of the similarity distribution. 
+
+Token-span mean-slice aggregation . The key innovation lies in how the similarity matrix S is aggregated into a sin-gle retrieval score per candidate hotword. Unlike conventional global pooling, which can dilute fine-grained local semantics, our method uses CIF-predicted token boundaries for localized sliding-window aggregation. CIF alignment maps each token index k to an acoustic frame span [bk , e k ], where bk and ek are the first and last frames aligned to token k, respectively. The CIF predictor is configured to emit acoustic tokens at the same granularity as the text encoder tokenizer. For a candidate hotword with text-token length L, we slide an acoustic window of width L
+
+over the CIF-emitted token sequence. At each window position 
+
+s ∈ { 0, 1, . . . , K − L}, where K is the total number of CIF-emitted tokens, the corresponding acoustic span is [bs, e s+L−1].The mean-slice score for candidate j at window position s is de-fined as: score j (s) = 1
+
+es+L−1 − bs + 1 
+
+> es+L−1
+
+X
+
+> t=bs
+
+St,j . (5) The final retrieval score for the j-th candidate is obtained by taking the maximum over all valid window positions: 
+
+ˆrj = max  
+
+> s
+
+score j (s). (6) This formulation has two advantages. First, it supports variable-length matching by aligning each candidate to a length-proportional window. Second, localized aggregation preserves salient local cues and avoids global-pooling dilution, while using prefix-sum window scoring with length-wise candidate batching for practical computation. 
+
+2.4. Training Objectives and Retrieval-Augmented Decod-ing Training objectives . The CLAR retriever is trained with a multi-level contrastive learning framework. The total training loss is a weighted combination of three terms: 
+
+L = Llocal + Lglobal + Lcif . (7) The local hotword-level contrastive loss Llocal provides fine-grained supervision at the hotword-span level. For each sample, CIF-derived token alignment identifies the annotated hotword frames, which are mean-pooled into a hotword-level speech embedding and contrasted with the corresponding hotword text embedding using a symmetric cross-entropy objective: 
+
+Llocal = 12 (La→t + Lt→a) . (8) Here, La→t = − 1
+
+> B
+
+P
+
+> i
+
+P 
+
+> j
+
+yij log exp( τ a⊤       
+
+> iej)
+> P
+> j′exp( τa⊤
+> iej′)
+
+, Lt→a is defined symmetrically, and yij denotes the soft target derived from sample identity. The global sentence-level contrastive loss Lglobal aligns the utterance-level speech embedding (from masked average pool-ing over valid encoder frames) with the sentence-level text em-bedding to preserve global semantics. Introducing the global objective incorporates full utterance-level semantic context and further improves local feature discrimination. Meanwhile, the CIF quantity loss Lcif regularizes alignment by minimizing the L1 distance between the predicted token count P 
+
+> t
+
+αt and the ground-truth text length, stabilizing CIF boundaries during training. 
+
+Retrieval-augmented decoding . At inference time, the trained CLAR retriever processes input speech to produce frame-level embeddings and CIF alignments. We then apply the localized mean-slice aggregation in subsection 2.3 to score all candidates in the hotword vocabulary. The top-K candi-dates are concatenated into a text prompt and prepended to the Speech LLM instruction as dynamic contextual bias. After SFT of the base Speech LLM, decoding is performed autoregres-sively conditioned on both the audio input and the augmented prompt. CLAR is used only as an inference-time biasing strat-egy, with no further parameter updates, shallow fusion, or lat-tice rescoring required during decoding. Because contextual in-formation is injected through the natural-language prompt in-terface, the method remains modular and readily transferable across prompt-conditioned Speech LLMs. 
+
+# 3. Experiments 
+
+3.1. Dataset and Metrics 
+
+Several open-source datasets have advanced contextual ASR re-search [21–23]. We use AISHELL-1 [21] to train the Speech LLM and AISHELL-2 [23] to train CLAR, excluding training utterances that contain AISHELL-1-NE hotwords. The hotword set is AISHELL-1-NE [24]. Test-AISHELL-1-NE contains 808 utterances, 400 hotwords, and 226 R1 hotwords, while Dev-AISHELL-1-NE contains 1334 utterances, 600 hotwords, and 371 R1 hotwords. R1 hotwords are those whose recall under the base ASR model is below 40%. Following prior work [25, 26], we adopt CER (character er-ror rate), B-WER (biased-word error rate), and U-CER (char-acter error rate on non-bias words) as the core evaluation met-rics, measuring overall recognition accuracy, bias-word accu-racy, and non-bias-word accuracy, respectively. We addition-ally report Top-1/Top-5/Top-10 recall and F1 score to evaluate hotword retrieval performance. 
+
+3.2. Experimental Configuration 
+
+We use Step-Audio2-mini [27] as the base Speech LLM. To simulate hotword-injected inference, we randomly sample 5– 10 transcript entries as hotwords, each a random 3–6 char-acter n-gram. The Speech LLM is LoRA [28] fine-tuned (r=16, alpha=16, target=all linear, dropout=0.1, bias=none) on 4 NVIDIA H20 GPUs (batch size 32, 2000 steps) using AdamW, a peak learning rate of 2e-6, a 0.1 warmup ratio, and BF16 mixed precision. For CLAR, the audio and text encoders are initialized from Paraformer 1 and Chinese-RoBERTa-wwm-ext 2. CLAR is trained on 4 NVIDIA H20 GPUs (batch size 256) using AdamW with a learning rate of 5 × 10 −4. Training has two stages: (1) CIF pretraining for 30 epochs with global and local loss weights fixed to 0.0, optimizing only the CIF loss; and (2) 60-epoch joint training initialized from stage (1) to optimize the audio encoder, text encoder, and CIF module. 
+
+> 1ModelScope iic/speech paraformer-large
+> 2Hugging Face hfl/chinese-roberta-wwm-ext
+
+3.3. Results and Discussion 
+
+3.3.1. Hotword Retrieval Performance 
+
+Table 1: Ablation of loss components for hotword retrieval re-call (%) on AISHELL-1-NE.                                   
+
+> Loss Terms Test-AISHELL-1-NE Dev-AISHELL-1-NE
+> Lglobal Llocal Lcif R@1 R@5 R@10 R@1 R@5 R@10
+> ✓××33.29 54.70 62.62 29.99 47.53 58.85
+> ×✓✓96.29 98.89 99.38 95.43 98.88 99.25
+> ✓✓✓97.03 99.75 99.75 95.73 98.88 99.48
+
+To validate CLAR’s internal design, Table 1 presents an ablation study of the loss components. With only the global contrastive loss Lglobal , Recall@1 reaches 33.29% on Test-AISHELL-1-NE and 29.99% on Dev-AISHELL-1-NE. Adding the local con-trastive loss Llocal and the CIF quantity constraint Lcif yields substantial gains, increasing test-set Recall@1 and Recall@5 to 97.03% and 99.75%, respectively. These results indicate that the fine-grained monotonic speech–text alignment induced by CIF effectively mitigates attention drift in weakly super-vised soft matching, while the global objective incorporates full utterance-level semantic context and further improves local fea-ture discrimination. Table 2: Comparison of F1 scores (%) on the test Test-AISHELL-1-NE dataset.     
+
+> Dataset SeACo-Paraformer [24] GLCLAP [10] CLAR
+> Test Aishell-1 NT 96.00 96.96 97.03
+
+To compare retrieval methods, Table 2 shows that CLAR achieves the best F1 (97.03%), slightly surpassing GLCLAP (96.96%) and outperforming SeACo-Paraformer (96.00%). No-tably, CLAR is trained with roughly one order of magnitude less data than GLCLAP, yet still performs slightly better. Figure 3 provides qualitative support: high local speech–text similarity concentrates on the target hotword region (dashed boxes), while non-target candidates remain weak, consistent with improved short-entity localization and reduced attention drift. 松 认 为国 务 院 发 展 研 究 中 心 市 场 经 济 研 究 所 副 所 长 邓 郁
+
+> 邓郁松
+> 付敬懿
+> 蒲东峰
+> 德国
+> 章某
+> 张驰
+> 京津冀
+> 李焜染
+> 波斯
+> 张萌
+
+Figure 3: Case-study similarity map for hotword localization. 3.3.2. Contextual ASR Results 
+
+This section evaluates ASR gains from injecting CLAR-retrieved hotword candidates as prompts. As shown in Ta-ble 3, we compare Vanilla Step-Audio2-mini (base model), NA (SFT-adapted model without a bias list), and retrieval-based set-tings with different candidate-pool sizes on Test-AISHELL-1-NE and Dev-AISHELL-1-NE. GT (oracle hotword list) serves as an approximate upper bound (e.g., 0.82% CER and 2.34% B-WER on the test set), confirming the importance of accu-rate contextual candidates. Following subsection 3.1, R1 de-notes hotwords with base-ASR recall below 40% (N=226 test; Table 3: Impact of distractor-list size on contextual ASR (%) on AISHELL-1-NE.                                           
+
+> Distractor Setting CER ↓B-WER ↓U-CER ↓
+> Test-AISHELL-1-NE
+> Vanilla Step-Audio2-mini 1.86 12.92 0.80 NA 1.82 13.03 0.76 GT 0.82 2.34 0.78
+> N= 226 (R1) 1.36 5.97 1.03
+> N= 400 0.92 2.78 0.83
+> Dev-AISHELL-1-NE
+> Vanilla Step-Audio2-mini 1.76 13.09 0.74 NA 1.80 13.09 0.75 GT 0.71 1.79 0.70
+> N= 371 (R1) 1.29 6.29 1.01
+> N= 600 0.87 3.17 0.75 NA: no bias list; GT: oracle hotword list.
+
+N=371 dev), representing a harder long-tail regime. With full candidate pools (N=400 test; N=600 dev), CLAR delivers the largest gains over Vanilla and NA: CER drops to 0.92% (from 1.86%/1.82%) on test and to 0.87% (from 1.76%/1.80%) on dev, while B-WER drops to 2.78% (from 12.92%/13.03%) and 3.17% (from 13.09%/13.09%), respectively. U-CER remains low (0.83% test, 0.75% dev), indicating little impact on non-bias words. However, on the harder R1 subset, U-CER in-creases to 1.03%/1.01% compared with NA (0.76%/0.75%), suggesting that false-positive hotwords can occasionally per-turb non-bias-word decoding. CLAR requires only front-end retrieval and natural-language prompting, without Speech LLM updates or shallow fusion, making it a lightweight module for contextual ASR. Table 4: Comparison with baseline contextual ASR models (%) on AISHELL-1-NE.             
+
+> Model CER ↓B-WER ↓
+> SeACo-Paraformer [24] 2.20 6.71 CFL [2] 1.51 6.03 PAC [25] 1.13 3.07
+> Ours 0.92 2.78
+
+For overall recognition performance, Table 4 compares dif-ferent systems. CLAR-augmented contextual ASR achieves 0.92% CER and 2.78% B-WER, outperforming SeACo-Paraformer, CFL, and PAC and reaching state-of-the-art per-formance. These results further confirm that high-precision lo-cal retrieval can effectively counteract overly strong language-model priors, reduce named-entity substitutions and hallucina-tions, and improve recognition accuracy. 
+
+# 4. Conclusion 
+
+This paper presents CLAR, a CIF-localized dual-encoder re-triever for retrieval-augmented contextual ASR with Speech LLMs. CLAR learns token-level monotonic alignments without timestamp supervision and uses length-aware localized match-ing to anchor short-entity acoustic cues and reduce representa-tion dilution in full-utterance speech. With a multi-granularity objective (global contrastive, local contrastive, and CIF quantity constraints), CLAR substantially improves hotword retrieval and achieves state-of-the-art CER and B-WER on AISHELL-1-NE against strong baselines. Future work will extend CLAR to larger multilingual settings and tighter integration with Speech LLMs. 5. Generative AI Use Disclosure 
+
+The authors did not use generative AI tools to produce a sig-nificant part of the manuscript. If any generative AI tools were used for editing or polishing, all authors remain responsible and accountable for the content, claims, and conclusions. 
+
+# 6. References 
+
+[1] S. Huang, J. Deng, J. Kang, and R. Zheng, “Leveraging llm for stuttering speech: A unified architecture bridging recognition and event detection,” in Proc. INTERSPEECH , 2025, pp. 1843–1847. [2] G. Yang, Z. Ma, Z. Gao, S. Zhang, and X. Chen, “Ctc-assisted llm-based contextual asr,” in 2024 IEEE Spoken Language Tech-nology Workshop (SLT) . IEEE, 2024, pp. 126–131. [3] X. Gong, A. Lv, W. Zhang, Z. Wang, H. Zhu, and Y. Qian, “Br-asr: Efficient and scalable bias retrieval framework for contextual biasing asr in speech llm,” in Proc. INTERSPEECH , 2025, pp. 4043–4047. [4] X. Gong, A. Lv, Z. Wang, and Y. Qian, “Contextual biasing speech recognition in speech-enhanced large language model.” in 
+
+Proc. INTERSPEECH , 2024, pp. 257–261. [5] K.-T. Xu, F.-L. Xie, X. Tang, and Y. Hu, “Fireredasr: Open-source industrial-grade mandarin speech recognition mod-els from encoder-decoder to llm integration,” arXiv preprint arXiv:2501.14350 , 2025. [6] J. Jia, G. Keren, W. Zhou, E. Lakomkin, X. Zhang, C. Wu, F. Seide, J. Mahadeokar, and O. Kalinli, “Efficient streaming llm for speech recognition,” in ICASSP 2025-2025 IEEE Inter-national Conference on Acoustics, Speech and Signal Processing (ICASSP) . IEEE, 2025, pp. 1–5. [7] X. Shi, X. Wang, Z. Guo, Y. Wang, P. Zhang, X. Zhang, Z. Guo, H. Hao, Y. Xi, B. Yang et al. , “Qwen3-asr technical report,” arXiv preprint arXiv:2601.21337 , 2026. [8] K. An, Y. Chen, Z. Chen, C. Deng, Z. Du, C. Gao, Z. Gao, B. Gong, X. Li, Y. Li et al. , “Fun-asr technical report,” arXiv preprint arXiv:2509.12508 , 2025. [9] C. Sun, Z. Ahmed, Y. Ma, Z. Liu, L. Kabela, Y. Pang, and O. Kalinli, “Contextual biasing of named-entities with large lan-guage models,” in ICASSP 2024-2024 IEEE International Con-ference on Acoustics, Speech and Signal Processing (ICASSP) .IEEE, 2024, pp. 10 151–10 155. [10] Y. Kong, F. Cui, L. Guo, H. Dinkel, L. Fan, J. Zhang, and J. Luan, “Glclap: A novel contrastive learning pre-trained model for con-textual biasing in asr,” in Proc. INTERSPEECH , 2025, pp. 5173– 5177. [11] V. A. Trinh, X. He, and J. Whitehill, “Improving named entity transcription with contextual llm-based revision,” arXiv preprint arXiv:2506.10779 , 2025. [12] Y. Bai, J. Chen, J. Chen, W. Chen, Z. Chen, C. Ding, L. Dong, Q. Dong, Y. Du, K. Gao et al. , “Seed-asr: Understanding diverse speech and contexts with llm-based speech recognition,” arXiv preprint arXiv:2407.04675 , 2024. [13] D. Siskos, S. Papadopoulos, P. P. Parada, J. Zhang, K. Saravanan, and A. Drosou, “Retrieval augmented generation based context discovery for asr,” arXiv preprint arXiv:2509.19567 , 2025. [14] Z. Lei, X. Na, M. Xu, E. Pusateri, C. Van Gysel, Y. Zhang, S. Han, and Z. Huang, “Contextualization of asr with llm using phonetic retrieval-based augmentation,” in ICASSP 2025-2025 IEEE Inter-national Conference on Acoustics, Speech and Signal Processing (ICASSP) . IEEE, 2025, pp. 1–5. [15] E. Pusateri, A. Walia, A. Kashi, B. Bandyopadhyay, N. Hyder, S. Mahinder, R. Anantha, D. Liu, and S. Gondala, “Retrieval aug-mented correction of named entity speech recognition errors,” in 
+
+ICASSP 2025-2025 IEEE International Conference on Acoustics, Speech and Signal Processing (ICASSP) . IEEE, 2025, pp. 1–5. [16] J. An, J. Tian, T. Wang, Y. Gao, X. Mou, and Y. Xu, “Retrieval-augmented self-taught reasoning model with adaptive chain-of-thought for asr named entity correction,” arXiv preprint arXiv:2602.12287 , 2026. [17] Y. Luo, D. Wei, S. Li, H. Shang, J. Guo, Z. Li, Z. Wu, X. Chen, Z. Rao, J. Yang et al. , “Generative annotation for asr named entity correction,” in Proceedings of the 2025 Conference on Empiri-cal Methods in Natural Language Processing , 2025, pp. 20 835– 20 846. [18] B. Elizalde, S. Deshmukh, and H. Wang, “Natural language su-pervision for general-purpose audio representations,” in ICASSP 2024-2024 IEEE International Conference on Acoustics, Speech and Signal Processing (ICASSP) . IEEE, 2024, pp. 336–340. [19] Z. Gao, S. Zhang, I. McLoughlin, and Z. Yan, “Paraformer: Fast and accurate parallel transformer for non-autoregressive end-to-end speech recognition,” in Proc. Interspeech , 2022, pp. 2063– 2067. [20] L. Dong and B. Xu, “Cif: Continuous integrate-and-fire for end-to-end speech recognition,” in ICASSP 2020-2020 IEEE Interna-tional Conference on Acoustics, Speech and Signal Processing (ICASSP) . IEEE, 2020, pp. 6079–6083. [21] H. Bu, J. Du, X. Na, B. Wu, and H. Zheng, “Aishell-1: An open-source mandarin speech corpus and a speech recognition base-line,” in 2017 20th conference of the oriental chapter of the inter-national coordinating committee on speech databases and speech I/O systems and assessment (O-COCOSDA) . IEEE, 2017, pp. 1–5. [22] Z. Tang, D. Wang, Y. Xu, J. Sun, X. Lei, S. Zhao, C. Wen, X. Tan, C. Xie, S. Zhou et al. , “Kespeech: An open source speech dataset of mandarin and its eight subdialects,” in Thirty-fifth conference on neural information processing systems datasets and bench-marks track (Round 2) , 2021. [23] J. Du, X. Na, X. Liu, and H. Bu, “Aishell-2: Transform-ing mandarin asr research into industrial scale,” arXiv preprint arXiv:1808.10583 , 2018. [24] X. Shi, Y. Yang, Z. Li, Y. Chen, Z. Gao, and S. Zhang, “Seaco-paraformer: A non-autoregressive asr system with flexible and effective hotword customization ability,” in ICASSP 2024-2024 IEEE International Conference on Acoustics, Speech and Signal Processing (ICASSP) . IEEE, 2024, pp. 10 346–10 350. [25] L. Fu, Y. Xin, S. Zeng, L. Fan, Y. Wu, and X. He, “Pac: Pronunciation-aware contextualized large language model-based automatic speech recognition,” arXiv preprint arXiv:2509.12647 ,2025. [26] D. Le, M. Jain, G. Keren, S. Kim, Y. Shi, J. Mahadeokar, J. Chan, Y. Shangguan, C. Fuegen, O. Kalinli et al. , “Contextual-ized streaming end-to-end speech recognition with trie-based deep biasing and shallow fusion,” arXiv preprint arXiv:2104.02194 ,2021. [27] B. Wu, C. Yan, C. Hu, C. Yi, C. Feng, F. Tian, F. Shen, G. Yu, H. Zhang, J. Li et al. , “Step-audio 2 technical report,” arXiv preprint arXiv:2507.16632 , 2025. [28] E. J. Hu, Y. Shen, P. Wallis, Z. Allen-Zhu, Y. Li, S. Wang, L. Wang, W. Chen et al. , “Lora: Low-rank adaptation of large language models.” Iclr , vol. 1, no. 2, p. 3, 2022.

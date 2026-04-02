@@ -1,0 +1,766 @@
+Title: Understanding Transformers and Attention Mechanisms: An Introduction for Applied Mathematicians
+
+URL Source: https://arxiv.org/pdf/2604.00965v1
+
+Published Time: Thu, 02 Apr 2026 01:24:33 GMT
+
+Number of Pages: 13
+
+Markdown Content:
+# UNDERSTANDING TRANSFORMERS AND ATTENTION 
+
+# MECHANISMS : A N INTRODUCTION FOR APPLIED 
+
+# MATHEMATICIANS 
+
+A P REPRINT 
+
+Michel Fabrice Serret 11Center for Scientific Computing, Theory and Data, Paul Scherrer Institute, Switzerland. 
+
+michel.serret@psi.ch 
+
+ABSTRACT 
+
+This document provides a brief introduction to the attention mechanism used in modern language models based on the Transformer architecture. We first illustrate how text is encoded as vectors and how the attention mechanism processes these vectors to encode semantic information. We then de-scribe Multi-Headed Attention, examine how the Transformer architecture is built and look at some of its variants. Finally, we provide a glimpse at modern methods to reduce the computational and memory cost of attention, namely KV caching, Grouped Query attention and Latent Attention. This material is aimed at the applied mathematics community and was written as introductory presenta-tion in the context of the IPAM Research Collaboration Workshop entitled “Randomized Numerical Linear Algebra” (RNLA) , for the project: Randomization in Transformer models .
+
+1 Introduction The quick brown fox jumps over the lazy dog 
+
+" Th" "e" " qu" "ic" "k" " br" "ow" "n" " fo" "x" 
+
+" ju" "mp" "s" " ov" "er" " th" "e" " la" "zy" " do" "g"                    
+
+> 12345678910
+> 11 12 13 14 15 16 17 18 19 20 21
+
+Figure 1: Example of character tokenization of at most two characters. Modern Natural Language Processing (NLP) methods based on attention mechanisms process textual information not in the form of strings of characters, but as sequences of vectors. To create these sequences, the text is divided into successive sub-strings called tokens, an example of which is given in Figure 1. The choice of the complete set of tokens used by the model, known as the vocabulary, is important. Indeed, it needs to allow the encoding of enough of the semantic information contained in a text to achieve, given a model, the natural language processing tasks this model is designed to address. For example, the task consisting of predicting the next token in the text might require a finer 
+
+> arXiv:2604.00965v1 [math.NA] 1 Apr 2026
+
+Understanding Transformers and Attention Mechanisms A P REPRINT 
+
+tokenization than one classifying the complete sentence into two categories. However, it should also be as small as possible to avoid diluting the information contained in the sentence and to avoid unnecessarily increasing memory and computational costs. The tokenization procedures vary from language to language and are often based on the structure of the language itself. Ideally, it would encode the smallest set of strings with inherent meaning, i.e. what would be defined as the set of all morphemes in linguistics. Second, once the text has been decomposed into a sequence of tokens, a vectorization procedure is required. In what follows, tokens can be taken without loss of generality to be words. Now, given an ordered set T = ( Ti)1≤i≤NT of the NT possible distinct tokens, which we call the vocabulary, we can represent our text as a sequence of elements of T through their index. This sequence of indices associated to a text is known as the tokenization. Given a vocabulary, an embedding step allows to represent it in a lower dimensional space, through a trained linear application. This is also referred to as vectorization, since each token is thus represented by a vector. Generally this embedding is given as a matrix E ∈ RNT ×d such that, given an embedding dimension d ∈ N∗, the d-dimensional vectorization of the i-th token Ti in the vocabulary is given by the i-th row vector Ei of E, as is illustrated in Figure 2. These embedding matrices can either be pretrained or obtained through special methods and fine-tuned for the use cases of the language model or, as in most modern Large Language Models (LLMs), the embedding matrix can be trained from scratch as model weights. To get an idea of the size of matrices at play, the vocabulary size of Llama 3 70b is ∼ 128 k with an embedding dimension 8192 while for Gemma 3 27b it is ∼ 262 k of embedding dimension 
+
+5376 . Note that these are relatively small open source models. the lazy dog          
+
+> the lazy dog Tokens
+> Vocabulary
+> 1: the 2: quick 3: lazy 4: fox 5: dog
+> 135Embedding Matrix
+> First row vector Third row vector Fifth row vector
+> Input Matrix
+
+Figure 2: Example of sentence embedding for a word-based tokenizer for the phrase “the lazy dog”. Additionally, positional or feature embeddings (such as an embedding of the sentence to which the token belongs) can be applied to the sequence of token embedding vectors in order to enrich the semantic information contained therein. In some models, such as DeBERTa [He+21]or DeepSeek V2 [Dee+24], the positional encoding and token embedding are treated separately, either through concatenation or by design. 2Understanding Transformers and Attention Mechanisms A P REPRINT Input Embeddings    
+
+> the lazy dog
+> Query embedding Dot Products &Kernel Weighted Sum Key embedding Value embedding Attention Score: Key and Query Similarity Attention Weights: Normalised distribution on the key/value tokens Output of the model: Sum of value vectors weighted by the similarity of their key with the query
+
+Figure 3: Example of an attention layer for the embeddings obtained from the tokenization example in Figure 2. Note that in this example we take the kernel to be linear for simplicity, i.e. for any x ∈ R, we set fκ(x) = x.
+
+2 Attention mechanism 
+
+Attention mechanisms, the building blocks of the Transformer architecture [Vas+17], allow encoding of semantic information between tokens through a database-like structure[Zha+24]. Indeed, a database can be seen as a set of (key, value) tuples, (k, v ), such that when we submit a query q to the database, the database returns the value v associated to the tuple whose key is equal to the query, q = k. Analogously, let X ∈ RNKV ×din be the set of NKV embedded tokens of dimension din such as those obtained in Figure 2. As shown in Figure 3, given an input vector x ∈ X,associated to one of the tokens, the output is given as a linear combination of the “value” embeddings in the database, associated with each token x′ ∈ X, weighted by a similarity metric relating the query embedding q of x to the “key” embedding k′ of x′. As we shall see in the next section, in modern language models, attention mechanisms are used as modules, known in the literature as layers, and sequentially interweaved with other types of layers in order to construct the language model. Let us now describe more formally the basic mechanism of a single “layer” of attention. 
+
+2.1 General attention mechanism 
+
+Consider the given matrix XQ ∈ RNQ×dQ 
+
+> in
+
+of NQ ∈ N∗ input query vectors, and the matrices XK ∈ RNKV ×dK
+
+> in
+
+and XV ∈ RNKV ×dV 
+
+> in
+
+of NKV ∈ N∗ input key and value vectors respectively, with dQ 
+
+> in
+
+, d K 
+
+> in
+
+, d V 
+
+> in
+
+∈ N∗ the respective dimensions of the vectors. In the following, we take for simplicity, as the query, key and value inputs come from the same embeddings in most cases, dQ 
+
+> in
+
+= dK 
+
+> in
+
+= dV 
+
+> in
+
+= din .
+
+Example: In the context of a conversation with chatGPT, the NQ query vectors, given by the rows of Q,would correspond to the NQ tokens in the last question asked to the model while the NKV key, encoded in the rows of K, and value vectors, encoded in the rows of V , would correspond to every token of the complete conversation. While in general the key and value vectors can be embedded from different sources for the same token, in the context of a chat, they would correspond to the same input vector, the embedding X of the associated token as in the Figure 2. Furthermore, note that in general, the key and value inputs will be shared as they generally correspond to two embed-dings of the same “object”, while the query key can correspond to another object. As we shall see in the cross-attention module of the decoder of the original Transformer, the key and value vectors correspond to the tokens of a sentence in one language, while the query vectors correspond to the predicted tokens of the translation of the sentence in another language. For GPT models, such as chatGPT, the attention mechanism’s inputs all come from the same source. The 3Understanding Transformers and Attention Mechanisms A P REPRINT 
+
+only difference in the query and key/value vectors arises from the fact that when a new question is asked to the model, only the new query vectors from the question need to be calculated if the key/value vectors from the discussion have been stored; this is known as streaming attention [Han+25]. The first step of the attention mechanism is to construct embeddings by applying a linear transformation to the query, key, and value input vectors. We denote the associated model weights as W Q ∈ RdQ  
+
+> in ×dQK
+
+, W K ∈ RdK  
+
+> in ×dQK
+
+and 
+
+W V ∈ RdV  
+
+> in ×dout
+
+where dQK and dV are the shared dimensions for the query and key embeddings and the value embedding dimension respectively, while these dimensions can be different in theory, in practice they are often equal to one another. We denote the associated query, key and value matrices as 
+
+Q = XQW Q ∈ RNQ×dQK , K = XK W K ∈ RNKV ×dQK , V = XV W V ∈ RNKV ×dV .
+
+The similarity metric is usually given in the form of a kernel κ : RdQK × RdQK → R which allows to obtain the 
+
+attention scores for each tuple (i, j ) ∈ J1, N QK × J1, N KV K of the NQ query and NKV key/value indices, 
+
+A =
+
+
+
+κ(Q[i, :] , K [j, :]) 
+
+
+
+> 1≤i≤NQ
+> 1≤j≤NKV
+
+∈ RNQ×NKV ,
+
+where we denote by B[i, :] the i-th row vector of the matrix B. Note that the kernel will often be of the form 
+
+κ(v, w ) = fκ (⟨v, w ⟩) ,
+
+for a given function fκ : R → R and we will use this notation throughout the document to simplify some equations. Furthermore, the element-wise application of fκ to a matrix M will be denoted as fκ(M ). As we wish to emulate a probability distribution on the set of key/value inputs for a given query, a normalization step is required; the normal-ization coefficients are obtained as the inverse of the diagonal matrix Z ∈ RNQ×NQ , whose non-zero elements are the sum of the rows of A, i.e. 
+
+Z[i, i ] = X
+
+> 1≤j≤NKV
+
+κ (Q[i, :] , K [j, :]) , ∀i ∈ { 1, . . . , N Q}.
+
+Normalized attention scores, i.e., the product Z−1A, are known in the literature as attention weights . The final output of the attention mechanism is then given by 
+
+Y = Z−1AV ∈ RNQ×dout .
+
+Note that the output dimension of the attention mechanism is given by the value dimension, i.e. dout = dV .The most common kernel is the scaled exponential kernel used in the original Transformer [Vas+17] given, for any v, w ∈ RdQK , by 
+
+κ(v, w ) = exp ⟨v, w ⟩
+
+pdQK 
+
+!
+
+.
+
+It originates from the fact that if the entries of v and w come from an i.i.d. distribution with mean zero and variance 1, then ⟨v, w ⟩ has variance dQK . Hence, the denominator rescales the scalar product so that its variance is 1. Given the matrices Q and K, the attention scores can be obtained as 
+
+A = exp QK T
+
+pdQK 
+
+!
+
+,
+
+where the exponential is applied element-wise. The attention weights in this context are equal to the softmax function, σ : RN → RN , applied to the query-key scalar product, the softmax function is defined as 
+
+σ : x ∈ RN 7 → 1
+
+> N
+
+P
+
+> ℓ=1
+
+exℓ
+
+(ex1 . . . exN )T ,
+
+and hence, for any i ∈ { 1, . . . , N Q},
+
+(Z−1A)[ i, :] = σ Q[i, :] KT
+
+pdQK 
+
+!
+
+.
+
+4Understanding Transformers and Attention Mechanisms A P REPRINT 
+
+2.2 Multi-headed attention 
+
+In order to allow the attention mechanism to focus on more types of semantic information, multiple parallel attention heads can be used on the same input vectors. The simplest way to do so is to consider stacked single attention heads with the constraint that they must all have the same output dimension dhead , i.e. for any h ∈ J1, N heads K, W Vh ∈
+
+RdV  
+
+> in ×dhead
+
+. Let Nheads ∈ N∗ be the number of attention heads, for any h ∈ J1, N heads K, we denote by W Qh , W Kh and 
+
+W Vh the query, key and value embedding matrices associated to the h-th head. For each head h ∈ J1, N heads K, the attention score can then be obtained as 
+
+Ah =
+
+
+
+κ (Qh[i, :] , K h[j, :]) 
+
+
+
+> 1≤i≤NQ
+> 1≤j≤NKV
+
+= fκ(QhKT 
+
+> h
+
+),
+
+where Qh = XQW Qh ∈ RNQ×dQK , Kh = XK W Kh ∈ RNKV ×dQK , and k is applied element-wise. We note that in general dQK = dhead for each head h. Similarly, we set 
+
+Vh = XV W Vh , Zh = diag 
+
+ X
+
+> 1≤j≤NKV
+
+κ (Qh[i, :] , K h[j, :]) 
+
+
+
+> 1≤i≤NQ
+
+.
+
+The output of each attention head can then be obtained as 
+
+Yh = Z−1 
+
+> h
+
+AhVh ∈ RNQ×dhead .
+
+Given the outputs of each head, the output of the multi-headed attention mechanism is combined into a single output 
+
+Y ∈ RNQ×dout through a linear application W O ∈ RNheads dhead ×dout , which is trained, as 
+
+Y = concat col (Yh)1≤h≤Nheads W O ,
+
+where concat col (Yh)1≤h≤Nheads = ( Y1 · · · YNheads ) ∈ RNQ×Nheads dhead .
+
+3 Transformer Architecture 
+
+3.1 Encoders, Decoders and the Transformer architecture 
+
+In natural language processing, a common method used for machine translation of one language to another is the use of an encoder-decoder architecture to first encode an input sentence in the first language into an intermediary state and then use a decoder to transform this intermediary state into the equivalent sentence in the second language. Sentence in language 1 Encoder Intermediate state Decoder Sentence in language 2 
+
+Sequence-to-Sequence Translation 
+
+Figure 4: Encoder-Decoder model The original Transformer model [Vas+17] was based on such a system. Let us now look at the individual components of the different layers which compose the Transformer architecture. 
+
+3.1.1 Encoder layers 
+
+The encoder is composed of a series of NL layers of encoder layers . Each encoder layer consists of the following components, assembled as shown in Figure 5, 1. Multi-headed self -attention sublayer: This sublayer consists in a multi-headed attention mechanism exactly as described in subsection 2.2. The self 
+
+part in the name refers to the fact that both its query and key/value input vectors are from the same input, i.e. we have XQ = XK = XV . In Figure 5 this corresponds to the fact that the three input arrows originate from the previous layer. 5Understanding Transformers and Attention Mechanisms A P REPRINT Multi-Headed Attention 
+
+> Layer Norm.
+> Feed Forward
+> Layer Norm.
+
+Figure 5: Encoder layer of the original Transformer architecture. Note that the L sign in the diagram corresponds to the skip connections. 2. Layer normalization sublayer: Given the input x ∈ Rd to a layer, layer normalization[BKH16] constructs a vector ˜x = x−μ√σ2+ϵ of mean 0
+
+and variance 1, where μ = 1
+
+> dd
+
+P
+
+> i=1
+
+xi is the input vector’s mean and σ =
+
+q 1
+
+> d
+
+Pdi=1 (xi − μ)2 is its standard deviation. It outputs y = γ ⊙ ˜x + β, where γ, β ∈ Rd are known as the gain and shift and correspond to trainable parameters that rescale the variance and mean of the output to a fixed value and we denote by ⊙ the Hadamard or term-wise product. 3. Feed forward sublayer: It is the basic building block of neural networks, it outputs y = f (W x + b) where f is a nonlinear function, 
+
+W ∈ Rd×d′
+
+is the weight matrix of the sublayer and b ∈ Rd′
+
+is the bias vector, where d′ is the dimension of the output of the layer. In general the nonlinear function f is a variant of the Rectified Linear Unit (ReLU) family of functions; recently, parametric Gated Linear Unit (GLU) variants [Sha20] have been favored in state-of-the-art models [Tea+24; The25; Yan+25; Gra+24]. 4. Skip connections: Represented by the arrows that go under the components in Figure 5, skip connections consist in adding to the output of a sublayer its input. They allow the preservation of the flow of information through the neural network and reduces the problem of vanishing gradients which arises in deep neural networks. 
+
+3.2 Decoder layers, Causal/Masked attention and Cross-attention Masked Multi-Headed Attention  
+
+> Layer Norm.
+> Layer Norm.
+> Multi-Headed Attention
+> Query Key Value Layer Norm.
+> Feed Forward
+
+Figure 6: Decoder layer of the original Transformer architecture. Notice that the main differences with the encoder are the cross-attention sublayer where the key/value vectors are constructed not from the decoder state but from the final encoder state and the masked causal self-attention restricting the query vectors from seeing the key vectors of future tokens. Decoder layers in the Transformer architecture have two differences with the encoder layers, as can be seen in Figure 6. 6Understanding Transformers and Attention Mechanisms A P REPRINT 
+
+Remark: The architecture shown in Figure 5 is the original Transformer architecture. An alternative [Xio+20], reducing the problem of the vanishing gradients and allowing easier training but at the cost of performance, consists in applying the layer normalization before the attention sublayer and is shown in Figure 7. Note how the skip connections are not normalized in this architecture and thus allow the gradients to skip through unscathed. Recently, state-of-the-art large language models such as Gemma 3[The25], have made use of both Pre-Layer and Post-Layer Normalization[Kim+25]. Furthermore, layer-normalization has often been replaced with the less computationally intensive RMS-Normalization procedure which consists in only rescaling the input with respect to its Root-mean-squared norm without recentering or adding a bias [ZS19]. Layer Norm. 
+
+> Multi-Headed Attention
+> Layer Norm.
+> Feed Forward
+> Normalization in Post-Layer Normalization Pre-Layer Normalization Encoder Layer
+
+Figure 7: Encoder layer with Pre-Layer Normalization 
+
+Masked and causal attention The first difference is the use of masked attention. As the decoders construct the new sentence token by token, the self-attention mechanism that produces the token at step t is not able to take into account the key-value vectors of tokens that will be created afterwards, hence, for consistency, a mask is applied to the attention to limit its vision of the tokens that come afterwards. More formally, masked attention consists in restricting the subset of key-value tokens seen by each query token, i.e. defining, for each 1 ≤ i ≤ NQ , a subset of key-value tokens Si ⊂ J1, N KV K such that the attention matrix is given by 
+
+A =
+
+
+
+1j∈Si κ (Q[i, :] , K [j, :]) 
+
+
+
+> 1≤i≤NQ
+> 1≤j≤NKV
+
+,
+
+where, for any set A, 1A is the associated indicator function associated to A. In causal self-attention, the principle is that as the sentences are formed token by token in a sequential manner and the previous tokens are fixed, the addition of new tokens should not affect the previous parts of the sentence. Hence, the query should only see itself and the tokens that have been defined before itself, i.e. Si = {j ∈ N , j ≤ i} and thus 
+
+A = ( 1j≤iκ (Q[i, :] , K [j, :])) 1≤i≤NQ
+
+> 1≤j≤NKV
+
+.
+
+Equivalently, given the contextual mask M such that 
+
+Mij =
+
+0 if j ∈ Si,
+
+∅κ otherwise, (where ∅κ = −∞ for the exponential kernel). In the case of softmax attention, masked terms are given the value −∞ so as to be attributed a zero probability after the exponential kernel function. Masked attention can then be seen as adding M to the QK T matrix before applying the kernel function giving 
+
+A = κ(QK T + M ).
+
+Equivalently, the mask can be applied after the kernel by setting the masked elements to zero. By setting 
+
+fMij = 1Si (j),, with 1Si , the indicating function for the set Si, the masked attention is obtained as 
+
+A = κ(QK T) ⊙ fM . 
+
+7Understanding Transformers and Attention Mechanisms A P REPRINT Masked Multi-Headed Attention   
+
+> Multi-Headed Attention
+> Layer Norm.
+> Feed Forward
+> Layer Norm.
+> Layer Norm.
+> Layer Norm.
+> Multi-Headed Attention
+> Query Key Value Layer Norm.
+> Feed Forward
+> Linear Softmax Input Embedding Current Output Embedding
+> Next token in output sentence
+
+Encoder Decoder 
+
+> To next layer To next layer
+> Next token prediction head
+
+Figure 8: Transformer architecture. 
+
+Cross-attention The second architectural difference in the decoder layers is that they use the encoder’s output, ENL
+
+in Figure 6, as the input of a second attention sublayer, which allows the decoder to relate its output sentence to the information contained in the original input. To do so, the intermediate state is used as the key and value inputs, XK
+
+and XV , of a multi-headed attention sublayer as shown in Figure 6. 
+
+Remark: 
+
+Cross-attention [Ala+22; Rom+22], or more generally, shared embedding spaces [KSK21; Rad+21] are at the root of modern multimodal LLMs in which embedding subspaces can be shared through attention, or directly through a scalar product in the embedding space, between texts and images. 
+
+3.3 The Transformer and its variants 
+
+The complete Transformer architecture, as can be seen in Figure 8, is modelled for, and trained on, the task of machine translation and is at the origin of most LLMs today, albeit with several modifications. Indeed, while the Transformer network is well suited for sequence to sequence translation, a change in architecture is required for less structured problems. Traditionally, these changes, which vary according to the task at hand, can be classified into two main groups, Encoder-only architectures such as BERT (Bidirectional Encoder Representation from Transformers) [Dev+19; He+21; War+24], more suited for tasks requiring the extraction of information from text such as token or sentence classification and Decoder-only architectures such as GPT(Generative Pre-Trained Transformers) [Rad+18; Bro+20; Tou+23], suited to generative tasks such as next-token prediction for text generation. The current trend, put 8Understanding Transformers and Attention Mechanisms A P REPRINT Masked Multi-Headed Attention 
+
+> Layer Norm.
+> Feed Forward
+> Layer Norm.
+> Input Embedding
+
+GPT Decoder   
+
+> To next layer
+> Linear Softmax Next token in sentence Next token prediction head
+
+Figure 9: GPT architecture. forth in [Rad+18], lies in pretraining such models on tasks that require an understanding of the inherent structure of the text and with a huge amounts of available data, such as next-token prediction for the GPT architecture, using the archi-tecture shown in Figure 9, and masked text completion for Bert, and using the pretrained weights as an initialization for a fine-tuning a model with the same weights but a different output head for other tasks using smaller datasets. 
+
+4 KV Caching, compression and attention optimization 
+
+One of the main memory bottlenecks of modern LLMs arises due to what is known as KV caching . In the attention mechanism, the computation of the next output for the last token depends on the key and value vectors of all tokens. Indeed, this property is evident if we look at the last output of single-headed attention layer 
+
+Y [NQ, j ] =  Z−1AV  [NQ, j ] = 
+
+> NKV
+
+X
+
+> i=1
+
+κ (Q[NQ, :] , K [i, :]) 
+
+> NKV
+
+P
+
+> ℓ=1
+
+κ (Q[NQ, :] , K [ℓ, :]) 
+
+V [i, j ],
+
+where the NQ index corresponds to the last query token. Note that the computational cost of the attention mechanism is of the order of O(NQNKV (dQK + dV )) and that dQK and dV are generally small with respect to NQ and NKV . In the context of a chat for example, the token embeddings for the query, key and value terms are calculated in a stream, first you have the first sentence sent, then the answer, second sentence, etc... As the conversation goes on, the query, key and value vectors can either be recalculated at each new sentence, but with a computational cost of O(N 3
+
+> tokens
+
+d),where NKV = NQ = Ntokens as all the vectors need to be recomputed each time a new token appears. Alternatively, the key and value vectors can be stored after each call to be used again for the next step, as we have seen above, once the key and value vectors are calculated, the query terms can be discarded as their only impact on subsequent predictions is through the KV vectors. KV caching consists in keeping these key and value vectors for each token in memory. This allows to obtain a linear cost in the number of tokens for each new token added( thus overall an 
+
+O(N 2
+
+> tokens
+
+d) complexity in total but an O(NQNtokens d) cost for each new sentence of size NQ). This does not come for free as the vectors need to be stored. As each we have to cache the KV vectors of each attention head for each layer the memory cost of such caching is 2NLNhNKV d times the number of bits used per float. This can quickly become prohibitive, especially in the long-context case. We call streaming attention the calculation of attention where the query input tokens are a subset of the key-value input tokens, as opposed to full attention . Note that the key-value vectors need to be cached for this to work as the previous query tokens are required for their construction. 
+
+4.1 Grouped Query Attention 
+
+The size of the cache in memory is a bottleneck both in terms of storage and of communication overheads, methods have thus been developed to palliate to this. One of the simplest, and most ubiquitous, such method consists in sharing the same key-value heads for multiple query heads, hence reducing the size of the vector that needs to be kept in memory. This is known as Grouped Query Attention (GQA), and in the limit of a single key-value head for all query heads it is sometimes referred to as Multi-Query Attention (MQA). 9Understanding Transformers and Attention Mechanisms A P REPRINT 
+
+One recent method which generalizes the use of lower-dimensional embedding spaces is the Multi-Headed Latent Attention mechanism developed by DeepSeek [Dee+24]. Let us now look at how this fits into our framework. 
+
+4.2 Latent Attention 
+
+The main idea behind Latent Attention is to construct a shared low-rank latent embedding from which the key and value vectors are formed for each head through a linear application. In the following, we set XK = XV = X ∈ RNKV ×din 
+
+and dQK = dV = dhead . Before diving into the formalism of Multi-headed Latent Attention(MLA), let us look back at Multi-Headed Attention and notice that the per-head embedding calculations can be seen as a single matrix multiplication, 
+
+Q = ( Q1 · · · QNheads ) = XQ
+
+
+
+W Q 
+
+> 1
+
+· · · W QNheads 
+
+
+
+:= XQW Q ∈ RNQ×Nheads dhead 
+
+K = ( K1 · · · KNheads ) = X  W K 
+
+> 1
+
+· · · W KNheads 
+
+ := XW K ∈ RNKV ×Nheads dhead 
+
+V = ( V1 · · · VNheads ) = X  W V 
+
+> 1
+
+· · · W VNheads 
+
+ := XW V ∈ RNKV ×Nheads dhead 
+
+,
+
+where Q, K, and V denote the column-wise concatenations of the head-specific query, key, and value matrices. Similarly, we set 
+
+W Q =
+
+
+
+W Q 
+
+> 1
+
+· · · W QNheads 
+
+
+
+∈ Rdin ×Nheads dhead , W K =  W K 
+
+> 1
+
+· · · W KNheads 
+
+ ∈ Rdin ×Nheads dhead 
+
+and W V =  W V 
+
+> 1
+
+· · · W VNheads 
+
+ ∈ Rdin ×Nheads dhead .
+
+to denote the column-wise concatenations of the corresponding weight matrices. Using this formulation, the latent attention method uses two latent subspaces, of dimensions dLQ and dL ≤ din , to construct a low-rank factorization of the query embeddings and a shared low-rank factorization of the key and value embeddings: 
+
+W Q = W LQ W LQQ = W LQ
+
+
+
+W LQQ 
+
+> 1
+
+· · · W LQQNheads 
+
+
+
+,W K = W LW LK = W L  W LK  
+
+> 1
+
+· · · W LK Nheads 
+
+ ,W V = W LW LV = W L  W LV  
+
+> 1
+
+· · · W LV Nheads 
+
+ ,
+
+where W L ∈ Rdin ×dL is the shared latent subspace weight matrix for the key and value embeddings, and we define for any 1 ≤ h ≤ Nheads , the matrices W LK h ∈ RdL×dhead , and W LV h ∈ RdL×dhead to be the matrices that send the latent vectors onto the key and value embeddings of the h-th head. The matrices W LK ∈ RdL×Nheads dhead and W LV ∈
+
+RdL×Nheads dhead are the the column-wise concatenation of 
+
+
+
+W LK h
+
+
+
+> 1≤h≤Nheads
+
+, and respectively 
+
+
+
+W LV h
+
+
+
+> 1≤h≤Nheads
+
+.Analogously, W LQ ∈ Rdin ×dLQ is latent subspace weight matrix for the query embeddings and W LQQ is the column-wise concatenation of 
+
+
+
+W LQQh
+
+
+
+> 1≤h≤Nheads
+
+, the matrices that send the latent query embeddings back to the shared query-key subspace. In practice, in the DeepSeek V2 model [Dee+24], the latent model is trained directly and is not created from the key and value matrices using the above factorizations. This idea allows to keep a single cache vector per token, shared between all heads ; the latent embedding L = XW L,instead of K and V . Furthermore, the latent formulation allows to merge weight matrices by rewriting the attention mechanism. First, for each head 1 ≤ h ≤ Nheads , the Latent-to-Query weights W LQQh and the Latent-to-Key weights 
+
+W LK h can be merged, reducing the computational cost as dL and dLQ < d in . Indeed, we can rewrite, using (4.2), 
+
+QhKT 
+
+> h
+
+= LQW LQQh W LK h
+
+> T
+
+W LTXT = LQ W LQQh W LK h
+
+> T
+
+| {z }   
+
+> WLQK h∈RdLQ×dL
+
+LT,
+
+which gives us, by indexing on each head h, the merged query tensor 
+
+
+
+W LQK h
+
+
+
+> 1≤h≤Nheads
+
+∈ RdLQ ×dL×Nheads .10 Understanding Transformers and Attention Mechanisms A P REPRINT 
+
+Second, the Latent-to-Value weights W LV can be merged with the head combining output weights W O . Indeed, we can rewrite the output of the attention mechanism as follows 
+
+Y = concat col 
+
+ Z−1 
+
+> h
+
+AhVh
+
+
+
+> 1≤h≤Nheads
+
+W O = concat col 
+
+ Z−1 
+
+> h
+
+AhL
+
+> 1≤h≤Nheads
+
+| {z } 
+
+> Y′
+
+
+
+W LV  
+
+> 1
+
+0
+
+. . .
+
+0 W LV Nheads 
+
+ W O
+
+| {z } 
+
+> WLO
+
+,
+
+where we highlight again the fact that L does not depend on h as it is shared for all heads. This gives us the new latent output matrix W LO ∈ RNheads dL×dout .The latent attention mechanism can thus be simplified to 
+
+Y = concat col 
+
+ Z−1 
+
+> h
+
+AhL
+
+> 1≤h≤Nheads
+
+W LO ,
+
+with Ah = exp( LQW LQK h LT) and Zh = diag NKV P
+
+> j=1
+
+exp 
+
+
+
+(LQW LQK h LT)[ i, j ]
+
+!
+
+> 1≤i≤NQ
+
+. With this formulation, note that the only model weights that need to be kept are W LO , W L, W LQ and W LQK and only the latent vectors need to be kept in memory. In the absence of positional embeddings, latent attention models can be represented exactly in the form of an equivalent GQA/MHA model thanks to the low-rank factorizations shown above. However, in practice, when positional embeddings are applied, this equivalence is lost. This loss of equivalence is due to the fact that positional embeddings, such as the Rotary Position Embeddings [Su+23] (RoPE), in classical attention are applied after constructing K. For RoPE, in latent attention, this would amount to applying a position-dependent matrix Rm ∈ Rdhead ×dhead , as follows 
+
+Qh[i, :] RiRT 
+
+> j
+
+Kh[j, :] T = ( LQ[i, :]) W LQQh RiRT 
+
+> j
+
+W LK h
+
+> T
+
+(L[j, :]) T.
+
+This would not allow the merging of the W LK h and W LQQh matrices and would require recomputing the application of the positional embedding at each evaluation, not only preventing a speedup but incurring an additional computational overhead. The latent attention RoPE variant instead consist in appending to the key and query vectors “non-latent” part on which the positional embedding is applied, breaking the equivalence but keeping the computational advantage of the latent model. Recently, methods to approximately convert pretrained GQA/MHA models of attention, from previously learnt models, to the Latent attention formalism have been developed [MYZ25] and allow for the use of the DeepSeek’s optimizations on other models. The tables 1 and 2 summarize the matrices and caches that need to be stored in memory for the MHA and MLA cases respectively. Example of model sizes are given in table 3. 
+
+Tensor/Matrix Dimensions Description 
+
+K RNKV ×dQK ×Nheads 
+
+KV cache 
+
+V RNKV ×dhead ×Nheads 
+
+W Q Rdin ×dQK ×Nheads 
+
+Weights W K Rdin ×dQK ×Nheads 
+
+W V Rdin ×dhead ×Nheads 
+
+W O RNheads dhead ×dout 
+
+Table 1: Dimensions of tensors and matrices stored in multi-headed attention. The total number of floats to be stored is Nheads NKV · (dQK + dhead ) + 2Nheads din dQK + Nheads dhead (din + dout ). For GQA models, the Nheads in the dimensions needs to be re-placed with the number of KV heads for W K ,W V and the cache terms. 
+
+Tensor/Matrix Dimensions Description 
+
+L RNKV ×dL L cache 
+
+W L Rdin ×dL
+
+Weights W Q′ Rdin ×dL×Nheads 
+
+W O ′ RNheads dL×dout 
+
+Table 2: Dimensions of tensors and matrices stored in multi-headed latent attention. The total number of floats to be stored is (NKV · dL) + ( din · dL) + ( Nheads · dL ·
+
+(din + dout )) .11 Understanding Transformers and Attention Mechanisms A P REPRINT 
+
+Parameter Llama 3 70B Gemma 3 27B Deepseek V2 
+
+Number of Layers 80 62 60 Number of Heads Nheads 64 32 128 Number of Key/Value Heads 8 16 -Hidden Dimensions din = dout 8,192 5,376 5120 KV Dimension dhead = dQK 128 128 512( dL)Table 3: Comparison of Llama 3 70B [Gra+24] and Gemma 3 27B [The25] and DeepSeek V2 Model [Dee+24] Specifications. Note that DeepSeekV2 is a mixture-of-experts model with latent attention while Gemma 3 and Llama 3 are Grouped Query attention models. These models use a Grouped Query attention model wherein multiple attention mechanisms are used in parallel, these are known as attention heads. To reduce the computational overhead, the key and value matrices are shared between heads, the number of key/value matrices is denoted as the number of KV heads above. 
+
+5 Acknowledgments 
+
+The author would like to thank Alice Cortinovis and Laura Grigori for their valuable feedback on this document. 
+
+References 
+
+[Ala+22] Jean-Baptiste Alayrac et al. “Flamingo: A Visual Language Model for Few-Shot Learning”. In: arXiv preprint (2022). arXiv: 2204.14198 .[BKH16] Jimmy Ba, J. Kiros, and Geoffrey E. Hinton. “Layer Normalization”. In: arXiv preprint abs/1607.06450 (2016). [Bro+20] Tom B. Brown et al. “Language Models Are Few-Shot Learners”. In: arXiv preprint (July 22, 2020). arXiv: 2005.14165 [cs] . Pre-published. [Dee+24] DeepSeek-AI et al. “DeepSeek-V2: A Strong, Economical, and Efficient Mixture-of-Experts Language Model”. In: arXiv preprint (June 19, 2024). arXiv: 2405.04434 [cs] . Pre-published. [Dev+19] Jacob Devlin et al. “BERT: Pre-training of Deep Bidirectional Transformers for Language Understand-ing”. In: arXiv preprint (2019). arXiv: 1810.04805 .[Gra+24] Aaron Grattafiori et al. “The Llama 3 Herd of Models”. In: arXiv preprint (Nov. 23, 2024). arXiv: 2407. 21783 [cs] . Pre-published. [Han+25] Insu Han et al. Streaming Attention Approximation via Discrepancy Theory . May 23, 2025. arXiv: 2502. 07861 [cs] . Pre-published. [He+21] Pengcheng He et al. “DeBERTa: Decoding-enhanced BERT with Disentangled Attention”. In: arXiv preprint (2021). arXiv: 2006.03654 .[Kim+25] Jeonghoon Kim et al. “Peri-LN: Revisiting Normalization Layer in the Transformer Architecture”. In: 
+
+Forty-second International Conference on Machine Learning (2025). [KSK21] Wonjae Kim, Bokyung Son, and Ildoo Kim. “ViLT: Vision-and-Language Transformer Without Convo-lution or Region Supervision”. In: arXiv preprint (2021). arXiv: 2102.03334 .[MYZ25] Fanxu Meng, Zengwei Yao, and Muhan Zhang. “TransMLA: Multi-Head Latent Attention Is All You Need”. In: arXiv preprint (Feb. 13, 2025). arXiv: 2502.07864 [cs] . Pre-published. [Rad+18] Alec Radford et al. “Improving Language Understanding by Generative Pre-Training”. In: OpenAI 
+
+(2018). [Rad+21] Alec Radford et al. “Learning Transferable Visual Models From Natural Language Supervision”. In: 
+
+arXiv preprint (2021). arXiv: 2103.00020 .[Rom+22] Robin Rombach et al. “High-Resolution Image Synthesis with Latent Diffusion Models”. In: arXiv preprint (2022). arXiv: 2112.10752 .[Sha20] Noam Shazeer. “GLU Variants Improve Transformer”. In: arXiv preprint (Feb. 12, 2020). arXiv: 2002. 05202 [cs] . Pre-published. [Su+23] Jianlin Su et al. RoFormer: Enhanced Transformer with Rotary Position Embedding . Nov. 2023. arXiv: 
+
+2104.09864 [cs] .[Tea+24] Gemma Team et al. “Gemma 2: Improving Open Language Models at a Practical Size”. In: arXiv preprint 
+
+(Oct. 2, 2024). arXiv: 2408.00118 [cs] . Pre-published. [The25] The Gemma 3 Team. “Gemma 3 Technical Report”. In: arXiv preprint abs/2503.19786 (2025). 12 Understanding Transformers and Attention Mechanisms A P REPRINT 
+
+[Tou+23] Hugo Touvron et al. “LLaMA: Open and Efficient Foundation Language Models”. In: arXiv preprint 
+
+(Feb. 27, 2023). arXiv: 2302.13971 [cs] .[Vas+17] Ashish Vaswani et al. “Attention is All you Need”. In: Advances in Neural Information Processing Sys-tems (2017). [War+24] Benjamin Warner et al. “Smarter, Better, Faster, Longer: A Modern Bidirectional Encoder for Fast, Mem-ory Efficient, and Long Context Finetuning and Inference”. In: arXiv preprint (2024). arXiv: 2412 . 13663 .[Xio+20] Ruibin Xiong et al. “On Layer Normalization in the Transformer Architecture”. In: Proceedings of the 37th International Conference on Machine Learning (2020). [Yan+25] An Yang et al. “Qwen3 Technical Report”. In: arXiv preprint (May 14, 2025). arXiv: 2505.09388 [cs] .Pre-published. [Zha+24] Aston Zhang et al. Dive into Deep Learning . Cambridge University Press, 2024. 548 pp. ISBN : 978-1-009-38943-3. [ZS19] Biao Zhang and Rico Sennrich. “Root Mean Square Layer Normalization”. In: Advances in Neural Infor-mation Processing Systems (2019). 13

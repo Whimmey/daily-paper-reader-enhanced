@@ -1,0 +1,296 @@
+Title: RubricRAG: Towards Interpretable and Reliable LLM Evaluation via Domain Knowledge Retrieval for Rubric Generation
+
+URL Source: https://arxiv.org/pdf/2603.20882v1
+
+Published Time: Tue, 24 Mar 2026 00:53:32 GMT
+
+Number of Pages: 9
+
+Markdown Content:
+# RubricRAG : Towards Interpretable and Reliable LLM Evaluation via Domain Knowledge Retrieval for Rubric Generation 
+
+# Kaustubh D. Dhole 
+
+Department of Computer Science Emory University Atlanta, GA, USA kdhole@emory.edu 
+
+# Eugene Agichtein 
+
+Department of Computer Science Emory University Atlanta, GA, USA eugene.agichtein@emory.edu 
+
+## Abstract 
+
+Large language models (LLMs) are increasingly evaluated and some-times trained using automated graders such as LLM-as-judges that output scalar scores or preferences. While convenient, these ap-proaches are often opaque: a single score rarely explains why an answer is good or bad, which requirements were missed, or how a system should be improved. This lack of interpretability limits their usefulness for model development, dataset curation, and high-stakes deployment. Query-specific rubric-based evaluation offers a more transparent alternative by decomposing quality into ex-plicit, checkable criteria. However, manually designing high-quality, query-specific rubrics is labor-intensive and cognitively demand-ing and not feasible for deployment. While previous approaches have focused on generating intermediate rubrics for automated downstream evaluation, it is unclear if these rubrics are both inter-pretable and effective for human users. In this work, we investigate whether LLMs can generate useful, instance-specific rubrics as compared to human-authored rubrics, while also improving effec-tiveness for identifying good responses. Through our systematic study on two rubric benchmarks, and on multiple few-shot and post-training strategies, we find that off-the-shelf LLMs produce rubrics that are poorly aligned with human-authored ones. We introduce a simple strategy, RubricRAG , which retrieves domain knowledge via rubrics at inference time from related queries. We demonstrate that RubricRAG can generate more interpretable rubrics both for similarity to human-authored rubrics, and for im-proved downstream evaluation effectiveness. Our results highlight both the challenges and a promising approach of scalable, inter-pretable evaluation through automated rubric generation. 
+
+## Keywords 
+
+evaluation, interpretability, rubrics, language models 
+
+## 1 Introduction and Background 
+
+Large language models (LLMs) are increasingly evaluated, and in many settings, even trained, using automated graders, like LLM-as-judges that generally output a preference or a scalar score [ 7, 9, 10 ,35 , 40 ]. While such LLM-as-judge pipelines are convenient, they are often opaque: a single number rarely explains why an answer is good or bad, what specific requirements were missed, or how to improve a system over successive iterations [ 24 , 46 ]. This lack of interpretability complicates model development, dataset curation, and deployment in high-stakes domains where specific actionable feedback matters, like addressing sensitive health queries. Rubric-based evaluation [ 4 , 7, 20 , 23 , 30 ], on the other hand, decomposes an otherwise fuzzy notion of “quality” into explicit, 0   
+
+> 10
+> 20
+> 30
+> 40
+> 50
+> (Good > Bad) Accuracy (%)
+> Qwen3-4B-Instruct-2507 Qwen3-8B Qwen3-14B Qwen3-32B
+> Accuracy of choosing a good response over a bad response across judge models
+> Rubric Granularity
+> No rubrics
+> Axis
+> Cluster
+> Instance
+
+Figure 1: Fine-grained rubrics consistently show higher accu-racy in preferring good over bad responses. Moreover, inter-pretable evaluations using both cluster- and instance-level rubrics outperform evaluations without rubrics. 
+
+checkable criteria (e.g., factual correctness, citation support, safety constraints, completeness, tone) enabling fine-grained diagnostics and feedback [ 6 , 12 , 14 , 47 ]. Although intended across the dataset, such criteria may be too vague to capture the specific requirements of individual queries, resulting in less effective evaluation. Query-specific rubrics, rather than generalizing the evaluation of all query types through common criteria, allow for gauging the particular requirements of individual queries. Such specificity can be useful for interpretability as well as downstream LLM evaluation. For instance, on a subset of queries from OpenAI HealthBench [ 2], we find that multiple LLM judges from the Qwen family [ 45 ] are more effective at choosing good over bad responses when supported by fine-grained, query-specific rubrics than when supported by generalized, coarse-level rubrics, or even no rubrics (Figure 1). Fine-grained rubrics have been focused across diverse domains [ 7 ,11 ]: Recently OpenAI HealthBench introduced physician-written, query-specific rubrics for medical dialogues [ 2 ]; ResearchRubrics [ 38 ]designed structured, instance-level criteria for deep research tasks. Apart from supporting downstream judges, fine-grained rubrics have been effective as structured reward signals for reinforcement learning in settings without strict verification, outperforming scalar rewards [17, 26, 29, 36]. While there are a plethora of benefits of fine-grained rubrics, it is hard to obtain them at scale. Even for a domain expert, designing high-quality rubrics for each query can be tedious and cognitively demanding. It requires analyzing different dimensions, appropriate granularity of evaluation, and often, different trade-offs between accuracy and safety [4, 20]. In this work, we investigate whether LLMs themselves can help overcome this bottleneck by automatically generating useful, fine-grained human-like rubrics. LLMs have broad world knowledge  
+
+> arXiv:2603.20882v1 [cs.IR] 21 Mar 2026 RubricRAG, March 2026, Atlanta, GA, USA Dhole and Agichtein
+
+and exposure to many genres of instruction and assessment [ 22 , 33 ], suggesting they may be capable of proposing evaluation dimensions that are both comprehensive and actionable. Specifically, we ask the following questions: RQ1 : Can LLMs generate fine-grained query-specific rubrics that are similar to human-authored rubrics? RQ2 : Can such LLM-generated rubrics be useful for downstream evaluation to choose good over bad responses? 
+
+In that regard, our contributions are as follows: (i) We first intro-duce three rubric-generation evaluation metrics – Rubric-BLEU ,
+
+Rubric-ROUGE , and a Rubric-LLM-judge to quantify the align-ment with human rubrics under both lexical and semantic criteria. (ii) We then evaluate multiple approaches of employing LLMs for rubric generation. We find that when prompted in a zero-shot fashion, LLMs are poor rubric generators. (iii) To generate human-like rubrics, we introduce RubricRAG and show how retrieving rubrics from similar queries can be extremely effective. We also show how two popular post-training approaches, namely, super-vised fine-tuning (SFT) and a group relative policy optimization (GRPO) based reinforcement learning (RL) approach trained us-ing multi-objective rewards, can also improve rubric generation abilities. (iv) We demonstrate that retrieval-augmented rubric gen-eration improves downstream evaluation quality, yielding stronger alignment with human-rubric-based judgments and better discrim-inative power between good and bad responses. This paper is organized as follows. In Section 2, we first discuss related work. In Section 3 we present the task and the methods employed. In Section 4, we present the evaluation of generated rubrics, and conclude in Section 5. 
+
+## 2 Related Work 
+
+Fine-Grained LLM Judges. Traditional LLM-as-judge pipelines often rely on a single preference or scalar score [ 21 ], which can obscure specific strengths and weaknesses, especially for long-form or high-stakes responses. A growing body of work argues that decomposing evaluation into explicit dimensions improves down-stream evaluation [ 7, 8, 13 ]. For example, FLASK evaluates align-ment through fine-grained skill sets, showing improved agreement with human judgments compared to coarse scores [ 47 ]. Similarly, multi-dimensional evaluation frameworks such as M-MAD demon-strate that scoring across separate criteria yields more robust and accurate judgments than single aggregated scores [ 14 ]. In long-form retrieval-augmented settings, ConQRET show that task-specific fine-grained rubrics are effective for answer quality evaluation [ 7 ], while AdverSEM [ 6] uses structured perturbations to evaluate fac-tual robustness across multiple dimensions. Across these settings, fine-grained criteria consistently provide more interpretable and reliable assessments than coarse scoring. 
+
+Query-Specific Rubrics for Evaluation. A complementary direc-tion structures evaluation as a checklist of verifiable items. Rock-etEval reframes judging as answering a set of checklist questions about an output, enabling small evaluator models to achieve high correlation with human preferences [43]. 
+
+Rubrics as training signals beyond verifiable tasks. Beyond an evaluation artifact, rubrics can also shape learning by providing multi-faceted feedback [ 3, 19 , 31 , 48 ]. Rubrics as Rewards [ 17 ] pro-poses rubrics as reward signals for reinforcement learning in do-mains where strict verification is difficult, demonstrating gains over scalar reward formulations and has been adopted in various works [15, 18, 26, 29, 36, 39, 41]. 
+
+## 3 Methods and Experiments 
+
+We now describe the task and our rubric generation approaches. 
+
+## 3.1 Task: Rubric generation 
+
+Given a user query 𝑞 , we are interested to generate a set of fine-grained rubrics 𝑅 = 𝑟 1, 𝑟 2 . . . that can be used to grade the assistant’s next response. Each set of rubrics is a list of criteria, where each cri-terion is paired with an integer point value. Positive points reward desirable behavior (e.g., clinically correct advice, safe triage, clear communication), while negative points penalize failure modes (e.g., unsafe instructions, missed red flags, hallucinated medical claims). Criteria may be either positive or negative and are intended to cover both what to do and what to avoid .
+
+## 3.2 Rubric Generation Approaches 
+
+We would like to see how LLMs ( 𝑀 𝜃 ) perform both in a raw zero-shot fashion, generally employed in agentic style workflows, as well as measure how we can provide additional useful context from other queries to be able to generate effective rubrics ˆ𝑅 .
+
+ˆ𝑅 = 𝑀 𝜃 (𝑞 ),
+
+Zero-shot and Few-Shot rubric generation. In the zero-shot setting, the generator simulates the role of an annotator, where we provide instructions to produce a list of rubrics in a strict JSON format, including both positive and negative criteria with integer point weights. We additionally prepend 𝑘 random exemplar pairs from the training set (𝑞 ( 𝑗 ) , 𝑅 ( 𝑗 ) ) to gauge few-shot performance. 
+
+Retrieving from similar queries (RubricRAG) . Here, we use the user query to retrieve 𝑘 similar queries from the training set, us-ing a dense retriever 𝜙 , and incorporate their corresponding rubrics as few-shot exemplars 𝜙 (𝑞 ) = {( 𝑞 ( 𝑗 ) , 𝑅 ( 𝑗 ) )} 𝑘 𝑗 =1 pairs in context. The main motivation of retrieving similar queries is to familiar-ize the model beyond the domain and task with understanding query-specific nuances. 
+
+Supervised fine-tuning (SFT) . Here, we fine-tune the generator to directly predict the human-authored rubrics conditioned on the user query, using teacher forcing with a causal language modeling objective over the concatenated prompt-and-target sequence. We use (Q)LoRA adapters to reduce trainable parameters. 
+
+GRPO with multi-objective rewards. We also introduce an RL-based approach where we optimize the generator with Group Relative Policy Optimization (GRPO) [ 37 ] using sparse weighted rewards. Here, the generator acts as a policy and generates rea-soning steps before generating the final rubrics. We reward the policy’s rollout as a weighted sum of four reward functions that apply over the generated rubrics – (i) binary format correctness (𝑟 f), (ii) similarity with human-authored rubrics ( 𝑟 s), (iii) diversity among generated rubrics ( 𝑟 d), (iv) and normalized deviation of mean RubricRAG : Towards Interpretable and Reliable LLM Evaluation via Domain Knowledge Retrieval for Rubric Generation RubricRAG, March 2026, Atlanta, GA, USA  
+
+> You are a physician-annotator creating evaluation rubrics for AI health assistants. Given a health-related conversation, you must write a set of rubric criterion that can be used to grade a final assistant response. Each rubric criterion describes a specific requirement or failure mode and assigns it an integer point value. Positive points reward desirable behavior; negative points penalize unsafe, incorrect, or otherwise harmful behavior. Base your rubrics ONLY on the conversation content and what matters clinically. {Query} Task: Generate a comprehensive set of positive and negative rubric criterion that would be used to grade an AI assistant 's next response to this conversation. Given the above query, you must output evaluation rubrics in the following strict JSON format: {"rubrics": [ {"criterion": "<description of what the model should or should not do>", "points": <integer, can be positive or negative> }, ... ]}Guidelines: - Include BOTH positive criterion (things a good response SHOULD do, with positive points) and negative criterion (things a response MUST AVOID or where failure should be penalized, with negative points). - Positive criterion should capture clinically important behaviors: safety, correctness, communication quality, context-aware triage, uncertainty handling, etc. - Negative criterion should punish dangerous, misleading, or incomplete behaviors: unsafe advice, overconfidence, ignoring red flags, failing to escalate care, etc. - Points should roughly encode importance: higher positive points for critical requirements; more negative points for severe failures. - Do NOT include any fields other than "criterion" and "points". - Do NOT include comments or trailing commas. - Make sure the JSON is syntactically valid. Your JSON format should be strictly followed.
+
+Figure 2: System and user prompt used to generate health-assistant evaluation rubrics. 
+
+> You are an expert evaluator of rubric criterion similarity for health AI systems. Given ONE reference criterion and ONE generated criterion, output a single integer score in [0,9] representing semantic similarity (9 = same meaning, 0 = unrelated). Output ONLY the number. No JSON. No explanation. No extra text. REFERENCE: {ref_text} GENERATED: {gen_text} Similarity score (0..9):
+
+Figure 3: LLM judge criterion similarity prompt. 
+
+and variance of generated rubrics from the reference rubrics ( 𝑟 l): 
+
+R = 𝑤 f 𝑟 f + 𝑤 s 𝑟 s + 𝑤 d 𝑟 d + 𝑤 l 𝑟 l
+
+## 3.3 Evaluation metrics 
+
+We measure the quality of the rubrics using our rubric similarity metrics and two downstream evaluations over a fixed LLM-judge. 
+
+3.3.1 Rubric Similarity Metrics . Standard generation metrics like BLEU [ 32 ] and ROUGE [ 27 ] are typically computed at the corpus or full-text level, but in our setting, we instead define a macro-averaged, per-criterion “best overlap” where the generated rubric is treated as a set of criteria rather than a single string. We compute them in both directions—generated-to-reference (preci-sion) and reference-to-generated (recall). Our formulation is per-mutation invariant and is able to evaluate each of the criteria with respect to reference criteria without preferring any order-ing between them. In addition to n-gram overlap, we also use a lightweight LLM judge [5, 7] to capture semantic similarity. Let 𝑅 = {𝑐 𝑖 }𝑚 𝑖 =1 be gold criteria and ˆ𝑅 = { ˆ𝑐 𝑗 }𝑛 𝑗 =1 be generated criteria. For a similarity function 𝑠 (· , ·) ∈ [ 0, 1] (e.g., ROUGE score), we define the corresponding rubric similarity metric, viz., Rubric-BLEU , Rubric-ROUGE , and Rubric-LLM-Judge as follows: 
+
+𝑃 = 1
+
+𝑛 
+
+𝑛 ∑︁ 
+
+𝑗 =1
+
+max 
+
+𝑖 ∈ [ 𝑚 ] 𝑠 ( ˆ𝑐 𝑗 , 𝑐 𝑖 ), 𝑅 = 1
+
+𝑚 
+
+𝑚 ∑︁ 
+
+𝑖 =1
+
+max 
+
+𝑗 ∈ [ 𝑛 ] 𝑠 (𝑐 𝑖 , ˆ𝑐 𝑗 ), 𝐹 1 = 2𝑃𝑅 𝑃 + 𝑅 
+
+3.3.2 Hallucinations, Misses and Redundant Rubrics . We ad-ditionally track the propensity for hallucinations among the gener-ated rubrics, the percentage of rubrics missed, and the redundancy among generated rubrics through the following query-wise metrics. Let 𝑅 = {𝑐 𝑖 }𝑚 𝑖 =1 denote the reference rubrics and ˆ𝑅 = { ˆ𝑐 𝑗 }𝑛 𝑗 =1 denote the generated rubrics. Let 𝑠 (· , ·) ∈ [ 0, 1] be a similarity function, and let 1[·] denote the indicator function. We define Missed@ 𝜏 to measure the fraction of reference rubrics that are not sufficiently covered by any generated rubric, 
+
+Missed@ 𝜏 = 1
+
+𝑚 
+
+𝑚 ∑︁ 
+
+𝑖 =1
+
+1
+
+
+
+max 
+
+𝑗 ∈ [ 𝑛 ] 𝑠 (𝑐 𝑖 , ˆ𝑐 𝑗 ) < 𝜏 
+
+
+
+Hallucinations@ 𝜏 to measure the fraction of generated rubrics that do not sufficiently match any reference rubric, 
+
+Hallucinations@ 𝜏 = 1
+
+𝑛 
+
+𝑛 ∑︁ 
+
+𝑗 =1
+
+1
+
+
+
+max 
+
+𝑖 ∈ [ 𝑚 ] 𝑠 ( ˆ𝑐 𝑗 , 𝑐 𝑖 ) < 𝜏 
+
+
+
+and Redundancy@ 𝜏 measures the fraction of generated rubric pairs that are overly similar to each other. 
+
+Redundancy@ 𝜏 = 2
+
+𝑛 (𝑛 − 1)∑︁ 1≤ 𝑗 <𝑘 ≤𝑛 
+
+1𝑠 ( ˆ𝑐 𝑗 , ˆ𝑐 𝑘 ) > 𝜏 
+
+In addition to the above intrinsic metrics, we also perform down-stream evaluations using LLM judges: 
+
+3.3.3 Downstream Rubric Utility . We evaluate the downstream effectiveness of the generated rubrics in two settings: i) Query-wise Correlation of LLM-Judge Scores Obtained From Model-Generated and Human-Authored Rubrics 
+
+Here, we use an LLM judge in the style of HealthBench [ 2 ]. For each query, the judge evaluates a human-authored response against each rubric criterion individually, producing a binary yes/no decision. Points for all satisfied criteria are summed to obtain a query-level score and normalised by dividing with the sum of all positive crite-rion. We do the same using the human-authored (gold) rubrics as well and measure the correlation between the two sets of scores, as well as the dataset level average scores. 1
+
+ii) Ability to Prefer Good Response Over Bad Response 
+
+In addition to such pointwise correlations, we also evaluate the discriminative potential of the rubrics to prefer good response against bad ones. For good responses, we use the human-authored completions provided by HealthBench, while for bad responses, we force an LLM to generate a response by adhering to rubrics 
+
+> 1
+
+We validate this with human-authored rubrics, and our LLM judge: We obtain a score of .37 which is in the range of HealthBench’s analysis of closed-sourced models. RubricRAG, March 2026, Atlanta, GA, USA Dhole and Agichtein 
+
+associated with other random queries. We describe the details in the following section. 
+
+## 3.4 Evaluation Across Several Rubric Granularities 
+
+Before employing models for generating rubrics, we wanted to know whether human-authored rubrics of different granularities themselves benefit LLM-Judges to discriminate good from bad re-sponses better than no rubrics at all. Specifically, we gauge whether fine-grained rubrics are more effective than coarse-level global rubrics at preferring good over bad responses, by evaluating various models of different sizes, on four settings: 1) No rubrics , 2) Axis-level rubrics , which consist of 5 static rubrics (accuracy, communication quality, completeness, context awareness, and instruction following ability) 3) Cluster-level rubrics (consisting of 37 rubrics which are shared across many queries) which are more fine-grained than axis-level rubrics but are shared across queries 4) Query-specific rubrics (where each query-completion is evaluated with rubrics specific to the query’s context. Axes and clusters have been computed by the authors of HealthBench [2]. 
+
+Model Performance across Granularities . We then score how well different models, acting as LLM Judges, prefer the good re-sponse across each of the four granularities of rubrics. Our rubric evaluation approach is similar to the one performed by Arora et al .[2] . For each granularity, the LLM Judge decides whether every rubric (criterion) is satisfied by the good and bad responses sepa-rately. Each rubric is prompted one at a time. The sum of the points of the satisfied criterion is treated as the score of the response. For the no rubric setting, we prompt the LLM Judge to output a single score. This score is further normalized by dividing by the points of the positive rubrics. 
+
+Creating Good versus Bad Responses . To create an evaluation set of good versus bad completions, we gather the physician-written completions and treat them as good responses. For gathering bad completions, we prompt a Qwen3-30B-A3B-Instruct-2507 model with a HealthBench query alongwith rubrics from other random queries, and instruct the model to generate a response conditioned on those rubrics. We release the model completions on Hugging-Face [25] at: kdhole/healthbench-rubric-responses .
+
+## 3.5 Experimental Setup 
+
+We use Qwen3-14B 2 as the rubric generator. The prompts used for generation and downstream rubric evaluation are shown in Figures 2 and 3, respectively. For judging rubric entailment to compute Rubric-LLM-JUDGE , and downstream evaluation, we use Qwen3-4B-Instruct-2507 3. In our experiments, we use 𝑘 = 20 
+
+exemplars for HealthBench and 𝑘 = 5 for ResearchRubrics. We use greedy decoding and a maximum token length of 1024; un-less stated otherwise, we enable the model’s thinking mode in the chat template during generation. For SFT, we train with LoRA   
+
+> 2We investigated smaller LMs like Qwen3-0.6B, 1.7B, 4B-Instruct, and 8B and found frequent malformed JSONs, and would require significant output cleaning logic.
+> 3Note that if the rubric entailment task is framed in different ways like generating all rubrics at a time, a larger model may be needed.
+
+adapters (rank 𝑟 = 16 , 𝛼 = 32 , dropout 0.05 ) using learning rate 
+
+5𝑒 −5 and disable thinking mode. For GRPO, we set reward weights 
+
+(𝑤 fmt = 1, 𝑤 sim = 5, 𝑤 div = 2, 𝑤 len = 1), and implement training with HuggingFace Transformers [ 44 ] and the Transformers Rein-forcement Learning [ 42 ] libraries. For RubricRAG, we investigate two settings, with and without intermediate thinking tokens, Rubr-icRAG (think) and RubricRAG (nothink). For retrieving similar queries, we resort to Qwen3-Embedding-4B [49 ] using the Sentence Transformers library [34]. 
+
+## 3.6 Datasets and splits 
+
+We report rubric generation performance on three evaluation sets. We use the OpenAI HealthBench dataset as it contains a large number of queries with rubrics written by human experts. Each example contains (i) a complex user query; and (ii) a reference rubric list ( rubrics ) authored by physicians. We use 300 random queries from their oss_eval subset, and all queries from the hard subset for evaluation, and the remaining queries in oss_eval are used for training. Additionally, we report rubric generation performance on the ResearchRubrics dataset as well, which contains 101 queries, with fine-grained rubrics. Since this dataset is small, we set aside 5 queries for few-shot examples, and the remaining as the evaluation set. To evaluate RubricRAG on this dataset, we allow searching from all other queries except for the test query. 
+
+## 4 Results 
+
+We now present the results of our experiments. 
+
+## 4.1 Downstream Effectiveness of Different Granularities of Human-Authored Rubrics 
+
+We first gauge whether human-authored rubrics at various granu-larities themselves help in evaluation. 
+
+Fine-Grained Rubrics are more Discriminative . We find that query-specific human-authored rubrics consistently show higher accuracy in preferring the human-written (good) response over the response generated with randomly conditioned rubrics (bad), as shown in Figure 1. Moreover, interpretable evaluations using both cluster- and instance-level rubrics outperform evalua-tions without rubrics . Besides, we also find that rubrics that are coarser are marked as satisfied for both good and bad completions by the LLM Judges, resulting in many ties. We now discuss the results for model-generated query-specific rubrics. 
+
+## 4.2 Similarity to Human-Authored Rubrics. 
+
+Table 1 shows the similarity between generated rubrics and human-authored rubrics across the three evaluation sets. Overall, we ob-serve that using off-the-shelf LLMs result in poor rubric generators in the zero-shot setting. Across all the three benchmarks, zero-shot performance is consistently low on rubric-BLEU and rubric-ROUGE, and only moderate on LLM-judge evaluation. This suggests that while models may capture some high-level intent, they fail to re-produce the fine-grained structure and clinically grounded criteria present in human-authored rubrics. RubricRAG : Towards Interpretable and Reliable LLM Evaluation via Domain Knowledge Retrieval for Rubric Generation RubricRAG, March 2026, Atlanta, GA, USA                                                                                                            
+
+> HEALTHBENCH (OSS EVAL-300) HEALTHBENCH (HARD) RESEARCH RUBRICS MODE BLEU ROUGE1 ROUGE2 ROUGEL LLM-JUDGE BLEU ROUGE1 ROUGE2 ROUGEL LLM-JUDGE BLEU ROUGE1 ROUGE2 ROUGEL LLM-JUDGE
+> Zero-Shot .020 .231 .065 .192 .521 .015 .216 .057 .177 .474 .092 .224 .071 .180 .514 Few-Shot .033 .293 .091 .237 .548 .029 .277 .083 .220 .505 .133 .335 .129 .275 .501 GRPO .035 .311 .101 .248 .551 .027 .291 .089 .231 .506 –––––SFT .042 .311 .103 .253 .481 .042 .299 .098 .241 .436 –––––RubricRAG (think) .037 .304 .097 .245 .558 .030 .283 .085 .225 .514 .136 .337 .135 .283 .523 RubricRAG (nothink) .049 .331 .115 .269 .567 .039 .311 .103 .251 .523 .089 .339 .133 .286 .576
+
+Table 1: Rubric Generation Performance of Qwen3-14B on OpenAI HealthBench [ 2 ]. All values are Rubric-∗ F1 scores. SFT and GRPO were not evaluated on ResearchRubrics [38] due to the absence of a training set. 
+
+Providing random few-shot exemplars improves performance across all metrics. Even randomly sampled examples lead to notice-able gains in both lexical overlap and semantic similarity, indicating that models benefit from seeing the expected rubric format, level of granularity, and balance of positive and negative criteria. However, the improvements remain modest, suggesting that simple few-shot prompting is insufficient to reliably produce human-like rubrics. Retrieval augmented rubric generation further improves align-ment. When exemplars are selected using retrieval over similar queries, performance increases across nearly all metrics. In particu-lar, the RubricRAG approach achieves the highest rubric-similarity scores, indicating that semantically similar examples help the model produce more human-style rubrics. Notably, this simple retrieval strategy performs better than expensive post-training approaches like SFT which require immense training data. Post-training methods generate better rubrics than zero-shot and few-shot approaches, where supervised fine tuned approach outperforming all. Supervised fine-tuning (SFT) produces strong lexical similarity scores, achieving high rubric-BLEU and rubric-ROUGE on both evaluation sets. However, it underperforms on the semantic LLM-judge metric, suggesting that improved surface over-lap does not necessarily translate to better semantic alignment. The GRPO-based reinforcement learning approach achieves competi-tive ROUGE and semantic scores, but does worse than supervised fine-tuning where gold rubrics are given as direct supervision. RubricRAG (nothink) and SFT, which disable intermediate think-ing, achieve the highest rubric-similarity scores, while RubricRAG (think) and GRPO, both of which rely on model-generated reason-ing, perform comparatively worse. This suggests the intermediate tokens are often noisy and can misguide rubric generation. This is also consistent with prior observations of bad reasoning in complex tasks also referred to as overthinking [1, 16, 28]. 
+
+## 4.3 Zero-shot vs. RubricRAG: quantitative and qualitative analysis 
+
+In Table 2, we present the average rates of missed, hallucinated, and redundant rubrics. We find that LLMs can often generate halluci-nated rubrics that may not exist in any of the human-written rubrics. While the RubricRAG approach reduces these hallucinations, they often generate redundant rubrics. Taken together, these results suggest that (i) zero-shot LLMs struggle to generate human-like rubrics, (ii) in-context examples substantially improve quality, and (iii) retrieving rubrics from se-mantically similar queries is a simple yet effective strategy that can rival more complex post-training approaches. 
+
+Missed (↓) Hallucinations (↓) Redundancy (↓) 
+
+MODE @0.1 @0.2 @0.1 @0.2 @0.1 @0.2 
+
+Zero-Shot .049 .564 .087 .557 .485 .126 RubricRAG .024 .412 .031 .416 .663 .170 
+
+Table 2: Averaged rubric failure rates for zero-shot generation and RubricRAG, measured using rubric similarity thresholds. Rubric Source Spearman’s 𝜌 Pearson’s 𝑟 Average Score ( Δ)                     
+
+> Zero-Shot .426 .330 -0.035 (-0.401) Few-Shot .466 .368 0.397 (+0.031) GRPO .331 .223 0.134 (-0.232) SFT .457 .309 0.287 (-0.079) RubricRAG (think) .495 .415 0.374 (+0.008) RubricRAG (nothink) .545 .478 0.408 (+0.042) Gold 1.000 1.000 0.366 (+0.000)
+
+Table 3: Correlation between query-wise LLM Judgements ob-tained using model-generated and human-authored rubrics (gold) on OSS EVAL-300. The last column depicts the average score over all queries with errors as deviations from gold. 
+
+To better understand the differences between zero-shot and retrieval-based rubric generation beyond aggregate scores (Table 1), we qualitatively compare generated rubrics on a representative HealthBench example and visualize their criterion-level similar-ity to physician-authored rubrics. Figure 5 shows the physician-written reference rubrics for a query about labor complications at a small rural health post with no surgical capability. Figures 6 and 7 show the rubrics generated by zero-shot prompting and RubricRAG retrieval-based prompting, respectively, and Figure 4 summarizes criterion-to-criterion semantic similarity as a heatmap. We observe a consistent pattern across most queries. Zero-shot generation produces rubrics that are broadly safe and directionally correct, but often generic and under-specified. In Figure 6, the model captures the high-level need for urgency and escalation, but many criteria remain abstract (e.g., general warnings about safety or urgency) and miss several high-value, context-specific details present in the physician rubrics in Figure 5, such as low-resource transfer logistics, coordination with on-site staff while awaiting transport, and concrete complication cues. This is also visible in the left panel of Figure 4, where similarity is diffuse and weaker, indicating only partial alignment with the physician rubric set. In contrast, RubricRAG-based generation is noticeably more task-specific and actionable. As shown in Figure 7, retrieved exemplars help the model better match the query context (rural setting, no RubricRAG, March 2026, Atlanta, GA, USA Dhole and Agichtein 
+
+Figure 4: Similarity of generated rubrics (y-axis) versus physician-written rubrics (x-axis), comparing zero-shot generation (left) and RubricRAG generation (right). Zero-shot rubrics are generally more generic and less similar to human-written rubrics, whereas RubricRAG generated rubrics achieve higher similarity but also tend to introduce redundant rubrics. 
+
+Figure 5: Reference Rubrics for the query “ i’m in labor at a small rural health post. they don’t have advanced equipment or a surgery unit. what do i do if there are complications ”
+
+Figure 6: Rubrics Generated from the Zero-shot Approach are short and generic. They miss some of the crucial, specific, and high-value criteria in the reference. 
+
+surgery unit) and produce rubrics that more directly reflect clini-cally relevant triage behavior, including emergency transfer, danger signs, and practical preparation steps. This stronger alignment is re-flected in the right panel of Figure 4, which shows higher and denser RubricRAG : Towards Interpretable and Reliable LLM Evaluation via Domain Knowledge Retrieval for Rubric Generation RubricRAG, March 2026, Atlanta, GA, USA 
+
+Figure 7: Rubrics generated from the RubricRAG approach are more specific, concrete, and actionable. 
+
+Figure 8: Ability of different model-generated rubrics to pre-fer the good response over the bad response on HealthBench. 
+
+criterion-level similarity with physician-written rubrics. However, the RubricRAG output also introduces a recurring failure mode that we observe in many other examples: rubric redundancy. In particular, it tends to generate overlapping criteria (e.g., a positive criterion rewarding transfer escalation and a negative criterion penalizing failure to escalate), which improves recall but can inflate rubric count and over-weight the same concept. Many such qualitative examples reinforce that relying on agen-tic style zero-shot LLMs can result in generic and underspecified rubrics, whereas RubricRAG style retrieval approaches can sub-stantially improve coverage and specificity by generating similar rubrics at the cost of additional redundancy. This suggests rubric generation may benefit from contextual grounding provided by retrieval and may benefit from lightweight post-processing (e.g., se-mantic deduplication or concept-level merging) to reduce repeated criteria without sacrificing coverage. 
+
+## 4.4 Downstream Effectiveness of Generated Rubrics for LLM Judges 
+
+Table 3 compares the correlation between query-wise scores ob-tained using model-generated rubrics and human-authored rubrics. Overall, we observe moderate agreement across all settings, with Spearman’s 𝜌 ranging from 0.331 to 0.545. Zero-shot and few-shot prompting yield similar correlations, suggesting that simple prompt-based improvements in rubric similarity do not always translate into better downstream evaluation alignment 4.
+
+> 4Note that although these are physician written responses, they are not necessarily perfect according to HealthBench’s gold rubrics as mentioned in their paper [2].
+
+We find that query-specific context is crucial for generating eval-uation criteria that meaningfully grade responses. Both RubricRAG-based approaches achieve the highest correlations under both Spear-man’s 𝜌 and Pearson’s 𝑟 , indicating that retrieving rubrics from semantically similar queries, in addition to improving rubric simi-larity metrics, also produces evaluations that are more consistent with human-authored rubrics. We also find that the average corpus level score of few-shot and RubricRAG based approaches are the closest to the corpus level score obtained using human-authored rubrics (i.e. under 5% error). Interestingly, post-training approaches did not outperform the retrieval-based method on downstream correlation. While SFT achieves high lexical similarity scores in Table 1, its correlation with human-authored rubric scores is still lower than the few-shot approach. This suggests that optimizing for surface-level similarity to reference rubrics may not be sufficient for improving practical evaluation behavior. Instead, conditioning on semantically related examples can provide more robust guidance for downstream evaluation. The discriminative potential of the different rubric approaches is shown in Figure 8. The RubricRAG-based approach is better at preferring good over bad responses than the zero-shot and few-shot counterparts as well, showing the downstream potential of rubrics generated from retrieval conditioning. 
+
+## 5 Conclusion 
+
+In this work, we studied whether LLMs can automatically gener-ate fine-grained, query-specific rubrics that are both interpretable and useful for downstream evaluation. We first showed that rubric granularity itself matters: human-authored query-specific rubrics are more effective than coarser rubric formulations, and also out-perform evaluations without rubrics, for helping LLM judges dis-tinguish good responses from bad ones. This supports the broader motivation for generating instance-specific rubrics rather than re-lying only on generic evaluation dimensions. Our experiments further show that off-the-shelf LLMs are weak rubric generators in the zero-shot setting. Although zero-shot mod-els often produce broadly sensible criteria, the resulting rubrics are typically generic, under-specified, and only moderately aligned with human-authored rubrics. Few-shot prompting improves both lexical and semantic similarity, suggesting that models benefit from examples of rubric structure and granularity, but these gains remain limited when the examples are not query-relevant. RubricRAG, March 2026, Atlanta, GA, USA Dhole and Agichtein 
+
+Among the approaches we evaluated, retrieval-based condition-ing is the most effective overall. By providing rubrics from semanti-cally similar queries as context, RubricRAG consistently improves alignment with human-authored rubrics across lexical and semantic metrics, yields the strongest downstream correlation with evalu-ations based on gold rubrics, and better helps LLM judges prefer good responses over bad ones. These results suggest that relevant contextual grounding is more useful than relying on the model’s prior knowledge alone. We also find that stronger rubric-similarity scores do not neces-sarily imply better downstream evaluation behavior. In particular, supervised fine-tuning achieves strong lexical overlap with hu-man rubrics, but does not match the downstream effectiveness of retrieval-based prompting. This indicates that optimizing for surface-form similarity alone is insufficient; generated rubrics should also be evaluated by how well they support actual judgment tasks. Finally, our qualitative and quantitative analyses reveal an im-portant tradeoff. RubricRAG improves coverage and reduces missed and hallucinated criteria relative to zero-shot generation, but it can also increase redundancy by producing overlapping rubric items. Thus, while retrieval substantially improves rubric quality, future work should address redundancy through better retrieval, semantic deduplication, or training objectives that directly optimize rubric usefulness while penalizing misses, hallucinations, and repetition. Overall, our findings suggest that automatically generated query-specific rubrics are a promising path toward more interpretable and actionable LLM evaluation, but current models still fall short of human-authored rubric design. Effective rubric generation appears to depend critically on contextual grounding, and future progress will likely come from combining retrieval, better training objectives, and human-AI collaboration. 
+
+## References 
+
+[1] Pranjal Aggarwal, Seungone Kim, Jack Lanchantin, Sean Welleck, Jason Weston, Ilia Kulikov, and Swarnadeep Saha. 2025. Optimalthinkingbench: Evaluating over and underthinking in llms. arXiv preprint arXiv:2508.13141 (2025). [2] Rahul K Arora, Jason Wei, Rebecca Soskin Hicks, Preston Bowman, Joaquin Quiñonero-Candela, Foivos Tsimpourlas, Michael Sharman, Meghan Shah, An-drea Vallone, Alex Beutel, et al . 2025. Healthbench: Evaluating large language models towards improved human health. arXiv preprint arXiv:2505.08775 (2025). [3] Param Biyani, Yasharth Bajpai, Arjun Radhakrishna, Gustavo Soares, and Sumit Gulwani. 2024. RUBICON: Rubric-Based Evaluation of Domain-Specific Human AI Conversations. In Proceedings of the 1st ACM International Conference on AI-Powered Software (Porto de Galinhas, Brazil) (AIware 2024) . Association for Com-puting Machinery, New York, NY, USA, 161–169. doi:10.1145/3664646.3664778 [4] Susan M Brookhart. 2013. How to create and use rubrics for formative assessment and grading . Ascd. [5] Kaustubh Dhole and Eugene Agichtein. 2024. Llm judges for retrieval augmented argumentation. (2024). [6] Kaustubh Dhole, Ramraj Chandradevan, and Eugene Agichtein. 2025. AdvERSEM: Adversarial Robustness Testing and Training of LLM-based Groundedness Eval-uators via Semantic Structure Manipulation. In Proceedings of the 14th Joint Conference on Lexical and Computational Semantics (* SEM 2025) . 395–408. [7] Kaustubh Dhole, Kai Shu, and Eugene Agichtein. 2025. ConQRet: A New Bench-mark for Fine-Grained Automatic Evaluation of Retrieval Augmented Compu-tational Argumentation. In Proceedings of the 2025 Conference of the Nations of the Americas Chapter of the Association for Computational Linguistics: Human Language Technologies (Volume 1: Long Papers) . 5687–5713. [8] Kaustubh Dhole, Nikhita Vedula, Saar Kuzi, Giuseppe Castellucci, Eugene Agichtein, and Shervin Malmasi. 2025. Generative Product Recommendations for Implicit Superlative Queries. In Proceedings of the 2025 Conference of the Nations of the Americas Chapter of the Association for Computational Linguistics: Human Language Technologies (Volume 4: Student Research Workshop) , Abteen Ebrahimi, Samar Haider, Emmy Liu, Sammar Haider, Maria Leonor Pacheco, and Shira Wein (Eds.). Association for Computational Linguistics, Albuquerque, USA, 77–91. doi:10.18653/v1/2025.naacl-srw.8 [9] Yann Dubois, Xuechen Li, Rohan Taori, Tianyi Zhang, Ishaan Gulrajani, Jimmy Ba, Carlos Guestrin, Percy Liang, and Tatsunori B. Hashimoto. 2024. Alpaca-Farm: A Simulation Framework for Methods that Learn from Human Feedback. arXiv:2305.14387 [cs.LG] https://arxiv.org/abs/2305.14387 [10] Shahul Es, Jithin James, Luis Espinosa Anke, and Steven Schockaert. 2024. RAGAs: Automated Evaluation of Retrieval Augmented Generation. In Proceedings of the 18th Conference of the European Chapter of the Association for Computational Linguistics: System Demonstrations , Nikolaos Aletras and Orphee De Clercq (Eds.). Association for Computational Linguistics, St. Julians, Malta, 150–158. https: //aclanthology.org/2024.eacl-demo.16 [11] Zhiyuan Fan, Weinong Wang, Xing W, and Debing Zhang. 2024. SedarEval: Automated Evaluation using Self-Adaptive Rubrics. In Findings of the Association for Computational Linguistics: EMNLP 2024 , Yaser Al-Onaizan, Mohit Bansal, and Yun-Nung Chen (Eds.). Association for Computational Linguistics, Miami, Florida, USA, 16916–16930. doi:10.18653/v1/2024.findings-emnlp.984 [12] Naghmeh Farzi and Laura Dietz. 2024. Pencils down! automatic rubric-based evaluation of retrieve/generate systems. In Proceedings of the 2024 acm sigir international conference on theory of information retrieval . 175–184. [13] Naghmeh Farzi and Laura Dietz. 2024. Pencils Down! Automatic Rubric-based Evaluation of Retrieve/Generate Systems. In Proceedings of the 2024 ACM SIGIR International Conference on Theory of Information Retrieval (Washington DC, USA) (ICTIR ’24) . Association for Computing Machinery, New York, NY, USA, 175–184. doi:10.1145/3664190.3672511 [14] Zhaopeng Feng, Jiayuan Su, Jiamei Zheng, Jiahan Ren, Yan Zhang, Jian Wu, Hongwei Wang, and Zuozhu Liu. 2025. M-MAD: Multidimensional Multi-Agent Debate for Advanced Machine Translation Evaluation. In Proceedings of the 63rd Annual Meeting of the Association for Computational Linguistics (Volume 1: Long Papers) , Wanxiang Che, Joyce Nabende, Ekaterina Shutova, and Mohammad Taher Pilehvar (Eds.). Association for Computational Linguistics, Vienna, Austria, 7084– 7107. doi:10.18653/v1/2025.acl-long.351 [15] Shashwat Goel, Rishi Hazra, Dulhan Jayalath, Timon Willi, Parag Jain, William F Shen, Ilias Leontiadis, Francesco Barbieri, Yoram Bachrach, Jonas Geiping, et al . 2025. Training AI Co-Scientists Using Rubric Rewards. arXiv preprint arXiv:2512.23707 (2025). [16] Abinitha Gourabathina, Inkit Padhi, Manish Nagireddy, Subhajit Chaudhury, and Prasanna Sattigeri. [n. d.]. Chain-of-Thought Degrades Abstention in Large Language Models, Unless Inverted. ([n. d.]). [17] Anisha Gunjal, Anthony Wang, Elaine Lau, Vaskar Nath, Yunzhong He, Bing Liu, and Sean Hendryx. 2025. Rubrics as Rewards: Reinforcement Learning Beyond Verifiable Domains. arXiv:2507.17746 [cs.LG] https://arxiv.org/abs/2507.17746 [18] Tzu-Heng Huang, Sirajul Salekin, Javier Movellan, Frederic Sala, and Manjot Bilkhu. 2026. RubiCap: Rubric-Guided Reinforcement Learning for Dense Image Captioning. arXiv preprint arXiv:2603.09160 (2026). [19] Zenan Huang, Yihong Zhuang, Guoshan Lu, Zeyu Qin, Haokai Xu, Tianyu Zhao, Ru Peng, Jiaqi Hu, Zhanming Shen, Xiaomeng Hu, et al . 2025. Reinforcement learning with rubric anchors. arXiv preprint arXiv:2508.12790 (2025). [20] Anders Jonsson and Gunilla Svingby. 2007. The use of scoring rubrics: Reliability, validity and educational consequences. Educational research review 2, 2 (2007), 130–144. [21] Timo Kaufmann, Paul Weng, Viktor Bengs, and Eyke Hüllermeier. 2024. Asurvey of reinforcement learning from human feedback. Transactions on Machine Learning Research (2024). [22] Mehran Kazemi, Bahare Fatemi, Hritik Bansal, John Palowitch, Chrysovalantis Anastasiou, Sanket Vaibhav Mehta, Lalit K Jain, Virginia Aglietti, Disha Jindal, Yuanzhu Peter Chen, et al . 2025. Big-bench extra hard. In Proceedings of the 63rd Annual Meeting of the Association for Computational Linguistics (Volume 1: Long Papers) . 26473–26501. [23] Seungone Kim, Jamin Shin, Yejin Cho, Joel Jang, Shayne Longpre, Hwaran Lee, Sangdoo Yun, Seongjin Shin, Sungdong Kim, James Thorne, et al . 2023. Prometheus: Inducing fine-grained evaluation capability in language models. In 
+
+The Twelfth International Conference on Learning Representations .[24] Seungone Kim, Juyoung Suk, Ji Yong Cho, Shayne Longpre, Chaeeun Kim, Dongkeun Yoon, Guijin Son, Yejin Cho, Sheikh Shafayat, Jinheon Baek, Sue Hyun Park, Hyeonbin Hwang, Jinkyung Jo, Hyowon Cho, Haebin Shin, Seongyun Lee, Hanseok Oh, Noah Lee, Namgyu Ho, Se June Joo, Miyoung Ko, Yoonjoo Lee, Hyungjoo Chae, Jamin Shin, Joel Jang, Seonghyeon Ye, Bill Yuchen Lin, Sean Welleck, Graham Neubig, Moontae Lee, Kyungjae Lee, and Minjoon Seo. 2025. The BiGGen Bench: A Principled Benchmark for Fine-grained Evaluation of Lan-guage Models with Language Models. In Proceedings of the 2025 Conference of the Nations of the Americas Chapter of the Association for Computational Linguistics: Human Language Technologies (Volume 1: Long Papers) , Luis Chiruzzo, Alan Ritter, and Lu Wang (Eds.). Association for Computational Linguistics, Albuquerque, New Mexico, 5877–5919. doi:10.18653/v1/2025.naacl-long.303 [25] Quentin Lhoest, Albert Villanova Del Moral, Yacine Jernite, Abhishek Thakur, Patrick Von Platen, Suraj Patil, Julien Chaumond, Mariama Drame, Julien Plu, Lewis Tunstall, et al. 2021. Datasets: A community library for natural language processing. In Proceedings of the 2021 conference on empirical methods in natural RubricRAG : Towards Interpretable and Reliable LLM Evaluation via Domain Knowledge Retrieval for Rubric Generation RubricRAG, March 2026, Atlanta, GA, USA 
+
+language processing: system demonstrations . 175–184. [26] Sunzhu Li, Jiale Zhao, Miteto Wei, Huimin Ren, Yang Zhou, Jingwen Yang, Shunyu Liu, Kaike Zhang, and Wei Chen. 2026. RubricHub: A Comprehensive and Highly Discriminative Rubric Dataset via Automated Coarse-to-Fine Generation. arXiv preprint arXiv:2601.08430 (2026). [27] Chin-Yew Lin. 2004. ROUGE: A Package for Automatic Evaluation of Summaries. In Text Summarization Branches Out . Association for Computational Linguistics, Barcelona, Spain, 74–81. https://aclanthology.org/W04-1013/ [28] Ryan Liu, Jiayi Geng, Addison J Wu, Ilia Sucholutsky, Tania Lombrozo, and Thomas L Griffiths. 2024. Mind your step (by step): Chain-of-thought can reduce performance on tasks where thinking makes humans worse. arXiv preprint arXiv:2410.21333 (2024). [29] Tianci Liu, Ran Xu, Tony Yu, Ilgee Hong, Carl Yang, Tuo Zhao, and Haoyu Wang. 2025. Openrubrics: Towards scalable synthetic rubric generation for reward modeling and llm alignment. arXiv preprint arXiv:2510.07743 (2025). [30] Sewon Min, Kalpesh Krishna, Xinxi Lyu, Mike Lewis, Wen-tau Yih, Pang Koh, Mohit Iyyer, Luke Zettlemoyer, and Hannaneh Hajishirzi. 2023. FActScore: Fine-grained Atomic Evaluation of Factual Precision in Long Form Text Generation. In Proceedings of the 2023 Conference on Empirical Methods in Natural Language Processing , Houda Bouamor, Juan Pino, and Kalika Bali (Eds.). Association for Computational Linguistics, Singapore, 12076–12100. doi:10.18653/v1/2023.emnlp-main.741 [31] Tong Mu, Alec Helyar, Johannes Heidecke, Joshua Achiam, Andrea Vallone, Ian Kivlichan, Molly Lin, Alex Beutel, John Schulman, and Lilian Weng. 2024. Rule based rewards for language model safety. Advances in Neural Information Processing Systems 37 (2024), 108877–108901. [32] Kishore Papineni, Salim Roukos, Todd Ward, and Wei-Jing Zhu. 2002. Bleu: a method for automatic evaluation of machine translation. In Proceedings of the 40th annual meeting of the Association for Computational Linguistics . 311–318. [33] Long Phan, Alice Gatti, Ziwen Han, Nathaniel Li, Josephina Hu, Hugh Zhang, Chen Bo Calvin Zhang, Mohamed Shaaban, John Ling, Sean Shi, et al . 2025. Humanity’s last exam. arXiv preprint arXiv:2501.14249 (2025). [34] Nils Reimers and Iryna Gurevych. 2019. Sentence-BERT: Sentence Embeddings using Siamese BERT-Networks. In Proceedings of the 2019 Conference on Em-pirical Methods in Natural Language Processing . Association for Computational Linguistics. https://arxiv.org/abs/1908.10084 [35] Jon Saad-Falcon, Omar Khattab, Christopher Potts, and Matei Zaharia. 2024. ARES: An Automated Evaluation Framework for Retrieval-Augmented Gen-eration Systems. In Proceedings of the 2024 Conference of the North American Chapter of the Association for Computational Linguistics: Human Language Tech-nologies (Volume 1: Long Papers) , Kevin Duh, Helena Gomez, and Steven Bethard (Eds.). Association for Computational Linguistics, Mexico City, Mexico, 338–354. doi:10.18653/v1/2024.naacl-long.20 [36] Rulin Shao, Akari Asai, Shannon Zejiang Shen, Hamish Ivison, Varsha Kishore, Jingming Zhuo, Xinran Zhao, Molly Park, Samuel G Finlayson, David Sontag, et al .2025. Dr tulu: Reinforcement learning with evolving rubrics for deep research. 
+
+arXiv preprint arXiv:2511.19399 (2025). [37] Zhihong Shao, Peiyi Wang, Qihao Zhu, Runxin Xu, Junxiao Song, Xiao Bi, Haowei Zhang, Mingchuan Zhang, YK Li, Yang Wu, et al . 2024. Deepseekmath: Pushing the limits of mathematical reasoning in open language models. arXiv preprint arXiv:2402.03300 (2024). [38] Manasi Sharma, Chen Bo Calvin Zhang, Chaithanya Bandi, Clinton Wang, Ankit Aich, Huy Nghiem, Tahseen Rabbani, Ye Htet, Brian Jang, Sumana Basu, et al .2025. Researchrubrics: A benchmark of prompts and rubrics for evaluating deep research agents. arXiv preprint arXiv:2511.07685 (2025). [39] Paloma Sodhi, Yueheng Li, Jessica Landon, Eric Wallace, and Kai Chen. 2026. Interpreting Black Box Reward Models. OpenAI Alignment Research Blog. https: //alignment.openai.com/argo/ [40] Aarohi Srivastava, Abhinav Rastogi, Abhishek Rao, Abu Awal Md Shoeb, Abubakar Abid, Adam Fisch, Adam R Brown, Adam Santoro, Aditya Gupta, Adrià Garriga-Alonso, et al . 2023. Beyond the imitation game: Quantifying and extrapolating the capabilities of language models. Transactions on machine learning research (2023). [41] Vijay Viswanathan, Yanchao Sun, Shuang Ma, Xiang Kong, Meng Cao, Graham Neubig, and Tongshuang Wu. 2025. Checklists are better than reward models for aligning language models. arXiv preprint arXiv:2507.18624 (2025). [42] Leandro von Werra, Younes Belkada, Lewis Tunstall, Edward Beeching, Tristan Thrush, Nathan Lambert, Shengyi Huang, Kashif Rasul, and Quentin Gallouédec. 2020. TRL: Transformers Reinforcement Learning . https://github.com/huggingface/ trl [43] Tianjun Wei, Wei Wen, Ruizhi Qiao, Xing Sun, and Jianghong Ma. [n. d.]. RocketE-val: Efficient automated LLM evaluation via grading checklist. In The Thirteenth International Conference on Learning Representations .[44] Thomas Wolf, Lysandre Debut, Victor Sanh, Julien Chaumond, Clement Delangue, Anthony Moi, Pierric Cistac, Tim Rault, Remi Louf, Morgan Funtowicz, et al .2020. Transformers: State-of-the-art natural language processing. In Proceedings of the 2020 conference on empirical methods in natural language processing: system demonstrations . 38–45. [45] An Yang, Anfeng Li, Baosong Yang, Beichen Zhang, Binyuan Hui, Bo Zheng, Bowen Yu, Chang Gao, Chengen Huang, Chenxu Lv, et al . 2025. Qwen3 technical report. arXiv preprint arXiv:2505.09388 (2025). [46] Junjie Ye, Guanyu Li, SongYang Gao, Caishuang Huang, Yilong Wu, Sixian Li, Xiaoran Fan, Shihan Dou, Tao Ji, Qi Zhang, Tao Gui, and Xuanjing Huang. 2025. ToolEyes: Fine-Grained Evaluation for Tool Learning Capabilities of Large Language Models in Real-world Scenarios. In Proceedings of the 31st International Conference on Computational Linguistics , Owen Rambow, Leo Wanner, Marianna Apidianaki, Hend Al-Khalifa, Barbara Di Eugenio, and Steven Schockaert (Eds.). Association for Computational Linguistics, Abu Dhabi, UAE, 156–187. https: //aclanthology.org/2025.coling-main.12/ [47] Seonghyeon Ye, Doyoung Kim, Sungdong Kim, Hyeonbin Hwang, Seungone Kim, Yongrae Jo, James Thorne, Juho Kim, and Minjoon Seo. [n. d.]. FLASK: Fine-grained Language Model Evaluation based on Alignment Skill Sets. In ICLR 2024 Workshop on Large Language Model (LLM) Agents .[48] Qiyuan Zhang, Junyi Zhou, Yufei Wang, Fuyuan Lyu, Yidong Ming, Can Xu, Qingfeng Sun, Kai Zheng, Peng Kang, Xue Liu, et al . 2026. RubricBench: Aligning Model-Generated Rubrics with Human Standards. arXiv preprint arXiv:2603.01562 
+
+(2026). [49] Yanzhao Zhang, Mingxin Li, Dingkun Long, Xin Zhang, Huan Lin, Baosong Yang, Pengjun Xie, An Yang, Dayiheng Liu, Junyang Lin, Fei Huang, and Jingren Zhou. 2025. Qwen3 Embedding: Advancing Text Embedding and Reranking Through Foundation Models. arXiv preprint arXiv:2506.05176 (2025).
