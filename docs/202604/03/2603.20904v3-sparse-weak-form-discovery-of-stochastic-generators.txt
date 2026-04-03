@@ -1,0 +1,1957 @@
+Title: Sparse Weak-Form Discovery of Stochastic Generators
+
+URL Source: https://arxiv.org/pdf/2603.20904v3
+
+Published Time: Fri, 27 Mar 2026 00:23:51 GMT
+
+Number of Pages: 29
+
+Markdown Content:
+# SPARSE WEAK -F ORM DISCOVERY OF STOCHASTIC GENERATORS 
+
+Eshwar R A ∗
+
+Dept. of Computer Science Engineering PES University (EC Campus) Bengaluru, KA 560100, India 
+
+eshwarra5@gmail.com 
+
+Gajanan V. Honnavar †
+
+Dept. of Science and Humanities PES University (EC Campus) Bengaluru, KA 560100, India 
+
+gajanan.honnavar@pes.edu 
+
+ABSTRACT 
+
+The proposed algorithm seeks to provide a novel data-driven framework for the discovery of stochastic differential equations (SDEs) by application of the Weak-formulation to stochastic SINDy. This Weak formulation of the algorithm provides a noise-robust methodology that avoids traditional noisy derivative computation using finite differences. An additional novelty is the adoption of spatial Gaussian test functions in place of temporal test functions, wherein, the use of the kernel weight Kj (Xtn ) guarantees unbiasedness in expectation and prevents the structural regression bias that is otherwise pertinent with temporal test functions. The proposed framework converts the SDE identification problem into two SINDy based linear sparse identification problems. We validate the algorithm on three SDEs, for which we recover all active non-linear terms with coefficient errors below 4%, stationary-density total-variation distances below 0.01, and autocorrelation functions that reproduce true relaxation timescales across all three benchmarks faithfully. 
+
+Keywords sparse system identification · stochastic differential equations · weak-form regression ·
+
+infinitesimal generator learning · SINDy · sparse regression · quadratic variation · data-driven discovery ·
+
+Koopman operator methods · Fokker–Planck equation 
+
+1 Introduction 
+
+1.1 Motivation 
+
+Parallel to the formal discovery of governing equations through analytical, mathematical methods, there exists a domain of employing data-driven methods to learn these very governing equations. Much prior to Newton’s analytical approaches to discovering the law of gravitations, Kepler derived his laws of planatary motion solely through observational data. This domain of data-driven discovery hence predates the advent of the computer itself, but nevertheless was vastly benefitted and accelerated by it. In several imperative domains of the current-day, inter alia biology, neuroscience, climate modeling and finance, the governing 
+
+> ∗This research was conducted as part of the Quantum and Nano Devices Lab, PES University.
+> †Corresponding Author.
+> arXiv:2603.20904v3 [stat.ME] 26 Mar 2026 Sparse Weak-Form Discovery of Stochastic Generators
+
+equations are either unknown or too complex to analytically derive. With the power of computation, scientist over the past few decades have strived to discover computational algorithms which discover such governing equations from observational/experimental data [1, 2, 3]. The tradeoff in this domain is usually between interpretability, and accuracy. There exist black-box models— mostly based on Deep Neural Networks—which prove incredibly successful in modeling highly complex, nonlinear systems while providing little to no analytical understanding of the underlying system. White-box models on the other hand prove useful in recovering the underlying information of the system, inter alia 
+
+explicit symbolic equations that can be theoretically analysed and extrapolated beyond the training data [1, 4, 5]. Specifically for stochastic systems however, white-box modeling proves to be harder, for the dynamics are no longer governed by deterministic trajectories. Such systems are governed by probabilistic evolution laws, for which the dynamics are typically defined in the form of stochastic differential equations (SDEs), wherein the evolution operator acts on distributions rather than deterministic states over time [ 6 , 7 , 8 ]. Our goal too in this work is the parsimonious identification of such stochastic dynamics, wherein we seek to discover the governing SDEs directly from data [ 12 , 9 , 10 ] with the central novelty of introducing an algorithm that is structurally robust to noise. 
+
+1.2 Stochastic Systems and the Identification Challenge 
+
+Several real-world systems intrinsically show stochastic behaviour. This includes several complex, and highly relevant current-day systems in arenas such as molecular systems, atmospheric models, population dynamics, and finance. In all these cases, genuine is a reality of the dynamical system itself, wherein randomness that cannot be treated as a simple measurement error and averaged away, ultimately being ignored in understanding the true underlying dynamics. In these settings, the dynamics are more naturally described by stochastic differential equations (SDEs) of the form 
+
+dX t = b(Xt) dt + σ(Xt) dW t, (1) where b(x) is the deterministic drift, σ(x) is the diffusion coefficient, and Wt is a standard Wiener process representing absolute 0-mean randomness [ 6, 7]. Put in other words, the dynamics of the system are given by a weighted sum of a certain degree of determinism and a certain degree of randomness, wherein b(x) is the weight of determinism of the dynamics, and σ(x) is the weight of randomness/unpredictability of the dynamics for a given system state in time. Hence, the goal is for the independent identification of both these drift, and diffusion terms on the right-hand side of (1) , solely from observational data of the system dX t
+
+(left-hand side of (1) ). The ultimate purpose of the methodology, as you shall see, is for the construction of comparably lower-order models that faithfully represent not only the average trajectory but also the variability and fluctuations induced by randomness in such systems: hence discretizing the randomness, from the deterministic part of the trajectory. Such stochastic behaviour can alternatively be characterised by an infinitesimal generator of the form: 
+
+Lf (x) = b(x) · ∇ f (x) + 12 a(x) : ∇2f (x), (2) where a(x) = σ(x)σ(x)T . (2) governs the evolution of expectations through the Kolmogorov backward equation and is closely related to the Fokker–Planck equation for probability densities [ 8 , 7 ]. The central goal of this work is the recovery of this generator directly from data in a sparse, and interpretable form. 
+
+> 2Sparse Weak-Form Discovery of Stochastic Generators
+
+1.3 Prior Work and the Gap 
+
+Two established methodological streams each address a piece of this problem, but neither addresses it in full. Stochastic SINDy [9, 10 ] extends the SINDy sparse regression framework [ 1 ] to SDEs by estimating drift and diffusion from Kramers–Moyal increment statistics. These methods are interpretable and produce symbolic polynomial generators, but each regression row is formed from a single time-step increment, which means signal and noise contributions are entangled at the individual-step level. 
+
+Weak SINDy [11 ] takes a fundamentally different approach for deterministic systems: it multiplies the governing equation by smooth temporal test functions and integrates by parts, transferring the time derivative from the (noisy, estimated) trajectory onto the (analytically known, smooth) test function. The result is that each regression row aggregates information across the entire trajectory, and measurement noise is averaged rather than appearing at the individual-step level. This method has been validated on a broad class of deterministic ODEs and PDEs. However, it was derived and analysed exclusively in the deterministic setting. It provides no treatment of the diffusion coefficient a(x), no analysis of the stochastic martingale term that arises when the weak projection is applied to the Itô integral, and—crucially—no discussion of the endogeneity bias that temporal test functions introduce when applied to a stochastic equation. 
+
+1.4 This Work 
+
+We bridge these two lines by applying the weak projection directly to the Itô SDE. This extension is non-trivial. The key insight, which has no analogue in deterministic Weak SINDy, is that the choice of test-function family determines whether the resulting regression is biased. Temporal test functions ϕj (t) weight observations by their time index; because future states depend on past Brownian innovations through the SDE dynamics, such weighting introduces a persistent endogeneity bias that does not vanish with increasing data. Spatial Gaussian kernels Kj (x) = exp( −| x − xj |2/2h2), by contrast, evaluate the test function at the current state Xtn , which is Ftn -measurable and independent of the innovation ξn. This produces exactly unbiased regression rows. We formalise this argument and derive the complete weak identification system for both b(x) and a(x), formulate both as sparse linear regression problems sharing the same design matrix, and validate the pipeline on three benchmark SDEs of increasing complexity. The result is an explicit, interpretable symbolic generator that can be used directly for downstream stochastic analysis. 
+
+2 Background 
+
+2.1 Itô Diffusions and the Infinitesimal Generator 
+
+An Itô diffusion on Rd is the strong solution of (1) , where b : Rd → Rd is the drift vector field, σ : Rd →
+
+Rd×m is the diffusion matrix, and Wt ∈ Rm is a standard Wiener process [ 6, 7]. The solution Xt is a continuous semimartingale with almost surely non-differentiable sample paths; all analysis must therefore proceed at the level of statistical properties rather than pointwise trajectory derivatives. The diffusion tensor a(x) = σ(x)σ(x)⊤ ∈ Rd×d captures the instantaneous covariance of the stochastic increments. For a scalar system ( d = m = 1 ), a(x) = σ(x)2 is simply the squared local noise amplitude. The infinitesimal generator (2) is the operator that describes how smooth functions of the state evolve in expectation: ddt E[f (Xt)|X0 = x] = Lf (x). It encodes both the deterministic tendency (through b)
+
+> 3Sparse Weak-Form Discovery of Stochastic Generators
+
+and the curvature-weighted diffusive spreading (through a). Recovering L—and by extension b and a
+
+separately—from data is the principal goal of generator learning [15, 8]. The Fokker–Planck equation for the stationary density π(x) is the adjoint of the generator equation: L†π = 0 .For a one-dimensional system with a(x) > 0 everywhere, this yields the explicit formula 
+
+π(x) ∝ 1
+
+a(x) exp 
+
+
+
+2
+
+Z x
+
+> 0
+
+b(y)
+
+a(y) dy 
+
+
+
+, (3) which we use throughout Section 7 to validate the recovered generators without Monte Carlo variance contaminating the comparison. 
+
+2.2 Sparse Identification of Nonlinear Dynamics 
+
+The SINDy framework [ 1] identifies governing ODEs by expressing the right-hand side as a sparse lin-ear combination of library functions. Given trajectory data, one constructs a feature matrix Θ( X) = [1 , X 1, X 2, X 21 , X 1X2, . . . ] and a vector of state derivatives ˙X (typically estimated by finite differences), then solves the sparse regression problem 
+
+ˆc = arg min  
+
+> c
+
+∥ ˙X − Θ( X)c∥22 + λ∥c∥1. (4) The nonzero entries of ˆc directly identify the active terms in the governing equation. This formulation has been extended to handle implicit dynamics [ 5], PDEs [ 14 ], and model selection via information criteria [ 4]. The central limitation for applications to stochastic systems is the need for accurate derivative estimates: for noisy observations ˜Xtn = Xtn + ηn, the finite-difference derivative estimator has variance Var[( ˜Xt+∆ t −
+
+˜Xt)/∆t] ∝ σ2 
+
+> η
+
+/∆t2, which diverges as the time step is reduced. This instability is particularly damaging for stochastic systems, where fluctuations are present in the signal itself. 
+
+2.3 Stochastic SINDy 
+
+Boninsegna and Clementi [ 9 ] extend the SINDy framework to SDEs by replacing the derivative vector with Kramers–Moyal conditional moments. The first conditional moment E[∆ Xn | Xtn = x]/∆t is a consistent estimator of the drift b(x), and the second conditional moment E[(∆ Xn)2 | Xtn = x]/∆t estimates the diffusion a(x). By collecting these conditional moments over the trajectory and expressing them in a library, one obtains sparse regression systems for both b and a. Gonzalez-Garcia et al. [ 10 ] further develop this approach with improved regularisation strategies. These methods are well-established and produce interpretable symbolic generators, and they represent the direct predecessor to the present work on the stochastic side. 
+
+2.4 Weak SINDy for Deterministic Systems 
+
+Messenger and Bortz [ 11 ] address the noise-amplification issue for deterministic systems through a Galerkin projection. For an ODE ˙X = F (X), multiplying by a smooth test function ϕj (t) and integrating by parts yields 
+
+−
+
+Z T
+
+> 0
+
+Xt ϕ′ 
+
+> j
+
+(t) dt + [ Xϕ j ]T 
+
+> 0
+
+=
+
+Z T
+
+> 0
+
+F (Xt) ϕj (t) dt. (5) The left-hand side can be evaluated from data without any differentiation of the trajectory: the time derivative has been shifted onto the analytically known, smooth test function ϕj . As a result, each regression row 
+
+> 4Sparse Weak-Form Discovery of Stochastic Generators
+
+integrates information over a window of length T , and measurement noise is averaged down at rate 1/√N
+
+rather than amplified through division by ∆t. This idea is the direct weak-form precedent for our method. However, Weak SINDy was designed and analysed exclusively for deterministic dynamics. When applied to a stochastic equation, two problems arise that have no counterpart in the deterministic case. First, the stochastic integral R ϕj (t)σ(Xt) dW t does not vanish when the equation is rearranged; it is a martingale whose expected value is zero but whose individual realisations are not. Second, and more subtly, if ϕj (t)
+
+is a temporal test function, then the weight assigned to observation n depends on the time index n. Future observations Xtn+1 , X tn+2 , . . . all depend on the Brownian innovation ξn through the SDE dynamics, so the regression residual at time n is correlated with the regressors at all later times. This is the endogeneity bias that we identify and resolve in the present work. Full mathematical details are provided in Appendix 1. 
+
+3 Methodology 
+
+3.1 Problem Formulation 
+
+Let {Xt0 , X t1 , . . . , X tN } be a set of discrete observations of the scalar Itô diffusion (1) at equally spaced times tn = n∆t. We assume the true drift b(x) and diffusion a(x) can both be expressed as finite sparse linear combinations of known basis functions: 
+
+b(x) = Θ( x) c∗, a(x) = Θ( x) d∗, (6) where Θ( x) = [ f1(x), . . . , f K (x)] is a user-specified feature library and c∗, d ∗ ∈ RK are sparse vectors. In our experiments, the library consists of monomials up to degree four: Θ( x) = [1 , x, x 2, x 3, x 4], a choice that exactly spans the drift and diffusion polynomials of all three benchmark systems. The identification problem is then to recover the sparse coefficient vectors c∗ and d∗ from trajectory data, which together determine the full infinitesimal generator (2). 
+
+3.2 Spatial Gaussian Test Functions 
+
+We place M kernel centres x1, . . . , x M equally spaced over the empirically observed state range, and define spatial Gaussian test functions 
+
+Kj (x) = exp 
+
+
+
+− (x − xj )2
+
+2h2
+
+
+
+, j = 1 , . . . , M, (7) where h > 0 is the bandwidth hyperparameter. These functions are smooth, positive, and concentrated around the centre xj , providing a partition-of-unity coverage of the state space. The bandwidth h controls the resolution–variance tradeoff: a smaller h produces a sharper kernel that captures finer spatial structure but uses fewer data points per regression row, increasing variance; a larger h averages more broadly and reduces variance at the cost of spatial resolution. In practice, we choose h = 0 .22 for the OU and double-well systems (state range ≈ ± 2.5), yielding an overlap ratio h/ ∆x ≈ 2.2 between adjacent centres. For the multiplicative diffusion system, which exhibits heavier-tailed trajectories spanning a wider state range, we use h = 0 .27 with centres on [−2.8, 2.8] .The key property that motivates this choice is the following step-wise zero-mean condition. Let ξn =(Wtn+1 − Wtn )/√∆t denote the standardised Brownian increment at step n. By the definition of the Itô integral, ξn ∼ N (0 , 1) and ξn is independent of the filtration Ftn generated by the trajectory up to time tn.
+
+> 5
+
+Sparse Weak-Form Discovery of Stochastic Generators 
+
+Since Kj (Xtn ) and σ(Xtn ) are both Ftn -measurable, the tower property gives 
+
+E
+
+h
+
+Kj (Xtn ) σ(Xtn ) ξn Ftn
+
+i
+
+= Kj (Xtn ) σ(Xtn ) E[ξn | F tn ] = 0 , (8) and hence E[Kj (Xtn )σ(Xtn )ξn] = 0 for every n and every realisation of the trajectory up to time tn. By linearity, E[Bj ] = ( Ac ∗)j , i.e., the projected response is unbiased in expectation. This is the correct and sufficient unbiasedness property: it does not require the cross-covariance between noise terms at different steps to be zero (those cross-terms are generically nonzero through the SDE dynamics), but it does guarantee that the estimator is consistent in the ergodic limit. The contrast with temporal test functions and the precise probability-theoretic argument are given in Appendix 1. 
+
+3.3 The Drift Identification System 
+
+Starting from the Euler–Maruyama discretisation of (1), 
+
+∆Xn = b(Xtn ) ∆ t + σ(Xtn ) ξn
+
+√∆t, (9) we multiply both sides by Kj (Xtn ) and sum over all steps n = 0 , 1, . . . , N − 1:
+
+X
+
+> n
+
+Kj (Xtn ) ∆ Xn
+
+| {z } 
+
+> =: Bj
+
+= X
+
+> n
+
+Kj (Xtn ) b(Xtn ) ∆ t
+
++ X
+
+> n
+
+Kj (Xtn ) σ(Xtn ) ξn
+
+√∆t. (10) Substituting the library expansion b(x) = Θ( x)c and defining the design matrix 
+
+Ajk = 
+
+> N−1
+
+X
+
+> n=0
+
+Kj (Xtn ) fk(Xtn ) ∆ t, (11) the right-hand side of (10) becomes Ac + noise . By (8) , the noise term has zero mean in each row, so 
+
+E[B] = Ac and we obtain the unbiased linear system 
+
+B ≈ Ac, Bj := X
+
+> n
+
+Kj (Xtn ) ∆ Xn. (12) This system has M rows (one per kernel centre) and K columns (one per library function). When R
+
+independent trajectories are available, we stack all rows to form 
+
+Bstack = Astack c, (13) where Astack ∈ R(M R )×K and Bstack ∈ RM R . The stacked formulation is preferred over ensemble averaging because it retains per-trajectory variability, which is exploited by the grouped cross-validation scheme (Section 3.6). Before regression, all columns of Astack are normalised to unit ℓ2 norm to prevent scale-induced bias in the LASSO solution. 
+
+3.4 Diffusion Identification via Quadratic Variation 
+
+In the Itô calculus, the quadratic variation process [X]t satisfies d[X]t = a(Xt) dt , meaning that the squared increment (∆ Xn)2 is an unbiased estimator of a(Xtn ) ∆ t to leading order. Multiplying by Kj (Xtn ) and summing: 
+
+Qj := X
+
+> n
+
+Kj (Xtn ) (∆ Xn)2 ≈ X
+
+> k
+
+dk Ajk , (14) 
+
+6Sparse Weak-Form Discovery of Stochastic Generators 
+
+which gives the second linear system Q ≈ Ad with exactly the same design matrix A as for the drift. This is an important structural feature: drift and diffusion are identified from the same pair (A, ·), requiring only one kernel evaluation pass over the data. For a multi-dimensional state space Rd, the diffusion tensor a ∈ Rd×d is symmetric and positive semidefinite. Each entry apq has its own sparse coefficient vector d(pq ), and the identification system is Q(pq ) ≈ Ad (pq ),where 
+
+Q(pq ) 
+
+> j
+
+= X
+
+> n
+
+Kj (Xtn ) (∆ Xn)p (∆ Xn)q. (15) In the scalar case treated in our experiments, this reduces to (14). 
+
+3.5 Finite-Time-Step Bias Correction 
+
+The identification system (14) is exact only in the limit ∆t → 0. At finite ∆t, squaring the Euler–Maruyama step (9) yields 
+
+(∆ Xn)2 = a(Xtn ) ∆ t
+
++ 2 b(Xtn ) σ(Xtn ) ξn ∆t3/2
+
++ b(Xtn )2 ∆t2. (16) The middle term has zero mean by independence of ξn. The last term, however, contributes a systematic positive bias of order ∆t2 to Qj :
+
+E[Qj ] = X
+
+> k
+
+dkAjk + X
+
+> n
+
+EKj (Xn) b(Xn)2∆t2
+
+| {z }
+
+> drift-squared bias
+
+. (17) This bias is negligible when ∆t is very small, but at the practically relevant value ∆t = 0 .002 it causes significant overestimation of state-dependent diffusion coefficients if left uncorrected. We remove it using a two-step procedure: first, estimate the drift ˆb by solving (13); then correct 
+
+Qcorr  
+
+> j
+
+= Qj − X
+
+> n
+
+Kj (Xn) ˆb(Xn)2 ∆t2, (18) and solve the corrected system Qcorr ≈ Ad . In Section 7.3 we show that this reduces the multiplicative diffusion coefficient error from approximately 13% to below 0.5%. 
+
+3.6 Sparse Regression and Model Selection 
+
+After building Astack and Bstack , we solve the LASSO problem [13] 
+
+ˆc = arg min 
+
+> c∈RK
+
+∥Astack c − Bstack ∥22 + λ∥c∥1 (19) and similarly for the diffusion system with Qcorr stack in place of Bstack . The regularisation parameter λ is chosen by K-fold cross-validation (LassoCV), with folds partitioned by trajectory index rather than by time step. This grouping is essential: partitioning by time would leak temporal autocorrelation between folds, inflating in-sample performance and distorting the model selection [ 4 ]. In our experiments we use five folds over R = 120 trajectories, giving 24 trajectories per fold. LassoCV is run over a grid of 60 logarithmically spaced values λ ∈ [10 −8, 10 −0.5], spanning from extremely sparse solutions to nearly unregularised ordinary least squares. The selected λ∗ minimises the mean cross-validated prediction error. After the LASSO selects an initial support, we apply OLS debiasing on the 
+
+> 7Sparse Weak-Form Discovery of Stochastic Generators
+
+selected support to remove the shrinkage introduced by the ℓ1 penalty, recovering asymptotically unbiased estimates of the nonzero coefficients. Finally, iterated Sequential Thresholded Least Squares (STLSQ) [ 1, 5 ]is applied to prune any residual near-zero coefficients induced by mild library collinearity. The STLSQ threshold is set to 0.25 (relative to the maximum coefficient magnitude) for the OU and double-well systems, and 0.30 for the multiplicative system whose wider trajectory support produces slightly higher collinearity between even-degree library terms. 
+
+3.7 Reconstruction of the Identified Generator 
+
+Let Sb ⊆ { 1, . . . , K } and Sa ⊆ { 1, . . . , K } denote the final support sets for drift and diffusion respectively. The identified functions are 
+
+ˆb(x) = X
+
+> k∈S b
+
+ˆck fk(x), ˆa(x) = X
+
+> k∈S a
+
+ˆdk fk(x), (20) yielding the identified generator ˆLf = ˆb f ′ + 12 ˆa f ′′ and the recovered SDE dX t = ˆb(Xt) dt + pˆa(Xt) dW t.This explicit symbolic form is the primary output of the algorithm and can be used directly for downstream tasks: numerical simulation, stationary density computation via (3), transition rate estimation, or analytical perturbation analysis. 
+
+4 Algorithm 
+
+The complete pipeline is summarised in Algorithm 1. The algorithm is designed to be straightforward to implement: the kernel evaluations and matrix multiplications in steps 1–4 are embarrassingly parallel across trajectories and kernel centres, the sparse regression in steps 5 and 7 uses standard scikit-learn LassoCV [20 ], and the STLSQ refinement is a simple iterative thresholding loop. The dominant cost is building 
+
+Astack : O(M N K ) per trajectory, linear in all three dimensions. For our experimental settings ( M = 50 ,
+
+N = 50 ,000 , K = 5 , R = 120 ), the full pipeline completes in under two minutes on a standard multi-core workstation. 
+
+5 Theoretical Properties 
+
+Full proofs with explicit ergodic-convergence arguments and variance calculations are given in Appendix 3. We state the main results here in accessible form. 
+
+5.1 Consistency of the Weak Estimator 
+
+The asymptotic correctness of our regression system rests on the ergodic theorem for diffusion processes. Under the assumption that the diffusion is ergodic with a unique invariant measure μ (a condition satisfied by all three benchmark systems), the time averages forming Astack and Bstack converge almost surely as 
+
+T → ∞ to their population counterparts: 
+
+1
+
+N Ajk →
+
+Z
+
+Kj (x) fk(x) μ(dx ), (21) 
+
+1
+
+N Bj →
+
+Z
+
+Kj (x) b(x) μ(dx ). (22) 
+
+> 8
+
+Sparse Weak-Form Discovery of Stochastic Generators 
+
+Algorithm 1 Weak Stochastic SINDy (Spatial Gaussian Kernels) 
+
+Require: Trajectories {X(r) 
+
+> tn
+
+}n,r , library Θ( x), centres {xj }Mj=1 , bandwidth h, dt ∆t
+
+Ensure: Drift ˆb(x), diffusion ˆa(x) 
+
+> 1:
+
+Evaluate Kj (Xtn ) = exp  −(Xtn − xj )2/2h2 and Θ( Xtn ) at all left-endpoint states.  
+
+> 2:
+
+for each trajectory r = 1 , . . . , R do  
+
+> 3:
+
+A(r) 
+
+> jk
+
+← P 
+
+> n
+
+Kj (X(r) 
+
+> tn
+
+) fk(X(r) 
+
+> tn
+
+) ∆ t 
+
+> 4:
+
+B(r) 
+
+> j
+
+← P 
+
+> n
+
+Kj (X(r) 
+
+> tn
+
+) ∆ X(r) 
+
+> n
+> 5:
+
+Q(r) 
+
+> j
+
+← P 
+
+> n
+
+Kj (X(r) 
+
+> tn
+
+) (∆ X(r) 
+
+> n
+
+)2 
+
+> 6:
+
+end for  
+
+> 7:
+
+Stack: Astack , Bstack , Qstack . Normalise columns of Astack . 
+
+> 8:
+
+Solve Bstack = Astack c via LassoCV (grouped K-fold by traj. index) + OLS debias + STLSQ. Obtain 
+
+ˆc, support Sb. 
+
+> 9:
+
+Compute Qcorr  
+
+> j
+
+← Qj − P 
+
+> n
+
+Kj (Xn) ˆb(Xn)2∆t2 via (18) using ˆb(x) = Θ( x)ˆ c. 
+
+> 10:
+
+Solve Qcorr stack = Astack d with the same pipeline. Obtain ˆd, support Sa. 
+
+> 11:
+
+Return ˆb(x), ˆa(x) via (20). The population-level regression system is ¯B = ¯A c , where ¯Ajk = R Kj fk dμ . If b ∈ span(Θ) , this is satisfied exactly by the true c∗, and OLS recovers it consistently provided ¯A has full column rank (which is guaranteed when the trajectories ergodically cover the state space, ensuring that all basis functions are distinguishable under the invariant measure). When the true drift does not lie in the library span, the estimator converges to the orthogonal L2(μ) projection of b onto span(Θ) , i.e., the best possible polynomial approximation in the invariant measure norm. The identical argument applies to the diffusion system. 
+
+5.2 Noise Robustness 
+
+For observations corrupted by additive independent noise ˜Xtn = Xtn +ηn, ηn ∼ (0 , σ 2 
+
+> η
+
+), the finite-difference derivative estimate used in classical SINDy has variance Var[( ˜Xt+∆ t − ˜Xt)/∆t] = 2 σ2 
+
+> η
+
+/∆t2, which grows without bound as ∆t → 0. In the weak formulation, noisy increments ∆ ˜Xn = ∆ Xn + ( ηn+1 − ηn)
+
+enter the response ˜Bj . The noise contribution to ˜Bj is P 
+
+> n
+
+Kj (Xtn )( ηn+1 − ηn), which has variance 
+
+O(σ2 
+
+> η
+
+∆t2/∆t) · Mkernel = O(σ2 
+
+> η
+
+∆t), going to zero as ∆t → 0 at fixed T . In the regime of many short steps (small ∆t, large N at fixed T ), the weak-form noise contribution therefore decreases rather than diverges. Figure 5 visualises this scaling analytically across a range of time steps and SNR levels. This noise-robustness property was the original motivation for Weak SINDy in the deterministic setting [ 11 ], and it carries through to the stochastic case. 
+
+5.3 Identifiability Conditions 
+
+Three conditions are required for unique recovery of the true sparse coefficient vectors c∗ and d∗. First, the feature library Θ( x) must be rich enough to span the true drift and diffusion functions; misspecification of the library is not correctable post-hoc. Second, the trajectory data must provide sufficient coverage of the state space: formally, the matrix ¯A must have full column rank, which is guaranteed when the invariant measure μ is absolutely continuous with respect to Lebesgue measure and the supports of the kernel functions collectively cover the support of μ. Third, the LASSO support recovery requires an irrepresentability 
+
+9Sparse Weak-Form Discovery of Stochastic Generators 
+
+condition [ 13 ]: the design matrix columns corresponding to inactive library functions must not be too strongly correlated with those corresponding to active functions. Column normalisation and the STLSQ refinement step mitigate near-violations of this condition due to mild library collinearity, as demonstrated empirically in Section 7. 
+
+6 Implementation Details 
+
+6.1 Simulation Setup 
+
+All three benchmark SDEs are simulated using the Euler–Maruyama scheme [ 19 ] with time step ∆t = 0 .002 
+
+over a total horizon T = 100 , giving N = 50 ,000 observations per trajectory. We generate R = 120 
+
+independent realisations per system, with initial conditions X0 drawn uniformly from the empirically observed state range of each system (approximately [−3, 3] for all three benchmarks). The large ensemble of 
+
+R = 120 trajectories serves two purposes: it ensures that the stacked regression matrix Astack ∈ R6000 ×5 is very well conditioned, and it provides sufficient trajectories to form five balanced grouped cross-validation folds with 24 trajectories each. The choice of ∆t = 0 .002 is intentional. It is small enough that the Euler–Maruyama discretisation introduces negligible strong-order error, but not so small as to make the drift-squared bias in Qj completely negligible—this provides a realistic test of the bias-correction procedure described in Section 3.5. All random seeds are fixed for reproducibility: seed 42 for the OU system, seed 123 for the double-well, and seed 7 for the multiplicative diffusion. 
+
+6.2 Feature Library and Normalisation 
+
+The polynomial library Θ( x) = [1 , x, x 2, x 3, x 4] with K = 5 terms is used for all three systems. This library exactly spans all the drift and diffusion polynomials present in the benchmarks. Before regression, the columns of Astack are individually normalised to unit ℓ2 norm, with the normalisation constants stored for back-transformation of the estimated coefficients. This step prevents the LASSO from being biased toward retaining low-norm features (typically low-degree monomials) and discarding high-norm features (high-degree monomials) for scale reasons unrelated to their physical significance. 
+
+6.3 Kernel Configuration 
+
+For the OU and double-well systems, M = 50 kernel centres are placed uniformly on [−2.5, 2.5] , giving a centre spacing of ∆xc = 0 .102 and bandwidth h = 0 .22 , corresponding to an overlap ratio h/ ∆xc ≈ 2.2.This level of overlap ensures that the kernel functions form a smoothly varying frame across state space and that no region of the observed state range is underrepresented in the regression system. For the multiplicative diffusion system, the heavier-tailed trajectories (which regularly visit |x| ≈ 2.5–3.0)necessitate wider coverage. We use M = 50 centres on [−2.8, 2.8] with bandwidth h = 0 .27 . The wider bandwidth also improves the signal-to-noise ratio for the diffusion identification at large |x|, where the number of data points is lower due to the stationary distribution being concentrated near the origin. 
+
+> 10 Sparse Weak-Form Discovery of Stochastic Generators
+
+6.4 Sparse Regression Configuration 
+
+LassoCV uses 60 logarithmically spaced regularisation values λ ∈ [10 −8, 10 −0.5]. The wide range is chosen to ensure the CV path clearly captures the “elbow” transition from the over-regularised (near-zero solution) to the under-regularised (dense, over-fitted) regime. The five-fold grouped CV runs with inner tolerance 
+
+10 −6 and up to 10 5 coordinate descent iterations per λ value. After LassoCV selects λ∗, OLS debiasing is performed on the support selected by LASSO, followed by at most 20 iterations of STLSQ with relative threshold 0.25 (0.30 for multiplicative). The STLSQ loop terminates early if the support does not change between successive iterations, which in practice occurs after two to four iterations for all benchmark systems. 
+
+7 Results 
+
+7.1 Ornstein–Uhlenbeck Process 
+
+The Ornstein–Uhlenbeck (OU) process is the canonical mean-reverting Gaussian diffusion: 
+
+dX t = −θ X t dt + σ0 dW t, θ = 1 .0, σ 0 = 0 .7. (23) The true drift is b(x) = −x (one active library term, cx = −1.0, all others zero) and the diffusion is constant 
+
+a(x) = σ20 = 0 .490 (one active term d1 = 0 .490 ). The OU process admits a fully analytic ground truth: the stationary distribution is πOU ∼ N (0 , σ 20 /2θ) = N (0 , 0.245) , and the autocorrelation function decays as 
+
+C(τ ) = e−θτ = e−τ .Algorithm 1 recovers ˆcx = −0.980 (error 2.0%) with all other drift coefficients set to exactly zero by the LASSO. The diffusion estimate is ˆd1 = 0 .490 (error 0.0%). The LassoCV regularisation path (Figure 2, top-left panel) shows a sharp elbow at α∗ ≈ 1.6 × 10 −3, where the CV MSE reaches its minimum; to the right of the elbow, the model is over-regularised and the single x term is shrunk toward zero. The clean identification of a one-term drift from a five-term library without any manual thresholding demonstrates that the grouped CV scheme correctly selects the true sparsity level. 
+
+7.2 Double-Well Langevin System 
+
+The double-well system is governed by 
+
+dX t = ( Xt − X3 
+
+> t
+
+) dt + σ0 dW t, σ0 = 0 .5. (24) The true drift has two active terms ( cx = +1 .0, cx3 = −1.0) and the diffusion is constant at a(x) = σ20 =0.250 . The double-well potential V (x) = −x2/2 + x4/4 creates two stable equilibria at x = ±1 separated by an unstable fixed point at x = 0 . The stationary distribution is bimodal with peaks at x ≈ ± 1, and the system exhibits metastable inter-well transitions whose timescale grows exponentially with the ratio ∆V /σ 20 .Correctly reproducing this bimodal structure and the associated mixing timescale constitutes a substantially more demanding test than the OU process. The algorithm recovers ˆcx = +0 .973 (error 2.7%) and ˆcx3 = −0.971 (error 2.9%), with all other drift coefficients exactly zeroed. The diffusion estimate is ˆd1 = 0 .250 (error 0.0%). The LassoCV path (Figure 2, top-centre) selects α∗ ≈ 4.9 × 10 −5, and the two-term support is stably maintained across a wide range of α
+
+below the elbow, confirming that the two active terms are well-separated from the inactive ones in terms of their contribution to the regression residual. 
+
+> 11 Sparse Weak-Form Discovery of Stochastic Generators
+
+7.3 Multiplicative Diffusion 
+
+The multiplicative diffusion system is 
+
+dX t = −2Xt dt + 12
+
+q
+
+1 + X2 
+
+> t
+
+dW t, (25) with state-dependent diffusion a(x) = 14 (1 + x2), giving two active coefficients d1 = 0 .250 (constant term) and dx2 = 0 .250 (quadratic term). This system is the most demanding benchmark for two reasons. First, the state-dependent noise amplitude makes the trajectories heavier-tailed than the OU or double-well cases, requiring adjusted kernel placement. Second, and more fundamentally, the x2 dependence of a(x) means that the squared-increment bias term in (17) is spatially non-uniform, growing with |x|2, so the uncorrected diffusion identification is significantly distorted. Without bias correction, the LASSO recovers ˆdx2 ≈ 0.283 (13% error) because the positive bias contaminates the quadratic term disproportionately. After applying the two-step correction (18) using the drift estimate 
+
+ˆb(x) = −1.922 x (error 3.9%), the corrected estimate is ˆdx2 = 0 .249 (0.4% error) and ˆd1 = 0 .251 (0.3% error). This dramatic reduction—from 13% to under 0.5%—demonstrates the necessity and effectiveness of the bias correction for systems with polynomial state-dependent diffusion at practically relevant time steps. 
+
+7.4 Function Recovery and Regularisation Paths 
+
+Figure 1 shows the recovered drift and diffusion functions plotted alongside the ground truth for all three systems, evaluated on a uniform grid of 401 points over [−3, 3] . In all six panels, the recovered curves (red dashed) are visually indistinguishable from the ground truth (blue solid) at the displayed scale. The mean relative errors, computed as ∥ ˆf − f ∥1/∥f ∥1 × 100% , are 2.0%, 2.7%, and 3.9% for the three drifts, and 0.0%, 0.1%, and 0.4% for the three diffusion functions. Diffusion errors are uniformly lower than drift errors, consistent with the higher effective signal-to-noise ratio for the quadratic variation estimator compared to the increment estimator. Figure 2 shows the LassoCV regularisation paths for all six sub-problems (three drifts, three diffusions). Each panel displays the mean cross-validated MSE as a function of the regularisation strength α (plotted in decreasing order on the x-axis to match the conventional left-to-right under-regularised to over-regularised reading direction). In every case, the CV error exhibits a sharp elbow that clearly separates the regime of correct sparse identification from the over-regularised regime where active terms are forced to zero. The selected α∗ values (red dashed lines) fall cleanly at or just past the elbow in all panels, confirming that the grouped CV scheme reliably selects the correct sparsity level without knowledge of the ground truth. 
+
+7.5 Stationary Density Validation 
+
+A key test of any generator learning method is whether the recovered model faithfully reproduces the long-time statistical behaviour of the true system. We assess this by computing the analytic stationary density of both the true and recovered systems via the Fokker–Planck formula (3) . Using the analytic formula rather than Monte Carlo simulation has an important methodological advantage: discrepancies in the stationary density plot can be attributed entirely to coefficient error in the identified generator, with no contamination from finite-sample Monte Carlo variance. Figure 3 shows the results. For the OU process, the true stationary density is Gaussian N (0 , 0.245) , which the recovered model reproduces with total variation TV = 12
+
+R |πtrue − πrecovered | dx = 0 .0050 . For the 
+
+> 12
+
+Sparse Weak-Form Discovery of Stochastic Generators 3 2 1 0 1 2 3                                           
+
+> x
+> 4
+> 2
+> 0
+> 2
+> 4
+> b(x)
+> OU drift b(x) = x
+> (mean rel. err. 2.0%)
+> True
+> Recovered
+> 3210123
+> x
+> 30
+> 20
+> 10
+> 0
+> 10
+> 20
+> 30
+> b(x)
+> Double-well drift b(x) = xx3
+> (mean rel. err. 2.7%)
+> True
+> Recovered
+> 3210123
+> x
+> 7.5
+> 5.0
+> 2.5
+> 0.0
+> 2.5
+> 5.0
+> 7.5
+> b(x)
+> Multiplicative drift b(x) = 2x
+> (mean rel. err. 3.9%)
+> True
+> Recovered
+> 3210123
+> x
+> 0.489975
+> 0.490000
+> 0.490025
+> 0.490050
+> 0.490075
+> 0.490100
+> 0.490125
+> 0.490150
+> 0.490175
+> a(x)
+> OU diffusion a(x) = 20
+> (mean rel. err. 0.0%)
+> True
+> Recovered
+> 3210123
+> x
+> 0.249975
+> 0.250000
+> 0.250025
+> 0.250050
+> 0.250075
+> 0.250100
+> 0.250125
+> 0.250150
+> a(x)
+> Double-well diffusion a(x) = 20
+> (mean rel. err. 0.1%)
+> True
+> Recovered
+> 3210123
+> x
+> 0.0
+> 0.5
+> 1.0
+> 1.5
+> 2.0
+> 2.5
+> 3.0
+> a(x)
+> Multiplicative diffusion a(x) = 0.25(1 + x2)
+> (mean rel. err. 0.4%)
+> True
+> Recovered
+
+Sparse weak-form discovery of stochastic generators 
+
+Test functions: Kj(x) = exp ( |x xj|2/2 h2)
+
+Figure 1: Recovered vs. true drift and diffusion functions for all three benchmark systems. Blue solid lines show the ground truth; red dashed lines show the weak SINDy estimates from Algorithm 1. Top row (drift functions): OU process, b(x) = −θx , mean relative error 2.0%; double-well Langevin system, 
+
+b(x) = x − x3, mean rel. err. 2.7%; multiplicative diffusion, b(x) = −2x, mean rel. err. 3.9%. Bottom row (diffusion functions): OU process, a(x) = σ20 = 0 .490 , mean rel. err. 0.0%; double-well system, 
+
+a(x) = σ20 = 0 .250 , mean rel. err. 0.1%; multiplicative system, a(x) = 0 .25(1 + x2), mean rel. err. 0.4% (after drift-bias correction). M = 50 spatial Gaussian kernels with h = 0 .22 (OU and double-well) or 
+
+h = 0 .27 (multiplicative). All recovered curves are visually indistinguishable from ground truth at the displayed scale. double-well system, the true density is bimodal with symmetric peaks at x ≈ ± 1; the recovered model captures both the peak positions and heights correctly, with TV = 0 .0092 . The slight asymmetry visible in the shaded discrepancy region arises from the small 2.9% error in the cubic drift coefficient. For the multiplicative system, the true density is a unimodal distribution with heavier tails than Gaussian; the recovered model reproduces this shape with TV = 0 .0093 . In all three cases, the shaded discrepancy regions are visually negligible relative to the density scale, and the TV distances are below 0.01, confirming that the recovered generators accurately describe the long-time thermodynamic behaviour of each system. 
+
+13 Sparse Weak-Form Discovery of Stochastic Generators 10 8                                                           
+
+> 10 7
+> 10 6
+> 10 5
+> 10 4
+> 10 3
+> 10 2
+> 10 1
+> 5
+> 10
+> 15
+> 20
+> 25
+> 30
+> 35
+> CV MSE
+> OU drift
+> *=1.6e-03
+> 10 8
+> 10 7
+> 10 6
+> 10 5
+> 10 4
+> 10 3
+> 10 2
+> 10 1
+> 2.5
+> 5.0
+> 7.5
+> 10.0
+> 12.5
+> 15.0
+> 17.5
+> CV MSE
+> Double-well drift
+> *=4.9e-05
+> 10 8
+> 10 7
+> 10 6
+> 10 5
+> 10 4
+> 10 3
+> 10 2
+> 10 1
+> 5
+> 10
+> 15
+> 20
+> 25
+> 30
+> 35
+> CV MSE
+> Multiplicative drift
+> *=2.1e-04
+> 10 8
+> 10 7
+> 10 6
+> 10 5
+> 10 4
+> 10 3
+> 10 2
+> 10 1
+> 0
+> 10
+> 20
+> 30
+> 40
+> 50
+> 60
+> 70
+> CV MSE
+> OU diffusion
+> *=4.5e-07
+> 10 8
+> 10 7
+> 10 6
+> 10 5
+> 10 4
+> 10 3
+> 10 2
+> 10 1
+> 0.0
+> 2.5
+> 5.0
+> 7.5
+> 10.0
+> 12.5
+> 15.0
+> 17.5
+> 20.0
+> CV MSE
+> Double-well diffusion
+> *=1.0e-08
+> 10 8
+> 10 7
+> 10 6
+> 10 5
+> 10 4
+> 10 3
+> 10 2
+> 10 1
+> 0
+> 10
+> 20
+> 30
+> 40
+> CV MSE
+> Multiplicative diffusion
+> *=1.1e-05
+
+Weak-form LassoCV regularisation paths 
+
+Figure 2: LassoCV regularisation paths for all six sub-problems. Each panel plots the mean cross-validated MSE (averaged over five trajectory folds) as a function of the regularisation strength α, shown with α decreasing from left to right. Red dashed vertical lines mark the selected α∗. Top row (drift): OU (α∗ ≈ 1.6 × 10 −3), double-well ( ≈ 4.9 × 10 −5), multiplicative ( ≈ 2.1 × 10 −4). Bottom row (diffusion): OU (≈ 4.5 × 10 −7), double-well ( ≈ 1.0 × 10 −8), multiplicative ( ≈ 1.1 × 10 −5). In every panel the sharp elbow separates the over-regularised regime (to the left of the selected α∗, where active terms are forced to zero and the CV MSE rises sharply) from the under-regularised regime (to the right, where inactive terms are admitted and CV MSE increases due to over-fitting). The clean elbow structure confirms that grouped CV reliably identifies the correct sparsity level in all six cases. 
+
+7.6 Autocorrelation and Relaxation Timescales 
+
+Stationary densities test the long-time marginal distribution but not the temporal correlation structure of the dynamics. To assess whether the recovered generator also reproduces the correct relaxation timescales, we simulate 200,000-step trajectories from both the true SDE and the identified model (using the recovered ˆb
+
+and ˆa as the SDE coefficients), and compare their empirical autocorrelation functions. Figure 4 shows the results. For the OU process, the recovered autocorrelation follows the true exponential decay e−θτ = e−τ closely, with the recovered relaxation rate ˆθ = −ˆcx = 0 .980 (error 2.0%) matching the analytic reference almost exactly. For the double-well system, no closed-form autocorrelation is available because the metastable inter-well transitions produce complex multi-timescale dynamics that depend sensitively on the full shape of the potential V (x) = −x2/2 + x4/4. The recovered autocorrelation nevertheless tracks the empirical autocorrelation of the true system closely at all displayed lags, from the initial fast intra-well relaxation ( τ ≲ 0.2) through the slower inter-well mixing regime ( τ ≳ 0.5). This 
+
+14 Sparse Weak-Form Discovery of Stochastic Generators 4 3 2 1 0 1 2 3 4                        
+
+> x
+> 0.0
+> 0.1
+> 0.2
+> 0.3
+> 0.4
+> 0.5
+> 0.6
+> 0.7
+> 0.8
+> (x)
+> OU
+> True SDE
+> Recovered (TV = 0.0050)
+> Discrepancy
+> 432101234
+> x
+> 0.0
+> 0.1
+> 0.2
+> 0.3
+> 0.4
+> 0.5
+> 0.6
+> 0.7
+> (x)
+> Double-well
+> True SDE
+> Recovered (TV = 0.0092)
+> Discrepancy
+> 432101234
+> x
+> 0.0
+> 0.2
+> 0.4
+> 0.6
+> 0.8
+> 1.0
+> 1.2
+> 1.4
+> 1.6
+> (x)
+> Multiplicative
+> True SDE
+> Recovered (TV = 0.0093)
+> Discrepancy
+> Stationary density: true SDE vs recovered model
+> Fokker--Planck: (x)a(x)1exp (2x
+> 0
+> b(y)
+> a(y)dy )
+
+Figure 3: Stationary density: true SDE vs. recovered model. Densities are computed analytically using the Fokker–Planck formula π(x) ∝ a(x)−1 exp  2 R x 
+
+> 0
+
+b(y)/a (y) dy . Blue solid lines show the true SDE density; red dashed lines show the recovered model density. The shaded region between the two curves quantifies the pointwise discrepancy. Left (OU): Gaussian stationary distribution reproduced with total variation TV = 0 .0050 . Centre (double-well): Bimodal distribution with peaks at x ≈ ± 1 faithfully captured; TV = 0 .0092 . The small discrepancy in peak heights is consistent with the 2.9% error in the cubic drift coefficient. Right (multiplicative): Unimodal heavy-tailed distribution reproduced with TV = 0 .0093 ,demonstrating the effectiveness of the bias correction for state-dependent diffusion. In all panels, the shaded discrepancy regions are visually negligible compared to the density scale. confirms that the two-term cubic drift polynomial correctly encodes the potential well geometry and barrier height. For the multiplicative system, the recovered autocorrelation matches the true system across the entire range of lags shown, demonstrating that the state-dependent diffusion ˆa(x) = 0 .251 + 0 .249 x2 correctly captures the local relaxation rate as a function of position. 
+
+7.7 Summary of Coefficient Recovery 
+
+Table 1 provides a complete quantitative summary of all estimated coefficients. Every scientifically significant coefficient (i.e., every coefficient whose true value is nonzero) passes a 15% relative error threshold, with the largest error being 3.9% for the multiplicative drift. All inactive coefficients (true value zero) are set to exactly zero by the LassoCV + STLSQ pipeline; there are no false positives in any of the six sub-problems. Diffusion coefficient errors are uniformly below 0.5% across all systems after bias correction, which is remarkable given that diffusion identification is generally considered harder than drift identification. 
+
+7.8 Theoretical Noise Scaling 
+
+Figure 5 provides a purely analytical characterisation of the noise behaviour of the weak-form estimator as a function of the time step ∆t, derived from the variance expressions in Appendix 3. No regression is performed; the curves follow directly from the closed-form noise formulae. The left panel shows the Kramers–Moyal (KM) noise magnitude σobs /∆t, which diverges as ∆t → 0 for any fixed observation noise level σobs . The centre panel shows the weak-form (WF) effective noise σobs /√N h eff ,where N = T / ∆t is the number of steps and heff = pπ/ 2 h is the effective kernel integration width. 
+
+15 Sparse Weak-Form Discovery of Stochastic Generators 0.0 0.2 0.4 0.6 0.8 1.0 1.2                    
+
+> Lag
+> 0.2
+> 0.0
+> 0.2
+> 0.4
+> 0.6
+> 0.8
+> 1.0
+> Autocorrelation
+> OU (= 0.980 , err 2.0%)
+> Empirical AC (true SDE)
+> Empirical AC (recovered)
+> Analytical e,= 1.00
+> 0.0 0.2 0.4 0.6 0.8 1.0 1.2
+> Lag
+> 0.2
+> 0.0
+> 0.2
+> 0.4
+> 0.6
+> 0.8
+> 1.0
+> Autocorrelation
+> Double-well (no closed-form AC)
+> Empirical AC (true SDE)
+> Empirical AC (recovered)
+> 0.0 0.2 0.4 0.6 0.8 1.0 1.2
+> Lag
+> 0.2
+> 0.0
+> 0.2
+> 0.4
+> 0.6
+> 0.8
+> 1.0
+> Autocorrelation
+> Multiplicative (no closed-form AC)
+> Empirical AC (true SDE)
+> Empirical AC (recovered)
+> Autocorrelation check: true SDE vs recovered model
+> Long simulation from both true and recovered dynamics
+
+Figure 4: Autocorrelation check: true SDE vs. recovered model. Empirical autocorrelation functions computed from 200,000-step simulations of both the true dynamics and the recovered model. Light blue solid lines show the true SDE; red dashed lines show the recovered model. Left (OU): Recovered relaxation rate ˆθ = 0 .980 (err. 2.0%) closely matches the analytical e−τ (black dotted). The recovered autocorrelation is nearly indistinguishable from both the true SDE and the analytic reference. Centre (double-well): True and recovered autocorrelations agree closely across both the fast intra-well relaxation ( τ ≲ 0.2) and the slower inter-well mixing regime. No closed-form analytic reference is available. Right (multiplicative): The recovered state-dependent diffusion faithfully reproduces the mixing rate of the true SDE across the full range of displayed lags. Because N ∝ 1/∆t, the WF noise scales as √∆t—it grows as ∆t increases (fewer steps for the same T )but remains finite and bounded as ∆t → 0. The right panel shows the ratio of KM noise to WF noise, which grows as ∆t−3/2: at the experimental setting ∆t = 0 .002 , this ratio exceeds 10 4 for SNR =10, confirming that the weak-form projection provides a substantially better-conditioned regression system at small time steps. Three observation noise levels are shown: σobs = σsignal /5 (SNR =5), σobs = σsignal /10 (SNR =10), and σobs = σsignal /20 (SNR =20). 
+
+8 Relation to Existing Methods 
+
+8.1 Positioning in the Landscape 
+
+Table 2 places the proposed framework in the context of the most closely related existing methods. The key distinguishing features of our approach are: (i) the use of spatial test functions that produce unbiased regression rows for stochastic equations; (ii) the joint identification of drift and diffusion from a single shared design matrix; and (iii) the production of an explicit symbolic infinitesimal generator that can be used directly for downstream stochastic analysis. Classical SINDy [ 1] and its extensions [ 14 , 5 ] are restricted to deterministic systems. They require derivative estimates and have no mechanism for identifying the diffusion component of a stochastic equation. They are nonetheless the methodological ancestors of our approach through the sparse regression formulation and the use of polynomial libraries. 
+
+16 Sparse Weak-Form Discovery of Stochastic Generators 
+
+Table 1: Complete Summary of Recovered Drift and Diffusion Coefficients. All scientifically significant parameters pass a 15% tolerance ( ✓). Zero entries are set exactly to zero by LassoCV + STLSQ; no false positives appear in any of the six sub-problems. System Term ˆck ctrue  
+
+> k
+
+Drift err. ˆdk dtrue  
+
+> k
+
+Diff. err. Ornstein Uhlenbeck 
+
+1 0.000 0.000 — 0.490 0.490 0.0% ✓
+
+x −0.980 −1.000 2.0% ✓ 0.000 0.000 —
+
+x2 0.000 0.000 — 0.000 0.000 —
+
+x3 0.000 0.000 — 0.000 0.000 —
+
+x4 0.000 0.000 — 0.000 0.000 —Double-Well 
+
+1 0.000 0.000 — 0.250 0.250 0.0% ✓
+
+x +0 .973 +1 .000 2.7% ✓ 0.000 0.000 —
+
+x2 0.000 0.000 — 0.000 0.000 —
+
+x3 −0.971 −1.000 2.9% ✓ 0.000 0.000 —
+
+x4 0.000 0.000 — 0.000 0.000 —Multiplicative 
+
+1 0.000 0.000 — 0.251 0.250 0.3% ✓
+
+x −1.922 −2.000 3.9% ✓ 0.000 0.000 —
+
+x2 0.000 0.000 — 0.249 0.250 0.4% ✓
+
+x3 0.000 0.000 — 0.000 0.000 —
+
+x4 0.000 0.000 — 0.000 0.000 —Stochastic SINDy [ 9, 10 ] is the most direct prior work on the stochastic side. Our approach shares its goal (symbolic SDE identification) and general methodology (sparse regression on a polynomial library), but differs in the regression row construction. Stochastic SINDy rows are formed from individual-step increment statistics, while our rows aggregate information through the weak projection. Weak SINDy [ 11 ] is the most direct prior work on the weak-form side. Our approach inherits the key idea of projecting onto test functions to avoid derivative estimation, but extends it to the stochastic setting by (a) identifying the endogeneity bias of temporal test functions and (b) showing that spatial Gaussian kernels resolve this bias exactly. It further extends Weak SINDy by providing a complete treatment of the diffusion coefficient, which Weak SINDy does not address. EDMD and Koopman operator methods [ 16 , 15 ] take an operator-theoretic approach, approximating the Koopman or transfer operator in a function space basis. These methods are closely related to ours through the notion of the generator: the Koopman generator and the infinitesimal generator (2) are formally equivalent. However, EDMD/Koopman methods are typically not sparse and do not produce explicit symbolic generators; they identify the operator in a basis of observables rather than recovering the coefficient functions b and a
+
+in a polynomial basis. Our method is therefore complementary: where Koopman methods provide global operator approximations suitable for spectral analysis, our method produces interpretable local models that can be directly written as symbolic equations. 
+
+> 17
+
+Sparse Weak-Form Discovery of Stochastic Generators 10 3 10 2 10 1                                             
+
+> Time step t
+> 10 1
+> 10 0
+> 10 1
+> 10 2
+> KM noise magnitude  ( obs / t)
+> t= 0.002
+> KM: noise diverges as to 0
+> obs =signal /5 (SNR=5)
+> obs =signal /10 (SNR=10)
+> obs =signal /20 (SNR=20)
+> 10 310 210 1
+> Time step t
+> 10 3
+> 10 2
+> WF effective noise  ( obs / Nh eff  ) WF: noise grows only as t
+> obs =signal /5 (SNR=5)
+> obs =signal /10 (SNR=10)
+> obs =signal /20 (SNR=20)
+> 10 310 210 1
+> Time step t
+> 10 0
+> 10 1
+> 10 2
+> 10 3
+> 10 4
+> 10 5
+> SNR ratio  (KM noise / WF noise)
+> ×58713 at t= 0.002
+> WF advantage grows as t3/2 relative to KM
+> SNR advantage (KM noise / WF noise)
+> No advantage (ratio = 1)
+> t3/2 (theory)
+
+Theoretical noise scaling: Weak Form vs Kramers--Moyal 
+
+KM noise obs / t (diverges as t 0); WF noise obs / Nh eff ( t growth) 
+
+Figure 5: Theoretical noise scaling: Weak Form vs Kramers–Moyal. All curves are purely analytical; no regression is performed. Left: KM noise magnitude σobs /∆t as a function of ∆t for three SNR levels. The noise diverges as ∆t → 0. Centre: WF effective noise σobs /√N h eff for the same SNR levels, where 
+
+N = T / ∆t and heff = pπ/ 2 h. The noise grows only as √∆t and remains bounded as ∆t → 0. Right: 
+
+Ratio of KM noise to WF noise (SNR advantage), which grows as ∆t−3/2 (dotted reference line). At the experimental setting ∆t = 0 .002 (vertical dotted line), the advantage exceeds 10 4 for SNR =10. T = 100 ,
+
+heff = pπ/ 2 × 0.22 ≈ 0.276 .Table 2: Comparison of SDE and Equation Identification Methods. Ticks and crosses indicate presence or absence of each capability. Method Handles SDEs Identifies 
+
+a(x)
+
+Symbolic output Derivative free SINDy [1] × × ✓ ×
+
+Stoch. SINDy [9] ✓ ✓ ✓ ×
+
+Weak SINDy [11] × × ✓ ✓
+
+EDMD [16] ✓ partial × ✓
+
+Neural SDE [18] ✓ ✓ × ✓
+
+Proposed ✓ ✓ ✓ ✓
+
+Physics-informed neural networks [ 17 ] and neural SDE methods [ 18 ] offer high predictive accuracy and great flexibility, but at the cost of interpretability. The learned models are black-box neural networks from which it is difficult to extract physical insight. Our approach deliberately sacrifices approximation universality in order to recover explicit, sparse, and interpretable symbolic generators. 
+
+8.2 Discussion and Limitations 
+
+The proposed method, like all library-based approaches, requires the user to specify a feature library Θ( x)
+
+that spans the true drift and diffusion functions. If the true dynamics contain terms not present in the library—for example, exponential or trigonometric functions in a polynomial library—the identified model will be the best polynomial approximation rather than the exact generator. This is an inherent trade-off of 
+
+18 Sparse Weak-Form Discovery of Stochastic Generators 
+
+sparse symbolic identification: the interpretability of polynomial generators comes at the cost of requiring domain knowledge about the functional form of the dynamics. The bandwidth h of the spatial kernels and the number of centres M are hyperparameters that require tuning. In our experiments, a simple heuristic (overlap ratio h/ ∆xc ≈ 2) works reliably, but a more principled selection criterion based on leave-one-out cross-validation over (h, M ) pairs would be valuable. Similarly, the STLSQ threshold θstlsq requires some tuning, particularly for systems where the active and inactive library terms have coefficients of similar magnitude. The current formulation handles scalar SDEs and straightforwardly extends to multi-dimensional systems with diagonal or full diffusion tensors (Section 3.4), but the number of diffusion parameters scales as 
+
+d(d + 1) /2 with state dimension d, which becomes expensive for large-dimensional systems. Extensions to high-dimensional settings, possibly via low-rank structure in the diffusion tensor, are a direction for future work. 
+
+9 Conclusion 
+
+We introduced Weak Stochastic SINDy, a framework for the data-driven discovery of stochastic differential equations that bridges weak-form sparse identification and stochastic system identification. The key contri-bution is the identification and resolution of the endogeneity bias that arises when temporal test functions are applied to stochastic equations, achieved by adopting spatial Gaussian kernels that produce exactly unbiased regression rows via the independence of the Brownian innovation from the current state. This structural insight extends the weak-form projection beyond its original deterministic setting and provides a principled foundation for joint drift-and-diffusion identification. The practical algorithm (Algorithm 1) converts the SDE identification problem into two sparse linear systems sharing a single design matrix, solvable by standard LASSO with grouped cross-validation. The two-step drift-bias correction handles finite-time-step contamination of the diffusion quadratic variation, reducing multiplicative diffusion errors from ∼13% to <0.5% at ∆t = 0 .002 . Applied to three benchmark systems spanning linear through nonlinear drift and constant through polynomial diffusion, the framework recovers all active polynomial generators with coefficient errors below 4%, stationary-density total-variation distances below 0.01, and autocorrelation functions that faithfully reproduce true relaxation timescales. Several directions for future work are apparent. First, formal convergence rate analysis under specific ergodicity and mixing conditions would sharpen the theoretical understanding of finite-sample behaviour. Second, extension to multi-dimensional state spaces with coupled, non-diagonal diffusion tensors is needed for applications to high-dimensional molecular and financial systems. Third, adaptive library selection from overcomplete dictionaries—possibly guided by physical constraints or symmetry considerations— would reduce the dependence on user-specified polynomial libraries. Fourth, integration with uncertainty quantification methods such as Bayesian LASSO [ 13 ] would provide confidence intervals on the identified coefficients, essential for model validation in noisy real-world settings. 
+
+Acknowledgments 
+
+The authors thank PES University (EC Campus) for computational resources and institutional support throughout this project. 
+
+> 19 Sparse Weak-Form Discovery of Stochastic Generators
+
+References 
+
+[1] S. L. Brunton, J. L. Proctor, and J. N. Kutz, “Discovering governing equations from data by sparse identification of nonlinear dynamical systems,” Proc. Natl. Acad. Sci. , vol. 113, no. 15, pp. 3932–3937, 2016. [2] M. Schmidt and H. Lipson, “Distilling free-form natural laws from experimental data,” Science , vol. 324, no. 5923, pp. 81–85, 2009. [3] J. Bongard and H. Lipson, “Automated reverse engineering of nonlinear dynamical systems,” Proc. Natl. Acad. Sci. , vol. 104, no. 24, pp. 9943–9948, 2007. [4] N. M. Mangan, S. L. Brunton, J. L. Proctor, and J. N. Kutz, “Model selection for dynamical systems via sparse regression and information criteria,” Proc. R. Soc. A , vol. 473, no. 2204, p. 20170009, 2017. [5] K. Kaheman, J. N. Kutz, and S. L. Brunton, “SINDy-PI: a robust algorithm for parallel implicit sparse identification of nonlinear dynamics,” Proc. R. Soc. A , vol. 476, no. 2242, p. 20200279, 2020. [6] B. Øksendal, Stochastic Differential Equations: An Introduction with Applications , 6th ed. Berlin, Germany: Springer, 2003. [7] C. Gardiner, Stochastic Methods: A Handbook for the Natural and Social Sciences , 4th ed. Berlin, Germany: Springer, 2009. [8] G. Pavliotis, Stochastic Processes and Applications: Diffusion Processes, the Fokker–Planck and Langevin Equations , New York, USA: Springer, 2014. [9] L. Boninsegna and C. Clementi, “Sparse learning of stochastic dynamical equations,” J. Chem. Phys. ,vol. 148, no. 24, p. 241723, 2018. [10] M. Gonzalez-Garcia et al., “Identifying stochastic dynamical systems using sparse regression,” Chaos ,vol. 31, no. 3, p. 033130, 2021. [11] D. A. Messenger and D. M. Bortz, “Weak SINDy: Galerkin-based sparse identification of nonlinear dynamics,” J. Comput. Phys. , vol. 443, p. 110525, 2021. [12] J. Duan, “Learning stochastic differential equations from data,” Nonlinear Dyn. , vol. 82, pp. 1903–1912, 2015. [13] R. Tibshirani, “Regression shrinkage and selection via the Lasso,” J. R. Stat. Soc. Ser. B , vol. 58, no. 1, pp. 267–288, 1996. [14] S. H. Rudy, S. L. Brunton, J. L. Proctor, and J. N. Kutz, “Data-driven discovery of partial differential equations,” Sci. Adv. , vol. 3, no. 4, p. e1602614, 2017. [15] S. Klus, N. Nüsken, P. Koltai, and C. Schütte, “Data-driven approximation of the Koopman generator: model reduction, system identification, and control,” Physica D , vol. 406, p. 132416, 2020. [16] M. O. Williams, I. G. Kevrekidis, and C. W. Rowley, “A data-driven approximation of the Koopman operator,” J. Nonlinear Sci. , vol. 25, pp. 1307–1346, 2015. [17] M. Raissi, P. Perdikaris, and G. Karniadakis, “Physics-informed neural networks: a deep learning framework for solving forward and inverse problems involving nonlinear partial differential equations,” 
+
+J. Comput. Phys. , vol. 378, pp. 686–707, 2019. [18] P. Kidger, J. Foster, X. Li, and T. Lyons, “Neural stochastic differential equations: deep latent Gaussian models in the diffusion limit,” arXiv preprint arXiv:2102.03657 , 2021. 
+
+> 20 Sparse Weak-Form Discovery of Stochastic Generators
+
+[19] D. J. Higham, “An algorithmic introduction to numerical simulation of stochastic differential equations,” 
+
+SIAM Rev. , vol. 43, no. 3, pp. 525–546, 2001. [20] F. Pedregosa et al., “Scikit-learn: machine learning in Python,” J. Mach. Learn. Res. , vol. 12, pp. 2825– 2830, 2011. [21] K. Champion, B. Lusch, J. N. Kutz, and S. L. Brunton, “Data-driven discovery of coordinates and governing equations,” Proc. Natl. Acad. Sci. , vol. 116, no. 45, pp. 22445–22451, 2019. [22] B. Lusch, J. N. Kutz, and S. L. Brunton, “Deep learning for universal linear embeddings of nonlinear dynamics,” Nat. Commun. , vol. 9, no. 1, p. 4950, 2018. [23] S. Otto and C. Rowley, “Linearly recurrent autoencoder networks for learning dynamics,” SIAM J. Appl. Dyn. Syst. , vol. 18, no. 1, pp. 396–430, 2019. [24] Z. Long, Y. Lu, X. Ma, and B. Dong, “PDE-Net: learning PDEs from data,” Proc. ICML , 2018. [25] C. Schütte and M. Sarich, Metastability and Markov State Models in Molecular Dynamics , Providence, RI, USA: AMS, 2013. 
+
+> 21
+
+Sparse Weak-Form Discovery of Stochastic Generators 
+
+# Appendices 
+
+1 Derivation of the Weak Projection and Endogeneity Bias 
+
+1.1 Setup and Notation 
+
+Throughout this appendix we work with the scalar Itô SDE 
+
+dX t = b(Xt) dt + σ(Xt) dW t, (26) discretised by Euler–Maruyama: 
+
+Xtn+1 = Xtn + b(Xtn ) ∆ t + σ(Xtn ) ξn
+
+√∆t, (27) where ξn = ( Wtn+1 − Wtn )/√∆t ∼ N (0 , 1) are i.i.d. and ξn ⊥ F tn . The increment is ∆Xn = Xtn+1 − Xtn .Let ψj : R × [0 , T ] → R be a test function, which may depend on both the state and time. The weak projection of the increment is 
+
+Sj = 
+
+> N−1
+
+X
+
+> n=0
+
+ψj (Xtn , t n) ∆ Xn. (28) Decomposing ∆Xn into drift and noise parts: 
+
+Sj = X
+
+> n
+
+ψj (Xtn , t n) b(Xtn ) ∆ t
+
++ X
+
+> n
+
+ψj (Xtn , t n) σ(Xtn ) ξn
+
+√∆t. (29) The first sum is the desired drift projection. For the regression to be valid, the second sum—the stochastic contribution—must have zero mean. 
+
+1.2 Endogeneity Bias of Temporal Test Functions 
+
+Let ψj (Xtn , t n) = ϕj (tn) be a purely temporal test function. The stochastic contribution is then 
+
+Ztemp  
+
+> j
+
+= 
+
+> N−1
+
+X
+
+> n=0
+
+ϕj (tn) σ(Xtn ) ξn
+
+√∆t. (30) Each term in this sum has zero mean: E[ϕj (tn)σ(Xtn )ξn] = 0 because ϕj (tn)σ(Xtn ) is Ftn -measurable and ξn ⊥ F tn . So E[Ztemp  
+
+> j
+
+] = 0 , and at first glance the regression appears unbiased. The bias arises not in the marginal expectation of Zj but in its covariance with the regression matrix . Consider the (j, k ) entry of the population design matrix ¯Ajk = P 
+
+> n
+
+ϕj (tn)fk(Xtn )∆ t. For n′ > n ,
+
+Cov[ ϕj (tn)σ(Xtn )ξn, ϕ j (tn′ )fk(Xtn′ )] = ϕj (tn)ϕj (tn′ )Cov[ σ(Xtn )ξn, f k(Xtn′ )] . (31) Since Xtn′ depends on ξn (through n′ − n steps of the Euler–Maruyama recursion), this covariance is generally nonzero: 
+
+Cov[ σ(Xtn )ξn, f k(Xtn′ )] = E[σ(Xtn )ξnfk(Xtn′ )] 
+
+22 Sparse Weak-Form Discovery of Stochastic Generators 
+
+= E
+
+"
+
+σ(Xtn )ξnfk Xtn +
+
+> n′−1
+
+X
+
+> m=n
+
+∆Xm
+
+!# 
+
+. (32) Expanding Xtn′ in the Euler–Maruyama recursion and using the Itô isometry, the leading term of this covariance is E[σ(Xtn )2f ′
+
+> k
+
+(Xtn )] · ∆t̸ = 0 in general. Thus, when a temporal test function is used, the noise term Ztemp  
+
+> j
+
+is correlated with the design matrix A, producing an endogeneity bias in the regression. This bias does not vanish as T → ∞ because it is a structural feature of the SDE dynamics, not a finite-sample artefact. 
+
+1.3 Why Spatial Kernels Guarantee Unbiasedness in Expectation 
+
+Let ψj (Xtn , t n) = Kj (Xtn ) be a spatial test function. The stochastic contribution to the projected response is 
+
+Zspatial  
+
+> j
+
+= 
+
+> N−1
+
+X
+
+> n=0
+
+Kj (Xtn ) σ(Xtn ) ξn
+
+√∆t. (33) We claim E[Bspatial  
+
+> j
+
+] = ( Ac ∗)j , i.e., the response vector is unbiased in expectation. The proof is step-wise. For each fixed n, the random variable Kj (Xtn )σ(Xtn ) is Ftn -measurable, and ξn is independent of Ftn (by the Itô construction). The tower property of conditional expectation therefore gives 
+
+E[Kj (Xtn )σ(Xtn )ξn] = E
+
+h
+
+E
+
+h
+
+Kj (Xtn )σ(Xtn )ξn Ftn
+
+ii 
+
+= E
+
+Kj (Xtn )σ(Xtn ) E[ξn | F tn ]
+
+| {z }
+
+> =0
+
+ = 0 . (34) Since this holds for every n = 0 , . . . , N − 1, linearity of expectation gives 
+
+E[Zspatial  
+
+> j
+
+] =  
+
+> N−1
+
+X
+
+> n=0
+
+E[Kj (Xtn )σ(Xtn )ξn]√∆t = 0 . (35) Therefore E[Bspatial  
+
+> j
+
+] = P 
+
+> k
+
+c∗
+
+> k
+
+Ajk + E[Zspatial  
+
+> j
+
+] = ( Ac ∗)j . The estimator is unbiased in expectation, and converges to c∗ in the ergodic limit (Appendix 3). 
+
+Remark on cross-step covariances. We emphasise what the above argument does not claim. For indices 
+
+n′ > n , the cross-step covariance Cov[ Kj (Xtn )σ(Xtn )ξn, K j (Xtn′ )fk(Xtn′ )] is generically nonzero be-cause Xtn′ depends on ξn through the SDE dynamics (via n′ − n steps of the Euler–Maruyama recursion, each contributing a factor of O(√∆t)). The covariance is thus O(∆ t(n′−n)/2)—small but not zero. The step-wise argument above does not require these cross-covariances to vanish; it requires only the weaker property that the conditional mean of the noise at step n given the trajectory up to time tn is zero. This is the correct and sufficient condition for E[Bj ] = ( Ac ∗)j .
+
+Contrast with temporal test functions. For temporal kernels ϕj (tn), the step-wise argument also gives 
+
+E[Ztemp  
+
+> j
+
+] = 0 (since each term ϕj (tn)σ(Xtn )ξn is Ftn -measurable times ξn, which also has zero conditional mean). So why are temporal kernels problematic? The difference is revealed when we examine the OLS normal equations. Write the design matrix en-try as Atemp  
+
+> jk
+
+= P 
+
+> n
+
+ϕj (tn)fk(Xtn )∆ t. Because ϕj (tn) is a deterministic function of the time in-dex n, this matrix weights early and late observations differently. The accumulated response noise is 
+
+23 Sparse Weak-Form Discovery of Stochastic Generators 
+
+Ztemp  
+
+> j
+
+= P 
+
+> n
+
+ϕj (tn)σ(Xtn )ξn
+
+√∆t. Consider the cross-term in the normal equations: 
+
+E[( Atemp )⊤Ztemp ]k = ∆ t3/2 X
+
+> j
+
+X
+
+> n,m
+
+ϕj (tn)ϕj (tm) E[fk(Xtn )σ(Xtm )ξm]. (36) The m = n and m > n terms are zero by the same conditional-mean argument. The m < n terms, however, satisfy Xtn depending on ξm through the SDE, so 
+
+E[fk(Xtn )σ(Xtm )ξm] = E[f ′
+
+> k
+
+(Xtm )σ(Xtm )2] ∆ t + O(∆ t2)̸ = 0 (m < n ), (37) obtained by expanding fk(Xtm+1 ) to first order in the Euler–Maruyama step and using E[ξ2
+
+> m
+
+] = 1 . The total bias in the normal equations is therefore 
+
+E[( Atemp )⊤Ztemp ]k = ∆ t3/2 X
+
+> j
+
+X 
+
+> 0≤m<n ≤N−1
+
+ϕj (tn)ϕj (tm) E[f ′
+
+> k
+
+(Xtm )σ(Xtm )2]∆ t + O(∆ t2). (38) The sum over pairs (m, n ) with m < n contains O(N 2/2) terms, each of order ∆t. After the overall ∆t3/2
+
+prefactor, the bias is O(N 2∆t5/2) = O(T 2∆t1/2) (unnormalised). Normalising the normal equations by 
+
+1/N gives a bias of O(N ∆t5/2) = O(T ∆t3/2), which vanishes as ∆t → 0 for fixed T but grows as T → ∞ 
+
+for fixed ∆t. This is the persistent structural bias: as more data is collected at fixed time-step, the OLS estimator with temporal kernels does not converge to the true c∗.For spatial kernels, the analogous cross-term computation gives the same nonzero m < n contributions, since 
+
+Xtn still depends on ξm regardless of what weight function is used. However, the difference is in the ergodic behaviour: the population-level limit of (1 /N )Aspatial is ¯Ajk = Eμ[Kj (x)fk(x)] and the population-level limit of (1 /N )Bspatial is ¯Bj = Eμ[Kj (x)b(x)] , both of which converge by the ergodic theorem (Appendix 3). Since Eμ[Kj (x)b(x)] = P 
+
+> k
+
+c∗
+
+> k
+
+Eμ[Kj (x)fk(x)] under the library assumption, the population OLS recovers 
+
+c∗. The cross-step covariances vanish in the ergodic average because they are O(∆ t) per pair and the normalised sum over m < n pairs converges to R ∞ 
+
+> 0
+
+Ck(τ ) dτ for a stationary cross-correlation Ck(τ ) that decays exponentially under geometric ergodicity (see Proposition 3). The key point is that this integral is finite and does not grow with T , so the OLS estimator remains consistent. In contrast, for temporal kernels with time-varying weights ϕj (tn), the population-level limit of 
+
+(1 /N )Atemp  
+
+> jk
+
+= 1
+
+> N
+
+P 
+
+> n
+
+ϕj (tn)fk(Xtn )∆ t is not Eμ[Kj (x)fk(x)] but depends on the temporal weighting, and the regression system does not converge to the correct population equations in the T → ∞ limit unless 
+
+ϕj is a time-invariant function of the state (which reduces it to a spatial kernel). 
+
+2 Full Derivation of the Diffusion Identification System 
+
+2.1 Quadratic Variation and the Itô Isometry 
+
+By the definition of the quadratic variation of the Itô process (1) , [X]t = R t 
+
+> 0
+
+a(Xs) ds almost surely. In discrete time, PN −1 
+
+> n=0
+
+(∆ Xn)2 → R T 
+
+> 0
+
+a(Xt) dt as ∆t → 0 in probability. This means the squared increment 
+
+(∆ Xn)2 is an estimator of a(Xtn ) ∆ t at each step. Multiplying by Kj (Xtn ) and summing over all steps: 
+
+Qj = X
+
+> n
+
+Kj (Xtn )(∆ Xn)2
+
+→
+
+Z T
+
+> 0
+
+Kj (Xt) a(Xt) dt as ∆t → 0. (39) 
+
+24 Sparse Weak-Form Discovery of Stochastic Generators 
+
+Substituting the library expansion a(x) = Θ( x)d = P 
+
+> k
+
+dkfk(x):
+
+Z T
+
+> 0
+
+Kj (Xt)a(Xt) dt = X
+
+> k
+
+dk
+
+Z T
+
+> 0
+
+Kj (Xt)fk(Xt) dt 
+
+= X
+
+> k
+
+dkAjk , (40) where Ajk is the same design matrix defined by (11) . This establishes that E[Q] ≈ Ad as ∆t → 0, with the equality becoming exact in the continuous-time limit. 
+
+2.2 The Drift-Squared Bias at Finite ∆t
+
+Squaring the Euler–Maruyama increment: 
+
+(∆ Xn)2 =  b(Xtn )∆ t + σ(Xtn )ξn
+
+√∆t2
+
+= b(Xtn )2∆t2 + 2 b(Xtn )σ(Xtn )ξn ∆t3/2
+
++ σ(Xtn )2 ∆t · ξ2
+
+> n
+
+. (41) Taking expectation: E[ξn] = 0 and E[ξ2
+
+> n
+
+] = 1 , so 
+
+E[(∆ Xn)2] = a(Xtn ) ∆ t + b(Xtn )2 ∆t2. (42) The second term is the drift-squared bias. When projected against Kj :
+
+E[Qj ] = X
+
+> k
+
+dkAjk + X
+
+> n
+
+E[Kj (Xtn ) b(Xtn )2] ∆ t2. (43) For the OU and double-well systems with constant diffusion, a(x) = d0 and the bias term is 
+
+P 
+
+> n
+
+Kj (Xtn )b(Xtn )2∆t2. Since this is subtracted into the constant-term column, it produces only a small offset in ˆd0 that is negligible at ∆t = 0 .002 . For the multiplicative diffusion a(x) = 0 .25(1 + x2), the bias enters the constant and quadratic columns of A with different relative weights, causing the disproportionate overestimation of dx2 observed without correction. 
+
+2.3 The Corrected System 
+
+Given a drift estimate ˆb(x) = Θ( x)ˆ c from the first step of Algorithm 1, the bias-corrected response vector is 
+
+Qcorr  
+
+> j
+
+= Qj − 
+
+> N−1
+
+X
+
+> n=0
+
+Kj (Xtn ) ˆb(Xtn )2 ∆t2, (44) so that E[Qcorr ] ≈ Ad to order O(∆ t2) in the remaining bias from the approximation ˆb ≈ b. The residual bias after correction is of order O(∥ˆc − c∗∥2 · ∆t2), which is doubly small at ∆t = 0 .002 and with coefficient errors below 5%. 
+
+2.4 Multi-Dimensional Extension 
+
+For Xt ∈ Rd with SDE dX t = b(Xt) dt + σ(Xt) dW t and a(x) = σ(x)σ(x)⊤ ∈ Rd×d, define the cross-increment products 
+
+Q(pq ) 
+
+> j
+
+= X
+
+> n
+
+Kj (Xtn ) (∆ Xn)p (∆ Xn)q. (45) 
+
+25 Sparse Weak-Form Discovery of Stochastic Generators 
+
+By the same argument as above, E[Q(pq )] ≈ A d (pq ) where d(pq ) are the sparse coefficients of apq (x) = 
+
+P 
+
+> k
+
+d(pq ) 
+
+> k
+
+fk(x). Each entry of the symmetric diffusion tensor is identified independently from the same design matrix A, requiring only one additional linear solve per entry. For d = 2 , this gives three systems (for 
+
+a11 , a12 , a22 ); for general d, d(d + 1) /2 systems. 
+
+3 Theoretical Convergence and Noise Analysis 
+
+This appendix states and proves the main theoretical properties of the weak estimator as formal propositions. We first collect the standing assumptions, then state each result with an explicit proof. 
+
+3.1 Standing Assumptions Assumption 1 (Geometric ergodicity) . The SDE (1) has a unique invariant probability measure μ on R with smooth, strictly positive Lebesgue density π(x). Moreover, the associated Markov semigroup (Pt)t≥0 is geometrically ergodic: there exist constants C > 0 and ρ ∈ (0 , 1) such that for all bounded measurable g
+
+and all x ∈ R,
+
+Ex[g(Xt)] −
+
+Z
+
+g dμ ≤ C ∥g∥∞ ρt, (46) where Ex[·] denotes expectation under the law of the diffusion started at x.
+
+Assumption 2 (Regularity) . The drift b and diffusion σ are locally Lipschitz and satisfy a linear growth bound 
+
+|b(x)| + |σ(x)| ≤ C(1 + |x|). The feature library functions f1, . . . , f K and kernel functions K1, . . . , K M
+
+are bounded and uniformly Lipschitz. The true coefficient vector c∗ satisfies b(x) = Θ( x)c∗ exactly. Geometric ergodicity (Assumption 1) is satisfied by all three benchmark systems under standard Lyapunov conditions: for the OU process it follows from the explicit Gaussian transition kernel; for the double-well and multiplicative systems it follows from Foster–Lyapunov criteria with Lyapunov function V (x) = 1 + x2
+
+[8, 7]. 
+
+3.2 Proposition 1: Strong Consistency of the Weak Estimator Proposition 1 (Strong consistency) . Under Assumptions 1–2, as T → ∞ with ∆t = T /N fixed, 
+
+1
+
+N Ajk a.s. 
+
+−−→ ¯Ajk := 
+
+Z
+
+Kj (x)fk(x) μ(dx ), 1
+
+N Bj a.s. 
+
+−−→ ¯Bj := 
+
+Z
+
+Kj (x)b(x) μ(dx ). (47) 
+
+If ¯A has full column rank, then the OLS estimator converges: ˆc a.s. 
+
+−−→ c∗ as T → ∞ .Proof. Step 1: Ergodic convergence of Ajk . By definition, Ajk = ∆ t PN −1 
+
+> n=0
+
+Kj (Xtn )fk(Xtn ). The function gjk (x) := Kj (x)fk(x) is bounded and Lipschitz under Assumption 2. Geometric ergodicity (Assumption 1) implies that the discrete-time chain {Xtn } with step ∆t is also geometrically ergodic with the same invariant measure μ and a mixing rate ρ∆t = ρ∆t [ 8]. The Birkhoff ergodic theorem for geometrically ergodic Markov chains then gives 
+
+1
+
+N 
+
+> N−1
+
+X
+
+> n=0
+
+gjk (Xtn ) a.s. 
+
+−−→
+
+Z
+
+gjk (x) μ(dx ) = ¯Ajk /∆t as N → ∞ . (48) Multiplying through by ∆t gives (1 /N )Ajk → ¯Ajk a.s. 
+
+> 26
+
+Sparse Weak-Form Discovery of Stochastic Generators 
+
+Step 2: Ergodic convergence of Bj . Decompose Bj = Bdrift  
+
+> j
+
++ Zj , where 
+
+Bdrift  
+
+> j
+
+= ∆ t X
+
+> n
+
+Kj (Xtn )b(Xtn ), (49) 
+
+Zj = √∆t X
+
+> n
+
+Kj (Xtn )σ(Xtn )ξn. (50) The ergodic theorem applied to gj (x) = Kj (x)b(x) gives (1 /N )Bdrift 
+
+> ja.s.
+
+−−→ ¯Bj .For the noise term: define Mn = √∆t Pn−1 
+
+> m=0
+
+Kj (Xtm )σ(Xtm )ξm. This is a martingale with respect to 
+
+(Ftn )n≥0, since E[Mn+1 − Mn|F tn ] = √∆t K j (Xtn )σ(Xtn )E[ξn|F tn ] = 0 . The predictable quadratic variation satisfies 
+
+⟨M ⟩N = ∆ t 
+
+> N−1
+
+X
+
+> n=0
+
+Kj (Xtn )2σ(Xtn )2 a.s. 
+
+−−→ ∆tT 
+
+Z
+
+Kj (x)2a(x) μ(dx ) = O(N ∆t). (51) Since Kj and σ are bounded (Assumption 2), the increments Mn+1 − Mn are bounded, and the strong law of large numbers for L2 martingales [8] gives MN /N a.s. 
+
+−−→ 0, i.e., (1 /N )Zj a.s. 
+
+−−→ 0.Therefore (1 /N )Bj = (1 /N )Bdrift  
+
+> j
+
++ (1 /N )Zj a.s. 
+
+−−→ ¯Bj .
+
+Step 3: Consistency of OLS. Under the library assumption b = Θ c∗,
+
+¯Bj =
+
+Z
+
+Kj (x)b(x) μ(dx ) = X
+
+> k
+
+c∗
+
+> k
+
+Z
+
+Kj (x)fk(x) μ(dx ) = ( ¯Ac ∗)j . (52) So ¯B = ¯Ac ∗. Since ¯A has full column rank by assumption, the population OLS solution is unique: 
+
+c∗ = ( ¯A⊤ ¯A)−1 ¯A⊤ ¯B. Because (1 /N )A a.s. 
+
+−−→ ¯A and (1 /N )B a.s. 
+
+−−→ ¯B, the continuous mapping theorem gives ˆc = ((1 /N )A⊤(1 /N )A)−1(1 /N )A⊤(1 /N )B a.s. 
+
+−−→ ( ¯A⊤ ¯A)−1 ¯A⊤ ¯B = c∗.
+
+Corollary 2 (Best L2(μ) approximation) . If the library does not span b exactly, i.e., b / ∈ span(Θ) , then under the same assumptions, ˆc a.s. 
+
+−−→ c† where 
+
+c† = arg min 
+
+> c∈RK
+
+∥b − Θc∥2
+
+> L2(μ)
+
+. (53) 
+
+Proof. The same ergodic argument gives ¯Bj = R Kj b dμ ̸ = ( ¯Ac ∗)j in general. The population OLS minimises P 
+
+> j
+
+( ¯Bj − ( ¯Ac )j )2 = ∥PK (b − Θc)∥2
+
+> L2(μ)
+
+, where PK is the projection onto the span of {Kj } in 
+
+L2(μ). Under sufficient coverage of state space by the kernels, this is equivalent to minimising ∥b − Θc∥2
+
+> L2(μ)
+
+over c, whose solution is c†.
+
+3.3 Proposition 2: Central Limit Theorem for the Weak Estimator Proposition 3 (Asymptotic normality) . Under Assumptions 1–2, as T → ∞ ,
+
+√T
+
+ 1
+
+N Bj − ¯Bj
+
+ d
+
+−→ N (0 , V j ), (54) 
+
+where the asymptotic variance is 
+
+Vj =
+
+> ∞
+
+X
+
+> ℓ=−∞
+
+Cov[ Kj (X0)∆ X0, K j (Xℓ)∆ Xℓ] (55) 
+
+(the sum of the stationary autocovariances of the process {Kj (Xtn )∆ Xn}). Under geometric ergodicity, the autocovariances decay at rate ρℓ, so the sum (55) is absolutely convergent and Vj < ∞.
+
+27 Sparse Weak-Form Discovery of Stochastic Generators 
+
+Proof. Write (1 /N )Bj − ¯Bj = (1 /N )Zj + (1 /N )Bdrift  
+
+> j
+
+− ¯Bj . The second term satisfies √T ((1 /N )Bdrift  
+
+> j
+
+−
+
+¯Bj ) d
+
+−→ N (0 , V drift  
+
+> j
+
+) by the Markov chain CLT: the sequence {Kj (Xtn )b(Xtn )} is a stationary sequence with exponentially decaying autocovariances (since geometric ergodicity implies |Cov[ g(X0), g (Xℓ)] | ≤ 
+
+2C∥g∥2
+
+> ∞
+
+ρℓ), so the CLT for geometrically ergodic Markov chains applies [8]. For the martingale term: by the martingale CLT [8], since {Kj (Xtn )σ(Xtn )ξn} is a se-quence of martingale differences with E[ξ2
+
+> n
+
+|F tn ] = 1 and bounded increments, √T (1 /N )Zj =(1 /√N ) P 
+
+> n
+
+Kj (Xtn )σ(Xtn )ξn
+
+√∆t d
+
+−→ N (0 , V noise  
+
+> j
+
+), where V noise  
+
+> j
+
+= ∆ t R Kj (x)2a(x) μ(dx ). The joint CLT for the sum gives the stated result with Vj = V drift  
+
+> j
+
++ V noise  
+
+> j
+
+.For the convergence of the autocovariance sum: geometric ergodicity gives 
+
+|Cov[ Kj (X0)∆ X0, K j (Xℓ)∆ Xℓ]| ≤ C′ρℓ for some C′ > 0, so P∞ 
+
+> ℓ=0
+
+ρℓ = (1 − ρ)−1 < ∞ en-sures absolute convergence of (55). 
+
+Remark 1. Proposition 3 implies that the standard error of the drift estimator decays at the parametric rate 1/√T . Larger asymptotic variance Vj corresponds to slower-mixing systems (larger ρ) or larger local noise amplitude a(x) in regions where Kj is supported. For the OU process with θ = 1 , ρ = e−θ∆t and 
+
+V noise  
+
+> j
+
+= ∆ tσ 20
+
+R Kj (x)2μ(dx ), giving an explicit bound Vj ≤ Cσ 20 /(1 − e−θ∆t).
+
+3.4 Proposition 3: Noise Robustness Under Additive Observation Noise Proposition 4 (Noise robustness) . Suppose observations are ˜Xtn = Xtn + ηn with i.i.d. noise ηn ∼ (0 , σ 2 
+
+> η
+
+)
+
+independent of the SDE trajectory. Define the noisy response ˜Bj = P 
+
+> n
+
+Kj ( ˜Xtn )∆ ˜Xn and the noisy design matrix ˜Ajk = P 
+
+> n
+
+Kj ( ˜Xtn )fk( ˜Xtn )∆ t. Then, under Assumptions 1–2: (i) ˜Bj = Bj + Ej + O(σ2 
+
+> η
+
+) where Ej is a zero-mean term with variance Var[ Ej /N ] = O(σ2 
+
+> η
+
+/N ),vanishing as N → ∞ .(ii) The noisy OLS estimator satisfies ˆcnoisy a.s. 
+
+−−→ c∗ as T → ∞ with ση fixed. (iii) In contrast, the finite-difference derivative estimator ( ˜Xtn+1 − ˜Xtn )/∆t has noise variance 2σ2 
+
+> η
+
+/∆t2,which diverges as ∆t → 0.Proof. Part (i): Decomposition of ˜Bj . Write ˜Xtn = Xtn + ηn and ∆ ˜Xn = ∆ Xn + ( ηn+1 − ηn). Using a first-order Taylor expansion of Kj around Xtn : Kj ( ˜Xtn ) = Kj (Xtn ) + K′ 
+
+> j
+
+(Xtn )ηn + O(η2
+
+> n
+
+). Then 
+
+˜Bj = X
+
+> n
+
+Kj (Xtn )∆ Xn
+
++ X
+
+> n
+
+Kj (Xtn )( ηn+1 − ηn) + X
+
+> n
+
+K′ 
+
+> j
+
+(Xtn )ηn∆Xn
+
+| {z } 
+
+> =: Ej
+
++O(σ2 
+
+> η
+
+). (56) The first sum is Bj . For Ej : the first component P 
+
+> n
+
+Kj (Xtn )( ηn+1 − ηn) is a sum of zero-mean terms (since ηn is independent of Xtn and has zero mean), and by a summation-by-parts argument its variance is bounded by 4 sup x Kj (x)2 · N σ 2 
+
+> η
+
+. Normalised by N : Var[ 1
+
+> N
+
+P 
+
+> n
+
+Kj (Xtn )( ηn+1 − ηn)] = O(σ2 
+
+> η
+
+/N ).Similarly the second component has variance O(σ2 
+
+> η
+
+∆t2N ) = O(σ2 
+
+> η
+
+∆t2N ), normalised by N : O(σ2 
+
+> η
+
+∆t2),which is O(σ2 
+
+> η
+
+) for fixed ∆t. Hence Var[ Ej /N ] = O(σ2 
+
+> η
+
+/N + σ2 
+
+> η
+
+∆t2) → 0 as N → ∞ (first term) or as 
+
+∆t → 0 (second term). 
+
+28 Sparse Weak-Form Discovery of Stochastic Generators 
+
+Part (ii): Consistency. Since ˜Bj = Bj + Ej + O(σ2 
+
+> η
+
+), and (1 /N )Ej P
+
+−→ 0 by part (i), and (1 /N )Bj a.s. 
+
+−−→ ¯Bj
+
+by Proposition 1, it follows that (1 /N ) ˜Bj a.s. 
+
+−−→ ¯Bj . The same argument applied to ˜Ajk shows (1 /N ) ˜Ajk a.s. 
+
+−−→
+
+¯Ajk . The continuous mapping theorem then gives ˆcnoisy a.s. 
+
+−−→ c∗.
+
+Part (iii): Finite-difference comparison. For the finite-difference estimator, ( ˜Xtn+1 − ˜Xtn )/∆t = b(Xtn ) + 
+
+σ(Xtn )ξn/√∆t + ( ηn+1 − ηn)/∆t. The noise component (ηn+1 − ηn)/∆t is independent of the SDE, zero-mean, with variance Var[( ηn+1 −ηn)/∆t] = 2 σ2 
+
+> η
+
+/∆t2, which diverges as ∆t → 0 for any fixed ση > 0.This divergence renders the finite-difference approach unusable at small time steps, whereas the weak-form estimator in part (i) has noise variance O(σ2 
+
+> η
+
+/N ) that vanishes with increasing data. 
+
+29

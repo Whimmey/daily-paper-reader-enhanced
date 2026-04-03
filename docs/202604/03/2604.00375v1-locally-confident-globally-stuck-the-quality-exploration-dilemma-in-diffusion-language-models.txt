@@ -1,0 +1,1111 @@
+Title: Locally Confident, Globally Stuck: The Quality-Exploration Dilemma in Diffusion Language Models
+
+URL Source: https://arxiv.org/pdf/2604.00375v1
+
+Published Time: Thu, 02 Apr 2026 00:24:44 GMT
+
+Number of Pages: 25
+
+Markdown Content:
+Preprint. Under review. 
+
+# Locally Confident, Globally Stuck: The Quality-Exploration Dilemma in Diffusion Language Models 
+
+Liancheng Fang 1, Aiwei Liu 2, Henry Peng Zou 1, Yankai Chen 3,4 , Enze Ma 1, Leyi Pan 2,Chunyu Miao 1, Wei-Chieh Huang 1, Xue Liu 3,4 , Philip S. Yu 11University of Illinois Chicago, 2Tsinghua University, 3MBZUAI, 4McGill University 
+
+{lfang87, psyu}@uic.edu 
+
+# Abstract 
+
+Diffusion large language models (dLLMs) theoretically permit token de-coding in arbitrary order, a flexibility that could enable richer exploration of reasoning paths than autoregressive (AR) LLMs. In practice, however, random-order decoding often hurts generation quality. To mitigate this, low-confidence remasking improves single-sample quality (e.g., Pass@1) by prioritizing confident tokens, but it also suppresses exploration and limits multi-sample gains (e.g., Pass@ k), creating a fundamental quality– exploration dilemma . In this paper, we provide a unified explanation of this dilemma. We show that low-confidence remasking improves a myopic proxy for quality while provably constraining the entropy of the induced sequence distribution. To overcome this limitation, we characterize the optimal distribution that explicitly balances quality and exploration, and de-velop a simple Independent Metropolis–Hastings sampler that approximately targets this distribution during decoding. Experiments across a range of reasoning benchmarks including MATH500, AIME24/25, HumanEval, and MBPP show that our approach yields better exploration-quality tradeoff than both random and low-confidence remasking. 
+
+# 1 Introduction Pass@1 
+
+> Pass@2
+> Pass@3
+> Pass@4
+> Pass@5
+> Pass@6
+> Pass@7
+> Pass@8
+> Pass@9
+> Pass@10
+> Pass@11
+> Pass@12
+> Pass@13
+> Pass@14
+> Pass@15
+> Pass@16 0
+> 20
+> 40
+> 60
+> 80
+> Accuracy (%)
+> 34.9
+> 46.5
+> 25.1
+> 63.0
+
+Quality 
+
+dominates 
+
+Exploration 
+
+dominates 
+
+> Confidence remasking
+> Random remasking
+> Ours
+> 36.0
+> 70.0
+
+Figure 1: The quality–exploration dilemma in dLLM decoding. Confidence remasking achieves high sample quality (Pass@1) but plateaus Pass@ k quickly due to limited ex-ploration. Conversely, random remasking promotes exploration but degrades individual sample quality. Our global tempering reconciles this trade-off, establishing a new Pareto frontier with superior Pass@1 and Pass@16 performance. Diffusion large language models (dLLMs) generate text by iteratively denoising an entire token sequence in parallel (Lou et al., 2023; Shi et al., 2024; Ou et al., 2024; Sahoo et al., 2024; Nie et al., 2025; Ye et al., 2025; Song et al., 2025). Unlike autoregressive (AR) LLMs (Radford et al., 2018; Raffel et al., 2020; Brown et al., 2020), which commit tokens irrevocably in a fixed left-to-right order, dLLMs may finalize tokens at arbitrary positions. This flexibility is intrinsically aligned with the non-linear nature of complex reasoning, where pivotal 1
+
+> arXiv:2604.00375v1 [cs.CL] 1 Apr 2026
+
+Preprint. Under review. decisions need not adhere to a strict left-to-right progression (Bachmann & Nagarajan, 2024; Nagarajan et al., 2025; Kim et al., 2025a; Yang et al., 2025; Trainin et al., 2026). In practice, however, realizing this advantage has proven difficult. Recent work (Ni et al., 2026; Shen et al., 2026; Chen et al., 2025; Fu et al., 2025; Lee et al., 2025) points to a funda-mental quality–exploration dilemma (Figure 1): low-confidence remasking strategies, which commit the model’s most certain predictions first (Wu et al., 2025; Kim et al., 2025a; Ben-Hamu et al., 2025), improve single-sample quality (Pass@1) but saturate quickly under repeated sampling (Pass@ k) (Ni et al., 2026; Shen et al., 2026), revealing a severe exploration bottleneck. Random remasking exhibits the opposite behavior: it explores more broadly, yet produces weaker individual samples. This tension motivates our central question: 
+
+Can a dLLM decoding strategy achieve high per-sample quality without collapsing exploration? 
+
+In this paper, we do so by deriving the target distribution that optimally balances quality and exploration, then designing a new decoding strategy that approximately samples from the optimal distribution. The strategy favors globally promising sequences through a lookahead correction that adjusts each local token choice according to how promising the resulting space of completions is . We show that this strategy yields a better exploration-quality tradeoff than both uncertainty-based remasking and random remasking. Our contributions are as follows: 1. We provide a unified explanation of the exploration bottleneck in uncertainty-based decoding, where we show that the shared mode-seeking behavior of uncertainty-based decoding improves a myopic quality proxy while imposing a formal entropy cap on the induced sequence distribution. 2. We formalize the quality–exploration trade-off as an entropy-regularized optimization problem over the joint distribution and characterize the unique optimal solution. 3. We design a practical Markov chain Monte Carlo (MCMC) algorithm based on Independent Metropolis–Hastings that efficiently approximates this target distribution during decoding using a tractable lookahead correction. 4. Extensive experiments with LLaDA (Nie et al., 2025) and WeDLM (Liu et al., 2025) on reasoning benchmarks (MATH500, AIME, HumanEval, MBPP) demonstrate that our approach consistently achieves superior exploration–quality trade-offs. 
+
+# 2 Preliminaries 
+
+Diffusion Language Models. Let V be a finite vocabulary and [M] a special mask token. We consider sequences of length L with index set [L] := {1, . . . , L}. A diffusion language model generates samples by learning to reverse a forward process that corrupts a clean sequence x0 ∈ V L into a partially masked sequence xt ∈ (V ∪ { [M]})L by independently masking each token with probability t ∈ [0, 1 ] (linear masking schedule). The reverse process 
+
+is parameterized by a mask predictor pθ (· | xt) that independently predicts all masked tokens from the corrupted input. It is trained to maximize an evidence lower bound (ELBO) on the data log-likelihood, which reduces to a weighted denoising cross-entropy on masked positions (Shi et al., 2024; Ou et al., 2024; Zheng et al., 2024): 
+
+L(θ) := −Ex0, t, xt
+
+ 1
+
+t ∑
+
+> i∈[L]
+
+1[xit = [ M]] log pθ (xi 
+
+> 0
+
+| xt)
+
+ . (1) The sampling process iteratively refines a fully masked sequence. At each step, the model predicts marginal distributions for all masked positions simultaneously, conditioned on the partially revealed sequence. It then unmasks a subset of these positions by sampling from the marginals independently. Repeating this process gradually yields a complete sequence. Two main strategies determine this subset: 1. Random remasking : selects positions to unmask uniformly at random and remask the remaining masked positions, which is theoretically grounded in τ-leaping (Campbell et al., 2022; Lou et al., 2023; Ou et al., 2024). 2Preprint. Under review. Table 1: Taxonomy of uncertainty heuristics for uncertainty-based remasking. We catego-rize heuristics by their distributional scoring functions ( pi(·) := p(· | st, i)) and operational paradigms ( Sample-then-Filter vs. Rank-then-Sample ). The δ-gating column establishes the equivalent confidence lower bound max v pi(v) ≥ 1 − δ for each criterion. See Section C for detailed definitions and formal derivations of these bounds.                              
+
+> Heuristic Commit criterion Mode δ-gating
+> Confidence (Nie et al., 2025; Ye et al., 2025) max vpi(v)≥1−δSample-then-Filter δ(directly) Entropy (Ben-Hamu et al., 2025; Fu et al., 2025) H(pi)≤εRank-then-Sample δ=δV(ε)
+> Margin (Kim et al., 2025a; Hong et al., 2025b) pi(v1)−pi(v2)≥γRank-then-Sample δ=(|V|− 1)( 1−γ)
+> |V|
+
+2. Uncertainty-based remasking : selects unmask positions with high token or distribution uncertainty scores. See Table 1 for a taxonomy of common uncertainty heuristics. 
+
+Pass@ k as Exploration Metric. Pass@ k measures the probability of sampling at least one correct solution among k independent generations, serving as a standard proxy for a model’s exploration capability (Yue et al., 2025). Given c correct solutions out of n total samples, its unbiased estimator is given by (Chen et al., 2021): Pass@ k = E
+
+"
+
+1 − (n−ck )(nk)
+
+#
+
+. (2) A low Pass@ k indicates a fundamental barrier in exploring valid reasoning trajectories. 
+
+# 3 Formalizing the Quality–Exploration Dilemma 
+
+To formalize the quality–exploration dilemma, we begin by unifying common uncertainty heuristics under the notion of confidence gating .
+
+Definition 1 (Confidence gating) . Let V denote the token vocabulary and st the decoder state at step t . For a threshold parameter δ ∈ (0, 1 ), a decoder is (1 − δ)-gated if, whenever it commits a token, the commit distribution satisfies 
+
+max  
+
+> v∈V
+
+p(v | st) ≥ 1 − δ. (3) Intuitively, confidence gating permits a token to be committed only when its marginal distribution is sufficiently peaked. Although stated in terms of confidence, this definition naturally subsumes other common heuristics: entropy and margin-based criteria all reduce to this form under appropriate choices of δ (see Table 1 for details). 
+
+3.1 The Local Benefit: Improving Quality via Myopic Optimization 
+
+To elucidate why uncertainty-based decoding enhances single-sample performance (e.g., Pass@1), we analyze its implicit objective: the expected log loss under a reference model. Let 
+
+qgen denote the joint distribution over generated sequences, σ ∈ SL the decoding trajectory (where SL is the permutation group over 1, . . . , L), and pref a scoring model. We define the trajectory-dependent generation loss as: 
+
+Lgen (qgen ; pref ; σ) := Ex∼qgen 
+
+"
+
+1
+
+L
+
+> L
+
+# ∑
+
+> t=1
+
+− log pref (xσt | xσ<t )
+
+#
+
+. (4) Exponentiating this expected loss yields generative perplexity (GenPPL), a standard metric for evaluating the generative quality of diffusion models (Lou et al., 2023; Arriola et al., 2025; Sahoo et al., 2025): GenPPL (qgen ; pref ; σ) := exp  Lgen (qgen ; pref ; σ). (5) 3Preprint. Under review. Intuitively, GenPPL measures the sequence-level surprisal under the reference model. By setting pref = pθ , we evaluate the model’s self-consistency along the generation trajectory. Under this self-scoring regime, the expected generation loss decomposes into a sum of step-wise conditional entropies. Specifically, when the decoder commits a token by sampling from a chosen position’s marginal distribution pθ (· | st), the expected one-step loss incurred is exactly the entropy of that distribution: Ex [− log pθ (x | st)] = H(pθ (· | st)) . Consequently, confidence gating—which prioritizes highly peaked, low-entropy distributions—acts as a myopic, greedy heuristic to minimize Lgen . Proposition 1 formalizes this mechanism, proving that bounding the step-wise entropy strictly bounds the global generative perplexity. 
+
+Proposition 1 (Generative perplexity upper bound under confidence gating) . Assume the decoder is (1 − δ)-gated, the committed token at each step is sampled from the decoder’s commit distribution, and the scoring model is the decoder itself, i.e., pref = pθ . Then for any decoding trajectory σ,
+
+GenPPL (qgen ; pθ ; σ) ≤ exp  hV (δ),
+
+where h V (δ) = hb(δ) + δ log (|V| − 1) and h b(δ) = −δ log δ − (1 − δ) log (1 − δ).
+
+The bound exp (hV (δ)) corresponds precisely to the maximum entropy of any vocabulary distribution whose largest probability mass is at least 1 − δ. By controlling the worst-case one-step uncertainty, confidence gating effectively bounds the accumulated self-cross-entropy along the generation trajectory. This provides a principled explanation for why uncertainty-based heuristics improve single-sample quality. Nevertheless, because each commit decision fundamentally alters the context for future steps, this approach remains a 
+
+myopic surrogate rather than a direct optimization of the global sequence-level objective. 
+
+3.2 The Global Cost: Suppressing Exploration via Entropy Collapse 
+
+While the mode-seeking behavior of confidence gating improves single-sample quality, it inherently restricts sequence-level diversity, which ultimately hurts multi-sample perfor-mance (e.g., Pass@ k). Proposition 2 formalizes this limitation by bounding the sequence entropy H(X) and the effective branching factor (Jurafsky & Martin, 2026). 
+
+Proposition 2 (Entropy cap under confidence gating) . Assume the dLLM decoder is (1 − δ)-gated. Then the sequence entropy satisfies H(X) ≤ L · hV (δ),
+
+where hV (δ) = hb(δ) + δ log (|V| − 1) and hb(δ) = −δ log δ − (1 − δ) log (1 − δ) is the binary entropy function. Equivalently, the effective branching factor, defined as the per-token perplexity of the induced sequence distribution, Beff := exp (H(X)/L),
+
+is upper bounded as Beff ≤ exp  hV (δ).Proposition 2 establishes a hard entropy budget that depends only on the gating threshold δ
+
+and the vocabulary size |V|. The induced quantity Beff , which measures the geometric-mean number of effective tokens available at each decoding step, is sharply constrained under strong gating. As a concrete instantiation, setting |V| = 5 × 10 4 and δ = 0.05 yields 
+
+Beff < 2.1, indicating that the decoder concentrates almost all probability mass on fewer than three candidates per step. This tight ceiling explains the poor Pass@ k scaling: even if the model internally supports multiple correct reasoning paths, a strongly gated decoder cannot simultaneously explore these valid modes. 
+
+# 4 Principled Exploration via Global Tempering 
+
+4.1 The Optimal Target Distribution 
+
+Motivated by the limitations of local heuristics discussed in Section 3, we now formalize the quality–exploration trade-off at the level of complete-sequence distributions. We define 4Preprint. Under review. generation quality as the expected log-likelihood under the base model, Ex∼p[log q(x)] ,and exploration as the Shannon entropy H(p) of the sequence distribution. Rather than relying on step-wise proxies, we optimize directly over the joint distribution p, yielding the entropy-regularized objective: max   
+
+> p∈∆(X)
+
+α Ex∼p[log q(x)] 
+
+| {z }
+
+> quality
+
++ H(p)
+
+| {z } 
+
+> exploration
+
+, (6) where α ≥ 0 controls the trade-off: larger α places more mass on high-likelihood sequences, while the entropy term discourages mode collapse. 
+
+Proposition 3 (Optimality of the power distribution) . For any α ≥ 0, the unique optimizer of equation 6 is the power distribution p⋆
+
+> α
+
+(x) = q(x)α
+
+Zα
+
+, Zα = ∑
+
+> x∈X
+
+q(x)α.Formally, p⋆ 
+
+> α
+
+applies a global temperature scaling to the joint sequence distribution q(x),flattening ( α < 1) or sharpening ( α > 1) the sequence-level distribution. Unlike conventional local logit tempering, p⋆ 
+
+> α
+
+operates over the entire sequence. We now address the resulting algorithmic challenge: efficiently sampling from this globally tempered distribution. 
+
+4.2 Corrected Conditionals: Exact Form and Tractable Approximation 
+
+Sampling from the globally tempered distribution p⋆
+
+> α
+
+(x) ∝ q(x)α presents two major obsta-cles in the dLLM setting. First, the normalizing constant Zα is intractable to compute over the exponentially large sequence space X = V L. While autoregressive LLMs can circumvent this issue using Markov chain Monte Carlo (MCMC) samplers that only require evaluating unnormalized sequence likelihoods (Karan & Du, 2025), dLLMs face a second, more severe hurdle: their exact sequence likelihood q(x) is itself intractable (Shi et al., 2024; Pan et al., 2025). Consequently, standard sequence-level MCMC techniques cannot be directly applied. To bypass the need for evaluating intractable sequence-level likelihoods, we shift our per-spective from the global joint distribution to the local one-step generation. Fundamentally, the generative process of a dLLM samples this joint distribution by iteratively sampling from a sequence of marginal conditionals. A natural question thus arises: for a global tempered joint distribution, what is the exact form of the resulting marginal conditionals at each decoding step? We can analytically derive this marginal conditional below: 
+
+Proposition 4 (Corrected conditional for global tempering) . Let q be a distribution over X =
+
+V L with full support, and fix α > 0. Let s = ( A, xA) denote a partially decoded state with committed positions A ⊆ [L] and remaining positions R(s) := [ L] \ A . For any uncommitted position i ∈ R(s)
+
+and token v ∈ V , let ℓi(s) be the logit vector such that q(xi = v | s) = softmax (ℓi(s)) v. Letting s′ = s ⊕ (i, v) denote the updated state after committing token v at position i, define 
+
+∆i,v(s) := log ∑   
+
+> xR(s′)∈V|R(s′)|
+
+q(xR(s′ ) | s′)α.
+
+Then the conditional of p ⋆
+
+> α
+
+(x) ∝ q(x)α at position i is p⋆
+
+> α
+
+(xi = v | s) = exp  αℓi,v(s) + ∆i,v(s)
+
+∑u∈V exp  αℓi,u(s) + ∆i,u(s) . (7) Equation (7) features two interpretable terms: a local tempering term αℓi,v(s) and a suffix lookahead correction ∆i,v(s), which measures the total tempered probability mass of the completions reachable after committing v. Crucially, ∆i,v(s) does not simply favor the most locally confident token. Instead, it favors tokens that preserve more globally promising continuations . This is why it can mitigate the entropy cap of confidence-based decoding: confidence gating suppresses exploration by forcing low entropy at the current step, whereas 5Preprint. Under review. the lookahead correction evaluates each token by the value of the continuation space it leaves available, avoiding premature collapse onto a single reasoning path. 
+
+Tractable approximation via mean-field factorization. Evaluating the exact lookahead correction ∆i,v(s) is computationally prohibitive due to the exponential cardinality of the suffix space. However, the mask-prediction objective of dLLMs inherently models the se-quence via conditionally independent marginals given the current state (Equation (1)). This structural property motivates a mean-field approximation (Zhao et al., 2025), allowing us to factorize the intractable suffix joint as q(xR(s′ ) | s′) ≈ ∏j∈R(s′ ) q(xj | s′). This factorization decouples the α-power summation along the sequence length: 
+
+b∆i,v(s) := ∑ 
+
+> j∈R(s′)
+
+log ∑
+
+> u∈V
+
+q(xj = u | s′)α
+
+!
+
+, s′ = s ⊕ (i, v).Consequently, the surrogate correction b∆i,v(s) becomes readily computable. It requires only a single network evaluation at the proposed state s′ to obtain the requisite marginals. Plugging this approximation back into equation 7 yields a one-step sampling target: 
+
+πi(v | s) ∝ exp  αℓi,v(s) + b∆i,v(s), v ∈ V. (8) 
+
+4.3 Independent Metropolis–Hastings with Batched Lookahead Algorithm 1 Batched IMH for one-token cor-rected sampling 
+
+Require: State s; position i ∈ R(s); number of proposals T; exponent α
+
+Ensure: A token approximately distributed as πi(· | s) in equation 8  
+
+> 1:
+
+Sample x ∼ ri(· | s) using equation 9  
+
+> 2:
+
+Draw i.i.d. proposals y1, . . . , yT ∼ ri(· | s) 
+
+> 3:
+
+Compute b∆i,x (s) and b∆i,yt (s) for t ∈{1, . . . , T} in one batch  
+
+> 4:
+
+for t = 1, . . . , T do  
+
+> 5:
+
+a ← min {1, exp  b∆i,yt (s) − b∆i,x (s)} 
+
+> 6:
+
+Sample u ∼ Uniform (0, 1 ) 
+
+> 7:
+
+if u < a then  
+
+> 8:
+
+x ← yt 
+
+> 9:
+
+b∆i,x (s) ← b∆i,yt (s) 
+
+> 10:
+
+end if  
+
+> 11:
+
+end for  
+
+> 12:
+
+return x
+
+Given the pointwise evaluable one-step tar-get πi(· | s), we employ Markov Chain Monte Carlo (MCMC) to sample from this unnormalized distribution. Specifically, we propose an independent Metropolis– Hastings (IMH) sampler (Hastings, 1970). For a fixed decoding state s and position i,we define the independence proposal as the locally tempered logits without correction: 
+
+ri(v | s) := softmax  α ℓi(s) 
+
+> v
+
+. (9) This proposal distribution is chosen for two primary reasons. First, we empirically find that it captures the dominant proba-bility mass of the target distribution (see Table 3 for validation). Second, because the target factorizes as πi(v | s) ∝ ri(v |
+
+s) exp (b∆i,v(s)) , the local αℓ terms exactly cancel within the Metropolis–Hastings ratio (see Section D for the detailed derivation), yielding a highly streamlined acceptance probability: 
+
+A(x → y) = min 
+
+n
+
+1, exp   ˆ∆i,y(s) − ˆ∆i,x (s)o
+
+. (10) Consequently, the IMH sampler generates candidates from ri and accepts them via Equa-tion (10), relying solely on the difference in suffix corrections without requiring vocabulary-wide normalization. The full algorithm is presented in Algorithm 1. 
+
+Batched evaluation. A primary computational advantage of our IMH sampler is that the proposal distribution ri depends strictly on the outer context (s, i), entirely decoupled from the Markov chain’s current state. This permits all T proposals and their associated lookahead corrections to be evaluated concurrently in a single batched forward pass. Consequently, IMH introduces zero sequential overhead compared to original dLLM decoding. 
+
+MCMC mixing. Traditional MCMC algorithms frequently suffer from slow mixing when deployed in high-dimensional discrete spaces. Our IMH sampler circumvents this bottleneck 6Preprint. Under review. Table 2: Pass@1 and Pass@ k across benchmarks and models. Bold indicates the best result for a given metric. LLaDA-8B results on AIME24/25 are omitted as they are close to 0.                                                                                                                                                  
+
+> Math reasoning Code generation Method Metric MATH500 AIME’24 AIME’25 HumanEval HumanEval+ MBPP MBPP+
+> WeDLM-8B
+> Entropy †Pass@1 0.528 0.093 0.071 0.732 0.684 0.784 0.677
+> Pass@k 0.875 0.310 0.291 0.950 0.911 0.916 0.739 Confidence Pass@1 0.528 0.079 0.074 0.725 0.678 0.707 0.598 Pass@k 0.851 0.323 0.292 0.905 0.857 0.834 0.717 Margin Pass@1 0.393 0.058 0.031 0.584 0.537 0.589 0.490 Pass@k 0.838 0.296 0.269 0.903 0.843 0.765 0.643 IMH (ours) Pass@1 0.540 0.095 0.074 0.745 0.696 0.776 0.664 Pass@k 0.875 0.344 0.344 0.962 0.933 0.938 0.836 LLaDA-8B
+> Confidence †Pass@1 0.349 --0.410 0.372 0.484 0.404
+> Pass@k 0.465 --0.573 0.536 0.645 0.521 Entropy Pass@1 0.294 --0.387 0.344 0.444 0.387 Pass@k 0.606 --0.670 0.603 0.751 0.656 Margin Pass@1 0.286 --0.350 0.315 0.451 0.388 Pass@k 0.594 --0.610 0.573 0.716 0.589 Random Pass@1 0.251 --0.196 0.176 0.279 0.251 Pass@k 0.630 --0.549 0.524 0.685 0.605 IMH (ours) Pass@1 0.360 --0.385 0.345 0.469 0.399 Pass@k 0.700 --0.695 0.640 0.778 0.672
+> †Default decoding method of the respective model.
+
+through two structural advantages. First, by formulating the Markov chain to target a 1D categorical distribution over the vocabulary V, we completely bypass the curse of dimensionality. Second, since our proposal distribution ri tightly approximates the target by incorporating dominant local logits, standard MCMC theory guarantees rapid geometric convergence (Mengersen & Tweedie, 1996). We empirically validate both points in Section 5. 
+
+# 5 Experiments 
+
+Experimental Setup. We evaluate our method on reasoning-intensive tasks across two domains: mathematical problem-solving (MATH500 (Hendrycks et al., 2020), AIME 2024 (Zhang & Math-AI, 2024), AIME 2025 (Zhang & Math-AI, 2025)) and code gener-ation (HumanEval (Chen et al., 2021), MBPP (Austin et al., 2021)). Our evaluation frame-work incorporates two architecturally distinct dLLMs: the fully bidirectional LLaDA-8B-Instruct (Nie et al., 2025) and the block-diffusion WeDLM-8B (Liu et al., 2025). We benchmark against random remasking and standard confidence-based heuristics (confidence, entropy, and margin; see Table 1 for definitions). For WeDLM, random remasking is excluded due to its inherent left-to-right generation bias (Liu et al., 2025), and we restrict its suffix lookahead correction to a 16-token window to align with its block-diffusion mechanics. We adopt Pass@ k (Equation (2)) as our primary metric. To guarantee a statistically robust, low-variance estimation, we systematically oversample: generating n = 32 samples for 
+
+k ≤ 16 with LLaDA, and n = 128 for k ≤ 32 with WeDLM (see Section E for variance analysis). Finally, to ensure a strictly hyperparameter-free comparison, all baselines decode exactly one token per step. More experimental details are provided in Section B. 
+
+Benchmarks. In Table 2, we report Pass@1 and Pass@ k across all benchmarks using a shared local temperature of 0.5 (Ye et al., 2024). This reflects the practical setting where users select a specific temperature and allow for direct comparison under controlled conditions. First, IMH consistently delivers the strongest exploratory performance, attaining the best Pass@ k
+
+7Preprint. Under review. 1 2 4 8 16 32                                
+
+> 40
+> 60
+> 80
+> Pass@ k (%)
+> WeDLM-8B
+> MATH500
+> 124816 32
+> 60
+> 70
+> 80
+> 90
+> HumanEval
+> 124816 32
+> 60
+> 70
+> 80
+> 90
+> MBPP
+> 124816
+> k
+> 30
+> 40
+> 50
+> 60
+> 70
+> Pass@ k (%)
+> LLaDA-8B
+> 124816
+> k
+> 20
+> 40
+> 60
+> 124816
+> k
+> 40
+> 60
+> 80
+> 10
+> 20
+> 30
+> AIME’24
+> 124816 32
+> k
+> 10
+> 20
+> 30
+> AIME’25
+> IMH (ours) Confidence Entropy Margin Random
+
+Figure 2: Pass@ k scaling curves. (Left) Performance on MATH500, HumanEval, and MBPP for WeDLM-8B (top) and LLaDA-8B (bottom). (Right) WeDLM-8B on AIME’24/25. on nearly every task for both WeDLM and LLaDA. Figure 2 reinforces this conclusion by showing the full Pass@ k scaling curves. Notably, on the more challenging AIME24/25 benchmarks, IMH substantially outperforms WeDLM’s default entropy heuristic in both Pass@1 and Pass@ k. Second, for LLaDA, IMH offers the most favorable overall trade-off between quality and exploration. On MATH500, it achieves the best results on both metrics. On HumanEval and MBPP, while low-confidence remasking attains slightly higher Pass@1, this marginal advantage comes at a substantial cost in Pass@ k, making IMH clearly preferable when broader exploration is desired. 
+
+The Quality-Diversity Pareto Frontier. We further validate the robustness of this exploration-exploitation trade-off across the various hyperparameters. Figure 3 (left) plots Pass@1 versus Pass@ k on MATH500 by sweeping the temperature parameters ( α for IMH, 
+
+τ for baselines). These trajectories reveal that global tempering strictly dominates local strategies. While local methods struggle to balance exploiting high-likelihood paths with exploring diverse reasoning, IMH consistently pushes the Pareto frontier outward. This em-pirical superiority directly corroborates the theoretical optimality of the power distribution (Proposition 3), establishing global tempering as a fundamentally more effective mechanism for navigating the exploration-exploitation trade-off. 
+
+Expanding the Reasoning Boundary. While aggregate Pass@ k metrics demonstrate overall superiority, they cannot distinguish whether the improvements stem from merely increas-ing reliability on simpler tasks or from achieving genuine breakthroughs on previously intractable problems. To isolate these effects, we stratify AIME 2024 problems by difficulty following Sun et al. (2025). As shown in Figure 3 (middle), performance on the Easy tier is largely saturated across all methods. However, as difficulty escalates, the performance gap gradually widens. Crucially, IMH yields the most pronounced gains on the Hard tier, decisively outperforming the strongest baselines. This confirms that the trajectory-level di-versity induced by the lookahead correction does not merely increase reliability on solvable problems, but actively expands the model’s reasoning boundary , enabling it to navigate the complex search spaces of the most challenging mathematical tasks. We provide a detailed case study in Section F, showcasing specific hard problems successfully solved by IMH that completely eluded all baseline methods. 
+
+Trajectory Similarity Analysis. To understand why IMH succeeds where local baselines fail, we analyze the semantic diversity of the generated reasoning paths. For each AIME 2024 problem, we sample one trajectory per method and employ an LLM judge to summarize the problem-solving strategy and score pairwise similarity (details in Section G). The resulting 8Preprint. Under review. 20% 25% 30% 35% 40%                 
+
+> Pass@1
+> 35%
+> 40%
+> 45%
+> 50%
+> 55%
+> 60%
+> 65%
+> 70%
+> 75%
+> Pass@16
+> =0.1
+> =0.3
+> =0.5
+> =0.7
+> =0.9
+> Confidence
+> Random
+> IMH (ours) Easy Med Hard Exh
+> Difficulty Level
+> 0.0
+> 0.2
+> 0.4
+> 0.6
+> 0.8
+> 1.0
+> Pass@32
+> Confidence
+> Entropy
+> Margin
+> IMH (ours) Conf
+> Margin
+> Entropy
+> IMH
+> Conf
+> Margin
+> Entropy
+> IMH
+> 100 83 75 72
+> 83 100 73 70
+> 75 73 100 68
+> 72 70 68 100 50
+> 60
+> 70
+> 80
+> 90
+> 100
+> Similarity (0 100)
+
+Figure 3: Left: Quality-diversity trade-off on MATH500 (LLaDA) by sweeping temperature parameters. IMH strictly dominates local baselines. Middle: Pass@32 on AIME 2024 stratified by difficulty (Sun et al., 2025) (WeDLM-8B). IMH yields the largest gains on Hard problems. Right: Trajectory similarity matrix on AIME 2024. Local baselines collapse into similar paths, whereas IMH explores distinctly different reasoning strategies. similarity matrix (Figure 3 (right)) exhibits a distinct block structure: the three local baselines (Conf, Margin, Entropy) are highly correlated with one another (scores 73–83). This indicates that confidence-based remasking heuristics tend to collapse into nearly identical reasoning paths, regardless of the specific uncertainty metric employed. In contrast, IMH trajectories exhibit significantly lower similarity to all baselines (scores 68–72). This demonstrates that IMH successfully induces qualitatively distinct reasoning strategies, rather than merely injecting local perturbations into the same dominant solution trajectory. 
+
+IMH convergence and mixing properties. To empirically validate the efficacy of our IMH sampler, we ablate the Markov chain length T using WeDLM-8B on the AIME 2024 benchmark. Table 3 characterizes the resulting MCMC dynamics from two com-plementary perspectives: downstream task-level convergence and internal mixing efficiency. Table 3: MCMC dynamics on AIME 2024 (WeDLM-8B). Baseline denotes entropy re-masking without IMH. 
+
+T Pass@1 Pass@8 Acc.(%) 1 9.5 23.1 99.3 3 10.0 23.3 99.1 7 11.4 24.0 98.3 15 11.0 23.4 97.5 31 11.0 24.5 97.2 Baseline 9.4 21.4 —
+
+First, to assess task-level convergence, we monitor the Pass@1 and Pass@8 accuracies across varying lengths of T. Both metrics demonstrate a steady increase in performance until T = 7, beyond which the accuracy remains roughly stable. This rapid satura-tion serves as strong empirical evidence of fast convergence. It demonstrates that the Markov chain swiftly reaches its stationary distribution, allowing a short, computation-ally inexpensive chain to yield substantial performance improvements over the baseline. Second, we evaluate the internal mixing effi-ciency of the sampler. As shown in Table 3, the mean acceptance rate remains exceptionally high and stable—consistently exceeding 97.0% regardless of the configured chain length T.In the context of an IMH formulation, such a high and persistent acceptance rate provides strong theoretical guarantees (Mengersen & Tweedie, 1996). Specifically, it confirms that our state-independent proposal distribution (Equation (9)) tightly bounds the globally corrected target distribution πi. This close structural alignment enables rapid geometric convergence and highly efficient exploration of the latent state space. 
+
+# 6 Conclusion 
+
+Diffusion large language models offer a compelling paradigm for complex reasoning, yet their practical efficacy has been severely constrained by myopic decoding heuristics that prematurely collapse trajectory diversity. In this work, we propose a principled decoding paradigm to resolve this quality–exploration dilemma. By integrating a lookahead correction 9Preprint. Under review. through an Independent Metropolis–Hastings sampler, our method dynamically aligns local token commitments with the global promise of the resulting completion space. Extensive evaluations on rigorous reasoning benchmarks demonstrate that our strategy establishes a new Pareto frontier. Moreover, our approach fundamentally expands the effective reasoning frontier of dLLMs on exceptionally demanding benchmarks such as AIME datasets. 
+
+# References 
+
+Marianne Arriola, Aaron Gokaslan, Justin T Chiu, Zhihan Yang, Zhixuan Qi, Jiaqi Han, Subham Sekhar Sahoo, and Volodymyr Kuleshov. Block diffusion: Interpolating between autoregressive and diffusion language models. In The Thirteenth International Conference on Learning Representations , 2025. URL https://arxiv.org/abs/2503.09573 .Jacob Austin, Augustus Odena, Maxwell Nye, Maarten Bosma, Henryk Michalewski, David Dohan, Ellen Jiang, Carrie Cai, Michael Terry, Quoc Le, et al. Program synthesis with large language models. arXiv preprint arXiv:2108.07732 , 2021. Gregor Bachmann and Vaishnavh Nagarajan. The pitfalls of next-token prediction. arXiv preprint arXiv:2403.06963 , 2024. Heli Ben-Hamu, Itai Gat, Daniel Severo, Niklas Nolte, and Brian Karrer. Accelerated sampling from masked diffusion models via entropy bounded unmasking. arXiv preprint arXiv:2505.24857 , 2025. Tom Brown, Benjamin Mann, Nick Ryder, Melanie Subbiah, Jared D Kaplan, Prafulla Dhariwal, Arvind Neelakantan, Pranav Shyam, Girish Sastry, Amanda Askell, Sandhini Agarwal, Ariel Herbert-Voss, Gretchen Krueger, Tom Henighan, Rewon Child, Aditya Ramesh, Daniel Ziegler, Jeffrey Wu, Clemens Winter, Chris Hesse, Mark Chen, Eric Sigler, Mateusz Litwin, Scott Gray, Benjamin Chess, Jack Clark, Christopher Berner, Sam McCandlish, Alec Radford, Ilya Sutskever, and Dario Amodei. Language models are few-shot learners. In H. Larochelle, M. Ranzato, R. Hadsell, M.F. Balcan, and H. Lin (eds.), Advances in Neural Information Processing Systems , volume 33, pp. 1877–1901. Curran Associates, Inc., 2020. URL https://proceedings.neurips.cc/paper_files/paper/2020/ file/1457c0d6bfcb4967418bfb8ac142f64a-Paper.pdf .Andrew Campbell, Joe Benton, Valentin De Bortoli, Thomas Rainforth, George Deligianni-dis, and Arnaud Doucet. A continuous time framework for discrete denoising models. 
+
+Advances in Neural Information Processing Systems , 35:28266–28279, 2022. Mark Chen, Jerry Tworek, Heewoo Jun, Qiming Yuan, Henrique Ponde De Oliveira Pinto, Jared Kaplan, Harri Edwards, Yuri Burda, Nicholas Joseph, Greg Brockman, et al. Evalu-ating large language models trained on code. arXiv preprint arXiv:2107.03374 , 2021. Qiguang Chen, Hanjing Li, Libo Qin, Dengyun Peng, Jinhao Liu, Jiangyi Wang, Chengyue Wu, Xie Chen, Yantao Du, and Wanxiang Che. Beyond surface reasoning: Unveiling the true long chain-of-thought capacity of diffusion large language models. arXiv preprint arXiv:2510.09544 , 2025. Hengyu Fu, Baihe Huang, Virginia Adams, Charles Wang, Venkat Srinivasan, and Jiantao Jiao. From bits to rounds: Parallel decoding with exploration for diffusion language models. arXiv preprint arXiv:2511.21103 , 2025. W. K. Hastings. Monte carlo sampling methods using markov chains and their applications. 
+
+Biometrika , 57(1):97–109, 1970. Dan Hendrycks, Collin Burns, Steven Basart, Andy Zou, Mantas Mazeika, Dawn Song, and Jacob Steinhardt. Measuring massive multitask language understanding. arXiv preprint arXiv:2009.03300 , 2020. Feng Hong, Geng Yu, Yushi Ye, Haicheng Huang, Huangjie Zheng, Ya Zhang, Yanfeng Wang, and Jiangchao Yao. Wide-in, narrow-out: Revokable decoding for efficient and effective dllms. arXiv preprint arXiv:2507.18578 , 2025a. 10 Preprint. Under review. Jiwoo Hong, Seongyeon An, Taehyun Kim, and Ernestasia Aniela Ye. Improving dis-crete diffusion unmasking policies beyond explicit reference policies. arXiv preprint arXiv:2510.05725 , 2025b. Pengcheng Huang, Shuhao Liu, Zhenghao Liu, Yukun Yan, Shuo Wang, Zulong Chen, and Tong Xiao. Pc-sampler: Position-aware calibration of decoding bias in masked diffusion models. arXiv preprint arXiv:2508.13021 , 2025. Daniel Jurafsky and James H. Martin. Speech and Language Processing: An Introduction to Natural Language Processing, Computational Linguistics, and Speech Recognition with Language Models . 3rd edition, 2026. URL https://web.stanford.edu/~jurafsky/slp3/ . Online manuscript released January 6, 2026. Aayush Karan and Yilun Du. Reasoning with sampling: Your base model is smarter than you think. arXiv preprint arXiv:2510.14901 , 2025. Jaeyeon Kim, Kulin Shah, Vasilis Kontonis, Sham Kakade, and Sitan Chen. Train for the worst, plan for the best: Understanding token ordering in masked diffusions. arXiv preprint arXiv:2502.06768 , 2025a. Seo Hyun Kim, Sunwoo Hong, Hojung Jung, Youngrok Park, and Se-Young Yun. KLASS: KL-guided fast inference in masked diffusion models. Advances in Neural Information Processing Systems , 2025b. Woosuk Kwon, Zhuohan Li, Siyuan Zhuang, Ying Sheng, Lianmin Zheng, Cody Hao Yu, Joseph E. Gonzalez, Hao Zhang, and Ion Stoica. Efficient memory management for large language model serving with pagedattention. In Proceedings of the ACM SIGOPS 29th Symposium on Operating Systems Principles , 2023. Sanghyun Lee, Seungryong Kim, Jongho Park, and Dongmin Park. Lookahead unmasking elicits accurate decoding in diffusion language models. arXiv preprint arXiv:2511.05563 ,2025. Aiwei Liu, Minghua He, Shaoxun Zeng, Sijun Zhang, Linhao Zhang, Chuhan Wu, Wei Jia, Yuan Liu, Xiao Zhou, and Jie Zhou. Wedlm: Reconciling diffusion language models with standard causal attention for fast inference. arXiv preprint arXiv:2512.22737 , 2025. Jiawei Liu, Chunqiu Steven Xia, Yuyao Wang, and Lingming Zhang. Is your code gener-ated by chatgpt really correct? rigorous evaluation of large language models for code generation. Advances in neural information processing systems , 36:21558–21572, 2023. Aaron Lou, Chenlin Meng, and Stefano Ermon. Discrete diffusion modeling by estimating the ratios of the data distribution. In International Conference on Machine Learning , 2023. Omer Luxembourg, Haim Permuter, and Eliya Nachmani. Plan for speed: Dilated schedul-ing for masked diffusion language models. arXiv preprint arXiv:2506.19037 , 2025. Kerrie L Mengersen and Richard L Tweedie. Rates of convergence of the hastings and metropolis algorithms. The annals of Statistics , 24(1):101–121, 1996. Vaishnavh Nagarajan, Chen Henry Wu, Charles Ding, and Aditi Raghunathan. Roll the dice & look before you leap: Going beyond the creative limits of next-token prediction. arXiv preprint arXiv:2504.15266 , 2025. Zanlin Ni, Shenzhi Wang, Yang Yue, Tianyu Yu, Weilin Zhao, Yeguo Hua, Tianyi Chen, Jun Song, Cheng Yu, Bo Zheng, et al. The flexibility trap: Why arbitrary order limits reasoning potential in diffusion language models. arXiv preprint arXiv:2601.15165 , 2026. Shen Nie, Fengqi Zhu, Zebin You, Xiaolu Zhang, Jingyang Ou, Jun Hu, Jun Zhou, Yankai Lin, Ji-Rong Wen, and Chongxuan Li. Large language diffusion models. In Advances in Neural Information Processing Systems (NeurIPS 2025) , 2025. 11 Preprint. Under review. Jingyang Ou, Shen Nie, Kaiwen Xue, Fengqi Zhu, Jiacheng Sun, Zhenguo Li, and Chongxuan Li. Your absorbing discrete diffusion secretly models the conditional distributions of clean data. arXiv preprint arXiv:2406.03736 , 2024. Leyi Pan, Shuchang Tao, Yunpeng Zhai, Zheyu Fu, Liancheng Fang, Minghua He, Lingzhe Zhang, Zhaoyang Liu, Bolin Ding, Aiwei Liu, et al. d-treerpo: Towards more reliable policy optimization for diffusion language models. arXiv preprint arXiv:2512.09675 , 2025. Alec Radford, Karthik Narasimhan, Tim Salimans, Ilya Sutskever, et al. Improving language understanding by generative pre-training. 2018. Colin Raffel, Noam Shazeer, Adam Roberts, Katherine Lee, Sharan Narang, Michael Matena, Yanqi Zhou, Wei Li, and Peter J. Liu. Exploring the limits of transfer learning with a unified text-to-text transformer. Journal of Machine Learning Research , 21(140):1–67, 2020. URL http://jmlr.org/papers/v21/20-074.html .Subham Sekhar Sahoo, Marianne Arriola, Aaron Gokaslan, Edgar Mariano Marroquin, Alexander M Rush, Yair Schiff, Justin T Chiu, and Volodymyr Kuleshov. Simple and effective masked diffusion language models. In The Thirty-eighth Annual Conference on Neural Information Processing Systems , 2024. URL https://openreview.net/forum?id= L4uaAR4ArM .Subham Sekhar Sahoo, Justin Deschenaux, Aaron Gokaslan, Guanghan Wang, Justin Chiu, and Volodymyr Kuleshov. The diffusion duality. arXiv preprint arXiv:2506.10892 , 2025. Yangyi Shen, Tianjian Feng, Jiaqi Han, Wen Wang, Tianlang Chen, Chunhua Shen, Jure Leskovec, and Stefano Ermon. Improving diffusion language model decoding through joint search in generation order and token space. arXiv preprint arXiv:2601.20339 , 2026. Jiaxin Shi, Kehang Han, Zhe Wang, Arnaud Doucet, and Michalis Titsias. Simplified and generalized masked diffusion for discrete data. Advances in neural information processing systems , 37:103131–103167, 2024. Yuxuan Song, Zheng Zhang, Cheng Luo, Pengyang Gao, Fan Xia, Hao Luo, Zheng Li, Yuehang Yang, Hongli Yu, Xingwei Qu, et al. Seed diffusion: A large-scale diffusion language model with high-speed inference. arXiv preprint arXiv:2508.02193 , 2025. Yiyou Sun, Georgia Zhou, Haoyue Bai, Hao Wang, Dacheng Li, Nouha Dziri, and Dawn Song. Climbing the ladder of reasoning: What llms can-and still can’t-solve after sft? 
+
+arXiv preprint arXiv:2504.11741 , 2025. Itamar Trainin, Shauli Ravfogel, Omri Abend, and Amir Feder. Discrete diffusion models exploit asymmetry to solve lookahead planning tasks. arXiv preprint arXiv:2602.19980 ,2026. Qingyan Wei, Yaojie Zhang, Zhiyuan Liu, Dongrui Liu, and Linfeng Zhang. Accelerating diffusion large language models with slowfast sampling: The three golden principles. 
+
+arXiv preprint arXiv:2506.10848 , 2025. Chengyue Wu, Hao Zhang, Shuchen Xue, Zhijian Liu, Shizhe Diao, Ligeng Zhu, Ping Luo, Song Han, and Enze Xie. Fast-dllm: Training-free acceleration of diffusion llm by enabling kv cache and parallel decoding. arXiv preprint arXiv:2505.22618 , 2025. Chenkai Xu, Yijie Jin, Jiajun Li, Yi Tu, Guoping Long, Dandan Tu, Mingcong Song, Hongjie Si, Tianqi Hou, Junchi Yan, et al. Lopa: Scaling dllm inference via lookahead parallel decoding. arXiv preprint arXiv:2512.16229 , 2025. Chenxiao Yang, Cai Zhou, David Wipf, and Zhiyuan Li. On powerful ways to generate: Autoregression, diffusion, and beyond. arXiv preprint arXiv:2510.06190 , 2025. Jiacheng Ye, Shansan Gong, Liheng Chen, Lin Zheng, Jiahui Gao, Han Shi, Chuan Wu, Xin Jiang, Zhenguo Li, Wei Bi, et al. Diffusion of thought: Chain-of-thought reasoning in diffusion language models. Advances in Neural Information Processing Systems , 37: 105345–105374, 2024. 12 Preprint. Under review. Jiacheng Ye, Zhihui Xie, Lin Zheng, Jiahui Gao, Zirui Wu, Xin Jiang, Zhenguo Li, and Ling-peng Kong. Dream 7b: Diffusion large language models. arXiv preprint arXiv:2508.15487 ,2025. Yang Yue, Zhiqi Chen, Rui Lu, Andrew Zhao, Zhaokai Wang, Shiji Song, and Gao Huang. Does reinforcement learning really incentivize reasoning capacity in llms beyond the base model? arXiv preprint arXiv:2504.13837 , 2025. Lingzhe Zhang, Liancheng Fang, Chiming Duan, Minghua He, Leyi Pan, Pei Xiao, Shiyu Huang, Yunpeng Zhai, Xuming Hu, Philip S Yu, et al. A survey on parallel text generation: From parallel decoding to diffusion language models. arXiv preprint arXiv:2508.08712 ,2025. Yifan Zhang and Team Math-AI. American invitational mathematics examination (aime) 2024, 2024. Yifan Zhang and Team Math-AI. American invitational mathematics examination (aime) 2025, 2025. Siyan Zhao, Devaansh Gupta, Qinqing Zheng, and Aditya Grover. d1: Scaling rea-soning in diffusion large language models via reinforcement learning. arXiv preprint arXiv:2504.12216 , 2025. Kaiwen Zheng, Yongxin Chen, Hanzi Mao, Ming-Yu Liu, Jun Zhu, and Qinsheng Zhang. Masked diffusion models are secretly time-agnostic masked models and exploit inaccurate categorical sampling. arXiv preprint arXiv:2409.02908 , 2024. 13 Preprint. Under review. 
+
+# Appendix 
+
+A Related Work 15 B Experimental Details 15 C Details of Uncertainty Heuristics and δ-gating 16 D Derivation of the IMH Acceptance Ratio 17 E Variance of the pass @k Estimator 18 F Detailed Analysis of Hard Problems 19 G Trajectory Similarity Analysis 21 H Proofs 22 
+
+H.1 Proof of Proposition 1 . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 22 H.2 Proof of Proposition 2 . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 23 H.3 Proof of Proposition 3 . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 24 H.4 Proof of Proposition 4 . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 24 14 Preprint. Under review. 
+
+# A Related Work 
+
+Reasoning with dLLMs. Pass@ k is the standard metric for code generation (Chen et al., 2021) and has been adopted as a proxy for reasoning and exploration potential across do-mains. Yue et al. (2025) argue that Pass@ k provides an upper bound on RL-based reasoning improvement: when the base model assigns too little probability mass to correct solutions, RL may fail simply because positive-reward trajectories are rarely sampled. Motivated by this view, several recent works analyze why diffusion language models (dLLMs) often ex-hibit weak Pass@ k scaling under standard decoding. Ni et al. (2026) attribute the bottleneck to a flexibility trap , suggesting that arbitrary-order generation can undermine reasoning. Shen et al. (2026) emphasize a complementary mechanism: despite being order-agnostic in principle, common decoders effectively traverse only a single decoding trajectory, limiting exploration over trajectories; they further note that low-confidence remasking can collapse the accessible reasoning space. Chen et al. (2025) propose the Parallel–Sequential Contradiction (PSC) : parallel token updates can conflict with strictly causal multi-step reasoning, with harder problems inducing AR-like behavior that limits self-reflection depth and exploration breadth. Relatedly, Lee et al. (2025) critique prevalent heuristic unmasking rules—especially uncertainty-based ones—as myopic , arguing that they fail to convert additional test-time com-pute into systematic decoding improvements and can suffer cascading errors. Fu et al. (2025) further study the inefficiency of confidence-first strategies, observing that high-confidence tokens can be locally easy yet globally low-information, whereas resolving low-confidence tokens earlier can unlock more effective parallelism and exploration. 
+
+Advanced unmasking strategies. Beyond the fundamental heuristics of confidence, en-tropy, and margin (Table 1), recent literature has introduced more sophisticated unmasking mechanisms. Within the confidence-based paradigm, SlowFast Sampling (Wei et al., 2025) leverages certainty, convergence, and positional cues to isolate stable token spans for ag-gressive parallel decoding. WINO (Hong et al., 2025a) proposes a revokable decoding scheme that over-drafts tokens and subsequently re-masks dubious ones via bidirectional verification. Meanwhile, Uncode (Huang et al., 2025) recalibrates raw confidence scores using corpus-frequency weighting and positional decay to counteract biases toward bound-ary and trivial tokens. Among entropy-driven methods, DUS (Luxembourg et al., 2025) minimizes an upper bound on the per-step joint entropy gain by partitioning positions into dilated groups, whereas KLASS (Kim et al., 2025b) fuses confidence metrics with KL-divergence stability across denoising timesteps. Despite their algorithmic sophistication, these approaches remain fundamentally local—they determine token commitments solely through per-position signals and are thus strictly bounded by the entropy cap established in Proposition 2. Closely related to our approach is Lopa (Xu et al., 2025), which draws multiple parallel candidates and employs a lookahead mechanism to select the best candi-date. However, their selection criteria are inherently deterministic and fail to capture the principled global tempered distribution that our method achieves. For a broader taxonomy of advanced unmasking strategies, we refer readers to the comprehensive survey by Zhang et al. (2025). 
+
+Tempered sampling with MCMC. While Karan & Du (2025) explores globally tempered sampling for autoregressive (AR) LLMs by applying classic MCMC methods to their sequen-tial generation process, our approach diverges in two fundamental aspects. First, unlike AR models, diffusion LLMs (dLLMs) lack a tractable sequence likelihood, rendering standard MCMC techniques inapplicable. Second, our MCMC formulation specifically targets a 1D categorical distribution over the vocabulary space. Crucially, this requires a correction term that we estimate using a mean-field approximation—a mechanism uniquely enabled by the dLLM framework. 
+
+# B Experimental Details 
+
+Decoding configurations. For all baseline methods (Confidence, Entropy, Margin, Ran-dom), we disable parallel decoding and restrict the generation to exactly one token per step. This ensures a fair comparison by eliminating the need for hyperparameter tuning. Additionally, LLaDA employs a semi-autoregressive decoding strategy with a block length 15 Preprint. Under review. of 32. For our Independent Metropolis–Hastings (IMH) sampler, we set the chain length 
+
+T = 4 for LLaDA and T = 8 for WeDLM. The maximum generation lengths for LLaDA across different benchmarks are detailed in Table 4. Table 4: Maximum generation lengths for LLaDA across different benchmarks.       
+
+> Benchmark Maximum Generation Length
+> MATH500 128 AIME 2024 512 AIME 2025 512 HumanEval 256 MBPP 256
+
+Evaluation. Both WeDLM and LLaDA use EvalPlus (Liu et al., 2023) for evaluating code generation benchmarks (HumanEval and MBPP). For mathematical reasoning bench-marks (MATH500, AIME 2024, AIME 2025), we use a custom evaluation pipeline with answer extraction from \boxed{} expressions and symbolic equivalence checking following WeDLM (Liu et al., 2025). All code benchmarks report pass@ k metrics computed via the unbiased estimator of Chen et al. (2021), with n = 32 samples for LLaDA and n = 128 samples for WeDLM. 
+
+Implementation details. To accelerate the decoding process, we adopt prefix KV cache (Wu et al., 2025) for LLaDA. For WeDLM, we implement a copy-on-write (CoW) mechanism (Kwon et al., 2023) for the KV cache to efficiently support the IMH sampler with multiple candidates. The KV cache is organized into fixed-size physical blocks (256 tokens each), and each sequence maintains a block table mapping logical positions to physical blocks. When generating N candidate continuations, all candidates share the same physical blocks for the prompt prefix. Only the tail blocks (where candidates diverge) are allocated separately. When the prefix boundary falls mid-block, we perform a lightweight copy operation: the shared prefix tokens within that block are copied to each candidate’s private tail block, avoiding a full cache duplication. This CoW strategy reduces memory overhead from O(N · L) to O(L + N · T), where L is the prompt length and T is the window size (16 tokens by default), enabling efficient scaling to 8 candidates per sequence. 
+
+# C Details of Uncertainty Heuristics and δ-gating 
+
+In Table 1, we categorize three families of heuristics that anchor tokens at high-confidence positions, differentiated primarily by their distributional scoring metrics. Formally, let 
+
+pi(·) := p(· | st, i) be the per-position categorical distribution, and let v1, v2 denote the most and second-most probable tokens, respectively. We contrast two operational paradigms: Sample-then-Filter , which samples all masked tokens and subsequently filters for confidence, and Rank-then-Sample , which restricts sampling to the highest-scoring positions. The δ-gating framework maps each heuristic to a unified theoretical condition via the implied confidence bound max v pi(v) ≥ 1 − δ (Definition 1). We provide the formal derivations for these bounds below. 
+
+Confidence Heuristic. The confidence heuristic directly thresholds the maximum prob-ability: max v pi(v) ≥ 1 − δ. This trivially satisfies the δ-gating condition with parameter 
+
+δ.
+
+Entropy Heuristic. The entropy heuristic thresholds the Shannon entropy: H(pi) ≤ ε.To find the implied confidence bound, we seek the maximum δ such that H(pi) ≤ ε =⇒
+
+max v pi(v) ≥ 1 − δ. Let α = max v pi(v). For a fixed maximum probability α, the entropy is maximized when the remaining probability mass 1 − α is distributed uniformly across the 16 Preprint. Under review. remaining |V| − 1 tokens. Thus, the maximum entropy for a given α is: 
+
+h(α) = −α log α − (1 − α) log 
+
+ 1 − α
+
+|V| − 1
+
+
+
+Since h(α) is strictly decreasing for α ≥ 1 /|V|, the condition H(pi) ≤ ε implies α ≥ α∗,where α∗ is the unique solution to h(α∗) = ε in [1/ |V|, 1 ]. Setting δV (ε) = 1 − α∗ yields the equivalent δ-gating bound. 
+
+Margin Heuristic. The margin heuristic thresholds the difference between the top two probabilities: pi(v1) − pi(v2) ≥ γ. Let α = pi(v1) and β = pi(v2). We are given α − β ≥ γ.Since β is the second largest probability, the remaining probability mass 1 − α − β must be distributed among the other |V| − 2 tokens such that no token has probability greater than 
+
+β. The minimum possible value for α occurs when β is as large as possible. The maximum possible value for β under the constraint α − β ≥ γ is β = α − γ. Furthermore, the sum of all probabilities is 1: 
+
+α + β +
+
+> |V|
+
+# ∑
+
+> k=3
+
+pi(vk) = 1To minimize α, we maximize the other probabilities. The maximum possible value for each 
+
+pi(vk) is β. Thus, setting pi(vk) = β for all k ≥ 2, we get: 
+
+α + ( |V| − 1)β = 1Substituting β = α − γ:
+
+α + ( |V| − 1)( α − γ) = 1 =⇒ | V|α − (|V| − 1)γ = 1 =⇒ α = 1 + ( |V| − 1)γ
+
+|V|
+
+Therefore, the implied confidence bound is: max  
+
+> v
+
+pi(v) ≥ 1 + ( |V| − 1)γ
+
+|V| = 1 − (|V| − 1)( 1 − γ)
+
+|V|
+
+which yields δ = (|V|− 1)( 1−γ) 
+
+> |V|
+
+.
+
+# D Derivation of the IMH Acceptance Ratio 
+
+In this section, we provide the detailed derivation of the acceptance probability for the Independent Metropolis–Hastings (IMH) sampler introduced in Section 4.3. The general acceptance ratio for an Independent Metropolis–Hastings algorithm proposing a move from state x to state y is given by: 
+
+A(x → y) = min 
+
+
+
+1, πi(y | s) · ri(x | s)
+
+πi(x | s) · ri(y | s)
+
+
+
+(11) Recall from Equation (8) that our one-step sampling target distribution is: 
+
+πi(v | s) ∝ exp  αℓi,v(s) + b∆i,v(s) (12) where α is the inverse temperature, ℓi,v(s) is the local logit for token v at position i, and 
+
+b∆i,v(s) is the suffix correction term. The proposal distribution, defined in Equation (9), is the locally tempered categorical distribution without the suffix correction: 
+
+ri(v | s) = softmax  αℓi(s) 
+
+> v
+
+∝ exp  αℓi,v(s) (13) 17 Preprint. Under review. Substituting these unnormalized probabilities into the Metropolis–Hastings ratio yields: 
+
+πi(y | s)
+
+πi(x | s)
+
+ri(x | s)
+
+ri(y | s) = exp  αℓi,y(s) + b∆i,y(s)
+
+exp  αℓi,x (s) + b∆i,x (s) · exp  αℓi,x (s)
+
+exp  αℓi,y(s)
+
+= exp 
+
+
+
+αℓi,y(s) + b∆i,y(s) − αℓi,x (s) − b∆i,x (s)
+
+
+
+· exp 
+
+
+
+αℓi,x (s) − αℓi,y(s)
+
+
+
+= exp 
+
+b∆i,y(s) − b∆i,x (s)
+
+
+
+(14) As shown above, the local tempered logit terms αℓi,v(s) exactly cancel out in the numerator and denominator. This structural alignment results in a highly streamlined acceptance probability that depends strictly on the difference between the suffix corrections of the proposed and current states: 
+
+A(x → y) = min 
+
+n
+
+1, exp 
+
+b∆i,y(s) − b∆i,x (s)
+
+o 
+
+(15) which matches Equation (10). 
+
+# E Variance of the pass @k Estimator 
+
+In our experiments, we evaluate pass @k using the unbiased estimator introduced by Chen et al. (2021): ˆPk = 1 − (n−ck )(nk) (16) where n is the total number of generated samples per problem, and c is the number of those samples that pass the unit tests. Due to computational constraints, especially when sampling at relatively high temperatures, we set n = 32 for evaluating k ≤ 16 (LLaDA) and 
+
+n = 128 for k ≤ 32 (WeDLM). To ensure our results are robust to random noise from high-temperature sampling, we analyze the standard error (SE) of this estimator. The variance of ˆPk for a single problem depends on the true underlying pass probability p, where c ∼ Binomial (n, p). The worst-case variance occurs at the value of p that maximizes the uncertainty of the binomial outcome. By calculating the theoretical maximum variance of ˆPk over all possible p ∈ [0, 1 ], we can bound the maximum standard error over a dataset of M problems as SE max =q
+
+max p Var ( ˆPk)/M. The corresponding 95% margin of error is 1.96 × SE max .In Table 5, we report these absolute worst-case margins of error for each benchmark evalu-ated in our study, based on its specific number of problems M.Table 5: Worst-case 95% margin of error for Pass@ k estimation. The theoretical maximum 
+
+noise introduced by the finite-sample estimator for each benchmark and model setting.                            
+
+> Benchmark Size ( M)WeDLM (n=128, k=32) LLaDA (n=32, k=16) MBPP 974 ±1.4% ±2.0% MATH500 500 ±1.9% ±2.9% HumanEval 164 ±3.4% ±5.0% AIME 2024 / 2025 30 ±7.9% -
+
+Because the expected variance in practice is strictly lower than these worst-case bounds (as 
+
+p is rarely perfectly adversarial across all problems, and is often exactly 0 for hard problems like AIME), we conclude that setting n ≥ 2k to 4 k provides a sufficiently stable estimate of pass@ k, effectively isolating our performance measurements from sampling noise. 18 Preprint. Under review. 
+
+# F Detailed Analysis of Hard Problems 
+
+To concretely illustrate how global tempering expands the reasoning boundary of dLLMs (Section 5), we present a detailed case study on a challenging problem from the AIME 2024 benchmark. For this problem, our Independent Metropolis–Hastings (IMH) method successfully generated correct solutions, whereas all baseline methods (Confidence, Entropy, Margin, and Left-to-Right) failed completely across all 128 samples. 
+
+# AIME 2024 Problem II-11 
+
+Problem Context: Let ABC be a triangle inscribed in circle ω. Let the tangents to 
+
+ω at B and C intersect at point D, and let AD intersect ω at P. If AB = 5, BC = 9, and AC = 10, AP can be written as the form mn , where m and n are relatively prime integers. Find m + n.
+
+Answer: 113 Intended Solution: This problem is classically solved by recognizing that AD is the A-symmedian of △ABC . Because D is the pole of BC , ABPC is a harmonic quadrilateral, meaning AB · PC = AC · PB . Combined with Ptolemy’s Theorem (AP · BC = AB · PC + AC · PB ) and the Law of Cosines to find the lengths of the chords, one can systematically solve for AP . The exact length evaluates to AP = 96 17 ,yielding the final answer m + n = 96 + 17 = 113. 
+
+Selected Excerpts from Baseline (Confidence): “Using the Power of a Point theo-rem for point D with respect to the circumcircle, we have DA · DP = DB 2 = DC 2.Since D is the intersection of the tangents at B and C, DB = DC = √AB · AC =√5 · 10 = √50 = 5√2.” ✗
+
+Selected Excerpts from IMH (Ours): “Coordinate Geometry Setup : Place B at 
+
+(0, 0 ), C at (9, 0 ), and use distance formulas to find coordinates of A. Solving the system gives A at 
+
+ 19 5 , 12 √65
+
+
+
+.” “Circle Equation : Using general circle equation and substituting points A, B, and C,we find the circle’s center 
+
+ 29 5 , 3√610 
+
+
+
+and radius 17 √610 .” “Equation of Line AD : Parametrize line AD and find intersection P with the circle. Solving the quadratic equation [...] we find the valid parameter t = 12 17 . Length Calculation : Using the parameter t = 12 17 , the length AP = 12 17 × AD . Calculating 
+
+AD via distance formula, we find AP = 96 17 . Thus, m + n = 113.” ✓
+
+Error Analysis & Takeaway: 
+
+Baseline methods attempt to use pure Euclidean geometry but quickly halluci-nate non-existent theorems to bridge gaps in their reasoning. For example, the model confidently asserts that the tangent length DB = √AB · AC , which is mathe-matically unfounded, leading to a completely incorrect trajectory. Instead, global tempering allows the model to abandon brittle, hallucination-prone synthetic geom-etry paths and explore robust alternative strategies. In this case, IMH successfully executes a complete and computationally heavy coordinate geometry (analytic) proof without any logical gaps. 19 Preprint. Under review. 
+
+# AIME 2024 Problem II-2 
+
+Problem Context: Let B be the set of rectangular boxes with surface area 54 and volume 23. Let r be the radius of the smallest sphere that can contain each of the rectangular boxes that are elements of B. The value of r2 can be written as pq , where 
+
+p and q are relatively prime positive integers. Find p + q.
+
+Answer: 721 Intended Solution: Let the dimensions of the box be a, b, c. We are given ab + bc +
+
+ca = 27 and abc = 23. The radius r of the smallest containing sphere is half the space diagonal, so r2 = a2+b2+c2 
+
+> 4
+
+. We want to minimize a2 + b2 + c2 = ( a + b + c)2 − 54. Let S = a + b + c; we must minimize S. The numbers a, b, c are roots of P(x) = 
+
+x3 − Sx 2 + 27 x − 23. For P(x) to have three real roots, its local maximum must be 
+
+≥ 0 and local minimum ≤ 0. The derivative is P′(x) = 3x2 − 2Sx + 27. The roots of 
+
+P′(x) are x = S±√S2−81 3 . Thus we need S ≥ 9. If S = 9, the roots of P′(x) are x = 3, so P(x) has an inflection point at x = 3, but P(3) = 27 − 81 + 81 − 23 = 4̸ = 0, so S = 9 does not yield three real roots. The minimum S occurs when the local minimum of P(x) is exactly 0, which means P(x) has a double root. Let the roots be r, r, s. Then 2 r + s = S, r2 + 2rs = 27, and r2s = 23. Substituting s = 23  
+
+> r2
+
+into the second equation gives r3 − 27 r + 46 = 0. By the Rational Root Theorem, r = 2is a root. Then s = 23 4 . Thus S = 2(2) + 23 4 = 39 4 . Then a2 + b2 + c2 = S2 − 54 = 
+
+> 1521 16
+
+− 54 = 657 16 . Therefore r2 = 657 64 , and p + q = 657 + 64 = 721. 
+
+Selected Excerpts from Baseline (Confidence): “Using the identity (a + b + c)2 =
+
+a2 + b2 + c2 + 2(ab + bc + ca ): Let S = a + b + c. Then a2 + b2 + c2 = S2 − 54. We need to find S such that a, b, c are real numbers with abc = 23 and ab + bc + ca = 27. The cubic equation with roots a, b, c is x3 − Sx 2 + 27 x − 23 = 0.” “Since S must be an integer (as a, b, c are integers), we test possible values of S:Testing S = 9: The cubic equation is x3 − 9x2 + 27 x − 23 = 0. [...] The quadratic 
+
+x2 − 8x + 23 has a discriminant of 64 − 92 = −28, so no real roots. Thus, S = 9 is the only valid integer solution.” ✗
+
+Selected Excerpts from IMH (Ours): “We use the method of Lagrange multipliers. Define the Lagrangian: L(l, w, h, λ, μ) = l2 + w2 + h2 − λ(lw + lh + wh − 27 ) −
+
+μ(lwh − 23 ) [...] Solving these equations, we find that l = w = h is not a solution because it would imply a cube with surface area 6 l2 = 54, giving l = 3, but the volume l3 = 27 ̸ = 23. Therefore, we need another approach.” “Instead, we use the fact that the minimum occurs when the box is as close to a cube as possible. Let’s assume l = w and solve: 2 (l2 + 2lh ) = 54 =⇒ l2 + 2lh = 27 [...] 
+
+l3 − 27 l + 46 = 0. Using numerical methods or trial and error, we find that l = 2 is a root [...] Thus, l = 2, w = 2, and h = 23 4 . [...] r2 = 657 64 . p + q = 721.” ✓
+
+Error Analysis & Takeaway: 
+
+When faced with the complex algebraic step of finding the minimum of S subject to the cubic equation constraints, the baseline model resorts to unwarranted as-sumptions (e.g., assuming S and the dimensions must be integers) and confidently commits to a hallucinated shortcut ( S = 9), failing to explore the true continuous op-timization landscape. Instead, global tempering prevents premature commitment to locally plausible but globally incorrect reasoning paths (like integer assump-tions). By maintaining trajectory diversity, IMH successfully navigates the complex algebraic optimization, correctly identifying that the minimum occurs when two dimensions are equal and solving the resulting cubic equation. 20 Preprint. Under review. 
+
+# AIME 2024 Problem II-13 
+
+Problem Context: Let ABCD be a tetrahedron such that AB = CD = √41 , AC =
+
+BD = √80 , and BC = AD = √89 . There exists a point I inside the tetrahedron such that the distances from I to each of the faces of the tetrahedron are all equal. This distance can be written in the form m√np , where m, n, and p are positive integers, m and p are relatively prime, and n is not divisible by the square of any prime. Find m + n + p.
+
+Answer: 104 Intended Solution: This is a disphenoid (isosceles tetrahedron). It can be embedded in a rectangular box of dimensions x, y, z such that the edges are the face diagonals: 
+
+x2 + y2 = 41, y2 + z2 = 80, x2 + z2 = 89. Solving yields x = 5, y = 4, z = 8. The volume is V = 13 xyz = 160 3 . The area of one face is found via Heron’s formula to be 
+
+A = 6√21 , so the total surface area is S = 24 √21 . The inradius is r = 3VS = 20 √21 63 .Thus m = 20, n = 21, p = 63, giving m + n + p = 104. 
+
+Selected Excerpts from Baseline (Confidence): “First, we calculate the volume 
+
+V of the tetrahedron using the Cayley-Menger determinant: [...] = −28800. The volume is V = 
+
+> √28800 288
+
+= 120 288 = 512 . Next, we calculate the surface area [...] Thus, the total surface area is S = 30. The inradius r is given by r = 3VS = 3×5/12 30 = 124 .” ✗
+
+Selected Excerpts from IMH (Ours): “First, calculate the volume of the tetrahedron using coordinates. Place points as follows: A = ( 0, 0, 0 ), B = ( 9, 0, 0 ), C = ( 4, 4, 3 ),
+
+D = ( 4, 7, 0 ). Compute the volume using the scalar triple product [...] Volume is:  
+
+> 63 2
+
+.” “The surface area is calculated as: [...] Total surface area: 60. The inradius r is: 
+
+r = 3×Volume Surface Area = 3×63/2 60 = 63 40 . Thus, m = 63, n = 1, p = 40, giving m + n + p =
+
+63 + 1 + 40 = 104.” ✓
+
+Error Analysis & Takeaway: 
+
+The baseline attempts a brute-force calculation (Cayley-Menger determinant) but suffers from cascading arithmetic errors, leading to a completely wrong answer. Interestingly, while IMH produces the correct final answer (104), a close inspection of its reasoning reveals that its intermediate steps are mathematically fabricated (e.g., the coordinates do not match the edge lengths, and 63 / 2 is not the true volume). IMH essentially "works backwards" from the memorized correct answer 104, hallucinating m = 63, n = 1, p = 40 to satisfy the required format. This case highlights a nuanced advantage of global tempering: robustness to arithmetic bottlenecks via latent knowledge retrieval . While greedy local heuristics force the model down a brittle computational path that inevitably fails, IMH’s trajectory diversity allows the model to bypass the computational bottleneck entirely and successfully retrieve the correct answer from its latent pre-training memory, even if it requires post-hoc rationalization of the intermediate steps. 
+
+# G Trajectory Similarity Analysis 
+
+To quantify the behavioral differences between IMH and the local remasking baselines reported in Section 5, we design an LLM-based trajectory similarity evaluation pipeline. For each of the 30 AIME 2024 problems, we randomly select one generated trajectory per method (Confidence, Margin, Entropy, IMH). The evaluation proceeds in two stages: 
+
+Stage 1: Trajectory summarization. Each trajectory is summarized using Claude Opus 4.6 with the following prompt: 21 Preprint. Under review. 
+
+Summarization Prompt 
+
+> Could you summarize this reasoning trajectory into the applied strategy and the intermediate results at each step?
+
+Stage 2: Pairwise similarity scoring. For each pair of methods on each problem, we prompt Claude Opus 4.6 to compare the two trajectory summaries and rate their similarity on a 6-point scale based on the high-level strategy applied: 
+
+Similarity Scoring Prompt  
+
+> Compare these two solution trajectories and determine if they follow similar main approaches. Also point out the key differences in the solution trajectory. You should also measure the rate of similarity between the two trajectories only based on the high-level strategy applied .Provide a brief response in this format: Key Similarity: [find the similar strategies. If no, simply say no.] Other Differences: [explain the main differences in the strategy applied and the discrepancy in the intermediate steps] Rate of similarity in strategy: [almost identical / mostly similar / somewhat similar / some-what different / mostly different / totally different]
+
+The six-point labels are mapped to numeric scores: almost identical → 5, mostly similar → 4, 
+
+somewhat similar → 3, somewhat different → 2, mostly different → 1, totally different → 0. Self-similarity (diagonal) is set to 5. Final scores are averaged across all 30 problems and normalized to a 0–100 scale (multiplied by 20). The resulting similarity matrix is reported in Figure 3 (right). 
+
+# H Proofs 
+
+H.1 Proof of Proposition 1 Proposition 1 (Generative perplexity upper bound under confidence gating) . Assume the decoder is (1 − δ)-gated, the committed token at each step is sampled from the decoder’s commit distribution, and the scoring model is the decoder itself, i.e., pref = pθ . Then for any decoding trajectory σ,
+
+GenPPL (qgen ; pθ ; σ) ≤ exp  hV (δ),
+
+where h V (δ) = hb(δ) + δ log (|V| − 1) and h b(δ) = −δ log δ − (1 − δ) log (1 − δ).Proof. Under the self-scoring assumption pref = pθ , the exponent of equation 5 can be written as 
+
+EX∼qgen 
+
+"
+
+1
+
+L
+
+> L
+
+# ∑
+
+> t=1
+
+− log pθ (xσt | xσ<t )
+
+#
+
+.By assumption, at each step t, the committed token xσt is sampled from the decoder’s commit distribution pθ (· | st), where st is the current decoder state determined by the partially revealed sequence xσ<t . Therefore, 
+
+E[− log pθ (xσt | xσ<t ) | st] = H pθ (· | st).Since the decoder is (1 − δ)-gated, we have max  
+
+> v∈V
+
+pθ (v | st) ≥ 1 − δ
+
+almost surely at every step. By the same maximal-entropy argument used in the proof of Proposition 2, this implies 
+
+H pθ (· | st) ≤ hV (δ),where hV (δ) = hb(δ) + δ log (|V | − 1). Taking expectation over st, averaging over t =
+
+1, . . . , L, and exponentiating gives GenPPL (qgen ; pθ ; σ) ≤ exp  hV (δ).22 Preprint. Under review. 
+
+H.2 Proof of Proposition 2 Proposition 2 (Entropy cap under confidence gating) . Assume the dLLM decoder is (1 − δ)-gated. Then the sequence entropy satisfies H(X) ≤ L · hV (δ),
+
+where hV (δ) = hb(δ) + δ log (|V| − 1) and hb(δ) = −δ log δ − (1 − δ) log (1 − δ) is the binary entropy function. Equivalently, the effective branching factor, defined as the per-token perplexity of the induced sequence distribution, Beff := exp (H(X)/L),
+
+is upper bounded as Beff ≤ exp  hV (δ).
+
+Proof. We first formalize the decoding process. Let V be a vocabulary of size V, and let 
+
+X ∈ V L be the output of an irreversible decoder that runs for T steps. At step t, the decoder commits a block of bt ≥ 1 tokens, with ∑Tt=1 bt = L. Let St denote the decoder state at the start of step t. Conditioned on St, the bt committed tokens at step t are independent: 
+
+Ut,1 , . . . , Ut,bt | St are independent, and Ut,k ∼ pt,k(· | St),with the confidence-gating condition max v∈V pt,k(v | St) ≥ 1 − δ holding almost surely for all t, k, where δ ∈  0, 1 − 1
+
+> V
+
+.Let Ut := ( Ut,1 , . . . , Ut,bt ) ∈ V bt be the block committed at step t, and let U1: T denote the concatenation of all committed blocks (a length-L list of tokens). Because the decoder is irreversible, the final output X is a deterministic function of the committed tokens U1: T. Hence 
+
+H(X) ≤ H(U1: T ).By the chain rule, 
+
+H(U1: T ) = 
+
+> T
+
+# ∑
+
+> t=1
+
+H(Ut | U1: t−1).Since the step state St is a deterministic function of the past commits U1: t−1, conditioning on the full past cannot increase conditional entropy: 
+
+H(Ut | U1: t−1) ≤ H(Ut | St).By within-step conditional independence, 
+
+H(Ut | St) = 
+
+> bt
+
+# ∑
+
+> k=1
+
+H(Ut,k | St) = 
+
+> bt
+
+# ∑
+
+> k=1
+
+H pt,k(· | St).It remains to upper-bound H(q) for any categorical q on V outcomes satisfying max v q(v) ≥
+
+1 − δ. Let α := max v q(v) and m := 1 − α ≤ δ. By concavity of entropy, for fixed m the entropy is maximized by placing mass α on one outcome and spreading the remaining mass 
+
+m uniformly over the other V − 1 outcomes, giving 
+
+H(q) ≤ hb(m) + m log (V − 1).Moreover, the function f (m) := hb(m) + m log (V − 1) is nondecreasing on m ∈ 0, 1 − 1
+
+> V
+
+
+
+because 
+
+f ′(m) = log 
+
+ (1 − m)( V − 1)
+
+m
+
+
+
+≥ 0. Thus H(q) ≤ f (m) ≤ f (δ) = hV (δ).Applying this bound to each pt,k(· | St) yields 
+
+H(Ut | St) ≤
+
+> bt
+
+# ∑
+
+> k=1
+
+hV (δ) = bt hV (δ).23 Preprint. Under review. Therefore, 
+
+H(U1: T ) ≤
+
+> T
+
+# ∑
+
+> t=1
+
+H(Ut | U1: t−1) ≤
+
+> T
+
+# ∑
+
+> t=1
+
+H(Ut | St) ≤
+
+> T
+
+# ∑
+
+> t=1
+
+bt hV (δ) = L h V (δ).Finally H(X) ≤ H(U1: T ) gives H(X) ≤ Lh V (δ). Exponentiating 1 
+
+> L
+
+H(X) yields the bound on Beff .
+
+H.3 Proof of Proposition 3 Proposition 3 (Optimality of the power distribution) . For any α ≥ 0, the unique optimizer of equation 6 is the power distribution p⋆
+
+> α
+
+(x) = q(x)α
+
+Zα
+
+, Zα = ∑
+
+> x∈X
+
+q(x)α.
+
+Proof. Write J(p) = α Ex∼p[log q(x)] + H(p). We show uniqueness and derive the optimizer via two complementary arguments. 
+
+Variational derivation. We maximize J(p) over the probability simplex ∆(X ). Introducing a Lagrange multiplier λ for the normalization constraint ∑x p(x) = 1, the stationarity condition is ∂∂p(x)
+
+h
+
+α log q(x) p(x) − p(x) log p(x) + λ p(x)
+
+i
+
+= 0, which gives 
+
+α log q(x) − log p(x) − 1 + λ = 0 =⇒ p(x) = eλ−1 q(x)α.Normalizing yields p⋆
+
+> α
+
+(x) = q(x)α/Zα with Zα = ∑x q(x)α.
+
+Uniqueness via KL divergence. Rewriting the objective: 
+
+J(p) = ∑
+
+> x
+
+p(x)α log q(x) − log p(x) = − ∑
+
+> x
+
+p(x) log p(x)
+
+q(x)α = −KL (p ∥ qα/Zα) + log Zα.Since log Zα is a constant independent of p and KL (p∥p⋆
+
+> α
+
+) ≥ 0 with equality if and only if 
+
+p = p⋆
+
+> α
+
+, the maximum of J is attained uniquely at p = p⋆
+
+> α
+
+.
+
+H.4 Proof of Proposition 4 Proposition 4 (Corrected conditional for global tempering) . Let q be a distribution over X =
+
+V L with full support, and fix α > 0. Let s = ( A, xA) denote a partially decoded state with committed positions A ⊆ [L] and remaining positions R(s) := [ L] \ A . For any uncommitted position i ∈ R(s)
+
+and token v ∈ V , let ℓi(s) be the logit vector such that q(xi = v | s) = softmax (ℓi(s)) v. Letting s′ = s ⊕ (i, v) denote the updated state after committing token v at position i, define 
+
+∆i,v(s) := log ∑   
+
+> xR(s′)∈V|R(s′)|
+
+q(xR(s′ ) | s′)α.
+
+Then the conditional of p ⋆
+
+> α
+
+(x) ∝ q(x)α at position i is p⋆
+
+> α
+
+(xi = v | s) = exp  αℓi,v(s) + ∆i,v(s)
+
+∑u∈V exp  αℓi,u(s) + ∆i,u(s) . (7) We prove a more general result from which the lemma follows. For any state s = ( A, xA)
+
+and uncommitted position i ∈ R(s), let R := R(s) \ { i} and define 
+
+mi(v | s) := q(xi = v | s), wi(v | s) := ∑  
+
+> xR∈V R
+
+q(xR | s, xi = v)α.24 Preprint. Under review. Then 
+
+p⋆
+
+> α
+
+(xi = v | s) = mi(v | s)α wi(v | s)
+
+∑u∈V mi(u | s)α wi(u | s) .The logit form in Proposition 4 follows by noting mi(v | s)α ∝ exp (α ℓi,v(s)) and δi,v(s) = 
+
+log wi(v | s).
+
+Proof. By definition of conditional probability under p⋆
+
+> α
+
+,
+
+p⋆
+
+> α
+
+(xi = v | s) = ∑xR ∈VR p⋆
+
+> α
+
+(xi = v, xR | s)
+
+∑u∈V ∑xR ∈VR p⋆
+
+> α
+
+(xi = u, xR | s) .Using p⋆
+
+> α
+
+(· | s) ∝ q(· | s)α and canceling the common normalizer, 
+
+p⋆
+
+> α
+
+(xi = v | s) = ∑xR q(xi = v, xR | s)α
+
+∑u ∑xR q(xi = u, xR | s)α .Apply the chain rule under q(· | s):
+
+q(xi = v, xR | s) = q(xi = v | s) q(xR | s, xi = v) = mi(v | s) q(xR | s, xi = v).Raising to the power α and summing over xR gives 
+
+# ∑
+
+> xR
+
+q(xi = v, xR | s)α = mi(v | s)α ∑
+
+> xR
+
+q(xR | s, xi = v)α = mi(v | s)α w(v | s),which yields the first displayed formula after normalization over v ∈ V.For the logit form, note that mi(v | s) = exp (ℓv(s)) / ∑u∈V exp (ℓu(s)) , hence mi(v | s)α ∝
+
+exp (αℓv(s)) , where the proportionality constant does not depend on v. Therefore mi(v |
+
+s)αw(v | s) ∝ exp (αℓv(s) + δv(s)) , and normalizing over v gives the corrected-logit softmax expression. 25

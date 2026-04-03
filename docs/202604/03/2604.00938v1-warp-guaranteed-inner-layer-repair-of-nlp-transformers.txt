@@ -1,0 +1,472 @@
+Title: WARP: Guaranteed Inner-Layer Repair of NLP Transformers
+
+URL Source: https://arxiv.org/pdf/2604.00938v1
+
+Published Time: Thu, 02 Apr 2026 01:21:10 GMT
+
+Number of Pages: 16
+
+Markdown Content:
+Preprint. Under review. 
+
+# WARP: Guaranteed Inner-Layer Repair of NLP Transformers 
+
+Hsin-Ling Hsu Min-Yu Chen ∗ Nai-Chia Chen *
+
+Yan-Ru Chen * Yi-Ling Chang * Fang Yu 
+
+Department of Management Information Systems, National Chengchi University 
+
+{112306092,112306075,112306070,112306020,112306010,yuf }@nccu.edu.tw 
+
+## Abstract 
+
+Transformer-based NLP models remain vulnerable to adversarial perturba-tions, yet existing repair methods face a fundamental trade-off: gradient-based approaches offer flexibility but lack verifiability and often overfit; methods that do provide repair guarantees are restricted to the final layer or small networks, significantly limiting the parameter search space available for repair. We present WARP (Weight-Adjusted Repair with Provability), a constraint-based repair framework that extends repair beyond the last layer of Transformer models. WARP formulates repair as a convex quadratic program derived from a first-order linearization of the logit gap, enabling tractable optimization over a high-dimensional parameter space. Under the condition that the first-order approximation holds, this formulation induces three per-sample guarantees: (i) a positive margin constraint ensuring cor-rect classification on repaired inputs, (ii) preservation constraints over a designated remain set, and (iii) a certified robustness radius derived from Lipschitz continuity. To ensure feasibility across varying model architec-tures, we introduce a sensitivity-based preprocessing step that conditions the optimization landscape accordingly. We further show that the iterative optimization procedure converges to solutions satisfying all repair con-straints under mild assumptions. Empirical evaluation on encoder-only Transformers with varying layer architectures validates that these guaran-tees hold in practice while improving robustness to adversarial inputs. Our results demonstrate that guaranteed, generalizable Transformer repair is achievable through principled constraint-based optimization. 
+
+## 1 Introduction 
+
+Transformer-based models (Vaswani et al., 2017) have become the dominant architecture for natural language processing, achieving state-of-the-art performance across a broad range of classification tasks (Devlin et al., 2019; Sanh et al., 2019). Despite their success, deployed models remain vulnerable to adversarial perturbations: small, semantically preserving modifications to the input that nonetheless flip model predictions (Jin et al., 2020; Li et al., 2019; 2020). When such failures arise in deployment, practitioners are often forced to either retrain the model from scratch or tolerate the errors. A more principled alternative is post-hoc repair , which directly updates model parameters to correct specific failures while preserving behavior on all other inputs. Ideally, such an approach would offer verifiable guarantees on the repaired samples, without requiring retraining or access to the original training pipeline. The most natural approach is fine-tuning or parameter-efficient variants such as LoRA (Hu et al., 2022). These methods are flexible and scale to large models, but they optimize a global objective and therefore do not explicitly control local behavior: a gradient step aimed at fixing one failure may alter predictions on previously correct inputs, without any formal guarantees. This issue becomes more pronounced when the repair set is small, where overfitting can lead to poor generalization to unseen adversarial inputs. Our experiments confirm this pattern: full-layer fine-tuning achieves the worst attack generalization of all compared methods despite reaching 100% repair accuracy on the training set. 
+
+> ∗These authors contributed equally.
+
+1
+
+> arXiv:2604.00938v1 [cs.LG] 1 Apr 2026
+
+Preprint. Under review. A complementary line of work seeks repair methods with formal guarantees (Schumi & Sun, 2023; Tao et al., 2023; Sotoudeh & Thakur, 2021). However, these methods face a structural limitation when applied to large-scale NLP Transformers. Provable repair approaches designed for Transformer architectures have focused on the final classification layer, whose weight matrix has shape C × d where C is the number of output classes, typically 2 to 5 for standard NLP benchmarks. Meanwhile, methods that operate on intermediate layers have been demonstrated only on small feed-forward networks, and do not scale to modern Transformer architectures. In both cases, the solution space is severely restricted: the limited degrees of freedom cannot accommodate a growing number of repair constraints, and even for smaller repair sets, the narrow solution space makes it difficult to correct misclassified samples without disrupting existing predictions. Existing provable methods attempt to address this by combining fine-tuning with a constraint solver (Nawas et al., 2024), but this strategy does not transfer to NLP Transformers, as the generalization built by fine-tuning is systematically destroyed by the subsequent QP step. 
+
+Research Question. Can we build a repair framework that simultaneously achieves provable correctness guarantees on every repair sample, and scales to the solution space required by full-scale NLP Transformers? 
+
+We present WARP (Weight-Adjusted Repair with Provability), which resolves this tension through a key structural insight: by formulating repair as a convex quadratic program (QP) with explicit margin constraints, correctness guarantees follow directly from the optimization structure. The QP ensures three verifiable guarantees for each repaired sample: (i) every repair sample achieves a positive logit gap, as the algorithm terminates only when all margin constraints are satisfied; (ii) remain-set margin constraints are enforced at every iteration; and (iii) the resulting gap, combined with a Lipschitz bound on the network, yields a certified per-sample robustness radius within which the predicted label is guaranteed to remain unchanged under any perturbation. To scale this framework beyond the final classification layer, WARP operates on the dense layer immediately preceding the final classification layer, with shape dout × din , expanding the repair space from the class-limited C × d final layer to a parameter space that grows with model dimension. Generalization to unseen adversarial inputs improves with repair set size, while the remain set constraints preserve accuracy on clean inputs, both without relying on fine-tuning as a generalization mechanism, as confirmed empirically. To improve feasibility across models with diverse training conditions, we introduce the Gap Sensitivity Norm (GSN), a diagnostic that measures how effectively weight updates in the repair layer can influence the logit gap. When GSN is too low, the QP constraints become difficult to satisfy regardless of the chosen update direction; GSN-FT addresses this by briefly fine-tuning only the repair layer to raise GSN to a feasible regime before repair begins. The contributions of this paper are as follows: 1. WARP , a provable repair framework that extends repair beyond the last layer of NLP Transformers, providing three verifiable per-sample guarantees: a positive logit gap on every repaired sample (Theorem 3.1), margin preservation on a desig-nated remain set (Theorem 3.2), and a certified robustness radius under which the predicted label cannot be flipped (Theorem 3.3). 2. Gap Sensitivity Norm (GSN) and GSN-FT , where GSN is an architecture-agnostic diagnostic that measures the influence of weight updates on the logit gap, and GSN-FT is a lightweight preprocessing step that raises GSN to a feasible regime when it is too low, improving QP feasibility across models with diverse training conditions. 3. Empirical evaluation on two encoder-only Transformers, showing that WARP achieves 100% repair and remain accuracy, while outperforming gradient-based baselines on attack generalization by up to 18.8 percentage points, together with an analysis of the trade-offs between repair, generalization, and overfitting. 2Preprint. Under review. Table 1: Principal notation used in §3.                                            
+
+> Symbol Shape Description Symbol Shape Description
+> v(x)Rdin Input embedding to repair layer U(t)Rdout ×rTop-rleft singular vectors of W(t)
+> WRdout ×din Repair-layer weight (only modified param.) BRr×din Coefficient matrix for low-rank update
+> bRdout Repair-layer bias (fixed) βRrd in Vectorisation of B; QP decision variable
+> WcRC×dout Classification head (fixed) κ(v)scalar Gap Sensitivity Norm (GSN)
+> bcRCClassification bias (fixed) γs,γhscalar Repair / remain gap margins
+> eWRdout ×din Final converged repair-layer weight ρ,λscalar Regularisation / slack-penalty coeff.
+
+## 2 Related Work 
+
+Adversarial Vulnerability and Gradient-based Repair. Transformer-based NLP models are vulnerable to adversarial perturbations, small semantically preserving input modifica-tions that can flip predictions (Alzantot et al., 2018; Jin et al., 2020; Garg & Ramakrishnan, 2020). This vulnerability persists even in strong pretrained models on benchmarks such as AdvGLUE (Wang et al., 2021; Moradi & Samwald, 2021; Kim et al., 2024). Gradient-based methods such as fine-tuning can mitigate such failures, but they optimize global objectives and do not provide explicit guarantees on preserving previously correct behaviors. 
+
+Model Editing and Provable Repair. Feed-forward network (FFN) layers have been shown to act as key-value memories (Geva et al., 2021), motivating localized editing methods such as KnowledgeEditor, MEND, ROME, and MEMIT (De Cao et al., 2021; Mitchell et al., 2022; Meng et al., 2022; 2023). These approaches enable targeted parameter updates, but are heuristic in nature and do not provide formal correctness guarantees. A complementary line of work formulates repair as constrained optimization with formal guarantees (Usman et al., 2021; Sotoudeh & Thakur, 2021; Fu & Li, 2022; Tao et al., 2023; Sun et al., 2025). Recent methods such as PRoViT (Nawas et al., 2024) demonstrate strong em-pirical performance, but existing approaches are typically applied to the final classification layer, whose solution space is limited by the number of output classes. Extending provable repair beyond the final layer of Transformer models remains an open challenge. 
+
+## 3 Methodology 
+
+3.1 Overview 
+
+We propose WARP , a provable repair framework that updates a dense layer preceding the final classification layer of a Transformer model. At a high level, WARP seeks a minimal weight modification, optionally restricted to a low-rank subspace such that: (1) the predictions of repair samples are corrected by making their classification margins positive, (2) the predictions of remain samples are preserved, and (3) each repaired sample is accompanied by a verifiable guarantee. To achieve this, we approximate the effect of weight updates using a first-order linearization and formulate the repair problem as a quadratic program (QP) that ensures both correction and preservation constraints. The update is solved iteratively, and guarantees are derived from the resulting margins. 
+
+3.2 Problem Setup and Repair Layer Selection Notation summary. Table 1 collects the principal symbols introduced in this section for convenient reference. Let a Transformer classifier fθ be decomposed into three consecutive computational mod-ules: 
+
+fθ (x) = fcls ◦ σ ◦ fW
+
+ v(x). (1) Here, v(x) ∈ Rdin denotes the input embedding of the selected repair layer, determined by the preceding Transformer blocks and kept fixed during repair. The repair target layer is 3Preprint. Under review. parameterized by W ∈ Rdout ×din (the only parameter modified by the repair procedure) and 
+
+b ∈ Rdout (kept fixed). The activation function σ(·) is an element-wise nonlinearity applied after the repair layer. The final classification layer is parameterized by Wc ∈ RC×dout and 
+
+bc ∈ RC, where C is the number of classes, and these parameters remain fixed during repair. The repair layer output is h = σ(Wv + b) ∈ Rdout , the final logit vector is s = Wch + bc ∈ RC,and the predicted label is ˆ y = arg max c sc.The final classification layer has shape C × dout , so its solution space is capped by the class count C (e.g. 2 for binary tasks) and becomes overconstrained as the repair set grows. We therefore target the dense layer immediately preceding the classification layer, whose 
+
+dout × din free variables scale with model dimension rather than class count. 
+
+3.3 First-Order Approximation and Gap Sensitivity Norm 
+
+Let z = W(0)v + b denote the pre-activation vector evaluated at the post-GSN-FT weights 
+
+W(0) (defined in §3.4). For a sufficiently small perturbation ∆W, the activation output satisfies 
+
+σ (W(0) + ∆W)v + b ≈ σ(z) + J(0)(v) ∆W v , (2) where J(0)(v) = diag (σ′(W(0)v + b)) ∈ Rdout ×dout is the diagonal Jacobian (a diagonal matrix whose entries are the element-wise activation derivatives) evaluated at W(0). Under this approximation the logit-gap change induced by ∆W is locally linear, decomposing into contributions from Wc, J(0)(v), and the repair subspace directions. To quantify this sensitivity, let U(0) ∈ Rdout ×r be the top-r left singular vectors of W(0)
+
+(the principal directions of the current weight matrix, which define the admissible update subspace), and let ˆc = arg max k̸ =y sk(v; W(0)) denote the strongest competing class. Define the directional coefficient for basis vector j and competing class k̸ = y as 
+
+q(j)[k] = ( wy − wk)⊤ J(0)(v) U(0) 
+
+> :, j
+
+, (3) where wc denotes the c-th row of Wc. The Gap Sensitivity Norm (GSN) is 
+
+κ(v) = q(1), . . . , q(r)
+
+> F
+
+. (4) 
+
+Intuition. κ(v) measures how strongly admissible weight updates can push the model to change its prediction (i.e., increase the logit gap). When κ(v) ≈ 0, such updates have almost no effect on the decision, making the QP constraints difficult to satisfy and motivating the preprocessing step. 
+
+3.4 Architecture-Dependent Preprocessing (GSN-FT) 
+
+When κ is small, the linearized QP constraints are difficult to satisfy. GSN-FT addresses this by fine-tuning only the repair layer and classification head ( ΘFT = {W, b, Wc, bc}) on the standard task loss while keeping all preceding blocks fixed, then selecting the checkpoint that maximizes κ:
+
+W(0) = arg max  
+
+> t∈[TFT ]
+
+κt. (5) If κ is already sufficiently large at initialization, step-0 is selected and the weights are unchanged. Otherwise, fine-tuning drives κ to a feasible regime within TFT steps. GSN-FT fine-tunes on a held-out auxiliary set Daux of Naux samples disjoint from the repair, remain, and evaluation sets. Consequently, any incidental change to repair or remain predictions during this phase is neither intended nor attributed to the repair procedure; correctness on those sets is determined entirely by the subsequent QP (§3.5.2). 4Preprint. Under review. 
+
+3.5 Quadratic Programming Repair 
+
+We now describe the core repair procedure. We first introduce the low-rank parameterization that restricts the weight update to a compact subspace (§3.5.1), then formulate the repair step as a convex quadratic program (§3.5.2), and finally present the iterative algorithm and its convergence criterion (§3.5.3). The iterative repair loop is initialized from W(0), the output of GSN-FT (§3.4). 
+
+3.5.1 Weight Perturbation Parameterization 
+
+We parameterize ∆W within the rank-r subspace of W(t). Let U(t) = [ u1, . . . , ur ] ∈ Rdout ×r
+
+be the top-r left singular vectors of W(t); the update takes the form 
+
+∆W = U(t) B, (6) where B ∈ Rr×din is the coefficient matrix and β = vec (B) ∈ Rrd in is its vectorization (the decision vector of the QP). Setting r = dout recovers a full-rank update; smaller r reduces solver complexity at some cost in expressiveness. 
+
+3.5.2 QP Formulation 
+
+Gap and linearization. For a classifier with C classes and target label y ∈ [C], the decision gap is defined as the margin between the target class score and the highest competing class score: gap (v, y; W) = sy(v; W) − max   
+
+> c̸=y
+
+sc(v; W), (7) where sc(v; W) denotes the logit of class c produced from representation v under weight W.A positive gap indicates that the model correctly favors class y over all other classes, and a larger gap corresponds to a more confident prediction. Since the gap is nonlinear in W due to the activation function σ, we linearize it around the current iterate W(t). Let ˆci = arg max c̸ =yi sc(vi; W(t)) denote the strongest competing class at the current iterate, consistent with the competing class introduced in §3.3. Using the first-order expansion with Jacobian J(t)(v) = diag (σ′(W(t)v + b)) , the gap increment due to 
+
+∆W = U(t) B can be written as gap (vi, yi; W(t) + ∆W) ≈ gap (vi, yi; W(t)) + ⟨ai, β⟩, (8) where the linearized gap coefficient vectors are defined as 
+
+ai = vec 
+
+U(t)⊤ J(t)(vi) ( wyi − w ˆci )v⊤
+
+> i
+
+
+
+∈ Rrd in , (9) for repair samples, and similarly for remain samples 
+
+pp = vec 
+
+U(t)⊤ J(t)(vp) ( w ˆy(0)
+
+> p
+
+− w ˆcp )v⊤
+
+> p
+
+
+
+∈ Rrd in , (10) where ˆcp = arg max c̸ = ˆy(0)
+
+> p
+
+sc(vp; W(t)) is the strongest competing class for remain sample p,and wc denotes the c-th row of Wc.
+
+Optimization problem. Let S = {(vi, yi)}ns 
+
+> i=1
+
+be the repair set and P = {(vp, ˆy(0) 
+
+> p
+
+)}np
+
+> p=1
+
+be the remain set , where ˆy(0) 
+
+> p
+
+denotes the model’s predicted label for sample vp under the post-GSN-FT weights W(0). We introduce slack variables ξi ≥ 0 to allow soft satisfaction of repair constraints. The repair step solves the following convex quadratic program: min  
+
+> β,ξ
+
+ρ
+
+2 ∥β∥22 + λ
+
+> ns
+
+# ∑
+
+> i=1
+
+ξi (11) s.t. ⟨ai, β⟩ + ξi ≥ γs − gap (vi, yi; W(t)), ∀ i ∈ [ns] (C1) 
+
+⟨pp, β⟩ ≥ γh − gap (vp, ˆ y(0) 
+
+> p
+
+; W(t)), ∀ p ∈ [np] (C2) 
+
+ξi ≥ 0, ∀ i ∈ [ns] (C3) 5Preprint. Under review. where ρ > 0 is the regularization coefficient, λ > 0 is the slack penalty, γs > 0 is the target margin for the repair set, and γh > 0 is the lower-bound margin for the remain set. Because the quadratic term is positive semidefinite and all constraints are linear, problem (11)–(C3) is a convex quadratic program , solvable in polynomial time. 
+
+3.5.3 Iterative Repair Algorithm 
+
+The linearization in Eq. (8) is locally accurate around W(t), so a single QP solve may be insufficient when a large repair is required. We therefore adopt an iterative strategy: after each QP step, the basis U(t) is recomputed from the updated weight, and the process repeats until convergence (see Algorithm 1 in Appendix A). The following results formalize the guarantees induced by the QP constraints and the convergence criterion of Algorithm 1; proofs are deferred to Appendix B. 
+
+Theorem 3.1 (Repair Set Gap) . If Algorithm 1 converges before iteration T , then gap (vi, yi; eW) ≥
+
+γs for all i ∈ S .
+
+Theorem 3.2 (Remain Set Gap) . At any iterate W(t) produced by Algorithm 1, if the QP con-straints (C2) are satisfied, then gap (vp, ˆ y(0) 
+
+> p
+
+; W(t)) ≥ γh for all p ∈ P .
+
+Remark 3.1. Theorem 3.2 holds under the first-order approximation of Eq. (8) : constraint (C2) 
+
+enforces the linearized gap to be at least γh, which equals the true gap up to higher-order terms in 
+
+∥∆W∥. The iterative re-linearization in Algorithm 1 reduces the approximation error at each step; the guarantee is verified exactly on the true network after convergence (see Table 10). 
+
+3.5.4 Local Robustness Certificate 
+
+Once the repair procedure converges, every sample vi ∈ S satisfies gap (vi, yi; eW) ≥ γs > 0. We now derive a standard margin-based robustness certificate for the repaired network. Following Tsuzuku et al. (2018), the margin together with a Lipschitz bound yields a per-sample robustness radius. 
+
+Lipschitz bound on the gap. Assume the activation function σ is Lipschitz continuous with constant Lσ. Then the gap function satisfies 
+
+gap (v + δ, y; eW) − gap (v, y; eW) ≤ L ∥δ∥2 ∀ δ,where the Lipschitz constant of the composed network is bounded by 
+
+L = ∥ eW∥2 · ∥ Wc∥2 · Lσ. (12) This bound follows from the standard Lipschitz composition rule (Virmaux & Scaman, 2018; Bartlett et al., 2017). Most common activation functions, including ReLU, tanh, sigmoid, and softplus, satisfy Lσ = 1 (Virmaux & Scaman, 2018); this holds for all activations used in our experiments, so the bound simplifies to L = ∥ eW∥2 · ∥ Wc∥2.
+
+Theorem 3.3 (Lipschitz Robustness Radius) . For any repaired sample v i ∈ S , define 
+
+ε∗ 
+
+> i
+
+= gap (vi, yi; eW)
+
+2L . (13) 
+
+Then for any perturbation δ with ∥δ∥2 ≤ ε∗ 
+
+> i
+
+, the predicted label of the repaired classifier at vi + δ
+
+remains y i.
+
+Lower bound on ε∗ 
+
+> i
+
+. Since the repair enforces gap (vi, yi; eW) ≥ γs for all i ∈ S , the robustness radius is uniformly lower-bounded by 
+
+ε∗ 
+
+> i
+
+≥ γs
+
+2L .Thus, in addition to correcting misclassified samples, the repair induces a certified stability region of radius at least γs/(2L) around each repaired representation. 6Preprint. Under review. 
+
+## 4 Experiments 
+
+4.1 Experimental Setup Datasets All evaluation sets are defined with respect to the post-GSN-FT weights W(0): by construction, the GSN-FT model achieves 0% repair accuracy, 100% remain accuracy, and 100% general accuracy on these sets. The repair set is drawn from the SST-2 (Socher et al., 2013) and RTE (Dagan et al., 2005) tasks in AdvGLUE (Wang et al., 2021) (development partition), retaining six attack methods (CheckList, SememePSO, StressTest, T3, TextBugger, TextFooler); only samples mis-classified by the post-GSN-FT model are included. The attack generalization set is drawn from the disjoint AdvGLUE test partition under the same six methods. Table 2 summarises set sizes; hyperparameters are in Appendix C. Table 2: Dataset configurations. |S| : repair set; |P | : remain set; |Gen |: general accuracy evaluation set; |AtkGen |: attack generalization set. † Yelp Polarity test split (Zhang et al., 2015). ‡ RTE training split. Task Model |S| |P | |Gen | |AtkGen |                  
+
+> SST-2 DistilBERT 108 800 †2,000 †1,207 BERT 105 800 †2,000 †1,207 RTE DistilBERT 47 200 ‡500 ‡222 BERT 50 200 ‡500 ‡222
+
+Models We evaluate WARP on two encoder-only Transformer models: DistilBERT (Sanh et al., 2019) and BERT (Devlin et al., 2019), across two tasks: SST-2 sentiment classification and RTE textual entailment. For each task, we use fine-tuned checkpoints sourced from Hug-gingFace. For SST-2, we use the checkpoints distilbert-base-uncased-finetuned-sst-2 -english for DistilBERT and textattack/bert-base-uncased-SST-2 for BERT. For RTE, we use textattack/distilbert-base-uncased-RTE and textattack/bert-base-uncased-RTE 
+
+respectively. The final classification head Wc ∈ R2×768 is frozen throughout repair, as we focus on correcting the encoder representations rather than retraining the decision boundary. Table 3 summarises the key properties of each model. Table 3: Model configurations. GSN κ is measured at initialisation (pre-GSN-FT). Type A repair layers are fully updated during downstream fine-tuning (high initial κ); Type B receive minimal task-specific gradient updates (low initial κ). Task Model Repair Layer Activation Function Type Init. κ
+
+SST-2 DistilBERT pre classifier (768 ×768) ReLU A 5.43 BERT bert.pooler.dense (768 ×768) tanh B 0.58 RTE DistilBERT pre classifier (768 ×768) ReLU A 4.79 BERT bert.pooler.dense (768 ×768) tanh B 0.52 
+
+Baselines We compare against two gradient-based methods trained on the union of repair and remain sets, both minimizing cross-entropy loss. Same-layer LoRA ( r = 2): a rank-2 adapter ( α = 4) injected into the repair layer, identical solution-space dimensionality (3,072 parameters) as WARP, but optimized via gradient descent. All-layers Full FT: all layers unfrozen for end-to-end fine-tuning, serving as the strongest gradient-method upper bound. All baselines use learning rate 1 × 10 −4, batch size 16, maximum 300 epochs, and early stopping (patience 5, threshold 10 −6). 
+
+4.2 Main Results 
+
+As shown in Table 4, WARP achieves 100% repair and 100% remain accuracy across all four configurations. These outcomes are consistent with the guarantees established in Theorems 3.1–3.2. Gradient-based baselines fall substantially short on repair: same-layer 7Preprint. Under review. Table 4: Main experimental results on SST-2 and RTE. “Repair Acc” is the accuracy on the repair set S; “Remain Acc” on the remain set P; “General Acc” on the held-out evaluation set; “Atk. Gen” is the mean accuracy across six adversarial attack methods (higher is better for all metrics). All sets are defined with respect to the post-GSN-FT weights; see §4.1. Model Method Repair Acc ↑ Remain Acc ↑ General Acc ↑ Atk. Gen ↑                                                                        
+
+> SST-2 (sentiment classification)
+> DistilBERT Original 5.6% 98.1% 98.2% 22.3% Same-layer LoRA ( r=2) 75.9% 99.0% 97.5% 56.7% All-layers Full FT 100.0% 99.5% 93.6% 50.2%
+> WARP (ours) 100.0% 100.0% 91.4% 69.0%
+> BERT Original 1.0% 98.2% 98.5% 23.2% Same-layer LoRA ( r=2) 91.9% 99.6% 98.0% 60.0% All-layers Full FT 100.0% 99.5% 93.8% 56.7%
+> WARP (ours) 100.0% 100.0% 92.7% 64.7%
+> RTE (recognizing textual entailment)
+> DistilBERT Original 0.0% 100.0% 99.2% 37.4% Same-layer LoRA ( r=2) 62.7% 97.5% 97.0% 32.3% All-layers Full FT 100.0% 100.0% 80.8% 36.3%
+> WARP (ours) 100.0% 100.0% 83.8% 44.1%
+> BERT Original 10.0% 97.5% 99.0% 39.3% Same-layer LoRA ( r=2) 45.5% 98.0% 99.0% 40.6% All-layers Full FT 100.0% 98.0% 87.4% 40.1%
+> WARP (ours) 100.0% 100.0% 86.2% 47.9%
+
+LoRA reaches only 75.9%/91.9% on SST-2 and degrades further on RTE (62.7%/45.5%), suggesting that the QP-based optimization can utilize a fixed parameter budget more effectively than gradient descent in this setting. On general accuracy, WARP trails same-layer LoRA on SST-2 (91.4%/92.7% vs. 97.5%/98.0%) due to the rank-2 single-layer constraint, but outperforms All-layers Full FT on RTE DistilBERT (83.8% vs. 80.8%), where rank-2 regularization is particularly effective with limited clean data. WARP achieves the best attack generalization across all configurations, outperforming same-layer LoRA by up to 12.3 points on SST-2 and All-layers Full FT by 7.8 points on RTE (per-attack breakdown in Appendix E), which we attribute to the combination of high repair accuracy and the implicit regularization induced by the QP formulation. The controlled comparison against same-layer LoRA, which shares identical solution-space dimensionality (3,072 decision variables) but is optimized via gradient descent rather than QP, supports the view that this advantage is associated with the optimization procedure rather than differences in parameter count. 
+
+4.3 Repair Certificates 
+
+Table 5 reports certificate verification across all four configurations. All repaired samples achieve gap ≥ γs = 1.0 (Cert. 1); remain samples satisfy γh = 0.3 on RTE, with 798/800 and 786/800 on SST-2, where the few exceptions remain correctly classified with margins marginally below the threshold, arising from the first-order approximation in the remain constraints (Cert. 2; see Remark 3.1). Type A (DistilBERT) yields substantially wider ro-bustness radii than Type B (BERT), with mean ε∗ = 0.222 vs. 0.020 on SST-2 and median 0.305 vs. 0.028 on RTE. This difference is due to the larger weight displacement required by Type B, which inflates the post-repair spectral norm and hence L. The Lipschitz bound is sound but conservative, with median tightness 25 × for Type A and 250–400 × for Type B (Cert. 3). Despite this conservativeness, the gap between the certified radius and the empiri-cal first-flip boundary is itself quantifiable: Monte Carlo stress tests show that label flips first occur at 25 ×–400 × the certified radius, indicating that the true robustness of repaired samples substantially exceeds the formal guarantee. This conservativeness is attributable to the Lipschitz upper bound rather than the repair procedure itself, and tighter Lipschitz estimation methods such as SeqLip (Virmaux & Scaman, 2018) could be substituted into 8Preprint. Under review. Table 5: Repair certificate verification (WARP, after QP repair). SST-2 RTE DistilBERT BERT DistilBERT BERT                             
+
+> Cert. 1 Samples with gap ≥γs108/108 105/105 47/47 50/50 gap min / mean / max 1.000/1.291/2.360 1.000/1.431/2.814 1.000/1.244/2.662 1.000/1.866/4.843
+> Cert. 2 Samples with remain gap ≥γh798/800 786/800 200/200 200/200 remain gap min / mean 0.300/1.059 0.300/1.915 0.300/0.946 0.300/0.951
+> Cert. 3 ε∗min/median/mean/max 0.172/0.211/0.222/0.405 0.014/0.016/0.020/0.039 0.283/0.305/0.352/0.753 0.022/0.028/0.041/0.106
+
+Eq. (12) to improve certificate quality without modifying the framework. See Appendix D for full results. 
+
+4.4 GSN-FT Analysis 
+
+GSN-FT’s sole purpose is to increase κ and ensure QP feasibility; it is not a repair step. Table 6 confirms this: κ rises substantially while attack generalization remains essentially unchanged (DistilBERT SST-2: 22.3% →20.9%; BERT SST-2: 23.2% →22.5%), and the BERT RTE increase (39.3% →42.8%) remains far below the post-QP result of 47.9%. These results indicate that generalization gains originate from the QP step, rather than preprocessing. Table 6: Effect of GSN-FT. Attack generalization is reported before and after GSN-FT to confirm that generalization gains originate from the QP step rather than preprocessing. SST-2 RTE DistilBERT BERT DistilBERT BERT Pre Post Pre Post Pre Post Pre Post GSN κ 5.43 7.43 0.58 1.31 4.79 8.48 0.52 1.60 Atk. Gen 22.3% 20.9% 23.2% 22.5% 37.4% 37.7% 39.3% 42.8% Best step — 4 — 20 — 23 — 27 
+
+∥W∥2 1.506 2.238 13.408 13.423 1.140 2.949 13.413 13.558 QP iters — 5 — 6 — 4 — 6
+
+4.5 Ablation Studies 
+
+Rank r = 2 is selected as the default: attack generalization is near-insensitive to rank on DistilBERT (spread <1% on SST-2, <2% on RTE), while BERT degrades above rank 2 and is infeasible at rank 1 on RTE (full results in Appendix F). Larger repair sets consistently improve attack generalization ( +36%/ +35% on SST-2, +8%/ +10% on RTE) at a modest general accuracy cost of −5% to −10%. The remain set is a necessary component: removing it collapses general accuracy to near zero, while increasing |P | trades attack generalization for general accuracy (Tables 12–14 in Appendix F). 
+
+## 5 Conclusion 
+
+We presented WARP, a provable repair framework that extends provable repair beyond the last layer of NLP Transformers. The repair is formulated as a convex quadratic program that provides three verifiable per-sample guarantees: a pointwise gap guarantee, a remain protection guarantee, and a Lipschitz robustness radius. Experiments on two encoder-only architectures show that WARP achieves 100% repair and remain accuracy and outperforms gradient-based baselines on attack generalization while providing per-sample certificates. Because the formulation requires only a pre-activation dense layer followed by a linear output head, and such structures are prevalent in generative models, exploring whether WARP can be adapted to generative tasks, where the notion of a classification margin may need to be redefined, is a promising direction for future work. 9Preprint. Under review. 
+
+## References 
+
+Moustafa Alzantot, Yash Sharma, Ahmed Elgohary, Bo-Jhang Ho, Mani Srivastava, and Kai-Wei Chang. Generating natural language adversarial examples. In Proceedings of the 2018 conference on empirical methods in natural language processing , pp. 2890–2896, 2018. Peter L Bartlett, Dylan J Foster, and Matus J Telgarsky. Spectrally-normalized margin bounds for neural networks. Advances in neural information processing systems , 30, 2017. Ido Dagan, Oren Glickman, and Bernardo Magnini. The pascal recognising textual entail-ment challenge. In Machine learning challenges workshop , pp. 177–190. Springer, 2005. Nicola De Cao, Wilker Aziz, and Ivan Titov. Editing factual knowledge in language models. In Proceedings of the 2021 conference on empirical methods in natural language processing , pp. 6491–6506, 2021. Jacob Devlin, Ming-Wei Chang, Kenton Lee, and Kristina Toutanova. Bert: Pre-training of deep bidirectional transformers for language understanding. In Proceedings of the 2019 conference of the North American chapter of the association for computational linguistics: human language technologies, volume 1 (long and short papers) , pp. 4171–4186, 2019. Feisi Fu and Wenchao Li. Sound and complete neural network repair with minimality and locality guarantees. In International Conference on Learning Representations , 2022. Siddhant Garg and Goutham Ramakrishnan. Bae: Bert-based adversarial examples for text classification. In Proceedings of the 2020 conference on empirical methods in natural language processing (EMNLP) , pp. 6174–6181, 2020. Mor Geva, Roei Schuster, Jonathan Berant, and Omer Levy. Transformer feed-forward layers are key-value memories. In Proceedings of the 2021 Conference on Empirical Methods in Natural Language Processing , pp. 5484–5495, 2021. Edward J Hu, Yelong Shen, Phillip Wallis, Zeyuan Allen-Zhu, Yuanzhi Li, Shean Wang, Liang Wang, Weizhu Chen, et al. Lora: Low-rank adaptation of large language models. 
+
+Iclr , 1(2):3, 2022. Di Jin, Zhijing Jin, Joey Tianyi Zhou, and Peter Szolovits. Is bert really robust? a strong baseline for natural language attack on text classification and entailment. In Proceedings of the AAAI conference on artificial intelligence , volume 34, pp. 8018–8025, 2020. Mihyeon Kim, Juhyoung Park, and Youngbin Kim. Im-bert: Enhancing robustness of bert through the implicit euler method. In Proceedings of the 2024 Conference on Empirical Methods in Natural Language Processing , pp. 16217–16229, 2024. Jinfeng Li, Shouling Ji, Tianyu Du, Bo Li, and Ting Wang. Textbugger: Generating adversarial text against real-world applications. In 26th Annual Network and Distributed System Security Symposium, NDSS 2019 . The Internet Society, 2019. Linyang Li, Ruotian Ma, Qipeng Guo, Xiangyang Xue, and Xipeng Qiu. Bert-attack: Ad-versarial attack against bert using bert. In Proceedings of the 2020 conference on empirical methods in natural language processing (EMNLP) , pp. 6193–6202, 2020. Kevin Meng, David Bau, Alex Andonian, and Yonatan Belinkov. Locating and editing factual associations in gpt. In Advances in Neural Information Processing Systems (NeurIPS) ,volume 35, pp. 17359–17372, 2022. Kevin Meng, Arnab Sen Sharma, Alex J Andonian, Yonatan Belinkov, and David Bau. Mass-editing memory in a transformer. In The Eleventh International Conference on Learning Representations , 2023. Eric Mitchell, Charles Lin, Antoine Bosselut, Chelsea Finn, and Christopher D Manning. Fast model editing at scale. In International Conference on Learning Representations , 2022. 10 Preprint. Under review. Milad Moradi and Matthias Samwald. Evaluating the robustness of neural language models to input perturbations. In Marie-Francine Moens, Xuanjing Huang, Lucia Specia, and Scott Wen-tau Yih (eds.), Proceedings of the 2021 Conference on Empirical Methods in Natural Language Processing , pp. 1558–1570, Online and Punta Cana, Dominican Republic, November 2021. Association for Computational Linguistics. doi: 10.18653/v1/2021. emnlp-main.117. URL https://aclanthology.org/2021.emnlp-main.117/ .Stephanie Nawas, Zhe Tao, and Aditya V Thakur. Provable repair of vision transformers. In 
+
+International Symposium on AI Verification , pp. 156–178. Springer, 2024. Victor Sanh, Lysandre Debut, Julien Chaumond, and Thomas Wolf. Distilbert, a distilled version of bert: smaller, faster, cheaper and lighter. arXiv preprint arXiv:1910.01108 , 2019. Richard Schumi and Jun Sun. Semantic-based neural network repair. In Proceedings of the 32nd ACM SIGSOFT International Symposium on Software Testing and Analysis , pp. 150–162, 2023. Richard Socher, Alex Perelygin, Jean Wu, Jason Chuang, Christopher D. Manning, Andrew Ng, and Christopher Potts. Recursive deep models for semantic compositionality over a sentiment treebank. In Proceedings of the 2013 Conference on Empirical Methods in Natural Language Processing , pp. 1631–1642, Seattle, Washington, USA, October 2013. Association for Computational Linguistics. URL https://www.aclweb.org/anthology/D13-1170 .Matthew Sotoudeh and Aditya V Thakur. Provable repair of deep neural networks. In 
+
+Proceedings of the 42nd ACM SIGPLAN international conference on programming language design and implementation , pp. 588–603, 2021. Bartolomeo Stellato, Goran Banjac, Paul Goulart, Alberto Bemporad, and Stephen Boyd. Osqp: An operator splitting solver for quadratic programs. Mathematical Programming Computation , 12(4):637–672, 2020. Xinyu Sun, Wanwei Liu, Shangwen Wang, Tingyu Chen, Ye Tao, and Xiaoguang Mao. Autoric: Automated neural network repairing based on constrained optimization. ACM Transactions on Software Engineering and Methodology , 34(2):1–29, 2025. Zhe Tao, Stephanie Nawas, Jacqueline Mitchell, and Aditya V Thakur. Architecture-preserving provable repair of deep neural networks. Proceedings of the ACM on Pro-gramming Languages , 7(PLDI):443–467, 2023. Yusuke Tsuzuku, Issei Sato, and Masashi Sugiyama. Lipschitz-margin training: Scalable certification of perturbation invariance for deep neural networks. Advances in neural information processing systems , 31, 2018. Muhammad Usman, Divya Gopinath, Youcheng Sun, Yannic Noller, and Corina S P ˘as ˘areanu. Nnrepair: Constraint-based repair of neural network classifiers. In International Conference on Computer Aided Verification , pp. 3–25. Springer, 2021. Ashish Vaswani, Noam Shazeer, Niki Parmar, Jakob Uszkoreit, Llion Jones, Aidan N Gomez, Łukasz Kaiser, and Illia Polosukhin. Attention is all you need. Advances in neural informa-tion processing systems , 30, 2017. Aladin Virmaux and Kevin Scaman. Lipschitz regularity of deep neural networks: analysis and efficient estimation. Advances in neural information processing systems , 31, 2018. Boxin Wang, Chejian Xu, Shuohang Wang, Zhe Gan, Yu Cheng, Jianfeng Gao, Ahmed Has-san Awadallah, and Bo Li. Adversarial glue: A multi-task benchmark for robustness evaluation of language models. Advances in Neural Information Processing Systems , 2021. Xiang Zhang, Junbo Zhao, and Yann LeCun. Character-level convolutional networks for text classification. Advances in neural information processing systems , 28, 2015. 11 Preprint. Under review. 
+
+## A Iterative Repair Algorithm 
+
+Algorithm 1 details the iterative QP repair procedure outlined in §3.5.3. 
+
+Algorithm 1: Iterative Rank-r QP Repair 
+
+Input: Weights (W(0), b, Wc, bc); repair set S; remain set P; hyperparameters 
+
+r, λ, ρ, γs, γh; maximum iterations T
+
+Output: Repaired weight eW
+
+for t = 1, 2, . . . , T do 
+
+Compute U(t) via truncated SVD of W(t−1);Construct coefficient vectors {ai} and {pp} via Eqs. (9)–(10); Solve QP (11)–(C3) to obtain β∗;
+
+W(t) ← W(t−1) + U(t) reshape (β∗, r, din );
+
+if gap (vi, yi; W(t)) ≥ γs ∀ i ∈ [ns] then break ;
+
+return eW = W(t)
+
+## B Proofs of Theorems 3.1, 3.2, and 3.3 
+
+Theorem B.1 (Repair Set Gap, restated) . If Algorithm 1 converges before iteration T , then 
+
+gap (vi, yi; eW) ≥ γs for all i ∈ S .Proof. The algorithm terminates only when the convergence condition gap (vi, yi; W(t)) ≥ γs
+
+for all i ∈ S is satisfied, which directly encodes this inequality for every i ∈ S .
+
+Theorem B.2 (Remain Set Gap, restated) . At any iterate W(t) produced by Algorithm 1, if the QP constraints (C2) are satisfied, then gap (vp, ˆ y(0) 
+
+> p
+
+; W(t)) ≥ γh for all p ∈ P .Proof. Constraint (C2) requires ⟨pp, β⟩ ≥ γh − gap (vp, ˆyp; W(t−1)) at every iteration. Substi-tuting the first-order approximation (8) , this is equivalent to enforcing gap (vp, ˆyp; W(t)) ≥
+
+γh at each step. 
+
+Theorem B.3 (Lipschitz Robustness Radius, restated) . For any repaired sample vi ∈ S , define 
+
+ε∗ 
+
+> i
+
+= gap (vi, yi; eW)/ 2L . Then for any perturbation δ with ∥δ∥2 ≤ ε∗ 
+
+> i
+
+, the predicted label of the repaired classifier at v i + δ remains y i.Proof. By the Lipschitz bound (12), gap (vi + δ, yi; eW) ≥ gap (vi, yi; eW) − L ∥δ∥2
+
+≥ gap (vi, yi; eW) − gap (vi, yi; eW)
+
+2
+
+= gap (vi, yi; eW)
+
+2 > 0. A positive gap implies syi > max c̸ =yi sc(vi + δ), so the predicted label is yi.
+
+## C Hyperparameters 
+
+Tables 7 and 8 list the hyperparameters used for QP repair and GSN-FT respectively. All values are shared across the four task–model configurations. 12 Preprint. Under review. Table 7: QP repair hyperparameters. Symbol Description Value 
+
+r Rank of weight perturbation 2
+
+γs Repair set gap margin target 1.0 
+
+γh Remain set gap margin lower bound 0.3 
+
+λ Slack penalty coefficient 50.0 
+
+ρ regularization coefficient 2.0 
+
+T Maximum iterations 300 — QP solver OSQP (Stellato et al., 2020) Table 8: GSN-FT hyperparameters. Parameter Value Max steps TFT 30 Learning rate 1 × 10 −3
+
+Batch size 32 Auxiliary set size Naux 8Trainable parameters repair layer W + classification head Wc (592,130 total) Checkpoint selection criterion step with maximum GSN κ
+
+## D Monte Carlo Stress Test and Proximity Analysis 
+
+To empirically assess the conservativeness of the Lipschitz robustness radius ε∗, we conduct an expanding-radius Monte Carlo stress test: for each repaired sample, 1,000 perturbation vectors are drawn uniformly from progressively expanding ℓ2-balls, and the smallest radius multiplier at which the predicted label first flips is recorded. Table 9 summarises the results. Table 9: Expanding-radius Monte Carlo stress test (tightness ratio: smallest multiplier k
+
+such that a flip is observed within k × ε∗). SST-2 RTE DistilBERT BERT DistilBERT BERT Multiplier k Flipped Cum.% Flipped Cum.% Flipped Cum.% Flipped Cum.%                                                                                               
+
+> ≤1×0/108 0.0% 0/105 0.0% 0/47 0.0% 0/50 0.0%
+> ≤20 ×37/108 34.3% 0/105 0.0% 13/47 27.7% 0/50 0.0%
+> ≤25 ×78/108 72.2% 0/105 0.0% 34/47 72.3% 0/50 0.0%
+> ≤35 ×107/108 99.1% 0/105 0.0% 47/47 100.0% 0/50 0.0%
+> ≤40 ×108/108 100.0% 0/105 0.0% ——0/50 0.0%
+> ≤150 ×——7/105 6.7% ——12/50 24.0%
+> ≤250 ×——21/105 20.0% ——30/50 60.0%
+> ≤400 ×——66/105 62.9% ——46/50 92.0%
+> ≤600 ×——104/105 99.0% ——50/50 100.0%
+> ≤700 ×——105/105 100.0% ————Median tightness 25 ×400 ×25 ×250 ×
+
+The Type A pattern is strikingly consistent across tasks: DistilBERT exhibits a median tightness ratio of 25 × on both SST-2 and RTE, with all samples flipping by 40 × (SST-2) and 35 × (RTE). For Type B BERT, the certificates are far more conservative: no flip occurs below 90 × ε∗ on RTE (vs. 150 × on SST-2), with medians of 250 × and 400 × respectively. These results confirm that the Lipschitz bound is sound but conservative, and that its conservativeness is determined primarily by architecture type. 
+
+Real adversarial sample proximity analysis. Table 10 reports the accuracy of the repaired DistilBERT model on SST-2 adversarial samples grouped by their distance to the nearest 13 Preprint. Under review. repaired embedding, expressed as a multiple of ε∗. The median distance ratio is 36.9 × and accuracy decreases monotonically with distance, mirroring the 20–25 × first-flip boundary from the stress test. For RTE DistilBERT, the median distance ratio is 44.1 ×, consistent with the stress test boundary, though the monotone trend is weaker owing to the smaller number of attack samples per distance band. For both BERT configurations, all real adversarial samples fall well beyond the stress-test flip boundary (150 × / 90 ×), a direct structural consequence of the Type B architecture inflating L and compressing ε∗.Table 10: Accuracy of the repaired DistilBERT model (SST-2) on adversarial samples grouped by distance to the nearest repaired embedding as a multiple of ε∗.Distance band ( d/ε∗
+
+nearest ) Samples Accuracy 
+
+≤ 20 × 5 100.0% 20 ×–25 × 49 87.8% 25 ×–30 × 180 82.2% 30 ×–35 × 267 74.5% 35 ×–40 × 271 68.6% 40 ×–50 × 324 60.5% 
+
+> 50 × 111 46.8% Overall 1207 68.7% 
+
+## E Per-Attack Generalization Breakdown 
+
+Table 11 reports per-method attack generalization broken down by individual attack type. Table 11: Per-attack-method generalization accuracy. Task Model Method CheckList SememePSO StressTest T3 TextBugger TextFooler Mean SST-2 DistilBERT Original 8.7% 34.3% 6.4% 24.2% 29.4% 30.9% 22.3% Same-layer LoRA ( r = 2) 41.0% 50.9% 89.1% 46.4% 55.8% 56.9% 56.7% All-layers Full FT 59.3% 37.7% 73.7% 38.6% 46.2% 45.6% 50.2%                                                                                                  
+
+> WARP 70.5% 60.6% 92.9% 64.1% 59.9% 66.2% 69.0%
+> BERT Original 8.7% 34.3% 11.5% 26.8% 28.4% 29.4% 23.2% Same-layer LoRA ( r=2) 45.7% 59.4% 80.8% 62.1% 53.8% 58.3% 60.0% All-layers Full FT 62.7% 56.0% 64.7% 48.4% 51.8% 56.9% 56.7%
+> WARP 66.8% 60.6% 80.8% 64.7% 59.9% 55.4% 64.7%
+> RTE DistilBERT Original 23.9% 29.6% 23.8% 60.0% 47.7% 39.5% 37.4% Same-layer LoRA ( r=2) 32.6% 18.5% 16.7% 55.0% 45.5% 25.6% 32.3% All-layers Full FT 26.1% 33.3% 23.8% 45.0% 45.5% 44.2% 36.3%
+> WARP 54.3% 44.4% 40.5% 45.0% 54.5% 25.6% 44.1%
+> BERT Original 23.9% 51.9% 19.0% 65.0% 31.8% 44.2% 39.3% Same-layer LoRA ( r=2) 23.9% 59.3% 16.7% 70.0% 27.3% 46.5% 40.6% All-layers Full FT 23.9% 44.4% 26.2% 40.0% 40.9% 65.1% 40.1%
+> WARP 56.5% 37.0% 50.0% 45.0% 45.5% 53.5% 47.9%
+
+On SST-2, All-layers Full FT achieves 100% repair accuracy but suffers the worst attack generalization (50.2% / 56.7%), consistent with overfitting tens of millions of parameters to fewer than 1,000 samples. On RTE, the same pattern holds: Full FT matches WARP on repair accuracy but trails on attack generalization (36.3% / 40.1% vs. 44.1% / 47.9%), with no consistent advantage on any individual attack method. WARP’s rank-2, single-layer constraint acts as an implicit regularizer, achieving the best mean attack generalization while providing formal certificates that no gradient-based method can offer. 
+
+## F Ablation Studies 
+
+Effect of Rank r
+
+As shown in Table 12, on SST-2, rank has little impact on DistilBERT (spread <1%) but degrades BERT above rank 2 (59–61% vs. 64.7%). On RTE, DistilBERT is similarly insensitive 14 Preprint. Under review. Table 12: Rank ablation. SST-2: |S| = 108 / 105, |P | = 800. RTE: |S| = 47 / 50, |P | = 200. “Conv” denotes QP convergence iterations. ∗QP infeasible at rank 1. DistilBERT BERT Rank Atk. Gen Gen. Acc Conv Time Atk. Gen Gen. Acc Conv Time 
+
+SST-2 
+
+1 68.0% 91.8% 4 34s 61.7% 95.1% 7 68s 2 69.0% 91.4% 5 33s 64.7% 92.7% 6 77s 8 68.1% 92.0% 5 160s 59.2% 94.0% 4 108s 32 68.7% 92.1% 8 989s 60.6% 93.9% 4 535s 
+
+RTE 
+
+1 43.4% 83.2% 3 5s 58.6% 1.2% ∗ —∗ 6s 2 44.1% 83.8% 4 9s 47.9% 86.2% 6 15s 8 44.7% 76.2% 2 7s 50.3% 88.6% 4 23s 32 45.9% 80.8% 4 122s 49.1% 88.2% 4 178s (spread <2%), while BERT peaks at rank 2 and degrades at higher ranks; rank 1 is infeasible for BERT on RTE, further motivating rank 2 as the default. The degradation at higher ranks reflects that peripheral singular directions erode first-order approximation quality without a compensating gain in expressiveness. 
+
+Effect of Repair and Remain Set Size 
+
+Table 13: Repair set size ablation ( |P | fixed at 800 for SST-2, 200 for RTE). DistilBERT BERT 
+
+|S| SST-2 RTE SST-2 RTE Atk. Gen Gen. Acc Atk. Gen Gen. Acc Atk. Gen Gen. Acc Atk. Gen Gen. Acc 10 33.2% 97.9% 36.4% 94.2% 29.2% 96.2% 38.2% 97.8% 25 51.0% 96.2% 39.2% 87.0% 42.0% 95.2% 45.9% 90.6% 50 60.5% 93.2% — — 60.6% 93.8% — —75 65.6% 92.5% — — 62.5% 93.0% — —Full 69.0% 91.4% 44.1% 83.8% 64.7% 92.7% 47.9% 86.2% Table 14: Remain set size ablation ( |S| fixed at full size). ε∗ 
+
+> med
+
+reported for DistilBERT only. 
+
+Bold denotes the default setting. DistilBERT (SST-2) BERT (SST-2) DistilBERT (RTE) BERT (RTE) 
+
+|P | Atk. Gen Gen. Acc ε∗                                                     
+
+> med Atk. Gen Gen. Acc Atk. Gen Gen. Acc Atk. Gen 079.5% 0.8% 1.057 76.4% 1.1% 56.5% 15.0% 58.3% 50 76.9% 52.9% 0.305 73.1% 50.7% 41.3% 61.8% 53.1% 200 72.0% 79.8% 0.255 70.7% 80.7% 44.1% 83.8% 47.9% 400 70.3% 86.5% 0.226 69.0% 89.0% ———800 69.0% 91.4% 0.211 64.7% 92.7% ———2400 64.3% 95.8% 0.138 60.8% 95.5% ———
+
+As shown in Table 13, larger repair sets yield substantially better attack generalization: the gain from smallest to full set is +36%/ +35% on SST-2 and +8%/ +10% on RTE, at a modest general accuracy cost of −5% to −10%. Table 14 shows that the remain set governs the tension between general accuracy and attack generalization: increasing |P | tightens remain constraints, forcing ∆W into more conservative directions. At |P | = 0, general accuracy collapses to near zero on both tasks, 15 Preprint. Under review. confirming that the remain set is a necessary component of the framework. Scaling up both sets together therefore yields simultaneous gains in attack generalization and general accuracy. 16

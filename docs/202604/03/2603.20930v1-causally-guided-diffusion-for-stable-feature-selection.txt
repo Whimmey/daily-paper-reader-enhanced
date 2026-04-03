@@ -1,0 +1,803 @@
+Title: Causally-Guided Diffusion for Stable Feature Selection
+
+URL Source: https://arxiv.org/pdf/2603.20930v1
+
+Published Time: Tue, 24 Mar 2026 00:57:29 GMT
+
+Number of Pages: 12
+
+Markdown Content:
+# Causally-Guided Diffusion for Stable Feature Selection 
+
+## Arun Vignesh Malarkkan 
+
+arun.malarkkan@asu.edu Arizona State University Tempe, Arizona, USA 
+
+## Xinyuan Wang 
+
+xwang735@asu.edu Arizona State University Tempe, Arizona, USA 
+
+## Kunpeng Liu 
+
+kunpenl@clemson.edu Clemson University Clemson, South Carolina, USA 
+
+## Denghui Zhang 
+
+dzhang42@stevens.edu Stevens Institute of Technology Hoboken, New Jersey, USA 
+
+## Yanjie Fu 
+
+yanjie.fu@asu.edu Arizona State University Tempe, Arizona, USA 
+
+Abstract 
+
+Feature selection is fundamental to robust data-centric AI, but most existing methods optimize predictive performance under a single data distribution. This often selects spurious features that fail under distribution shifts. Motivated by principles from causal invariance, we study feature selection from a stability perspective and introduce 
+
+Causally-Guided Diffusion for Stable Feature Selection (CGDFS). In CGDFS, we formalized feature selection as approximate posterior inference over feature subsets, whose posterior mass favors low pre-diction error and low cross-environment variance. Our framework combines three key insights: First, we formulate feature selection as stability-aware posterior sampling. Here, causal invariance serves as a soft inductive bias rather than explicit causal discovery. Second, we train a diffusion model as a learned prior over plausible contin-uous selection masks, combined with a stability-aware likelihood that rewards invariance across environments. This diffusion prior captures structural dependencies among features and enables scal-able exploration of the combinatorially large selection space. Third, we perform guided annealed Langevin sampling that combines the diffusion prior with the stability objective, which yields a tractable, uncertainty-aware posterior inference that avoids discrete optimiza-tion and produces robust feature selections. We evaluate CGDFS on open-source real-world datasets exhibiting distribution shifts. Across both classification and regression tasks, CGDFS consistently selects more stable and transferable feature subsets, which leads to improved out-of-distribution performance and greater selection robustness compared to sparsity-based, tree-based, and stability-selection baselines. 
+
+1 Introduction 
+
+Feature selection is fundamental to building robust data-centric ma-chine learning systems, aiming to identify compact subsets of fea-tures that support efficient, interpretable, and generalizable models. However, as models are increasingly deployed in dynamic, real-world environments, a critical challenge emerges: existing feature selection methods systematically select spurious features that fail under distribution shift . Consider a credit risk model trained on historical data, where “home ownership” spuriously correlates with default rates due to regional economic conditions. Standard feature selection methods will select this feature based on its strong in-distribution correlation, yet the model fails when deployed to new markets where this correlation is not valid. This brittleness poses severe risks in high-stakes applications spanning healthcare, finance, and algorithmic fairness. Despite extensive study, most feature selection methods remain focused on correlation. Filter methods such as mutual information and correlation-based criteria [ 13 , 38 ], wrapper methods including forward/backward selection [ 7], and embedded methods such as LASSO and elastic net [ 24 , 39 ] all optimize predictive performance under a single training distribution. While effective at identifying features correlated with the target, these methods fail to distinguish features whose predictive utility remains stable across environments from spurious features that are predictive only due to distribution-specific correlations. This observation exposes a fundamental limita-tion: feature selection methods that rely solely on in-distribution performance provide no robustness guarantees under distribu-tion shift .Insights from Causal learning offer a principled direction for addressing this limitation through the notion of invariance : predic-tive relationships that remain stable across environments are more likely to generalize, whereas distribution-specific correlations tend to break under shift [ 4, 18 ]. Several methods, including Invariant Risk Minimization (IRM) [ 3] and Invariant Causal Prediction (ICP) [ 27 ], operationalize this principle by enforcing stability across multiple en-vironments. However, directly translating invariance-based ideas to feature selection presents substantial challenges. 1) Stability-driven objectives typically induce highly non-convex optimization land-scapes, in which gradient-based or greedy methods are prone to poor local optima. 2) Feature selection is inherently combinatorial, re-quiring the selection of a discrete subset from an exponentially large space of 2𝑝 possible feature sets, which makes standard continuous optimization techniques difficult to apply. Together, these challenges have limited the practical use of causal invariance-based principles for robust feature selection. 
+
+Our research perspectives: Based on these observations, we re-frame feature selection under distribution shift. First, stability across environments should be treated as a primary criterion for feature relevance, rather than a secondary diagnostic applied after selection. Features that yield consistently strong predictive behavior across heterogeneous environments are more likely to generalize beyond the training distribution. Second, feature relevance under distribution shift is inherently uncertain: multiple distinct feature subsets may exhibit comparable stability and predictive performance, particu-larly in the presence of correlated or redundant features. Third, this uncertainty in feature selection is combinatorial, rendering determin-istic optimization strategies ill-suited for capturing the full space  
+
+> arXiv:2603.20930v1 [cs.LG] 21 Mar 2026 Conference’17, July 2017, Washington, DC, USA Arun Vignesh Malarkkan, Xinyuan Wang, Kunpeng Liu, Denghui Zhang, and Yanjie Fu
+
+of plausible feature sets. These insights motivate feature selection formulations that reason over distributions of feature subsets rather than committing to a single optimum. Based on this perspective, we propose Causally-Guided Diffu-sion for Stable Feature Selection (CGDFS) , a principled frame-work that formulates feature selection as approximate posterior infer-ence over feature subsets. Rather than searching for a single optimal subset via greedy search or continuous relaxation, CGDFS samples from a posterior distribution that favors feature subsets that achieve both strong predictive performance and stable behavior across mul-tiple environments. This probabilistic formulation operationalizes the causal invariance-based principles as soft inductive bias without requiring interventional data or explicit causal graph discovery. By reasoning over distributions of feature subsets, CGDFS naturally cap-tures uncertainty, accommodates multiple plausible solutions, and avoids the brittleness of deterministic feature selection strategies. CGDFS operationalizes this probabilistic framework with three components. First, we represent feature subsets as continuous se-lection masks in [0, 1]𝑝 , and a diffusion model is trained to learn a prior over plausible subsets. This learned prior captures global structure in the feature space, including feature complementarity and redundancy, and enables efficient exploration of the combinatorially large subset space. Second, we define a stability-aware objective that evaluates feature subsets based on both predictive performance and cross-environment variability, favoring subsets whose predictive behavior remains consistent across environments. Third, we perform guided diffusion sampling using annealed Langevin dynamics, com-bining gradients from the learned diffusion prior with gradients from the stability objective to approximate posterior inference over feature subsets. This sampling-based formulation avoids discrete combina-torial optimization while naturally capturing posterior uncertainty. In summary, this paper makes the following contributions: 
+
+• We formulate feature selection under distribution shift as approximate posterior inference over feature subsets, guided by a stability-based objective inspired by causal invariance principles. 
+
+• We introduce a diffusion-based prior over continuous fea-ture selection masks, and a guided sampling procedure that enables scalable, uncertainty-aware exploration of the combi-natorial feature subset space without discrete search or greedy optimization. 
+
+• Through extensive experiments on synthetic benchmarks and real-world tabular datasets with distribution shifts, we demonstrate that CGDFS consistently selects more stable and transferable feature subsets, leading to improved out-of-distribution predictive performance compared to competitive baselines. 
+
+2 Problem Statement 
+
+We consider supervised learning on tabular data under distribution shift. Let D = Ð𝐸 𝑒 =1 D (𝑒 ) denote a dataset partitioned into 𝐸 envi-ronments, where D (𝑒 ) = {( 𝑥 (𝑒 ) 
+
+> 𝑖
+
+, 𝑦 (𝑒 ) 
+
+> 𝑖
+
+)} 𝑛 𝑒 
+
+> 𝑖 =1
+
+, 𝑥 (𝑒 ) 
+
+> 𝑖
+
+∈ R𝑝 , and 𝑦 (𝑒 ) 
+
+> 𝑖
+
+∈ Y .Let 𝑧 ∈ { 0, 1}𝑝 denote a feature selection vector, and let 𝑓 𝜃 (·) be a predictive model parameterized by 𝜃 .For a given feature subset 𝑧 , we define the environment-specific expected loss 
+
+L (𝑒 ) (𝑧 ) = E(𝑥,𝑦 )∼D (𝑒 )
+
+ℓ  𝑓 𝜃 (𝑥 ⊙ 𝑧 ), 𝑦  ,
+
+where ℓ (· , ·) denotes a task-appropriate loss function. We summarize predictive performance across environments by the mean loss 
+
+¯L( 𝑧 ) = 1
+
+𝐸 
+
+> 𝐸
+
+∑︁ 
+
+> 𝑒 =1
+
+L (𝑒 ) (𝑧 ),
+
+and quantify robustness under distribution shift by the loss variance 
+
+Var 𝑒 
+
+ L (𝑒 ) (𝑧 ) = 1
+
+𝐸 
+
+> 𝐸
+
+∑︁ 
+
+> 𝑒 =1
+
+ L (𝑒 ) (𝑧 ) − ¯L( 𝑧 )2.
+
+The feature selection problem under distribution shift is to identify feature subsets 𝑧 that jointly achieve low average predictive loss and low cross-environment performance variability. Formally, this de-fines a multi-objective optimization problem over the combinatorial space {0, 1}𝑝 :
+
+min  
+
+> 𝑧 ∈ { 0,1}𝑝
+
+ ¯L( 𝑧 ), Var (L( 𝑧 )) 
+
+
+
+.
+
+3 Methodology 
+
+We present Causally-Guided Diffusion for Stable Feature Selec-tion (CGDFS) , a framework that formulates feature selection under distribution shift as approximate posterior inference over feature sub-sets.CGDFS combines a diffusion-based prior over feature selection masks with a stability-aware objective, enabling scalable inference in high-dimensional and combinatorial feature spaces without dis-crete search. In this section, we first introduce the feature subset representation and modeling assumptions (§3.1). We then describe the three core components of CGDFS: diffusion-based prior learning (§3.2), stability-based likelihood construction (§3.3), and guided posterior sampling via annealed Langevin dynamics (§3.4). 
+
+3.1 Feature Subset Representation and Modeling Assumptions 
+
+We represent a feature subset by a binary selection vector 𝑧 ∈ { 0, 1}𝑝 ,where 𝑧 𝑗 = 1 indicates that feature 𝑗 is selected. Direct optimization over this discrete space is computationally intractable due to its exponential size. To enable scalable inference, we relax the discrete selection vector to a continuous representation and model feature subsets using selection masks 
+
+𝑧 ∈ [ 0, 1]𝑝 ,
+
+where each coordinate 𝑧 𝑗 represents a soft selection weight for fea-ture 𝑗 . Given a predictive model 𝑓 𝜃 , the mask induces a masked input 𝑥 ⊙ 𝑧 , where ⊙ denotes element-wise multiplication. This re-laxation preserves the semantics of feature selection while enabling optimization and inference in continuous space. 
+
+Environment-specific evaluation. We assume access to a finite set of environments {D (𝑒 ) }𝐸 𝑒 =1 during training, which are explicitly con-structed or observed to exhibit covariate shifts. Each environment corresponds to a distinct data distribution under which predictive performance may vary. For a given selection mask 𝑧 , performance is evaluated separately within each environment using masked inputs. Causally-Guided Diffusion for Stable Feature Selection Conference’17, July 2017, Washington, DC, USA INVARIANCE SCORING MODULE                                  
+
+> 0.927
+> 0.826
+> 0.121
+> .
+> .
+> 0.098
+> .
+> Environment 1
+> TABULAR DATA
+> f1f2f3y
+> MASK POOL CONSTRUCTION
+> Random Selection Masks
+> LASSO/Mutual Information MI Masks
+> Random Forest
+> Invariance Causal Masks
+> f1
+> f3
+> f1
+> f2f3fny
+> Environment 2
+> f1f2f3fny
+> Environment 3
+> f1f2f3fny
+> f2
+> Inv. Coeff.
+> +Residual Variation
+> 00100 010101 101011
+> 101011 111000 101010
+> 001100 11001 010100
+> Candidate Feature Selection Masks
+> Diffusion Model
+> ...
+> Trained Diffusion Prior Masks
+> Chain 1
+> Chain 2
+> ...
+> Chain n
+> fn
+> Covariate shift environment 1
+> Covariate shift environment 2
+> Covariate shift environment n
+> ...
+> f1f2fny
+> Feature Sequence
+> f12 f14 ...
+> ... f4f24
+> f1f18 ...
+> Feature Redundancy Matrix
+> Stability Score
+> f1---
+> f2---
+> fn---
+> Feature Stability Scores
+> Environment Models
+> Independent Utility Evaluator
+> Reward-guided Annealed Langevin Posterior Sampling
+> f2
+> f14
+> f67
+> ...
+> ...
+> fn
+> Optimal Feature Subset
+> Feature Invariance Scores
+> MASK CONSTRUCTION FOR DIFFUSION PRIOR DIFFUSION PRIOR AND STABILITY LIKELIHOOD CONSTRUCTION
+> OPTIMAL FEATURE SELECTION BY GUIDED POSTERIOR SAMPLING
+
+Figure 1: Framework overview of CGDFS. Feature selection is formulated as approximate posterior inference over feature subsets. A diffusion model learns a structured prior over continuous feature masks from a diverse mask pool. A stability-based likelihood evaluates predictive performance and cross-environment variability. Guided Langevin dynamics combines prior and likelihood gradients to sample from the posterior, and the samples are aggregated to produce stable, interpretable feature selections, with invariance-based causal signals incorporated as soft guidance through the prior. 
+
+While environments are designed to induce distributional heterogene-ity, we do not assume access to interventional data or knowledge of the underlying causal graph; environments are used as observational settings for assessing stability under covariate shift. 
+
+Modeling assumptions. Our formulation relies on two small assump-tions. First, the predictive model 𝑓 𝜃 is differentiable with respect to its input, allowing gradients to propagate through the feature mask 
+
+𝑧 . Second, predictive performance within each environment can be summarized by an environment-specific loss function. 
+
+3.2 Learning a Diffusion-Based Prior 
+
+We begin by learning a prior distribution over feature subsets that captures structural regularities among plausible selections. Feature subsets often exhibit non-trivial dependencies, including comple-mentarity: features that are informative only when selected jointly and redundancy: groups of features that provide overlapping in-formation. Ignoring such structures leads to inefficient exploration of the combinatorial subset space and unstable selection behavior. Rather than imposing a hand-crafted prior, we learn a data-driven prior from empirically generated feature subset candidates. 
+
+Mask pool construction To approximate the unknown distribution over plausible feature subsets, we construct a diverse pool of can-didate masks M = {𝑠 (1) , . . . , 𝑠 (𝑀 ) } ⊂ [ 0, 1]𝑝 . The mask pool is generated with multiple complementary heuristics, including ran-dom feature selection, sparsity-inducing linear models, information-theoretic ranking, and tree-based feature importance methods. This combination introduces distinct inductive biases and collectively populates both sparse and dense regions of the subset space. Each candidate subset is represented as a continuous selection vector in 
+
+[0, 1]𝑝 , obtained by adding small Gaussian perturbations to binary selections and clipping to the unit interval. This smoothing step avoids degenerate binary support and facilitates diffusion model training while preserving the underlying subset structure. 
+
+Diffusion-based prior. We model the distribution over feature masks using a score-based diffusion framework. Let 𝑞 (𝑠 (0) ) denote the em-pirical measure induced by the mask pool. A forward diffusion pro-cess progressively perturbs an initial mask 𝑠 (0) by injecting Gaussian noise over a sequence of timesteps, yielding noisy representations 
+
+{𝑠 (𝑡 ) }𝑇 𝑡 =1:
+
+𝑞 (𝑠 (𝑡 ) | 𝑠 (0) ) = N
+
+
+
+𝑠 (𝑡 ) ; √ ¯𝛼 𝑡 𝑠 (0) , (1 − ¯𝛼 𝑡 )𝐼 
+
+
+
+, (1) where { ¯𝛼 𝑡 } is defined by a standard noise schedule. To learn the diffusion-based prior, a parameterized score function 
+
+𝑠 𝜃 (𝑠 (𝑡 ) , 𝑡 ) is trained to approximate the reverse-time dynamics by predicting the injected noise at each timestep. Training is performed via the standard denoising score-matching objective: 
+
+Lprior (𝜃 ) = E𝑠 (0) ,𝑡,𝜖 
+
+
+
+𝑠 𝜃 (𝑠 (𝑡 ) , 𝑡 ) − 𝜖 2 
+
+, (2) where 𝑠 (𝑡 ) = √ ¯𝛼 𝑡 𝑠 (0) + √1 − ¯𝛼 𝑡 𝜖 , 𝑡 is sampled uniformly from 
+
+{1, . . . ,𝑇 }, and 𝜖 ∼ N ( 0, 𝐼 ).After training, the diffusion model implicitly defines a prior distri-bution 𝑝 (𝑠 ) over feature selection masks. The learned score function 
+
+𝑠 𝜃 (𝑠, 𝑡 ) provides gradients of the log-density of this prior, character-izing the geometry of high-probability regions. This prior assigns higher probability to feature configurations reflecting structured dependencies observed in the mask pool, without explicit enumera-tion of subsets or manual specification of feature interactions. This learned prior later guides posterior inference toward plausible and structured feature subsets. 
+
+3.3 Stability-Based Likelihood 
+
+We next define a likelihood function that evaluates feature subsets based on both predictive performance and robustness across envi-ronments. This likelihood provides the mechanism through which causal invariance-inspired behavior is enforced in CGDFS. Conference’17, July 2017, Washington, DC, USA Arun Vignesh Malarkkan, Xinyuan Wang, Kunpeng Liu, Denghui Zhang, and Yanjie Fu 
+
+Environment-specific evaluation. Given a continuous feature selec-tion mask 𝑠 ∈ [ 0, 1]𝑝 , predictive performance is evaluated separately within each environment. For each environment 𝑒 ∈ { 1, . . . , 𝐸 }, we train a lightweight predictor 𝑓 𝜙 𝑒 : R𝑝 → Y using masked inputs 
+
+𝑥 ⊙ 𝑠 . Training separate predictors avoids parameter sharing across environments and ensures that stability is assessed through con-sistency of predictive behavior rather than through shared model weights. To mitigate overfitting on limited per-environment data, the predictor architecture is intentionally simple. Training is performed via empirical risk minimization on a training split of environment 𝑒 ,after which the predictor parameters are frozen. Once trained, the frozen predictors {𝑓 𝜙 ∗ 
+
+> 𝑒
+
+}𝐸 𝑒 =1 are used to evaluate feature subsets on held-out validation data. Crucially, although predictor parameters re-main fixed, the loss remains differentiable with respect to the feature mask 𝑠 , allowing gradients to propagate through the masked input during posterior inference. 
+
+Performance and stability criteria For a given mask 𝑠 , let 
+
+ℓ𝑒 (𝑠 ) = E(𝑥,𝑦 )∼D (𝑒 )
+
+> val
+
+ℓ (𝑓 𝜙 ∗ 
+
+> 𝑒
+
+(𝑥 ⊙ 𝑠 ), 𝑦 )
+
+denote the validation loss on environment 𝑒 . We summarize predic-tive performance across environments using the mean loss 
+
+¯ℓ (𝑠 ) = 1
+
+𝐸 
+
+> 𝐸
+
+∑︁ 
+
+> 𝑒 =1
+
+ℓ𝑒 (𝑠 ),
+
+and quantify robustness under distribution shift using the variance 
+
+Var 𝑒 
+
+ ℓ𝑒 (𝑠 ) = 1
+
+𝐸 
+
+> 𝐸
+
+∑︁ 
+
+> 𝑒 =1
+
+ ℓ𝑒 (𝑠 ) − ¯ℓ (𝑠 )2.
+
+Feature subsets that achieve low mean loss but high variance are pre-dictive yet unstable, whereas subsets with low values of both terms exhibit strong and consistent performance across environments. 
+
+Stability-based Likelihood. We combine both performance and cross-environment variability into a single stability-based objective func-tion 
+
+𝑈 (𝑠 ) = ¯ℓ (𝑠 ) + 𝜆 var Var 𝑒 
+
+ ℓ𝑒 (𝑠 ),
+
+where 𝜆 var ≥ 0 controls the trade-off between between accuracy and stability. Lower objective values correspond to feature subsets that achieve favorable performance-robustness trade-offs. We define the likelihood over feature subsets implicitly via this objective as 
+
+log 𝑝 (D | 𝑠 ) ∝ − 𝑈 (𝑠 ).
+
+does not assume a generative model for the data; instead, invari-ance is encouraged empirically by favoring feature subsets whose predictive behavior remains consistent across environments. 
+
+Differentiability. Because the feature mask 𝑠 enters the predictors through element-wise input masking, the objective 𝑈 (𝑠 ) is differ-entiable with respect to 𝑠 under mild assumptions on the predictor architectures. Gradients ∇𝑠 𝑈 (𝑠 ) are computed via automatic differen-tiation through the frozen predictors and are stabilized using standard gradient clipping. This differentiability enables gradient-based pos-terior inference in continuous mask space, which we exploit in the subsequent sampling stage. 
+
+3.4 Guided Posterior Sampling 
+
+Given the diffusion-based prior 𝑝 (𝑠 ) and the stability-based likeli-hood 𝑝 (D | 𝑠 ), we perform approximate posterior inference over feature selection masks using gradient-based sampling in continuous mask space. Direct sampling from the posterior 𝑝 (𝑠 | D) ∝ 𝑝 (D | 
+
+𝑠 ) 𝑝 (𝑠 ) is intractable due to the high dimensionality of the space and the absence of a closed-form density. We therefore employ a Langevin dynamics-based sampling procedure that integrates infor-mation from both the learned prior and the stability-based likelihood. 
+
+Posterior score decomposition The gradient of the log-posterior with respect to the mask 𝑠 decomposes as 
+
+∇𝑠 log 𝑝 (𝑠 | D) = ∇𝑠 log 𝑝 (𝑠 ) + ∇ 𝑠 log 𝑝 (D | 𝑠 ),
+
+where the first term corresponds to the score of the learned dif-fusion prior and the second term is given by the gradient of the stability-based objective defined in Section 3.3. This decomposition enables principled integration of structural plausibility and empirical performance-robustness signals during inference. 
+
+Annealed Langevin dynamics Starting from an initial mask 𝑠 (0) sam-pled uniformly from [0, 1]𝑝 , we iteratively update the mask accord-ing to 
+
+𝑠 (𝑘 +1) = 𝑠 (𝑘 ) +𝜂 𝑘 
+
+
+
+∇𝑠 log 𝑝 (𝑠 (𝑘 ) ) + 𝛽 ∇𝑠 log 𝑝 (D | 𝑠 (𝑘 ) )
+
+
+
++√︁ 2𝜂 𝑘 𝜖 (𝑘 ) ,
+
+(3) where {𝜂 𝑘 } is a decreasing step-size schedule, 𝛽 > 0 controls the relative influence of the likelihood term (i.e., likelihood tempering), and 𝜖 (𝑘 ) ∼ N ( 0, 𝐼 ) is Gaussian noise. After each update, the mask is projected onto [0, 1]𝑝 via clipping to ensure validity of continuous selection representation. 
+
+Score computation The prior score ∇𝑠 log 𝑝 (𝑠 ) is obtained from the learned diffusion model by evaluating the score network at the final diffusion timestep. The likelihood gradient ∇𝑠 log 𝑝 (D | 𝑠 ) is com-puted via automatic differentiation through the frozen environment-specific predictors. To stabilize sampling, we normalize the prior and likelihood gradients before combination and apply standard gra-dient clipping. To account for posterior uncertainty, we run multiple independent sampling chains in parallel and retain the final mask from each chain. The resulting set of samples provides an empirical approximation to the posterior distribution over feature subsets and supports downstream aggregation and discretization. 
+
+3.5 Causal Guidance via Invariant Causal Prediction 
+
+While the stability-based likelihood in Section 3.3 promotes empiri-cal invariance through performance consistency across environments, it does not explicitly encode causal information. To further guide posterior inference toward stable feature subsets, we incorporate Invariant Causal Prediction (ICP) to bias posterior inference toward feature subsets that are more likely to satisfy causal invariance. 
+
+Invariant causal signals Invariant Causal Prediction (ICP) identi-fies features whose conditional relationship with the target remains stable across environments under certain assumptions on the data-generating process. Rather than treating ICP as a mechanism for causal discovery, we use it to obtain soft, continuous invariance scores that reflect the degree to which individual features are consis-tent with invariance across environments. Causally-Guided Diffusion for Stable Feature Selection Conference’17, July 2017, Washington, DC, USA 
+
+ICP is motivated by the principle that, for a set of causally rele-vant features 𝑆 , the conditional distribution of the target should be invariant across environments, i.e., 
+
+𝑌 ⊥⊥ 𝐸 | 𝑋 𝑆 .
+
+In practice, testing this condition exactly is challenging in finite-sample and high-dimensional settings. We therefore use ICP-derived invariance scores only as weak guidance signals rather than as hard selection criteria. We incorporate these invariance scores by biasing the mask pool construction used to train the diffusion prior. Specifi-cally, features with higher invariance scores are sampled with higher probability when generating candidate masks. This increases the prior probability mass assigned to feature subsets that include such features, while preserving support over the entire mask space. Im-portantly, this mechanism introduces no hard constraints: all feature subsets remain admissible under the prior, and the diffusion model learns a smooth distribution rather than enforcing deterministic in-clusion or exclusion. 
+
+Interaction with posterior inference. During guided posterior sam-pling (Section 3.4), the stability-based likelihood continues to act as the primary arbiter of feature relevance. As a result, feature subsets favored by ICP can be downweighted or rejected if they exhibit poor predictive performance or instability across environments. This separation ensures that violations of ICP assumptions do not com-promise the validity of the inference procedure. By incorporating ICP as auxiliary causal guidance rather than as a hard constraint, CGDFS remains robust to imperfect or violated causal assumptions while still benefiting from invariance-based signals when they are informative. In practice, this guidance accelerates exploration of the feature subset space and improves sampling efficiency without altering the underlying inference objective. 
+
+3.6 Discretization and Final Feature Selection 
+
+The guided posterior sampling procedure produces a collection of continuous feature selection masks { ˜𝑠 (𝑟 ) }𝑅 𝑟 =1 ⊂ [ 0, 1]𝑝 . We convert these samples into discrete feature subsets in a post-hoc manner to obtain a final, interpretable selection. For each posterior sample ˜𝑠 (𝑟 ) ,we derive a discrete candidate subset by selecting the indices of the top-𝑘 entries, 
+
+𝑧 (𝑟 ) = Top -𝑘 ( ˜𝑠 (𝑟 ) ),
+
+where 𝑘 is a user-specified target cardinality. This maps continuous masks to feature subsets of fixed size while preserving relative fea-ture importance within each sample. Rather than selecting a single subset from a particular posterior sample, we aggregate information across samples by computing posterior inclusion frequencies 
+
+𝜋 𝑗 = 1
+
+𝑅 
+
+> 𝑅
+
+∑︁  
+
+> 𝑟 =1
+
+I
+
+
+
+𝑗 ∈ 𝑧 (𝑟 ) 
+
+,
+
+which quantify how frequently feature 𝑗 appears among the top-𝑘 
+
+selected features across posterior draws. These frequencies provide an interpretable summary of feature relevance under the posterior distribution. The final feature subset is obtained by selecting the 𝑘 features with the highest posterior inclusion frequencies. This aggregation strategy leverages multiple posterior samples, reduces sensitivity to individual stochastic realizations, and yields a stable and inter-pretable feature selection. 
+
+3.7 Theoretical Properties and Computational Considerations 
+
+Approximate Bayesian inference CGDFS performs approximate pos-terior inference over feature selection masks by combining a learned diffusion prior with a stability-based likelihood and sampling via annealed Langevin dynamics. The resulting dynamics target the posterior 
+
+𝑝 (𝑠 | D) ∝ exp   log 𝑝 (𝑠 ) + log 𝑝 (D | 𝑠 ),
+
+but do not guarantee exact sampling due to the use of learned score models and non-convex objectives. Accordingly, CGDFS empha-sizes empirical posterior approximation and stable exploration of the feature subset space rather than asymptotic convergence guarantees. 
+
+Computational complexity CGDFS consists of three computational components. Learning the diffusion-based prior scales linearly with the size of the mask pool and the feature dimension. Training environment-specific predictors scales linearly with the number of environments and data points per environment and can be paral-lelized. Posterior sampling scales linearly with the number of sam-pling steps, chains, environments, and features. Overall, the method scales polynomially in the number of features and environments, making it suitable for moderate-dimensional tabular datasets. 
+
+4 Experiments 
+
+We evaluate CGDFS on a diverse set of tabular datasets under distri-bution shift, covering both classification and regression tasks. Our experiments are designed to answer the following research questions: 
+
+RQ1. Does CGDFS improve downstream predictive performance relative to competitive feature selection baselines? 
+
+RQ2. Does CGDFS produce more stable predictive behavior across heterogeneous environments? 
+
+RQ3. Which components of the proposed framework are critical to its empirical effectiveness? 
+
+RQ4. Does CGDFS yield interpretable and reproducible feature selections that reflect posterior uncertainty? 
+
+4.1 Experimental Setup 
+
+4.1.1 Datasets and Tasks. We evaluate CGDFS on a collec-tion of 12 tabular datasets drawn from diverse application domains, sourced from the UCI Machine Learning Repository and OpenML. These datasets are selected to reflect a range of feature dimension-alities, sample sizes, and degrees of distributional heterogeneity induced through environment construction. We consider two widely studied predictive tasks in machine learning: classification (C) and regression (R). Table 1 summarizes the key characteristics of each dataset. 
+
+4.1.2 Baselines. We compare CGDFS against a diverse set of feature selection baselines that includes correlation-based, stability-aware, optimization-based, and invariance-based approaches. All baselines are evaluated under the same experimental protocol and use identical downstream models and feature budgets to ensure fair com-parison. LASSO / Elastic Net: Embedded linear feature selection methods that induce sparsity through ℓ1 or mixed ℓ1/ℓ2 regularization. Conference’17, July 2017, Washington, DC, USA Arun Vignesh Malarkkan, Xinyuan Wang, Kunpeng Liu, Denghui Zhang, and Yanjie Fu 
+
+Features are selected based on the magnitude of learned coefficients. 
+
+Mutual Information (MI): A univariate filter method that ranks features by estimated mutual information with the target variable and selects the top-𝑘 features. Random Forest Importance: Tree-based feature importance scores computed using Random Forests. Features are ranked by impurity-based or permutation importance, and the top-𝑘 features are selected. Stability Selection: A resampling-based wrapper method that aggregates feature selections across bootstrap samples to identify features that are consistently selected, with final selection based on selection frequency. Greedy Forward Selection: 
+
+A wrapper method that iteratively adds the feature that most im-proves validation performance, stopping when 𝑘 features have been selected. Gradient Ascent on Stability Objective: A continuous optimization baseline that directly minimizes the stability-based ob-jective defined in Section 3.3 using gradient-based optimization over continuous feature masks, followed by top-𝑘 discretization. This baseline isolates the effect of posterior sampling by replacing it with point-estimate optimization. Invariant Causal Prediction (ICP): Acausal feature selection baseline that selects features using invariance tests across environments under standard ICP assumptions, without posterior inference or stability-based optimization. For all baselines, we evaluate the selected feature subsets using the same downstream predictive models (logistic regression for classification and ridge regression for regression). Hyperparameters for each baseline are tuned using validation environments only. Implementation details and hyperparameter grids are provided in the appendix. 
+
+4.1.3 Environment Construction. To evaluate robustness under distribution shift, we explicitly construct multiple environments for each dataset by inducing controlled covariate shifts. Specifically, environments are generated by partitioning the data according to predefined attributes or by applying environment-specific transfor-mations to selected feature groups, resulting in distinct marginal feature distributions across environments while preserving the pre-diction task. For each dataset, we construct 𝐸 environments, each corresponding to a different data distribution. Environment splits are fixed across all methods and random seeds. Crucially, environ-ment labels are used only for evaluation of stability and for training environment-specific predictors; no environment information is pro-vided to downstream models at test time. 
+
+4.1.4 Evaluation Protocol and Metrics. No test environment data is used during mask pool construction, diffusion prior training, hyperparameter tuning, or posterior sampling. 
+
+Downstream model and feature budget. To evaluate each feature set produced by CGDFS and the baselines, we train a simple, standard-ized downstream model on the pooled training data (across training environments) using only the selected features: For classification tasks, we use Logistic regression with ℓ2 regularization and for Re-gression, we use Ridge regression. We report results for a fixed feature budget 𝑘 (reported in each table). Across all methods, the same 𝑘 is enforced to ensure a fair comparison. 
+
+Metrics. For Classification, we report F1-macro, and for Regression, we report MSE. Other metrics are reported in the appendix. 
+
+Per-environment reporting and stability measures. To evaluate robust-ness to distribution shift, we report both aggregate mean performance and environment-wise results. We also quantify stability by reporting the variance (and standard deviation) of the primary metric across test environments; lower variance indicates more stable predictive behavior under distributional heterogeneity. 
+
+Implementation and reproducibility. All experiments are implemented in PyTorch and scikit-learn. Random seeds, dataset preprocessing scripts, environment generation code, and hyperparameter grids are provided in the appendix. The code, experiments and data are avail-able at https://anonymous.4open.science/r/CGD-FS-B01B/ 
+
+4.2 Experimental Results 
+
+4.2.1 Overall Predictive Performance. Table 1 reports overall predictive performance across 12 datasets under distribution shift. Across all six classification datasets, CGDFS achieves the highest F1-macro, outperforming correlation-based methods, stability-selection baselines, and direct optimization of the stability objective. Perfor-mance gains are observed consistently across datasets with varying dimensionality and sample size, indicating that posterior inference remains effective across diverse tabular settings. On the regression benchmarks, CGDFS attains the lowest mean squared error on all datasets. Compared to direct gradient-based optimization of the sta-bility objective (Grad-Stab), CGDFS consistently reduces prediction error, highlighting the benefit of sampling-based posterior inference over point-estimate optimization under distribution shift. Invariant causal selection via ICP improves over purely correlation-driven baselines, but remains inferior to CGDFS, suggesting that invariance signals are most effective when integrated as soft guidance within a posterior framework. Overall, these results indicate that CGDFS selects feature subsets that yield consistently stronger downstream performance across both classification and regression tasks. 
+
+4.2.2 Robustness and Stability Analysis. Table 5 and Figure 2 report cross-environment performance (mean ± standard deviation) for stability-aware baselines and CGDFS. Across all four datasets, CGDFS achieves strong average performance while maintaining competitive or improved stability relative to alternative methods. On the classification datasets, CGDFS attains the highest mean F1-macro. For UCI Credit, CGDFS improves average performance over Stability Selection and Grad-Stab while exhibiting comparable variability across environments. On the Activity dataset, CGDFS sub-stantially outperforms all baselines in average performance, while maintaining lower variance than Grad-Stab and Stability Selection. For regression tasks, CGDFS consistently achieves the lowest mean squared error. On OpenML-618, CGDFS exhibits variability compa-rable to competing methods, while on OpenML-637 it attains both the lowest mean error and the lowest cross-environment variance. Although ICP often reduces variability, this reduction is frequently accompanied by degraded average performance. In contrast, CGDFS achieves a favorable balance between predictive accuracy and cross-environment stability, indicating robustness under distribution shift. 
+
+4.2.3 Ablation Study. We analyze the contribution of individual components of CGDFS by systematically removing the diffusion prior, posterior sampling, and causal guidance as seen in figure 3. 
+
+Effect of the Diffusion Prior. Removing the diffusion-based prior leads to substantial degradation in predictive performance across all datasets on both classification and regression tasks. While stability variance remains comparable in some cases, the resulting feature subsets are consistently less predictive, indicating that posterior sam-pling alone is insufficient without a structured prior. This confirms Causally-Guided Diffusion for Stable Feature Selection Conference’17, July 2017, Washington, DC, USA 
+
+Table 1: Overall predictive performance across 12 datasets under distribution shift. For classification tasks, we report F1-macro (higher is better). For regression tasks, we report MSE (lower is better). All results are averaged over multiple random seeds. 
+
+Dataset #Samples #Features Feature Selection Method 
+
+LASSO MI RF StabSel Greedy Grad-Stab ICP CGDFS Classification (F1-Macro ↑)
+
+German Credit 1001 24 0.680 0.665 0.695 0.692 0.705 0.688 0.712 0.725 
+
+Ionosphere 351 34 0.825 0.810 0.838 0.835 0.842 0.830 0.848 0.985 
+
+Pima Indian 768 9 0.655 0.642 0.668 0.665 0.672 0.660 0.680 0.712 
+
+Spam Base 4601 58 0.885 0.878 0.892 0.890 0.896 0.888 0.902 0.915 
+
+UCI Credit Card 30000 25 0.725 0.715 0.738 0.735 0.742 0.730 0.748 0.762 
+
+Activity 10,299 561 0.812 0.805 0.825 0.820 0.828 0.815 0.835 0.984 Regression (MSE ↓)
+
+Boston Housing 506 13 18.06 19.82 17.23 17.48 16.81 17.81 16.16 15.06 
+
+OpenML-586 1000 25 12.40 13.54 11.90 12.11 11.70 12.25 11.22 10.37 
+
+OpenML-589 1000 25 8.70 9.49 8.29 8.53 8.12 8.64 7.73 7.18 
+
+OpenML-637 1000 50 17.47 18.92 16.81 17.23 16.63 17.64 15.84 14.82 
+
+OpenML-616 500 50 13.54 14.59 13.11 13.32 12.82 13.69 12.39 11.70 
+
+OpenML-618 1000 50 26.21 27.88 25.53 25.82 25.21 26.45 24.22 22.85 StabSel Grad-Stab ICP CGDFS 
+
+> 0.650
+> 0.675
+> 0.700
+> 0.725
+> 0.750
+> 0.775
+> 0.800
+> 0.825
+> Classification:F1-Macro
+> (Higher ↑)
+> 0.735
+> ±0.058
+> 0.742
+> ±0.072
+> 0.748
+> ±0.045
+> 0.763
+> ±0.051
+
+(a) UCI Credit StabSel Grad-Stab ICP CGDFS   
+
+> 0.70
+> 0.75
+> 0.80
+> 0.85
+> 0.90
+> 0.95
+> 1.00
+> 1.05
+> 1.10
+> Classification:F1-Macro
+> (Higher ↑)  0.820
+> ±0.081
+> 0.815
+> ±0.090 0.835
+> ±0.065
+> 0.984
+> ±0.063
+
+(b) Activity StabSel Grad-Stab ICP CGDFS  
+
+> 17.5
+> 20.0
+> 22.5
+> 25.0
+> 27.5
+> 30.0
+> 32.5
+> 35.0
+> Regression: MSE
+> (Lower ↓)
+> 25.820
+> ±6.221
+> 26.450
+> ±4.011
+> 24.220
+> ±4.618
+> 22.800
+> ±4.130
+
+(c) Openml-618 StabSel Grad-Stab ICP CGDFS   
+
+> 12
+> 14
+> 16
+> 18
+> 20
+> Regression: MSE
+> (Lower ↓)
+> 17.230
+> ±3.051 17.640
+> ±2.071
+> 15.840
+> ±2.064
+> 14.820
+> ±2.078
+
+(d) Openml-637 
+
+Figure 2: Cross-Environment Stability Analysis 
+
+that the diffusion prior is critical for guiding exploration toward meaningful regions of the combinatorial feature space. 
+
+Posterior Sampling vs. Optimization. Replacing posterior sampling with direct gradient-based optimization of the stability objective (Grad-Stab) results in lower predictive performance and higher cross-environment variance. Though Grad-Stab yields feature subsets with competitive predictive performance, it shows increased sensitivity to initialization and unstable behavior across environments. In contrast, posterior sampling enables CGDFS to aggregate information from multiple high-probability solutions, yielding more stable results. 
+
+Effect of Causal Guidance (ICP). Incorporating invariant causal pre-diction as soft guidance improves cross-environment stability on both classification and regression datasets. Notably, CGDFS with-out ICP remains competitive, while ICP alone performs worse than all posterior-based variants. These results demonstrate that causal guidance is beneficial but not essential, and is most effective when integrated as a soft prior within the posterior inference framework rather than enforced as a hard selection criterion. 
+
+4.2.4 Interpretability and Uncertainty Analysis. We evaluate the interpretability of the selected feature subsets by examining the posterior inclusion frequencies and feature stability across runs. CGDFS     
+
+> ¬ICP
+> ¬Diffusion
+> ¬Posterior 0.611
+> 0.661
+> 0.711
+> 0.761 0.725
+> 0.713
+> 0.643
+> 0.691
+> Full CGDFS
+> W/O ICP
+> W/O Diffusion
+> W/O Posterior Sampling
+
+(a) UCI Credit CGDFS      
+
+> ¬ICP
+> ¬Diffusion
+> ¬Posterior 0.646
+> 0.680
+> 0.714
+> 0.748
+> 0.712
+> 0.709
+> 0.680
+> 0.695
+> Full CGDFS
+> W/O ICP
+> W/O Diffusion
+> W/O Posterior Sampling
+
+(b) Pima Indian CGDFS     
+
+> ¬ICP
+> ¬Diffusion
+> ¬Posterior 19.285
+> 21.432
+> 23.578
+> 25.725
+> 22.900
+> 20.300
+> 24.100
+> 24.500
+> Full CGDFS
+> W/O ICP
+> W/O Diffusion
+> W/O Posterior Sampling
+
+(c) Openml-618 CGDFS      
+
+> ¬ICP
+> ¬Diffusion
+> ¬Posterior 14.345
+> 22.268
+> 30.192
+> 38.115
+> 15.100
+> 17.600
+> 36.300
+> 29.800
+> Full CGDFS
+> W/O ICP
+> W/O Diffusion
+> W/O Posterior Sampling
+
+(d) Boston Housing 
+
+Figure 3: CGDFS - Ablation Study Conference’17, July 2017, Washington, DC, USA Arun Vignesh Malarkkan, Xinyuan Wang, Kunpeng Liu, Denghui Zhang, and Yanjie Fu 
+
+Table 2: Uncertainty statistics of feature selection for CGDFS. Uncertainty is computed from posterior inclusion frequencies, where higher values indicate greater feature uncertainty.                                 
+
+> Uncertainty Metric Activity Spam Base Boston Housing
+> Central Tendency
+> Mean Uncertainty 0.1847 0.0832 0.2761 Median Uncertainty 0.1693 0.0654 0.2453 Std. Dev. Uncertainty 0.1214 0.1456 0.2422
+> Extreme Values
+> Minimum Uncertainty 0.0008 0.0001 0.0001 Maximum Uncertainty 0.4998 0.4856 0.4999
+> Feature Uncertainty Distribution
+> Q1 (0–0.25 uncertainty) 72.25% 88.00% 52.00% Q2 (0.25–0.50 uncertainty) 27.75% 12.00% 48.00% Q3 ( >0.50 uncertainty) 0.00% 0.00% 0.00%
+> Interpretation
+> Mean Confidence ( 1−Uncertainty) 81.53% 91.68% 59.26%
+
+Posterior Inclusion Frequencies: CGDFS yields a posterior dis-tribution over the feature subsets, which is represented using poste-rior inclusion frequency. This metric quantifies how frequently each feature appears among the top-𝑘 selected features across posterior samples. This provides an interpretable measure of feature relevance that directly reflects uncertainty. Across datasets, the selected fea-tures exhibit higher inclusion frequencies, while low-importance features exhibit a low posterior inclusion rate. This enables inter-pretable ranking of features and avoids reliance on a single determin-istic selection. Feature Stability Across Runs: We also evaluate the overlap of selected feature subsets across independent runs with dif-ferent random seeds. CGDFS consistently produces higher overlap compared to correlation and optimization-based baselines, indicating reduced sensitivity to initialization and sampling noise. It reasons to the posterior aggregation in our framework, which mitigates variance and outputs more reliable feature subsets. These analyses show that our framework CGDFS yields feature subsets that are interpretable, with uncertainty explicitly quantified through posterior runs. 
+
+4.2.5 Computational Complexity and Runtime. We evaluate the computational cost of the three stages of CGDFS: diffusion prior training, environment-specific predictor training, and guided poste-rior sampling. Overall, computational complexity scales polynomi-ally with the number of features and environments. Environment-specific computations are fully parallelizable. In practice, runtime is dominated by diffusion prior training, while posterior sampling scales linearly with the number of features and environments. Across all datasets, CGDFS completes feature selection within a practical time budget and exhibits runtime comparable to stability-based and invariance-based baselines that require repeated model training. 
+
+5 Related Work 5.1 Feature Selection under Distribution Shift 
+
+Feature selection has traditionally been studied to improve general-ization and interpretability, with classical approaches broadly cate-gorized as filter, wrapper, and embedded methods [ 7, 13 , 24 , 37 – 39 ]. While effective in i.i.d. settings, these methods typically optimize predictive performance under a single training distribution and are therefore vulnerable to spurious correlations that fail under distribu-tion shift. To improve robustness, stability-based feature selection methods emphasize consistency across resampling or data pertur-bations [ 5 , 22 , 31 ]. However, these approaches rely on heuristic aggregation and do not explicitly model distributional heterogene-ity or uncertainty over feature subsets. Related work on domain adaptation and covariate shift [ 9, 14 , 30 ] primarily focuses on rep-resentation learning rather than explicit feature subset selection. In contrast, CGDFS directly addresses feature selection under distribu-tion shift by explicitly modeling predictive performance and stability across environments within a unified probabilistic framework. 
+
+5.2 Invariant Learning and Causal Feature Selection 
+
+Invariant and causal learning methods aim to improve robustness by exploiting the principle that causal relationships remain stable across environments, whereas spurious correlations do not [ 4, 16 ,17 , 19 – 21 , 26 , 28 ]. Approaches such as Invariant Risk Minimiza-tion (IRM) [ 2, 3] and Invariant Causal Prediction (ICP) [ 11 , 27 ]operationalize this idea by enforcing or testing invariance across environments. Several works have explored causal feature selection using invariance-based criteria and regularization [ 15 , 16 , 29 ]. How-ever, these methods often rely on hard constraints, combinatorial subset testing, or strong assumptions about environment semantics, which limits scalability and robustness in high-dimensional settings. Moreover, they typically return a single accepted feature set and do not quantify uncertainty. CGDFS differs by treating invariance signals as soft causal guidance and integrating them into posterior inference over feature subsets, allowing empirical performance and stability to override imperfect causal assumptions. 
+
+5.3 Probabilistic Inference and Diffusion Models 
+
+Bayesian formulations of feature selection and model uncertainty date back to Bayesian variable selection and model averaging [ 8, 23 ]. Sampling-based inference methods, including Markov chain Monte Carlo and Langevin dynamics [ 25 , 34 , 35 ], provide principled tools for approximate posterior inference but are rarely used in modern feature selection pipelines due to scalability challenges. Recent work has explored feature selection via deep generative models [ 10 , 36 ], where subsets are generated sequentially using autoregressive or constrained generative processes. In parallel, score-based diffusion models have emerged as powerful tools for learning complex high-dimensional distributions [ 12 , 32 , 33 ], with guided diffusion tech-niques applied to structured generation and inverse problems [1, 6]. However, their application to feature selection remains largely un-explored. CGDFS bridges these lines of work by using diffusion models to learn a structured prior over feature subsets and combining it with stability-based likelihoods through guided Langevin dynam-ics, enabling scalable and uncertainty-aware feature selection under distribution shift. 
+
+6 Conclusion 
+
+We studied feature selection under distribution shift and proposed 
+
+Causally-Guided Diffusion for Stable Feature Selection (CGDFS), a framework that formulates feature selection as approximate pos-terior inference over feature subsets. CGDFS jointly accounts for Causally-Guided Diffusion for Stable Feature Selection Conference’17, July 2017, Washington, DC, USA 
+
+predictive performance and cross-environment stability by combin-ing a diffusion-based prior over feature subsets with a stability-based likelihood defined across multiple environments. Our approach de-parts from deterministic optimization by explicitly reasoning over a distribution of feature subsets. Posterior sampling enables explo-ration of multiple high-probability solutions in the combinatorial feature space, while posterior aggregation yields stable and repro-ducible selections. Invariance-based causal signals are incorporated as soft guidance through the prior, allowing empirical stability and predictive performance to remain the dominant criteria. Empiri-cal results on classification and regression tasks under controlled distribution shifts demonstrate that CGDFS consistently improves out-of-distribution performance and reduces performance variance across environments relative to strong feature selection baselines, including stability-based, optimization-based, and invariance-based methods. These results suggest that posterior inference provides a principled and effective alternative to point-estimate feature selection in non-i.i.d. settings. 
+
+References 
+
+[1] Asad Aali, Marius Arvinte, Sidharth Kumar, and Jonathan I Tamir. 2023. Solving inverse problems with score-based generative priors learned from noisy data. In 2023 57th Asilomar Conference on Signals, Systems, and Computers . IEEE, 837–843. [2] Kartik Ahuja, Karthikeyan Shanmugam, Kush Varshney, and Amit Dhurandhar. 2020. Invariant risk minimization games. In International Conference on Machine Learning . PMLR, 145–155. [3] Martin Arjovsky, Léon Bottou, Ishaan Gulrajani, and David Lopez-Paz. 2019. Invariant risk minimization. arXiv preprint arXiv:1907.02893 (2019). [4] Peter Bühlmann. 2020. Invariance, causality and robustness. Statist. Sci. 35, 3 (2020), 404–426. [5] Mustafa Büyükkeçeci and Mehmet Cudi Okur. 2023. A comprehensive review of feature selection and feature selection stability in machine learning. Gazi University Journal of Science 36, 4 (2023), 1506–1520. [6] Prafulla Dhariwal and Alexander Nichol. 2021. Diffusion models beat gans on image synthesis. Advances in neural information processing systems 34 (2021), 8780–8794. [7] Naoual El Aboudi and Laila Benhlima. 2016. Review on wrapper feature selection approaches. In 2016 international conference on engineering & MIS (ICEMIS) .IEEE, 1–5. [8] Edward I George and Robert E McCulloch. 1993. Variable selection via Gibbs sampling. J. Amer. Statist. Assoc. 88, 423 (1993), 881–889. [9] Mingming Gong, Kun Zhang, Tongliang Liu, Dacheng Tao, Clark Glymour, and Bernhard Schölkopf. 2016. Domain adaptation with conditional transferable components. In International conference on machine learning . PMLR, 2839– 2848. [10] Nanxu Gong, Wangyang Ying, Dongjie Wang, and Yanjie Fu. 2025. Neuro-symbolic embedding for short and effective feature selection via autoregressive generation. ACM Transactions on Intelligent Systems and Technology 16, 2 (2025), 1–21. [11] Christina Heinze-Deml, Jonas Peters, and Nicolai Meinshausen. 2018. Invariant causal prediction for nonlinear models. Journal of Causal Inference 6, 2 (2018), 20170016. [12] Jonathan Ho, Ajay Jain, and Pieter Abbeel. 2020. Denoising diffusion probabilistic models. Advances in neural information processing systems 33 (2020), 6840– 6851. [13] Nazrul Hoque, Dhruba K Bhattacharyya, and Jugal K Kalita. 2014. MIFS-ND: A mutual information-based feature selection method. Expert systems with applica-tions 41, 14 (2014), 6371–6385. [14] Ya Li, Xinmei Tian, Mingming Gong, Yajing Liu, Tongliang Liu, Kun Zhang, and Dacheng Tao. 2018. Deep domain generalization via conditional invariant adversarial networks. In Proceedings of the European conference on computer vision (ECCV) . 624–639. [15] Sara Magliacane, Thijs Van Ommen, Tom Claassen, Stephan Bongers, Philip Versteeg, and Joris M Mooij. 2018. Domain adaptation by using causal inference to predict invariant conditional distributions. Advances in neural information processing systems 31 (2018). [16] Arun Malarkkan, Haoyue Bai, Anjali Kaushik, and Yanjie Fu. 2025. DELTA: Variational Disentangled Learning for Privacy-Preserving Data Reprogramming. doi:10.48550/arXiv.2509.00693 [17] Arun Vignesh Malarkkan, Haoyue Bai, Dongjie Wang, and Yanjie Fu. 2025. Causal Graph Profiling via Structural Divergence for Robust Anomaly Detection in Cyber-Physical Systems. arXiv preprint arXiv:2508.09504 (2025). [18] Arun Vignesh Malarkkan, Haoyue Bai, Xinyuan Wang, Anjali Kaushik, Dongjie Wang, and Yanjie Fu. 2025. Rethinking spatio-temporal anomaly detection: A vision for causality-driven cybersecurity. arXiv preprint arXiv:2507.08177 (2025). [19] Arun Vignesh Malarkkan, Dongjie Wang, Haoyue Bai, and Yanjie Fu. 2025. Incremental Causal Graph Learning for Online Cyberattack Detection in Cyber-Physical Infrastructures. IEEE Transactions on Big Data (2025). [20] Arun Vignesh Malarkkan, Dongjie Wang, and Yanjie Fu. 2024. Multi-view causal graph fusion based anomaly detection in cyber-physical infrastructures. In Proceedings of the 33rd ACM International Conference on Information and Knowledge Management . 4760–4767. [21] Arun Vignesh Malarkkan, Wangyang Ying, and Yanjie Fu. 2026. Causally-Guided Automated Feature Engineering with Multi-Agent Reinforcement Learning. arXiv preprint arXiv:2602.16435 (2026). [22] Nicolai Meinshausen and Peter Bühlmann. 2010. Stability selection. Journal of the Royal Statistical Society Series B: Statistical Methodology 72, 4 (2010), 417–473. [23] Toby J Mitchell and John J Beauchamp. 1988. Bayesian variable selection in linear regression. Journal of the american statistical association 83, 404 (1988), 1023–1032. [24] Ramakrishnan Muthukrishnan and RLASSO Rohini. 2016. LASSO: A feature selection technique in predictive modeling for machine learning. In 2016 IEEE international conference on advances in computer applications (ICACA) . Ieee, 18–20. [25] Radford M Neal et al . 2011. MCMC using Hamiltonian dynamics. Handbook of markov chain monte carlo 2, 11 (2011), 2. [26] Judea Pearl. 2009. Causal inference in statistics: An overview. (2009). [27] Jonas Peters, Peter Bühlmann, and Nicolai Meinshausen. 2016. Causal inference by using invariant prediction: identification and confidence intervals. Journal of the Royal Statistical Society Series B: Statistical Methodology 78, 5 (2016), 947–1012. [28] Jonas Peters, Dominik Janzing, and Bernhard Schölkopf. 2017. Elements of causal inference: foundations and learning algorithms . The MIT press. [29] Mateo Rojas-Carulla, Bernhard Schölkopf, Richard Turner, and Jonas Peters. 2018. Invariant models for causal transfer learning. Journal of Machine Learning Research 19, 36 (2018), 1–34. [30] Sebastian Ruder. 2017. An overview of multi-task learning in deep neural networks. 
+
+arXiv preprint arXiv:1706.05098 (2017). [31] Rajen D Shah and Richard J Samworth. 2013. Variable selection with error control: another look at stability selection. Journal of the Royal Statistical Society Series B: Statistical Methodology 75, 1 (2013), 55–80. [32] Yang Song and Stefano Ermon. 2019. Generative modeling by estimating gradients of the data distribution. Advances in neural information processing systems 32 (2019). [33] Yang Song, Jascha Sohl-Dickstein, Diederik P Kingma, Abhishek Kumar, Stefano Ermon, and Ben Poole. 2020. Score-based generative modeling through stochastic differential equations. arXiv preprint arXiv:2011.13456 (2020). [34] Sebastian J Vollmer, Konstantinos C Zygalakis, et al . 2015. (Non-) asymp-totic properties of stochastic gradient Langevin dynamics. arXiv preprint arXiv:1501.00438 (2015). [35] Max Welling and Yee W Teh. 2011. Bayesian learning via stochastic gradi-ent Langevin dynamics. In Proceedings of the 28th international conference on machine learning (ICML-11) . 681–688. [36] Wangyang Ying, Dongjie Wang, Haifeng Chen, and Yanjie Fu. 2024. Feature selection as deep sequential generative learning. ACM Transactions on Knowledge Discovery from Data 18, 9 (2024), 1–21. [37] Wangyang Ying, Cong Wei, Nanxu Gong, Xinyuan Wang, Haoyue Bai, Arun Vi-gnesh Malarkkan, Sixun Dong, Dongjie Wang, Denghui Zhang, and Yanjie Fu. 2025. A survey on data-centric ai: Tabular learning from reinforcement learning and generative ai perspective. arXiv preprint arXiv:2502.08828 (2025). [38] Lei Yu and Huan Liu. 2003. Feature selection for high-dimensional data: A fast correlation-based filter solution. In Proceedings of the 20th international conference on machine learning (ICML-03) . 856–863. [39] Hui Zou and Trevor Hastie. 2005. Regularization and variable selection via the elastic net. Journal of the Royal Statistical Society Series B: Statistical Methodology 67, 2 (2005), 301–320. Conference’17, July 2017, Washington, DC, USA Arun Vignesh Malarkkan, Xinyuan Wang, Kunpeng Liu, Denghui Zhang, and Yanjie Fu 
+
+A Theoretical Justification 
+
+This appendix provides concise theoretical justification for the design choices underlying CGDFS. The results below are stated under standard regularity assumptions and are intended to clarify the behavior of the energy-based posterior, the learned diffusion prior, and the final aggregation procedure. The statements are informal and asymptotic in nature, and are included to aid interpretation rather than to establish formal guarantees. 
+
+A.1 Setup and Assumptions 
+
+Let 𝑠 ∈ [ 0, 1]𝑝 denote a continuous feature selection mask and recall the stability-based objective 
+
+J ( 𝑠 ) = ¯ℓ (𝑠 ) + 𝜆 var Var 𝑒 
+
+ ℓ𝑒 (𝑠 ),
+
+with the induced energy-based posterior distribution 
+
+𝑝 (𝑠 | D) ∝ exp   − J ( 𝑠 ) 𝑝 (𝑠 ),
+
+where 𝑝 (𝑠 ) denotes the diffusion-learned prior. This distribution is interpreted as an energy-based posterior rather than as a likelihood-derived Bayesian posterior. We make the following assumptions: 
+
+• A1 (Smoothness). For each environment 𝑒 , the loss ℓ𝑒 (𝑠 ) is continuously differentiable and 𝐿 -Lipschitz on [0, 1]𝑝 .
+
+• A2 (Boundedness). Losses are uniformly bounded: ℓ𝑒 (𝑠 ) ∈ [ 0, 𝐿 max ].
+
+• A3 (Prior support). The prior density 𝑝 (𝑠 ) is continuous and strictly positive on neighborhoods of masks of interest. 
+
+• A4 (Score approximation). Given sufficient mask-pool coverage and model capacity, the denoising score network provides a consistent approximation to the score of the perturbed mask distribution. These assumptions are standard in score-based generative modeling and stability-based learning. 
+
+A.2 Posterior Preference for Stable Feature Subsets 
+
+Proposition 1. Under Assumptions A1–A3, for any two masks 𝑠 𝑎 , 𝑠 𝑏 ∈ [ 0, 1]𝑝 ,
+
+J ( 𝑠 𝑎 ) < J ( 𝑠 𝑏 ) ⇒ 𝑝 (𝑠 𝑎 | D) > 𝑝 (𝑠 𝑏 | D) ,
+
+up to a multiplicative factor given by the prior ratio 𝑝 (𝑠 𝑎 )/ 𝑝 (𝑠 𝑏 ).
+
+Proof sketch. By definition, 
+
+𝑝 (𝑠 𝑎 | D) 
+
+𝑝 (𝑠 𝑏 | D) = 𝑝 (𝑠 𝑎 )
+
+𝑝 (𝑠 𝑏 ) exp  J ( 𝑠 𝑏 ) − J ( 𝑠 𝑎 ).
+
+Assumption A3 ensures 𝑝 (𝑠 𝑎 ), 𝑝 (𝑠 𝑏 ) > 0. Since J ( 𝑠 𝑏 ) − J ( 𝑠 𝑎 ) > 0, the ratio exceeds one. □
+
+Implication. The posterior explicitly favors feature subsets that achieve better trade-offs between average predictive performance and cross-environment stability, justifying the likelihood construction used in CGDFS. 
+
+A.3 Consistency of the Learned Diffusion Prior 
+
+Proposition 2 (Consistency intuition). Under Assumptions A3–A4 and standard conditions on score-based diffusion training, the learned score network 𝑠 𝜃 (𝑠, 𝑡 ) approximates the score of the perturbed mask distribution. Evaluating the score network at the lowest-noise diffusion timestep yields an approximate gradient of log 𝑝 (𝑠 ) up to modeling and optimization error. 
+
+Proof sketch. Denoising score matching minimizes the expected squared error between the network output and injected Gaussian noise. Under sufficient model capacity and training accuracy, this objective is minimized by the true denoising function, which is algebraically related to the score of the perturbed density. As the noise variance decreases, this score approaches the gradient of the log-density of the underlying mask distribution. □
+
+Implication. This result supports using the learned diffusion score as a prior gradient during guided posterior sampling. 
+
+A.4 Consistency of Posterior Inclusion Frequencies 
+
+Proposition 3. Let { ˜𝑠 (𝑟 ) }𝑅 𝑟 =1 denote approximate posterior samples obtained via guided Langevin dynamics, and let 𝑧 (𝑟 ) = Top -𝑘 ( ˜𝑠 (𝑟 ) ).Define the empirical inclusion frequency 
+
+𝜋 (𝑅 ) 
+
+> 𝑗
+
+= 1
+
+𝑅 
+
+> 𝑅
+
+∑︁  
+
+> 𝑟 =1
+
+I
+
+
+
+𝑗 ∈ 𝑧 (𝑟 ) 
+
+.
+
+Assuming the sampling procedure yields asymptotically unbiased samples from 𝑝 (𝑠 | D) , then 
+
+𝜋 (𝑅 )
+
+> 𝑗
+> a.s.
+
+−−→ P𝑝 (𝑠 | D ) ( 𝑗 ∈ Top -𝑘 (𝑠 )) as 𝑅 → ∞ .Causally-Guided Diffusion for Stable Feature Selection Conference’17, July 2017, Washington, DC, USA 
+
+Table 3: Hyperparameter defaults and sweep ranges used in our experiments.                          
+
+> Hyperparameter Default Sweep range
+> 𝜆 var 0.1 {0.0, 0.01, 0.05, 0.1, 0.2, 0.5} Guidance 𝛽 0.5 {0.0, 0.25, 0.5, 0.75, 1.0} Langevin steps 𝐾 100 {20, 50, 100, 200} Chains 𝑅 10 {1, 3, 5, 10} Mask pool size 𝑀 500 {100, 300, 500} Diffusion steps 𝑇 100 {50, 100} Prior learning rate 1×10 −4{1e-5, 1e-4, 5e-4} Predictor hidden dim 128 {64, 128, 256}
+
+Table 4: Ablation and stability analysis of CGDFS For classification, we report F1-macro (higher is better). For regression, we report MSE (lower is better). Stability is measured as the standard deviation of the primary metric across test environments (lower is better). 
+
+Method UCI Credit (C) Pima Indian (C) Boston Housing (R) OpenML-618 (R) F1 ↑ Std ↓ F1 ↑ Std ↓ MSE ↓ Std ↓ MSE ↓ Std ↓
+
+Full CGDFSS 0.725 0.051 0.712 0.034 15.1 1.60 22.9 1.13 
+
+W/O ICP 0.713 0.088 0.709 0.055 17.6 2.10 20.3 1.73 W/O Diffusion 0.643 0.058 0.680 0.039 36.3 1.67 24.1 1.42 W/O Posterior Sampling 0.691 0.079 0.695 0.061 29.8 3.14 24.5 1.45 
+
+Proof sketch. For fixed 𝑗 , the indicator I( 𝑗 ∈ Top -𝑘 (𝑠 )) is a bounded measurable function. By the strong law of large numbers, empirical averages converge almost surely to their expectation under the sampling distribution. □
+
+Implication. Posterior inclusion frequencies provide consistent estimates of feature relevance probabilities, and selecting features with the highest 𝜋 𝑗 yields a stable decision rule under a fixed cardinality constraint. 
+
+B Hyperparameter Sensitivity 
+
+We evaluate CGDFS sensitivity to key hyperparameters that most strongly affect inference: the variance penalty 𝜆 var in the stability objective, the guidance weight 𝛽 in the Langevin sampler, and the sampling budget (number of chains 𝑅 and steps 𝐾 ). Results show that CGDFS performance and stability vary smoothly with these parameters, and that the chosen defaults lie in a stable region of the parameter space. Specifically, small 𝜆 var values prioritize average performance while large values overemphasize stability; 𝜆 var = 0.1 balances this trade-off. Moderate guidance ( 𝛽 ≈ 0.5) effectively integrates the diffusion prior with the stability objective. Increasing 𝑅 and 𝐾 yields diminishing returns, with 𝑅 = 10 and 𝐾 = 100 providing a practical accuracy–efficiency trade-off. 
+
+C Limitations 
+
+CGDFS has several limitations that point to directions for future work. 1) Posterior inference is approximate: guided Langevin dynamics with a learned diffusion prior does not guarantee exact sampling from the target distribution, and performance depends on step-size schedules, noise levels, and prior accuracy. 2) The stability objective relies on a finite set of environments; if environments fail to expose relevant distribution shifts, stability estimates may be optimistic. 3) The learned diffusion prior reflects the quality and diversity of the mask pool; poorly constructed pools may bias exploration despite the posterior correction. 4) While ICP-based guidance can accelerate exploration, it depends on assumptions that may be violated in practice; CGDFS mitigates this risk by treating ICP as optional soft guidance rather than a constraint, but incorrect invariance signals may still affect sampling efficiency. Finally, the current implementation targets moderate-dimensional tabular data; scaling to very high-dimensional feature spaces remains an open challenge. 
+
+D Additional Experimental Results Conference’17, July 2017, Washington, DC, USA Arun Vignesh Malarkkan, Xinyuan Wang, Kunpeng Liu, Denghui Zhang, and Yanjie Fu 
+
+Table 5: Cross-environment stability (mean ± standard deviation across test environments). For classification datasets (UCI Credit, Activity), we report F1-macro (higher is better). For regression datasets (OpenML-618, OpenML-637), we report MSE (lower is better). 
+
+Dataset Stability Sel. Grad-Stab ICP CGDFS 
+
+UCI Credit (C) 0.735 ± 0.058 0.742 ± 0.072 0.748 ± 0.045 0.763 ± 0.051 
+
+Activity (C) 0.820 ± 0.081 0.815 ± 0.090 0.835 ± 0.065 0.984 ± 0.063 
+
+OpenML-618 (R) 25.82 ± 6.22 26.45 ± 4.01 24.22 ± 4.62 22.85 ± 4.13 
+
+OpenML-637 (R) 17.23 ± 3.05 17.64 ± 2.07 15.84 ± 2.06 14.82 ± 2.08
