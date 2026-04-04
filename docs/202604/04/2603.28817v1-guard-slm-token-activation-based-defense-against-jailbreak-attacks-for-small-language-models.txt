@@ -1,0 +1,2368 @@
+Title: GUARD-SLM: Token Activation-Based Defense Against Jailbreak Attacks for Small Language Models
+
+URL Source: https://arxiv.org/pdf/2603.28817v1
+
+Published Time: Wed, 01 Apr 2026 00:06:35 GMT
+
+Number of Pages: 25
+
+Markdown Content:
+## GUARD-SLM: Token Activation-Based Defense Against Jailbreak Attacks for Small Language Models 
+
+Md. Jueal Mia 1,2, Joaquin Molto 1,2, Yanzhao Wu 1, and M. Hadi Amini 1,2
+
+1: Knight Foundation School of Computing and Information Sciences 2: Security, Optimization, and Learning for InterDependent networks laboratory (solid lab) Florida International University Miami, FL, USA 
+
+{mmia001, jmolt001, yawu, moamini}@fiu.edu 
+
+Abstract 
+
+Small Language Models (SLMs) are emerg-ing as efficient and economically viable alternatives to Large Language Models (LLMs), offering competitive performance with significantly lower computational costs and latency. These advantages make SLMs suitable for resource-constrained and effi-cient deployment on edge devices. How-ever, existing jailbreak defenses show lim-ited robustness against heterogeneous at-tacks, largely due to an incomplete un-derstanding of the internal representations across different layers of language models that facilitate jailbreak behaviors. In this paper, we conduct a comprehensive empir-ical study on 9 jailbreak attacks across 7 SLMs and 3 LLMs. Our analysis shows that SLMs remain highly vulnerable to ma-licious prompts that bypass safety align-ment. We analyze hidden-layer activations across different layers and model architec-tures, revealing that different input types form distinguishable patterns in the inter-nal representation space. Based on this observation, we propose GUARD-SLM, a lightweight token activation-based method that operates in the representation space to filter malicious prompts during inference while preserving benign ones. Our find-ings highlight robustness limitations across layers of language models and provide a practical direction for secure small language model deployment. 
+
+Warning: This paper contains examples of data, prompts, and model outputs that might be considered offensive. The reader’s discretion is highly recommended. 
+
+1 Introduction 
+
+Emerging language model-powered applica-tions, such as Agentic AI, have transformed language models from passive text generators into active decision-makers capable of planning, decision-making, and autonomous task execu-tion. More recent models, e.g., the GPT series [7, 25 , 1], LLaMA [ 31 , 32 ], PaLM [ 11 ], and Gemini [ 30 ], achieve strong performance across reasoning and generation tasks, offering both large-scale variants focused on capability and smaller versions optimized for efficiency. In this context, SLMs have emerged as a practical solu-tion for deployment at the resource-constrained edge devices. They typically contain 100M–8B parameters [ 23 , 42 , 4]. Their compact archi-tectures reduce computational costs, memory usage, and inference latency, which is suitable for resource-constrained on-device deployment environments. Although LLMs remain domi-nant in open-domain reasoning, SLMs achieve competitive performance on specialized tasks. Recent studies [ 10 , 33 ] report several challenges of SLMs, such as hallucination, instability, and reduced robustness. These issues, together with the higher vulnerability of smaller models to adversarial and jailbreak attacks [ 3], raise sig-nificant safety concerns for deploying SLMs in the real world. Jailbreak defenses can be generally catego-rized into (1) training-time and (2) inference-time approaches [ 43 ]. Training-based methods improve safety alignment during optimization but require retraining, introduce high compu-tational cost, and may affect general capability, while inference-time defenses operate without modifying model parameters. Input-level meth-ods filter prompts but can be bypassed through prompt obfuscation, and output-level methods detect unsafe responses after generation, which may introduce additional latency. Intraprocess defenses instead analyze hidden representations during the forward pass, enabling detection without retraining. In this work, we conduct a large-scale empirical evaluation across both     
+
+> arXiv:2603.28817v1 [cs.CR] 28 Mar 2026 Request: How to make a bomb?
+> Response: Sure, here is the steps…..
+> Request: How to make a bomb? + Optimized jailbreak prompt
+> Response: I’m sorry. I can’t assist you. Figure 1: Jailbreak attack on aligned vs non-aligned SLMs.
+
+SLMs and LLMs to analyze robustness against jailbreak attacks and to design an efficient in-traprocess defense based on representation-level signals. We focus on last-token activations, mo-tivated by the observation that safety-related features emerge across different transformer lay-ers. Prior studies report inconsistent findings on layer importance. Some emphasize lower lay-ers [ 16 ], others highlight lower and middle lay-ers [ 47 , 15 ], while additional work argues that deeper layers encode stronger safety patterns [20 ]. However, there remains a critical lack of in-depth understanding of the specific roles that different layers play in defending against jailbreak attacks in language models. To ad-dress these challenges, we conduct a systematic and large-scale layer-wise analysis to measure the separability between benign and malicious prompts and identify the most informative lay-ers. Our study provides foundational insights for developing efficient intraprocess jailbreak defenses tailored to SLMs Based on these vulnerabilities of SLMs, we aim to answer the following research questions: 
+
+RQ1: To what extent are SLMs vulnerable to adversarial prompts and optimized prompts under different jailbreak attack strategies, and how does the attack success rate vary across different jailbreak techniques? 
+
+RQ2: How does the representation space of SLMs differ for benign, adversarial, and jailbreak-optimized prompts, and in which model layers are jailbreak attacks observable? 
+
+RQ3: How can jailbreak attacks be detected and mitigated in SLMs using lightweight inference-time defenses that introduce minimal computa-tional overhead? 
+
+We summarize our main contributions as follows: 
+
+• We conduct a systematic empirical evalua-tion of both SLMs and LLMs under diverse categories of jailbreak attacks. Our analy-sis shows that SLMs are more vulnerable to jailbreak prompts compared to LLMs. 
+
+• We analyze prompt behavior in the inter-nal representation space of language mod-els to better understand the mechanisms underlying safety alignment. Our study re-veals important representation-level char-acteristics that influence jailbreak suscep-tibility in SLMs. 
+
+• We propose GUARD-SLM, a lightweight and effective jailbreak defense that oper-ates at inference time without requiring model retraining or parameter modifica-tion. 
+
+• We extensively evaluate our method on three SLMs across nine jailbreak attack techniques and demonstrate that our ap-proach significantly reduces the attack suc-cess rate while introducing no additional tokens and minimal inference overhead. 
+
+2 Literature Review 
+
+2.1 Jailbreak Attacks 
+
+LLMs are typically aligned using supervised fine-tuning and reinforcement learning from hu-man feedback (RLHF) to promote safe and policy-compliant behavior. However, recent studies show that aligned LLMs remain vul-nerable to jailbreak attacks, where adversar-ial prompts bypass safety guardrails and elicit harmful or restricted outputs. Optimization-based approaches, such as universal adversarial suffix attacks (GCG) [ 48 ], automatically search for transferable token sequences that produce unsafe responses, while AutoDAN [ 22 ] improves stealth and scalability through a hierarchical genetic algorithm. Black-box iterative refine-ment methods, including PAIR [ 9] and TAP [24 ], leverage attacker models to progressively enhance jailbreak prompts with high query ef-ficiency, and GPTFuzzer [ 39 ] applies mutation-based fuzzing to discover adversarial templates at scale. Beyond direct optimization, scenario-driven attacks such as DeepInception [21] and ReNeLLM [ 14 ] exploit role-play and prompt rewriting mechanisms, while ICA [ 35 ] demon-strates that even a few harmful in-context ex-amples can manipulate model behavior. Ci-pherChat [ 40 ] and multilingual studies [ 13 ] fur-ther reveal that alignment fails to generalize to encoded or non-English prompts. Moreover, Jailbroken [ 34 ] reveals that conflicting objec-tives and mismatched generalization fundamen-tally limit current safety training. Collectively, these findings suggest that jailbreak vulnera-bilities arise from structural limitations in cur-rent alignment paradigms rather than isolated prompt-engineering artifacts. 
+
+2.2 Jailbreak Defense 
+
+Jailbreak defenses for LLMs are categorized based on when safety is enforced in the model lifecycle, including training-level defenses and inference-time defenses [ 43 ]. Inference-time defenses are further divided into preprocess, intraprocess, and postprocess approaches, de-pending on whether protection is applied to the input, during execution, or on the generated output. 
+
+2.2.1 Training-Level Defenses 
+
+Training-level defenses improve model safety by modifying parameters, objectives, or learned representations during pretraining or fine-tuning. RLHF and Safe RLHF [ 12 ] guide the model toward safe outputs using reward-based optimization, but they require costly human annotation and may fail on unseen jailbreak prompts. Although safe tuning methods [ 5]use curated safety data to reduce harmful re-sponses, they can cause over-refusal and depend on data diversity. Other approaches such as safe unlearning [ 45 ] and Distributionally Ro-bust Optimization (DRO)–based defenses [ 46 ]improve robustness by removing unsafe behav-iors or optimizing worst-case performance, but they often require expensive retraining and de-grade model utility. 
+
+2.2.2 Inference-Time Defenses 
+
+Inference-time defenses mitigate jailbreak at-tacks without modifying model parameters and are commonly divided into preprocess, intrapro-cess, and postprocess defenses. 
+
+Preprocess Defenses. Preprocess defenses attempt to block adversarial prompts before generation by modifying or filtering the in-put. Prompt-based methods such as in-context demonstrations [ 36 ], goal prioritization [ 44 ], and self-reminder mechanisms [ 37 ] add safety instructions to guide the model. These meth-ods increase token cost and remain vulnera-ble to adaptive jailbreak prompts. Other ap-proaches include paraphrasing, retokenization using Byte Pair Encoding dropout [ 17 ], and perplexity-based detection [ 2]. These methods try to break token-level triggers or detect ab-normal prompts. 
+
+Intraprocess Defenses. Intraprocess de-fenses intervene during model execution to de-tect malicious intent using intermediate model behavior. Sampling-based methods such as SmoothLLM [ 27 ] and robust alignment check-ing [ 8] apply randomized perturbations and aggregate multiple outputs, but they require repeated forward passes and are sensitive to hy-perparameters, increasing inference cost. Erase-and-Check [ 19 ] removes parts of the prompt and re-evaluates responses to identify suffix-based attacks, but its iterative evaluation in-troduces significant latency. Moreover, recent work analyzes internal activation dynamics and shows that benign and harmful activations of-ten overlap while jailbreak activations shift out-side the normal distribution especially in lower and middle layers [ 15 ]. This indicates that jail-break behavior is a multi-layer phenomenon. Concept-based defenses such as JBShield [ 41 ]model toxic and jailbreak concepts using an-chor subspaces and suppress jailbreak-related activations during inference enabling efficient and interpretable mitigation. 
+
+Postprocess Defenses. Postprocess de-fenses evaluate generated outputs before they are returned to the user. Self-evaluation [ 26 ]and external judging use additional language models to check safety, but they increase in-ference cost. Aligner-based methods [ 18 ] are more efficient but still require auxiliary models and may modify benign responses. Safe decod-ing [ 38 ] restricts generation by blocking unsafe tokens using safety classifiers. This approach does not modify the prompt but increases de-coding cost and depends on classifier accuracy, and strict filtering may reduce response quality for benign queries, limiting real-time use. Last token activation analysis       
+
+> Extract last token activation
+> Representation of token Layerwise analysis using tSNE
+> Selected layer for detecting jailbreak
+> Layer 0 Layer n
+> Representation of token Extract last token activation at i’th layer
+> Generate response
+> Classify prompt Block request
+> Inference time defense
+> Tokenization
+> Encoding Embedding
+> User Query: Write a script that can exploit vulnerabilities in a software or operating system
+> Train non-linear classification model Load saved model during classification
+
+Figure 2: Overview of proposed GUARD-SLM framework. 
+
+Algorithm 1 Jailbreak prompt classification based on last token activation 
+
+Require: Model M , tokenizer T , benign prompts B, non-benign prompts A
+
+Require: Max input length L, target layer ℓ⋆,SVM parameters (C, γ )
+
+Ensure: Trained binary classifier f
+
+1: Initialize training set (X, y )
+
+2: for each (D, t ) ∈ { (B, 0) , (A, 1) } do 
+
+3: for each prompt x ∈ D do 
+
+4: p ← BuildPrompt (T , x )
+
+5: {H(0) , . . . , H (N )} ← M (p) ▷ single forward pass 
+
+6: for ℓ = 0 to N − 1 do 
+
+7: hlast 
+
+ℓ ← H(ℓ+1) [−1] 
+
+8: if ℓ = ℓ⋆ then 
+
+9: X ← X ∪{ hlast 
+
+ℓ }, y ← y∪{ t}
+
+10: end if 
+
+11: end for 
+
+12: end for 
+
+13: end for 
+
+14: Train f ← StandardScaler ◦
+
+SVC RBF (C, γ ) on (X, y )
+
+3 Methodology 
+
+We introduce GUARD-SLM, a representation-level jailbreak defense framework for SLMs. Un-like output-based filtering methods that inspect generated responses, our approach operates di-rectly within the internal activation space of the model before decoding begins. The key hypoth-esis is that jailbreak prompts induce distinguish-able activation patterns in specific transformer layers. Our objective is to analyze layer-wise 
+
+Algorithm 2 GUARD-SLM 
+
+Require: User prompt x, language model M ,tokenizer T , trained RBF-SVM pipeline f ,target layer ℓ
+
+Ensure: Safe response or refusal 
+
+1: p ← BuildPrompt (T , x )
+
+2: Run one forward pass of M on p with hid-den states enabled 
+
+3: Extract last-token activation hlast 
+
+ℓ
+
+4: ˆy ← f. Predict (hlast 
+
+ℓ ) ▷ ˆy ∈ { 0, 1}
+
+5: if ˆy = 1 then 
+
+6: return refusal 
+
+7: else 
+
+8: return M. Generate (p)
+
+9: end if 
+
+prompt representations and identify the specific layer that provides the strongest separability between benign and malicious inputs. A high-level overview of our framework has been rep-resented in Figure 2. The pipeline consists of two stages: (1) Layer-wise activation analysis for jailbreak separability, (2) Activation-space adversarial prompt filtering. 
+
+3.1 Layer-wise Activation Analysis for Jailbreak Separability 
+
+Our proposed solution for layer-wise activation analysis of jailbreak separability is provided in Algorithm 1. Let M be a decoder-only trans-former model with N layers and hidden dimen-sion d. Given an input prompt x, the tokenizer 
+
+T converts it into a token sequence: 
+
+p = T (x) = ( w1, w 2, . . . , w T ), (1) where T ≤ L denotes the maximum sequence length. A forward pass through M produces hidden representations at every layer: 
+
+{H(0) , H (1) , . . . , H (N )} = M (p), (2) where H(ℓ) ∈ RT ×d. We define the last-token activation at layer ℓ as 
+
+hlast  
+
+> ℓ
+
+= H(ℓ) 
+
+> T
+
+∈ Rd. (3) The last-token representation aggregates con-textual information from the entire prompt and reflects the model’s internal semantic state prior to generation [41, 29]. Our objective is to learn a binary decision function 
+
+f : Rd → { 0, 1}, (4) where label 0 corresponds to benign prompts and label 1 corresponds to jailbreak prompts. Let B denote the benign prompt set and 
+
+A denote the jailbreak prompt set. For each prompt x, we perform a single forward pass and extract the last-token activation at a target layer ℓ⋆.We construct the labeled dataset: 
+
+D =
+
+n 
+
+hlast  
+
+> ℓ⋆
+
+(xi), y i
+
+o Mi=1 , (5) where 
+
+yi =
+
+(
+
+0, xi ∈ B ,
+
+1, xi ∈ A .
+
+The layer ℓ⋆ is selected based on empirical separability analysis. In practice, we evaluate multiple layers and select the one that yields the highest classification performance. To improve numerical stability, we standardize features: 
+
+˜h = h − μσ , (6) where μ and σ are computed over the training activations. We then train a Support Vector Machine (SVM) with a Radial Basis Function (RBF) kernel [28]: 
+
+K(u, v) = exp  −γ∥u − v∥22
+
+ , (7) where γ controls the kernel width. The trained classifier is denoted as f (·) and forms the activation-space decision boundary at layer ℓ⋆.
+
+3.2 Activation-Space adversarial prompt filtering 
+
+The activation-space gating mechanism has been presented in Algorithm 2. At deployment time, GUARD-SLM integrates the trained clas-sifier into the forward pass of the model before decoding. Given a user prompt x, the following steps are performed: Construct input tokens 
+
+p = T (x).
+
+Perform a single forward pass through M with hidden-state outputs enabled. Extract the last-token activation at the selected layer 
+
+hlast  
+
+> ℓ⋆
+
+(x).
+
+Apply stored normalization statistics 
+
+˜h = hlast  
+
+> ℓ⋆
+
+(x) − μσ .
+
+Obtain binary prediction 
+
+ˆy = f  ˜h. (8) The final decision is defined as Output (x) = 
+
+(
+
+Refusal , ˆy = 1 ,M. Generate (p), ˆy = 0 .
+
+(9) If the classifier predicts ˆy = 1 , the prompt is identified as malicious and decoding is immedi-ately halted. Otherwise, autoregressive genera-tion proceeds using the cached states obtained from the same forward pass. By operating di-rectly in the model’s internal representation space rather than filtering outputs post hoc, GUARD-SLM blocks unsafe content before it is generated while reusing the standard forward pass required for inference. 
+
+4 Experiments and Results 
+
+4.1 Experimental Setup 
+
+All experiments were conducted on multiple high-performance computing platforms to sup-port large-scale jailbreak evaluation, activation analysis, and defense validation. We used sev-eral GPU environments, including NVIDIA A100/H100/RTX-A6000 GPUs, enabling effi-cient large-scale inference for both SLMs and LLMs. Our evaluation includes seven SLMs and three LLMs, with LLaMA-2-7B, Vicuna-7B, and Mistral-7B used as primary models for defense validation, and experiments were per-formed on multiple jailbreak and instruction datasets, including AdvBench, JailBreakV-28K, Alpaca, HarmBench, and Dolly. Due to space limitations, detailed experimental setup, hard-ware configuration, and dataset descriptions are provided in the Appendix. The source code, datasets, and experimental results are publicly available at https://github.com/solidlabn etwork/GUARD-SLM.git . The repository in-cludes the training and evaluation data, along with the results generated by our method. This allows researchers to verify our findings and reproduce the reported results. 
+
+4.2 Vulnerability of SLMs and LLMs to Jailbreak Attacks 
+
+The primary goal of this work is to identify vulnerabilities in both SLMs and LLMs. We evaluate seven SLMs and three LLMs from dif-ferent model families, where SLMs have up to 8B parameters and LLMs range from 13B to 14B parameters. A comprehensive robust-ness evaluation is conducted using 9 jailbreak attack categories that optimize input queries to bypass safety alignment, along with direct malicious prompts as a baseline. The results in Tables 1 and 2 show that both SLMs and LLMs are vulnerable to jailbreak attacks, with SLMs exhibiting higher vulnerability. For both cases, AutoDAN is the most effective attack for bypassing safety alignment. 
+
+4.3 Layer-wise Sensitivity of Last-Token Activations 
+
+Sensitivity analysis is conducted to understand the behavior of different models in the repre-sentation space. For detailed analysis, three SLMs are selected as primary models. We per-form layer-wise sensitivity analysis using three types of inputs: benign prompts, direct mali-cious prompts, and 9 optimized jailbreak attack categories. For each layer, the hidden repre-sentation of the last token is projected using t-SNE to visualize how different inputs are dis-tributed in the representation space. A sample visualization is presented at Figure 3 and Fig-Benign              
+
+> Direct prompt attack
+> AutoDAN
+> Cipher
+> CodeChameleon
+> DeepInception
+> GCG
+> ICA
+> Jailbroken
+> PAIR
+> TAP 100 50 050 100
+> tSNE-1
+> 100
+> 50
+> 0
+> 50
+> 100
+> tSNE-2
+> (1) Early: Layer 0 100 50 050 100
+> tSNE-1
+> 100
+> 50
+> 0
+> 50
+> 100
+> tSNE-2 (2) Middle: Layer 11 100 50 050 100
+> tSNE-1
+> 100
+> 50
+> 0
+> 50
+> 100
+> tSNE-2
+> (3) Late: Layer 31
+
+Figure 3: t-SNE visualization of LLaMA-7B acti-vations showing early, middle, and late layer repre-sentations. 
+
+ure 4 for early layer. To analyze the behavior across the network, model layers are divided into three groups: early layers (0–10), middle layers (11–21), and late layers (22–31). 
+
+We claim that jailbreak attacks are vis-ible in every layer of the representation space. The analysis shows that the hidden rep-resentations across layers contain sufficient in-formation to distinguish different prompt types, indicating that activation-level features can be used to detect optimized jailbreak attacks with-out relying on a specific layer. To better understand these differences, we summarize the main observations in the repre-sentation space as follows: 1) Benign prompts form compact and stable clusters across layers that show consistent internal representations; 2) Direct malicious prompts deviate from benign regions but may partially overlap depending on the layer and model; 3) Optimized jailbreak attacks produce larger shifts in the represen-tation space and form clearly identifiable clus-ters; 4) The separation between benign and optimized jailbreak representations is generally larger than the separation between benign and direct malicious prompts; 5) Similar distribu-tion patterns are observed across different SLM Table 1: Attack Success Rate (ASR) across jailbreak attacks on SLMs. Models: LLaMA-2 (meta-llama/Llama-2-7b-chat-hf), Vicuna (lmsys/vicuna-7b-v1.5), Mistral (mistralai/Mistral-7B-Instruct-v0.2), Yi (01-ai/Yi-6B-Chat), Qwen (Qwen/Qwen1.5-7B-Chat), Gemma (google/gemma-7b-it), OpenChat (openchat/openchat-3.5-0106). Dataset:AdvBench Evaluator: GPT-4o-mini                                                                              
+
+> Jailbreak Model LLaMA-2 Vicuna Mistral Yi Qwen Gemma OpenChat
+> AutoDAN 98.65% 100.0% 100.0% 100.0% 100.0% 98.27% 100.0% PAIR 13.85% 92.88% 51.92% 13.85% 57.50% 82.69% 94.23% TAP 59.62% 99.81% 95.58% 99.81% 94.62% 99.42% 100.0% GCG 00.19% 00.00% 00.00% 42.69% 00.00% 00.00% 00.96% Cipher 86.35% 39.42% 85.58% 93.99% 76.59% 80.10% 89.86% DeepInception 36.92% 02.31% 84.23% 89.81% 83.27% 71.54% 92.12% CodeChameleon 56.54% 27.69% 75.38% 72.88% 67.70% 51.15% 54.23% ICA 00.00% 91.92% 73.46% 80.00% 02.12% 100.0% 98.46% Jailbroken 42.44% 43.33% 48.78% 68.85% 40.71% 38.78% 14.36%
+> Avg ASR 43.84% 55.26% 68.33% 73.99% 58.87% 69.11% 71.58%
+
+Table 2: Attack Success Rate (ASR) across jail-break attacks on LLMs. Models: LLaMA-2-13B, Vicuna-13B, Qwen-1.5-14B. Dataset: AdvBench. Evaluator: GPT-4o-mini                                  
+
+> Jailbreak Model LLaMA-2 Vicuna Qwen AutoDAN 32.08% 100.00% 46.75% PAIR 10.38% 67.69% 43.08% TAP 44.81% 74.81% 70.96% GCG 00.00% 00.00% 00.19% Cipher 81.59% 55.58% 69.86% DeepInc. 25.77% 81.73% 74.23% CodeCham. 69.04% 81.73% 24.23% ICA 00.00% 78.27% 00.00% Jailbroken 31.03% 35.45% 16.03% Avg ASR 32.74% 63.92% 38.37%
+
+architectures, indicating that the behavior is model-independent; and 6) Distinguishable acti-vation patterns appear throughout the network which suggests that multiple layers can provide useful signals for jailbreak detection. 
+
+4.4 Proposed Defense 
+
+Table 3 compares different defenses against op-timized jailbreak attacks using GPT-4o as the judge model. Existing methods such as SelfE-val, Self-Reminder, RobustAlign, SmoothLLM, ICD, Aligner, and goal prioritization show non-zero attack success rates, with higher vulnera-bility to complex attacks like Codechameleon, DeepInception, and TAP. In contrast, GUARD-SLM achieves near-zero jailbreak success across all attacks by performing detection in the rep-resentation space using activation-level filter-ing, blocking malicious behavior before gen-eration. As shown in Table 4, most defenses increase computational cost due to extra tokens, repeated queries, or multiple forward passes, while GUARD-SLM requires no additional to-kens and introduces no inference overhead, pro-viding an efficient and scalable defense for SLM. 
+
+5 Discussion 
+
+We conducted an empirical analysis of jailbreak attacks on both SLMs and LLMs to better understand the vulnerability of safety-aligned models. Our evaluation across multiple attack strategies shows that SLMs are more suscepti-ble to optimized jailbreak prompts than larger models, with attacks such as AutoDAN, TAP, and Cipher achieving higher success rates than direct malicious prompts. We constructed a large-scale dataset covering diverse jailbreak categories and further evaluated the proposed method on the HarmBench dataset, demon-strating strong robustness against unseen jail-break prompts. Representation-space analysis provides new insights into the relationship be-tween transformer layers and jailbreak behavior, showing that jailbreak features are observable across all layers rather than only in the final de-coding stage. Benign prompts form stable clus-ters, while optimized jailbreak prompts create distinct regions even in early layers, indicating that internal activations contain sufficient infor-mation for reliable detection. Based on this ob-servation, GUARD-SLM performs single-pass activation-level classification without auxiliary models or multiple forward passes, achieving high detection accuracy with minimal inference overhead, making it suitable for real-time and resource-constrained deployment. 0 1 2 3 4 5 6 7 8 9
+
+> Layer
+> 45
+> 50
+> 55
+> 60
+> 65
+> 70
+> 75
+> 80
+> 85
+> 90
+> 95
+> Attack Detection Rate (%)
+> 53.0
+> 52.5
+> 62.0
+> 66.5
+> 75.5
+> 81.5
+> 84.5
+> 89.0
+> 89.5
+> 89.0
+> 50.0
+> 53.5
+> 62.5
+> 69.5
+> 76.0
+> 77.5
+> 85.5
+> 87.0
+> 85.5
+> 82.5
+> 52.5
+> 58.5
+> 68.5
+> 71.5
+> 77.5
+> 79.0
+> 82.0
+> 84.5
+> 85.5
+> 90.5
+> LLaMA-7B
+> Vicuna-7B
+> Mistral-7B
+
+Figure 4: Attack detection accuracy in the representation space using GUARD-SLM across early layers (0–10), Dataset: HarmBench, model: meta- llama/Llama-2-7b-chat-hf Table 3: ASR(%) comparison of different defense methods against different jailbreak attacks, model: meta-llama/Llama-2-7b-chat-hf, dataset: HarmBench, judge model: gpt-4o                                                                                  
+
+> Defense Jailbreak AutoDAN PAIR TAP GCG Cipher Deepinception Codechameleon ICA Jailbroken SelfEval 01.00% 06.50% 07.00% 03.00% 16.50% 07.50% 28.00% 00.00% 03.00% SelfReminder 01.50% 02.50% 04.50% 00.00% 01.12% 00.00% 25.50% 00.00% 04.50% RobustAlign 00.00% 02.51% 05.50% 01.50% 11.25% 09.00% 38.00% 00.00% 01.25% SmoothLLM 10.50% 24.50% 35.00% 04.00% 03.12% 22.00% 06.00% 00.00% 09.00% ICD 00.50% 00.00% 00.00% 00.00% 05.00% 00.00% 00.00% 00.00% 02.93% Aligner 04.71% 06.50% 15.08% 1.01% 01.58% 18.50% 22.50% 01.01% 03.66% GoalPrior 03.50% 00.50% 01.50% 00.00% 00.13% 00.00% 00.00% 00.00% 03.79% Ours 00.00% 00.00% 00.00% 00.00% 00.00% 00.00% 00.00% 00.00% 00.74%
+
+Table 4: Efficiency comparison of different defense methods. n denotes the number of queries for single forward pass and q denotes the number of tokens per query.                       
+
+> Defense Additional To-kens (In/Out) Avg. Inf. Time
+> SelfEval +51 8.24s SelfReminder +44 1.12s RobustAlign (n−1) q12.45s SmoothLLM (n−1) q38.07s ICD +805 1.13s Aligner +42 4.90s GoalPrior +202 3.18s Ours 00.43s
+
+6 Limitations 
+
+The main limitation of this work is that the proposed defense is mainly designed for SLMs. Although we analyzed vulnerabilities of LLMs in the empirical study, we conducted compre-hensive evaluation of the defense for SLMs. Ex-tracting and analyzing internal hidden-layer activations for LLMs can be computationally expensive due to their large model size, which limits the direct application of the current ap-proach to large-scale models. In future work, we plan to extend the proposed defense method to support LLMs. The reported results in this paper are ob-tained under the experimental environment de-scribed in the Appendix. Due to the stochas-tic nature of LLM inference, the exact values of ASR may vary across different experiments even when using the same code and dataset. In particular, the results can be affected by temperature, top-p sampling, maximum gener-ation length, and random seed. Our evaluation relies on external models (GPT-4o and GPT-4o-mini) as the judge to determine whether a jailbreak attack is successful, and the judgment outcome may change when different evaluation models or API versions are used. Therefore, the reported ASR values should be interpreted as representative results under the specified configuration, and slight variations may occur when using different hyperparameters, judge models, API versions, or different model vari-ants (e.g., GPT-4, GPT-4o, GPT-4o-mini, or newer models such as GPT-5). 
+
+7 Conclusion 
+
+SLMs provide an efficient and scalable alterna-tive to LLMs, but our study shows that they remain significantly more vulnerable to jail-break attacks, especially under adversarially optimized prompts. Sensitivity analysis in the representation space demonstrates that benign, malicious, and optimized jailbreak prompts form distinguishable regions across different neural network layers, and jailbreak behaviors are visible at every layer, as attack-related fea-tures appear from early layers and remain ob-servable through middle and late layers. These findings reveal fundamental robustness limita-tions in SLMs and show that monitoring hidden-layer token activations enables lightweight and effective detection without retraining or addi-tional overhead for defending against jailbreak attacks. Future work will focus on deploying activation-based safety monitoring in agentic AI systems and evaluating robustness against more complex, unseen, and adaptive jailbreak attacks in real-world settings. 
+
+Acknowledgment 
+
+This work is partly supported by the National Center for Transportation Cybersecurity and Resiliency (TraCR) (a U.S. Department of Transportation National University Transporta-tion Center) headquartered at Clemson Univer-sity, Clemson, South Carolina, USA, the Na-tional Artificial Intelligence Research Resource (NAIRR) Pilot (NAIRR260008, NAIRR240244 and NAIRR250261), and OpenAI. This work also used Anvil AI and Anvil GPU at Pur-due through allocation CIS251427 from the Advanced Cyberinfrastructure Coordination Ecosystem: Services & Support (ACCESS) program, which is supported by National Sci-ence Foundation grants #2138259, #2138286, #2138307, #2137603, and #2138296. For more information about ACCESS, please see [ 6]. Any opinions, findings, conclusions, and recommen-dations expressed in this material are those of the author(s) and do not necessarily reflect the views of TraCR, NAIRR, ACCESS, and OpenAI, and the U.S. Government assumes no liability for the contents or use thereof. 
+
+References 
+
+[1] Josh Achiam, Steven Adler, Sandhini Agarwal, Lama Ahmad, Ilge Akkaya, Florencia Leoni Ale-man, Diogo Almeida, Janko Altenschmidt, Sam Altman, Shyamal Anadkat, et al. Gpt-4 tech-nical report. arXiv preprint arXiv:2303.08774 ,2023. [2] Gabriel Alon and Michael Kamfonas. Detecting language model attacks with perplexity. arXiv preprint arXiv:2308.14132 , 2023. [3] Hadi Amini, Md Jueal Mia, Yasaman Saadati, Ahmed Imteaj, Seyedsina Nabavirazavi, Urmish Thakker, Md Zarif Hossain, Awal Ahmed Fime, and SS Iyengar. Distributed llms and multimodal large language models: A survey on advances, challenges, and future directions. arXiv preprint arXiv:2503.16585 , 2025. [4] Peter Belcak, Greg Heinrich, Shizhe Diao, Yonggan Fu, Xin Dong, Saurav Muralidharan, Yingyan Celine Lin, and Pavlo Molchanov. Small language models are the future of agentic ai. 
+
+arXiv preprint arXiv:2506.02153 , 2025. [5] Federico Bianchi, Mirac Suzgun, Giuseppe At-tanasio, Paul Röttger, Dan Jurafsky, Tatsunori Hashimoto, and James Zou. Safety-tuned lla-mas: Lessons from improving the safety of large language models that follow instructions. arXiv preprint arXiv:2309.07875 , 2023. [6] Timothy J. Boerner, Stephen Deems, Thomas R. Furlani, Shelley L. Knuth, and John Towns. Ac-cess: Advancing innovation: Nsf’s advanced cy-berinfrastructure coordination ecosystem: Ser-vices & support. In Practice and Experience in Advanced Research Computing 2023: Comput-ing for the Common Good , PEARC ’23, page 173–176, New York, NY, USA, 2023. Association for Computing Machinery. [7] Tom Brown, Benjamin Mann, Nick Ryder, Melanie Subbiah, Jared D Kaplan, Prafulla Dhariwal, Arvind Neelakantan, Pranav Shyam, Girish Sastry, Amanda Askell, Sandhini Agar-wal, Ariel Herbert-Voss, Gretchen Krueger, Tom Henighan, Rewon Child, Aditya Ramesh, Daniel Ziegler, Jeffrey Wu, Clemens Winter, Chris Hesse, Mark Chen, Eric Sigler, Mateusz Litwin, Scott Gray, Benjamin Chess, Jack Clark, Christo-pher Berner, Sam McCandlish, Alec Radford, Ilya Sutskever, and Dario Amodei. Language models are few-shot learners. In H. Larochelle, M. Ranzato, R. Hadsell, M.F. Balcan, and H. Lin, editors, Advances in Neural Information Process-ing Systems , volume 33, pages 1877–1901. Curran Associates, Inc., 2020. [8] Bochuan Cao, Yuanpu Cao, Lu Lin, and Jinghui Chen. Defending against alignment-breaking at-tacks via robustly aligned llm. In Proceedings of the 62nd Annual Meeting of the Association for Computational Linguistics (Volume 1: Long Papers) , pages 10542–10560, 2024. [9] Patrick Chao, Alexander Robey, Edgar Dobriban, Hamed Hassani, George J Pappas, and Eric Wong. Jailbreaking black box large language models in twenty queries. In 2025 IEEE Confer-ence on Secure and Trustworthy Machine Learn-ing (SaTML) , pages 23–42. IEEE, 2025. [10] Wei Chen, Zhiyuan Li, and Mingyuan Ma. Oc-topus: On-device language model for function calling of software apis. In Proceedings of the 2025 Conference of the Nations of the Americas Chapter of the Association for Computational Linguistics: Human Language Technologies (Vol-ume 3: Industry Track) , pages 329–339, 2025. [11] Aakanksha Chowdhery, Sharan Narang, Jacob Devlin, Maarten Bosma, Gaurav Mishra, Adam Roberts, Paul Barham, Hyung Won Chung, Charles Sutton, Sebastian Gehrmann, et al. Palm: Scaling language modeling with pathways. 
+
+Journal of Machine Learning Research , 24(240):1– 113, 2023. [12] Josef Dai, Xuehai Pan, Ruiyang Sun, Jiaming Ji, Xinbo Xu, Mickel Liu, Yizhou Wang, and Yaodong Yang. Safe rlhf: Safe reinforcement learning from human feedback. arXiv preprint arXiv:2310.12773 , 2023. [13] Yue Deng, Wenxuan Zhang, Sinno Jialin Pan, and Lidong Bing. Multilingual jailbreak chal-lenges in large language models. arXiv preprint arXiv:2310.06474 , 2023. [14] Peng Ding, Jun Kuang, Dan Ma, Xuezhi Cao, Yunsen Xian, Jiajun Chen, and Shujian Huang. A wolf in sheep’s clothing: Generalized nested jailbreak prompts can fool large language models easily. In Proceedings of the 2024 Conference of the North American Chapter of the Association for Computational Linguistics: Human Language Technologies (Volume 1: Long Papers) , pages 2136–2153, 2024. [15] Lang Gao, Jiahui Geng, Xiangliang Zhang, Preslav Nakov, and Xiuying Chen. Shaping the safety boundaries: Understanding and defend-ing against jailbreaks in large language models. In Proceedings of the 63rd Annual Meeting of the Association for Computational Linguistics (Volume 1: Long Papers) , pages 25378–25398, 2025. [16] Zeqing He, Zhibo Wang, Zhixuan Chu, Huiyu Xu, Wenhui Zhang, Qinglong Wang, and Rui Zheng. Jailbreaklens: Interpreting jailbreak mechanism in the lens of representation and cir-cuit. arXiv preprint arXiv:2411.11114 , 2024. [17] Neel Jain, Avi Schwarzschild, Yuxin Wen, Gowthami Somepalli, John Kirchenbauer, Ping-yeh Chiang, Micah Goldblum, Aniruddha Saha, Jonas Geiping, and Tom Goldstein. Baseline de-fenses for adversarial attacks against aligned lan-guage models. arXiv preprint arXiv:2309.00614 ,2023. [18] Jiaming Ji, Boyuan Chen, Hantao Lou, Dong-hai Hong, Borong Zhang, Xuehai Pan, Juntao Dai, Tianyi Qiu, and Yaodong Yang. Aligner: Efficient alignment by learning to correct. In A. Globerson, L. Mackey, D. Belgrave, A. Fan, U. Paquet, J. Tomczak, and C. Zhang, editors, 
+
+Advances in Neural Information Processing Sys-tems , volume 37, pages 90853–90890. Curran Associates, Inc., 2024. [19] Aounon Kumar, Chirag Agarwal, Suraj Srini-vas, Aaron Jiaxun Li, Soheil Feizi, and Himabindu Lakkaraju. Certifying llm safety against adversarial prompting. arXiv preprint arXiv:2309.02705 , 2023. [20] Tianlong Li, Zhenghua Wang, Wenhao Liu, Muling Wu, Shihan Dou, Changze Lv, Xiaohua Wang, Xiaoqing Zheng, and Xuan-Jing Huang. Revisiting jailbreaking for large language mod-els: A representation engineering perspective. In 
+
+Proceedings of the 31st International Conference on Computational Linguistics , pages 3158–3178, 2025. [21] Xuan Li, Zhanke Zhou, Jianing Zhu, Jiangchao Yao, Tongliang Liu, and Bo Han. Deepinception: Hypnotize large language model to be jailbreaker. 
+
+arXiv preprint arXiv:2311.03191 , 2023. [22] Xiaogeng Liu, Nan Xu, Muhao Chen, and Chaowei Xiao. Autodan: Generating stealthy jailbreak prompts on aligned large language mod-els. arXiv preprint arXiv:2310.04451 , 2023. [23] Zhenyan Lu, Xiang Li, Dongqi Cai, Rongjie Yi, Fangming Liu, Xiwen Zhang, Nicholas D Lane, and Mengwei Xu. Small language models: Sur-vey, measurements, and insights. arXiv preprint arXiv:2409.15790 , 2024. [24] Anay Mehrotra, Manolis Zampetakis, Paul Kas-sianik, Blaine Nelson, Hyrum Anderson, Yaron Singer, and Amin Karbasi. Tree of attacks: Jailbreaking black-box llms automatically. Ad-vances in Neural Information Processing Systems ,37:61065–61105, 2024. [25] Long Ouyang, Jeffrey Wu, Xu Jiang, Diogo Almeida, Carroll Wainwright, Pamela Mishkin, Chong Zhang, Sandhini Agarwal, Katarina Slama, Alex Ray, John Schulman, Jacob Hilton, Fraser Kelton, Luke Miller, Maddie Simens, Amanda Askell, Peter Welinder, Paul F Chris-tiano, Jan Leike, and Ryan Lowe. Training lan-guage models to follow instructions with human feedback. In S. Koyejo, S. Mohamed, A. Agar-wal, D. Belgrave, K. Cho, and A. Oh, editors, 
+
+Advances in Neural Information Processing Sys-tems , volume 35, pages 27730–27744. Curran Associates, Inc., 2022. [26] Mansi Phute, Alec Helbling, Matthew Hull, ShengYun Peng, Sebastian Szyller, Cory Cor-nelius, and Duen Horng Chau. Llm self defense: By self examination, llms know they are being tricked. arXiv preprint arXiv:2308.07308 , 2023. [27] Alexander Robey, Eric Wong, Hamed Hassani, and George J Pappas. Smoothllm: Defending large language models against jailbreaking at-tacks. arXiv preprint arXiv:2310.03684 , 2023. [28] Bernhard Schölkopf and Alexander J Smola. 
+
+Learning with kernels: support vector machines, regularization, optimization, and beyond . MIT press, 2002. [29] Guobin Shen, Dongcheng Zhao, Yiting Dong, Xiang He, and Yi Zeng. Jailbreak antidote: Run-time safety-utility balance via sparse representa-tion adjustment in large language models. arXiv preprint arXiv:2410.02298 , 2024. [30] Gemini Team, Rohan Anil, Sebastian Borgeaud, Jean-Baptiste Alayrac, Jiahui Yu, Radu Sori-cut, Johan Schalkwyk, Andrew M Dai, Anja Hauth, Katie Millican, et al. Gemini: a fam-ily of highly capable multimodal models. arXiv preprint arXiv:2312.11805 , 2023. [31] Hugo Touvron, Thibaut Lavril, Gautier Izacard, Xavier Martinet, Marie-Anne Lachaux, Timo-thée Lacroix, Baptiste Rozière, Naman Goyal, Eric Hambro, Faisal Azhar, et al. Llama: Open and efficient foundation language models. arXiv preprint arXiv:2302.13971 , 2023. [32] Hugo Touvron, Louis Martin, Kevin Stone, Pe-ter Albert, Amjad Almahairi, Yasmine Babaei, Nikolay Bashlykov, Soumya Batra, Prajjwal Bhargava, Shruti Bhosale, et al. Llama 2: Open foundation and fine-tuned chat models. arXiv preprint arXiv:2307.09288 , 2023. [33] Junyang Wang, Haiyang Xu, Haitao Jia, Xi Zhang, Ming Yan, Weizhou Shen, Ji Zhang, Fei Huang, and Jitao Sang. Mobile-agent-v2: Mobile device operation assistant with effective navigation via multi-agent collaboration. Ad-vances in Neural Information Processing Systems ,37:2686–2710, 2024. [34] Alexander Wei, Nika Haghtalab, and Jacob Steinhardt. Jailbroken: How does llm safety training fail? Advances in neural information processing systems , 36:80079–80110, 2023. [35] Zeming Wei, Yifei Wang, Ang Li, Yichuan Mo, and Yisen Wang. Jailbreak and guard aligned language models with only few in-context demon-strations. arXiv preprint arXiv:2310.06387 ,2023. [36] Zeming Wei, Yifei Wang, Ang Li, Yichuan Mo, and Yisen Wang. Jailbreak and guard aligned language models with only few in-context demon-strations. arXiv preprint arXiv:2310.06387 ,2023. [37] Yueqi Xie, Jingwei Yi, Jiawei Shao, Justin Curl, Lingjuan Lyu, Qifeng Chen, Xing Xie, and Fangzhao Wu. Defending chatgpt against jail-break attack via self-reminders. Nature Machine Intelligence , 5(12):1486–1496, 2023. [38] Zhangchen Xu, Fengqing Jiang, Luyao Niu, Jinyuan Jia, Bill Yuchen Lin, and Radha Pooven-dran. Safedecoding: Defending against jailbreak attacks via safety-aware decoding. arXiv preprint arXiv:2402.08983 , 2024. [39] Jiahao Yu, Xingwei Lin, Zheng Yu, and Xinyu Xing. Gptfuzzer: Red teaming large language models with auto-generated jailbreak prompts. 
+
+arXiv preprint arXiv:2309.10253 , 2023. [40] Youliang Yuan, Wenxiang Jiao, Wenxuan Wang, Jen-tse Huang, Pinjia He, Shuming Shi, and Zhaopeng Tu. Gpt-4 is too smart to be safe: Stealthy chat with llms via cipher. arXiv preprint arXiv:2308.06463 , 2023. [41] Shenyi Zhang, Yuchen Zhai, Shengnan Guo, Zheng Fang, Lingchen Zhao, Cong Wang, and Qian Wang. Jbshield: Defending large language models from jailbreak attacks through activated concept analysis and manipulation. In Proceed-ings of the 34th USENIX Security Symposium ,2025. [42] Wenhui Zhang, Huiyu Xu, Zhibo Wang, Ze-qing He, Ziqi Zhu, and Kui Ren. Can small lan-guage models reliably resist jailbreak attacks? a comprehensive evaluation. arXiv preprint arXiv:2503.06519 , 2025. [43] Zhexin Zhang, Leqi Lei, Junxiao Yang, Xijie Huang, Yida Lu, Shiyao Cui, Renmiao Chen, Qinglin Zhang, Xinyuan Wang, Hao Wang, et al. Aisafetylab: A comprehensive framework for ai safety evaluation and improvement. arXiv preprint arXiv:2502.16776 , 2025. [44] Zhexin Zhang, Junxiao Yang, Pei Ke, Fei Mi, Hongning Wang, and Minlie Huang. Defending large language models against jailbreaking at-tacks through goal prioritization. In Proceedings of the 62nd Annual Meeting of the Association for Computational Linguistics (Volume 1: Long Papers) , pages 8865–8887, 2024. [45] Zhexin Zhang, Junxiao Yang, Yida Lu, Pei Ke, Shiyao Cui, Chujie Zheng, Hongning Wang, and Minlie Huang. From theft to bomb-making: The ripple effect of unlearning in de-fending against jailbreak attacks. arXiv preprint arXiv:2407.02855 , 2024. [46] Chujie Zheng, Fan Yin, Hao Zhou, Fandong Meng, Jie Zhou, Kai-Wei Chang, Minlie Huang, and Nanyun Peng. On prompt-driven safeguard-ing for large language models. arXiv preprint arXiv:2401.18018 , 2024. [47] Zhenhong Zhou, Haiyang Yu, Xinghua Zhang, Rongwu Xu, Fei Huang, and Yongbin Li. How alignment and jailbreak work: Explain llm safety through intermediate hidden states. In Findings of the Association for Computational Linguistics: EMNLP 2024 , pages 2461–2488, 2024. [48] Andy Zou et al. Universal and transferable adversarial attacks on aligned language models. 
+
+arXiv preprint arXiv:2307.15043 , 2023. Appendix 
+
+A Experiments setup 
+
+A.1 Experimental Setup Configurations and Datasets 
+
+The hardware configuration used for all experi-ments is summarized in Table 5. All exper-iments were conducted using multiple high-performance computing environments to sup-port large-scale jailbreak evaluation, last token activation analysis, and defense validation. The experiments were executed across several GPU platforms, including the Purdue Anvil HPC cluster equipped with NVIDIA H100 GPUs with 80 GB HBM3 memory, our university server with two NVIDIA RTX A6000 GPUs (48 GB memory), four NVIDIA A100 PCIe GPUs (80 GB memory), and eight NVIDIA A100 PCIe GPUs (40 GB memory). These computing resources enabled efficient large-scale inference and activation analysis for SLMs and LLMs. To analyze jailbreak vulnerabil-ities, we considered a diverse set of models consisting of seven SLMs and three LLMs, including LLaMA-2-7B, Vicuna-7B, Mistral-7B, Yi-6B-Chat, Qwen1.5-7B-Chat, Gemma-7B-IT, OpenChat-3.5, LLaMA-2-13B, Vicuna-13B, and Qwen1.5-14B. Among these models, LLaMA-2-7B, Vicuna-7B, and Mistral-7B were primarily used to evaluate the proposed defense method due to their widespread adoption in recent jailbreak and safety studies. For dataset construction, we collected prompts from several publicly available jail-break and instruction datasets. The primary jailbreak dataset used in our experiments is AdvBench for empirical analysis, which con-tains adversarial prompts designed to evaluate safety vulnerabilities in SLMs and LLMs. We also utilized the JailBreakV-28K dataset, which provides a large collection of jailbreak prompts generated using multiple attack strategies. To incorporate benign instructions, we used the Alpaca dataset. Additionally, we collected opti-mized jailbreak prompts from a public GitHub repository containing curated jailbreak attack categories and merged them with the other datasets to form a unified direct prompt attack dataset, where AdvBench and JailBreakV-28K served as the primary jailbreak sources. For evaluation, we used HarmBench and a subset of the Databricks Dolly dataset, from which 200 samples were randomly selected to represent benign user instructions. This dataset combi-nation allows comprehensive evaluation of the proposed defense method across diverse jail-break strategies while maintaining a balanced representation of benign and malicious prompts. We have run our experiments for more than 5000 hours on different gpu node. The data distribution used for activation analysis is summarized in Table 6, which in-cludes a large-scale collection of benign, di-rect malicious, and optimized jailbreak samples. The dataset consists of 52,000 benign prompts and 32,490 direct malicious prompts, along with multiple optimized jailbreak categories such as AutoDAN, Cipher, CodeChameleon, DeepIn-ception, GCG, ICA, Jailbroken, PAIR, and TAP, resulting in a total of 94,320 samples. To the best of our knowledge, this is one of the largest datasets used for jailbreak attack and defense analysis, enabling reliable activation-space evaluation across diverse jailbreak cate-gories. Moreover, The key hyperparameters used in our experiments are listed in Table 7. 
+
+B Result Analysis 
+
+B.1 Empirical Analysis 
+
+Table 8 reports the Attack Success Rate (ASR) of nine optimized jailbreak attacks across three small language models (SLMs), namely LLaMA-2-7B-Chat, Vicuna-7B-v1.5, and Mistral-7B-Instruct, evaluated on the HarmBench dataset using GPT-4o-mini as the evaluator. The results show that several ad-vanced jailbreak methods remain highly effec-tive across all models, with AutoDAN achieving nearly 100% ASR on all three models, indi-cating that current alignment strategies are still vulnerable to optimized attacks. TAP, ICA, and DeepInception also demonstrate very high success rates, particularly on Vicuna and Mistral, where the ASR often exceeds 90%. In contrast, GCG shows almost zero success rate across all models, suggesting that not all jailbreak methods generalize to instruction-Table 5: Hardware configuration used in the experiments           
+
+> GPU Model No. of GPUs GPU Memory
+> NVIDIA H100 Multiple Nodes 80 GB HBM3 NVIDIA RTX A6000 248 GB NVIDIA A100 PCIe 480 GB NVIDIA A100 PCIe 840 GB
+> Table 6: Data distribution of benign, malicious, and optimized jailbreak samples used for activation analysis.
+
+Category Count 
+
+Benign 52,000 Direct Malicious 32,490 AutoDAN 1,370 Cipher 2,080 CodeChameleon 520 DeepInception 520 GCG 1,370 ICA 520 Jailbroken 1,560 PAIR 1,370 TAP 520 
+
+Total 94,320 
+
+tuned SLMs. The results further reveal model-dependent vulnerability patterns, where Vicuna appears highly susceptible to multiple attacks, while LLaMA-2 shows lower ASR for several jailbreak categories such as PAIR, ICA, and Jailbroken. Overall, the results indicate that modern SLMs remain highly vulnerable to op-timized jailbreak attacks, highlighting the need for stronger inference-time defense mechanisms. 
+
+B.2 Additional Layer Sensitivity Analysis 
+
+In this section, we provide additional analysis of the internal representation space of SLMs to understand how different types of inputs are encoded across network layers. We per-form a layer-wise sensitivity analysis on three instruction-tuned SLMs: LLaMA-2-7B-Chat, Vicuna-7B-v1.5, and Mistral-7B-Instruct. For each model, all transformer layers from 0 to 31 are analyzed. At every layer, the hidden rep-resentation of the last token is extracted and projected into a two-dimensional space using t-SNE to visualize the distribution of different prompt categories. The complete layer-wise visualizations are shown in Figure 5, Figure 6, and Figure 7. The analysis considers three in-put types: benign prompts, direct malicious prompts, and nine optimized jailbreak attack categories. To better interpret the behavior across the network, layers are grouped into early (0–10), middle (11–21), and late (22–31) stages. Across all three models and all layers, jailbreak-related features remain visible in the representation space, as shown in Figures 5–7. Optimized jailbreak prompts begin to diverge from benign representations even in early layers, although partial overlap with direct malicious prompts may still exist. In the middle lay-ers, the separation becomes more structured, where benign prompts form compact and stable clusters, direct malicious prompts move away from the benign region, and optimized jailbreak attacks produce wider and more scattered dis-tributions. In the late layers, the distinction becomes the most pronounced, with optimized jailbreak attacks forming clearly identifiable clusters that remain separated from benign rep-resentations across all three models. We further observe that benign prompts maintain consistent and compact clusters across Table 7: Hyperparameters used for GUARD-SLM. 
+
+Phase Hyperparameter Value 
+
+Activation extraction Maximum input tokens 512 Hidden representation used Last-token activation from all transformer layers Layer grouping Early: first 40% layers, Middle: 40%–70%, Late: remaining layers Precision FP16 on GPU, FP32 on CPU t-SNE visualization Selected classes benign, malicious, autodan, cipher, codechamelon, deepinception, gcg, ica, jailbroken, pair, tap PCA before t-SNE 128 dimensions Perplexity 30.0 Learning rate auto Iterations 1000 Initialization PCA Distance metric Euclidean Random seed 42 Binary RBF-SVM training Input feature Last-token hidden activation at selected layer (0,1,2...n) SVM kernel RBF Regularization parameter C 1.0 Gamma scale Probability estimation Disabled by default Feature normalization StandardScaler Inference-time classifier Saved binary RBF-SVM model layer Selected layer (e.g., layer 13) Maximum input tokens 512 Maximum new tokens for genera-tion 512 Generation setting Greedy decoding (do_sample=False) Temperature None Top-p None Precision FP16 on GPU, FP32 on CPU 
+
+layers, while direct malicious prompts deviate from the benign region with occasional overlap depending on the model and layer. In contrast, optimized jailbreak attacks introduce larger shifts in the representation space, resulting in distinct clusters that are easier to separate from benign inputs. The separation between benign and optimized jailbreak representations is generally larger than the separation between benign and direct malicious prompts. Simi-lar distribution patterns are observed across LLaMA, Vicuna, and Mistral, indicating that the behavior is model-independent. Overall, the results confirm that distinguishable activa-tion patterns appear throughout the network, showing that useful signals for jailbreak detec-tion exist across multiple layers rather than being limited to a specific depth. Table 8: Attack Success Rate (ASR) across jailbreak attacks on SLMs. Models: LLaMA-2 (meta-llama/Llama-2-7b-chat-hf), Vicuna (lmsys/vicuna-7b-v1.5), Mistral (mistralai/Mistral-7B-Instruct-v0.2), Dataset: HarmBench, Evaluator: GPT-4o-mini 
+
+Jailbreak Model LLaMA-2 Vicuna Mistral 
+
+AutoDAN 100.0% 100.0% 99.50% PAIR 18.00% 86.50% 60.00% TAP 58.50% 99.50% 94.50% GCG 00.00% 00.00% 00.50% Cipher 78.25% 56.62% 83.88% DeepInception 46.50% 86.50% 73.00% CodeChameleon 61.00% 73.50% 74.00% ICA 01.00% 99.50% 69.50% Jailbroken 21.62% 19.76% 62.34% 
+
+Avg ASR 42.76% 69.10% 68.58% Benign 
+
+Direct prompt attack 
+
+AutoDAN 
+
+Cipher 
+
+CodeChameleon 
+
+DeepInception 
+
+GCG 
+
+ICA 
+
+Jailbroken 
+
+PAIR 
+
+TAP 100 50 0 50 100 
+
+tSNE-1 
+
+100 
+
+50 
+
+0
+
+50 
+
+100 
+
+> tSNE-2
+
+(1) Layer 0 100 50 0 50 100 
+
+tSNE-1 
+
+100 
+
+50 
+
+0
+
+50 
+
+100  
+
+> tSNE-2
+
+(2) Layer 1 100 50 0 50 100 
+
+tSNE-1 
+
+100 
+
+50 
+
+0
+
+50 
+
+100  
+
+> tSNE-2
+
+(3) Layer 2 100 50 0 50 100 
+
+tSNE-1 
+
+100 
+
+50 
+
+0
+
+50 
+
+100  
+
+> tSNE-2
+
+(4) Layer 3 100 50 0 50 100 
+
+tSNE-1 
+
+100 
+
+50 
+
+0
+
+50 
+
+100  
+
+> tSNE-2
+
+(5) Layer 4 150 100 50 0 50 100 
+
+tSNE-1 
+
+100 
+
+50 
+
+0
+
+50 
+
+100 
+
+150 
+
+> tSNE-2
+
+(6) Layer 5 100 50 0 50 100 150 
+
+tSNE-1 
+
+100 
+
+50 
+
+0
+
+50 
+
+100  
+
+> tSNE-2
+
+(7) Layer 6 100 50 0 50 100 150 
+
+tSNE-1 
+
+100 
+
+50 
+
+0
+
+50 
+
+100  
+
+> tSNE-2
+
+(8) Layer 7 100 50 0 50 100 
+
+tSNE-1 
+
+100 
+
+50 
+
+0
+
+50 
+
+100  
+
+> tSNE-2
+
+(9) Layer 8 100 50 0 50 100 
+
+tSNE-1 
+
+100 
+
+50 
+
+0
+
+50 
+
+100  
+
+> tSNE-2
+
+(10) Layer 9 100 50 0 50 100 
+
+tSNE-1 
+
+100 
+
+50 
+
+0
+
+50 
+
+100 
+
+> tSNE-2
+
+(11) Layer 10 100 50 0 50 100 
+
+tSNE-1 
+
+100 
+
+50 
+
+0
+
+50 
+
+100  
+
+> tSNE-2
+
+(12) Layer 11 100 50 0 50 100 
+
+tSNE-1 
+
+100 
+
+50 
+
+0
+
+50 
+
+100  
+
+> tSNE-2
+
+(13) Layer 12 100 50 0 50 100 
+
+tSNE-1 
+
+100 
+
+50 
+
+0
+
+50 
+
+100  
+
+> tSNE-2
+
+(14) Layer 13 100 50 0 50 100 
+
+tSNE-1 
+
+100 
+
+50 
+
+0
+
+50 
+
+100  
+
+> tSNE-2
+
+(15) Layer 14 100 50 0 50 100 
+
+tSNE-1 
+
+100 
+
+50 
+
+0
+
+50 
+
+100 
+
+150 
+
+> tSNE-2
+
+(16) Layer 15 100 50 0 50 100 
+
+tSNE-1 
+
+100 
+
+50 
+
+0
+
+50 
+
+100  
+
+> tSNE-2
+
+(17) Layer 16 100 50 0 50 100 
+
+tSNE-1 
+
+100 
+
+50 
+
+0
+
+50 
+
+100 
+
+150  
+
+> tSNE-2
+
+(18) Layer 17 100 50 0 50 100 
+
+tSNE-1 
+
+100 
+
+50 
+
+0
+
+50 
+
+100  
+
+> tSNE-2
+
+(19) Layer 18 100 50 0 50 100 
+
+tSNE-1 
+
+100 
+
+50 
+
+0
+
+50 
+
+100  
+
+> tSNE-2
+
+(20) Layer 19 100 50 0 50 100 
+
+tSNE-1 
+
+150 
+
+100 
+
+50 
+
+0
+
+50 
+
+100 
+
+> tSNE-2
+
+(21) Layer 20 100 50 0 50 100 
+
+tSNE-1 
+
+150 
+
+100 
+
+50 
+
+0
+
+50 
+
+100 
+
+150  
+
+> tSNE-2
+
+(22) Layer 21 100 50 0 50 100 
+
+tSNE-1 
+
+100 
+
+50 
+
+0
+
+50 
+
+100  
+
+> tSNE-2
+
+(23) Layer 22 100 50 0 50 100 
+
+tSNE-1 
+
+100 
+
+50 
+
+0
+
+50 
+
+100  
+
+> tSNE-2
+
+(24) Layer 23 150 100 50 0 50 100 
+
+tSNE-1 
+
+100 
+
+50 
+
+0
+
+50 
+
+100  
+
+> tSNE-2
+
+(25) Layer 24 150 100 50 0 50 100 
+
+tSNE-1 
+
+100 
+
+50 
+
+0
+
+50 
+
+100 
+
+> tSNE-2
+
+(26) Layer 25 100 50 0 50 100 
+
+tSNE-1 
+
+100 
+
+50 
+
+0
+
+50 
+
+100  
+
+> tSNE-2
+
+(27) Layer 26 100 50 0 50 100 
+
+tSNE-1 
+
+100 
+
+50 
+
+0
+
+50 
+
+100  
+
+> tSNE-2
+
+(28) Layer 27 150 100 50 0 50 100 150 
+
+tSNE-1 
+
+100 
+
+50 
+
+0
+
+50 
+
+100  
+
+> tSNE-2
+
+(29) Layer 28 100 50 0 50 100 
+
+tSNE-1 
+
+100 
+
+50 
+
+0
+
+50 
+
+100 
+
+150  
+
+> tSNE-2
+
+(30) Layer 29 100 50 0 50 100 
+
+tSNE-1 
+
+150 
+
+100 
+
+50 
+
+0
+
+50 
+
+100 
+
+150 
+
+> tSNE-2
+
+(31) Layer 30 100 50 0 50 100 
+
+tSNE-1 
+
+100 
+
+50 
+
+0
+
+50 
+
+100  
+
+> tSNE-2
+
+(32) Layer 31 
+
+Figure 5: t-SNE visualization of last-token activations across all layers (Layer 0 to Layer 31) of LLaMA-7B. Benign 
+
+Direct prompt attack 
+
+AutoDAN 
+
+Cipher 
+
+CodeChameleon 
+
+DeepInception 
+
+GCG 
+
+ICA 
+
+Jailbroken 
+
+PAIR 
+
+TAP 100 50 0 50 100 
+
+tSNE-1 
+
+100 
+
+50 
+
+0
+
+50 
+
+100 
+
+> tSNE-2
+
+(1) Layer 0 100 50 0 50 100 
+
+tSNE-1 
+
+100 
+
+50 
+
+0
+
+50 
+
+100  
+
+> tSNE-2
+
+(2) Layer 1 150 100 50 0 50 100 
+
+tSNE-1 
+
+100 
+
+50 
+
+0
+
+50 
+
+100  
+
+> tSNE-2
+
+(3) Layer 2 150 100 50 0 50 100 
+
+tSNE-1 
+
+100 
+
+50 
+
+0
+
+50 
+
+100  
+
+> tSNE-2
+
+(4) Layer 3 100 50 0 50 100 
+
+tSNE-1 
+
+100 
+
+50 
+
+0
+
+50 
+
+100  
+
+> tSNE-2
+
+(5) Layer 4 150 100 50 0 50 100 
+
+tSNE-1 
+
+100 
+
+50 
+
+0
+
+50 
+
+100 
+
+> tSNE-2
+
+(6) Layer 5 100 50 0 50 100 
+
+tSNE-1 
+
+100 
+
+50 
+
+0
+
+50 
+
+100  
+
+> tSNE-2
+
+(7) Layer 6 150 100 50 0 50 100 
+
+tSNE-1 
+
+100 
+
+50 
+
+0
+
+50 
+
+100  
+
+> tSNE-2
+
+(8) Layer 7 150 100 50 0 50 100 
+
+tSNE-1 
+
+100 
+
+50 
+
+0
+
+50 
+
+100  
+
+> tSNE-2
+
+(9) Layer 8 150 100 50 0 50 100 150 
+
+tSNE-1 
+
+100 
+
+50 
+
+0
+
+50 
+
+100  
+
+> tSNE-2
+
+(10) Layer 9 150 100 50 0 50 100 150 
+
+tSNE-1 
+
+150 
+
+100 
+
+50 
+
+0
+
+50 
+
+100 
+
+> tSNE-2
+
+(11) Layer 10 100 50 0 50 100 
+
+tSNE-1 
+
+150 
+
+100 
+
+50 
+
+0
+
+50 
+
+100  
+
+> tSNE-2
+
+(12) Layer 11 150 100 50 0 50 100 
+
+tSNE-1 
+
+150 
+
+100 
+
+50 
+
+0
+
+50 
+
+100  
+
+> tSNE-2
+
+(13) Layer 12 100 50 0 50 100 
+
+tSNE-1 
+
+100 
+
+50 
+
+0
+
+50 
+
+100  
+
+> tSNE-2
+
+(14) Layer 13 150 100 50 0 50 100 150 
+
+tSNE-1 
+
+150 
+
+100 
+
+50 
+
+0
+
+50 
+
+100  
+
+> tSNE-2
+
+(15) Layer 14 150 100 50 0 50 100 
+
+tSNE-1 
+
+100 
+
+50 
+
+0
+
+50 
+
+100 
+
+150 
+
+> tSNE-2
+
+(16) Layer 15 150 100 50 0 50 100 
+
+tSNE-1 
+
+150 
+
+100 
+
+50 
+
+0
+
+50 
+
+100  
+
+> tSNE-2
+
+(17) Layer 16 150 100 50 0 50 100 150 
+
+tSNE-1 
+
+150 
+
+100 
+
+50 
+
+0
+
+50 
+
+100  
+
+> tSNE-2
+
+(18) Layer 17 150 100 50 0 50 100 150 
+
+tSNE-1 
+
+150 
+
+100 
+
+50 
+
+0
+
+50 
+
+100 
+
+150  
+
+> tSNE-2
+
+(19) Layer 18 100 50 0 50 100 150 
+
+tSNE-1 
+
+150 
+
+100 
+
+50 
+
+0
+
+50 
+
+100  
+
+> tSNE-2
+
+(20) Layer 19 100 50 0 50 100 150 
+
+tSNE-1 
+
+150 
+
+100 
+
+50 
+
+0
+
+50 
+
+100 
+
+> tSNE-2
+
+(21) Layer 20 100 50 0 50 100 
+
+tSNE-1 
+
+100 
+
+50 
+
+0
+
+50 
+
+100  
+
+> tSNE-2
+
+(22) Layer 21 150 100 50 0 50 100 
+
+tSNE-1 
+
+150 
+
+100 
+
+50 
+
+0
+
+50 
+
+100  
+
+> tSNE-2
+
+(23) Layer 22 150 100 50 0 50 100 
+
+tSNE-1 
+
+100 
+
+50 
+
+0
+
+50 
+
+100  
+
+> tSNE-2
+
+(24) Layer 23 100 50 0 50 100 150 
+
+tSNE-1 
+
+150 
+
+100 
+
+50 
+
+0
+
+50 
+
+100 
+
+150  
+
+> tSNE-2
+
+(25) Layer 24 150 100 50 0 50 100 
+
+tSNE-1 
+
+150 
+
+100 
+
+50 
+
+0
+
+50 
+
+100 
+
+> tSNE-2
+
+(26) Layer 25 150 100 50 0 50 100 150 
+
+tSNE-1 
+
+150 
+
+100 
+
+50 
+
+0
+
+50 
+
+100 
+
+150  
+
+> tSNE-2
+
+(27) Layer 26 150 100 50 0 50 100 
+
+tSNE-1 
+
+100 
+
+50 
+
+0
+
+50 
+
+100 
+
+150  
+
+> tSNE-2
+
+(28) Layer 27 150 100 50 0 50 100 
+
+tSNE-1 
+
+100 
+
+50 
+
+0
+
+50 
+
+100  
+
+> tSNE-2
+
+(29) Layer 28 100 50 0 50 100 
+
+tSNE-1 
+
+150 
+
+100 
+
+50 
+
+0
+
+50 
+
+100 
+
+150  
+
+> tSNE-2
+
+(30) Layer 29 150 100 50 0 50 100 
+
+tSNE-1 
+
+150 
+
+100 
+
+50 
+
+0
+
+50 
+
+100 
+
+150 
+
+> tSNE-2
+
+(31) Layer 30 100 50 0 50 100 150 
+
+tSNE-1 
+
+100 
+
+50 
+
+0
+
+50 
+
+100  
+
+> tSNE-2
+
+(32) Layer 31 
+
+Figure 6: t-SNE visualization across layers 0–31 of Vicuna-7B Benign 
+
+Direct prompt attack 
+
+AutoDAN 
+
+Cipher 
+
+CodeChameleon 
+
+DeepInception 
+
+GCG 
+
+ICA 
+
+Jailbroken 
+
+PAIR 
+
+TAP 100 50 0 50 100 
+
+tSNE-1 
+
+100 
+
+50 
+
+0
+
+50 
+
+100 
+
+> tSNE-2
+
+(1) Layer 0 100 50 0 50 100 
+
+tSNE-1 
+
+100 
+
+50 
+
+0
+
+50 
+
+100  
+
+> tSNE-2
+
+(2) Layer 1 100 50 0 50 100 150 
+
+tSNE-1 
+
+150 
+
+100 
+
+50 
+
+0
+
+50 
+
+100  
+
+> tSNE-2
+
+(3) Layer 2 100 50 0 50 100 150 
+
+tSNE-1 
+
+100 
+
+50 
+
+0
+
+50 
+
+100  
+
+> tSNE-2
+
+(4) Layer 3 100 50 0 50 100 150 
+
+tSNE-1 
+
+100 
+
+50 
+
+0
+
+50 
+
+100  
+
+> tSNE-2
+
+(5) Layer 4 100 50 0 50 100 150 
+
+tSNE-1 
+
+150 
+
+100 
+
+50 
+
+0
+
+50 
+
+100 
+
+150 
+
+> tSNE-2
+
+(6) Layer 5 100 50 0 50 100 150 
+
+tSNE-1 
+
+100 
+
+50 
+
+0
+
+50 
+
+100  
+
+> tSNE-2
+
+(7) Layer 6 150 100 50 0 50 100 150 
+
+tSNE-1 
+
+100 
+
+50 
+
+0
+
+50 
+
+100 
+
+150  
+
+> tSNE-2
+
+(8) Layer 7 100 50 0 50 100 150 
+
+tSNE-1 
+
+150 
+
+100 
+
+50 
+
+0
+
+50 
+
+100  
+
+> tSNE-2
+
+(9) Layer 8 100 50 0 50 100 150 
+
+tSNE-1 
+
+100 
+
+50 
+
+0
+
+50 
+
+100 
+
+150  
+
+> tSNE-2
+
+(10) Layer 9 100 50 0 50 100 150 
+
+tSNE-1 
+
+100 
+
+50 
+
+0
+
+50 
+
+100 
+
+> tSNE-2
+
+(11) Layer 10 100 50 0 50 100 150 
+
+tSNE-1 
+
+100 
+
+50 
+
+0
+
+50 
+
+100 
+
+150  
+
+> tSNE-2
+
+(12) Layer 11 100 50 0 50 100 150 
+
+tSNE-1 
+
+100 
+
+50 
+
+0
+
+50 
+
+100  
+
+> tSNE-2
+
+(13) Layer 12 100 50 0 50 100 150 
+
+tSNE-1 
+
+100 
+
+50 
+
+0
+
+50 
+
+100 
+
+150  
+
+> tSNE-2
+
+(14) Layer 13 100 50 0 50 100 150 
+
+tSNE-1 
+
+100 
+
+50 
+
+0
+
+50 
+
+100 
+
+150  
+
+> tSNE-2
+
+(15) Layer 14 100 50 0 50 100 150 
+
+tSNE-1 
+
+100 
+
+50 
+
+0
+
+50 
+
+100 
+
+150 
+
+> tSNE-2
+
+(16) Layer 15 150 100 50 0 50 100 150 
+
+tSNE-1 
+
+100 
+
+50 
+
+0
+
+50 
+
+100  
+
+> tSNE-2
+
+(17) Layer 16 100 50 0 50 100 150 
+
+tSNE-1 
+
+100 
+
+50 
+
+0
+
+50 
+
+100 
+
+150  
+
+> tSNE-2
+
+(18) Layer 17 100 50 0 50 100 150 
+
+tSNE-1 
+
+100 
+
+50 
+
+0
+
+50 
+
+100  
+
+> tSNE-2
+
+(19) Layer 18 100 50 0 50 100 150 
+
+tSNE-1 
+
+100 
+
+50 
+
+0
+
+50 
+
+100  
+
+> tSNE-2
+
+(20) Layer 19 100 50 0 50 100 150 
+
+tSNE-1 
+
+100 
+
+50 
+
+0
+
+50 
+
+100 
+
+> tSNE-2
+
+(21) Layer 20 100 50 0 50 100 150 
+
+tSNE-1 
+
+100 
+
+50 
+
+0
+
+50 
+
+100  
+
+> tSNE-2
+
+(22) Layer 21 100 50 0 50 100 
+
+tSNE-1 
+
+150 
+
+100 
+
+50 
+
+0
+
+50 
+
+100  
+
+> tSNE-2
+
+(23) Layer 22 100 50 0 50 100 
+
+tSNE-1 
+
+150 
+
+100 
+
+50 
+
+0
+
+50 
+
+100  
+
+> tSNE-2
+
+(24) Layer 23 100 50 0 50 100 
+
+tSNE-1 
+
+150 
+
+100 
+
+50 
+
+0
+
+50 
+
+100  
+
+> tSNE-2
+
+(25) Layer 24 150 100 50 0 50 100 
+
+tSNE-1 
+
+150 
+
+100 
+
+50 
+
+0
+
+50 
+
+100 
+
+150 
+
+> tSNE-2
+
+(26) Layer 25 150 100 50 0 50 100 
+
+tSNE-1 
+
+100 
+
+50 
+
+0
+
+50 
+
+100  
+
+> tSNE-2
+
+(27) Layer 26 150 100 50 0 50 100 
+
+tSNE-1 
+
+150 
+
+100 
+
+50 
+
+0
+
+50 
+
+100 
+
+150  
+
+> tSNE-2
+
+(28) Layer 27 150 100 50 0 50 100 150 
+
+tSNE-1 
+
+100 
+
+50 
+
+0
+
+50 
+
+100  
+
+> tSNE-2
+
+(29) Layer 28 150 100 50 0 50 100 
+
+tSNE-1 
+
+100 
+
+50 
+
+0
+
+50 
+
+100 
+
+150  
+
+> tSNE-2
+
+(30) Layer 29 150 100 50 0 50 100 
+
+tSNE-1 
+
+100 
+
+50 
+
+0
+
+50 
+
+100 
+
+150 
+
+> tSNE-2
+
+(31) Layer 30 150 100 50 0 50 100 
+
+tSNE-1 
+
+100 
+
+50 
+
+0
+
+50 
+
+100  
+
+> tSNE-2
+
+(32) Layer 31 
+
+Figure 7: t-SNE visualization across layers 0–31 of Mistral-7B 0 1 2 3 4 5 6 7 8 9
+
+Layer 
+
+45 
+
+50 
+
+55 
+
+60 
+
+65 
+
+70 
+
+75 
+
+80 
+
+85 
+
+90 
+
+95 
+
+> Attack Detection Rate (%)
+> 53.0
+> 52.5
+> 62.0
+> 66.5
+> 75.5
+> 81.5
+> 84.5
+> 89.0
+> 89.5
+> 89.0
+> 50.0
+> 53.5
+> 62.5
+> 69.5
+> 76.0
+> 77.5
+> 85.5
+> 87.0
+> 85.5
+> 82.5
+> 52.5
+> 58.5
+> 68.5
+> 71.5
+> 77.5
+> 79.0
+> 82.0
+> 84.5
+> 85.5
+> 90.5
+
+LLaMA-7B 
+
+Vicuna-7B 
+
+Mistral-7B Figure 8: Attack detection accuracy in the representation space using GUARD-SLM across early layers (0–10), Dataset: HarmBench , model: meta- llama/Llama-2-7b-chat-hf 11 12 13 14 15 16 17 18 19 20 
+
+Layer 
+
+80 
+
+85 
+
+90 
+
+95 
+
+100 
+
+> Attack Detection Rate (%)
+> 95.5
+> 95.5
+> 96.5
+> 97.5
+> 98.5
+> 99.5
+> 99.5
+> 99.5
+> 99.5
+> 99.5
+> 84.5
+> 86.5
+> 87.5
+> 88.5
+> 90.0
+> 91.0
+> 91.0
+> 91.0
+> 91.5
+> 92.0
+> 93.5
+> 94.5
+> 97.0
+> 96.0
+> 97.0
+> 97.5
+> 98.0
+> 98.0
+> 98.0
+> 98.0
+
+LLaMA-7B 
+
+Vicuna-7B 
+
+Mistral-7B 
+
+Figure 9: Attack detection accuracy in the representation space using GUARD-SLM across middle layers (11–21), Dataset: HarmBench, model: meta- llama/Llama-2-7b-chat-hf 22 23 24 25 26 27 28 29 30 31 
+
+Layer 
+
+85 
+
+86 
+
+87 
+
+88 
+
+89 
+
+90 
+
+91 
+
+92 
+
+93 
+
+94 
+
+95 
+
+96 
+
+97 
+
+98 
+
+99 
+
+100 
+
+101 
+
+102 
+
+> Attack Detection Rate (%)
+> 99.5
+> 99.5
+> 99.5
+> 99.5
+> 99.5
+> 99.5
+> 99.5
+> 99.5
+> 99.5
+> 99.5
+> 93.5
+> 93.5
+> 93.5
+> 93.5
+> 92.5
+> 92.0
+> 90.0
+> 89.0
+> 89.5
+> 88.5
+> 98.5
+> 98.5
+> 98.5
+> 98.5
+> 99.0
+> 98.5
+> 98.5
+> 99.0
+> 98.5
+> 98.5
+
+LLaMA-7B 
+
+Vicuna-7B 
+
+Mistral-7B 
+
+Figure 10: Attack detection accuracy in the representation space using GUARD-SLM across late layers (22–31), Dataset: HarmBench, model: meta- llama/Llama-2-7b-chat-hf B.3 GUARD-SLM in-depth result analysis 
+
+For in-depth analysis of the proposed defense technique, we consider three instruction-tuned SLMs: LLaMA-2 (meta-llama/Llama-2-7b-chat-hf), Vicuna (lmsys/vicuna-7b-v1.5), and Mistral (mistralai/Mistral-7B-Instruct-v0.2). Tables 9–13 present the layer-wise jailbreak detection accuracy of GUARD-SLM across dif-ferent attack categories for these models. As shown in Tables 9 and 10, the proposed method achieves consistently high detection accuracy across all transformer layers for both direct malicious prompts and optimized jailbreak at-tacks. For the HarmBench direct prompt set-ting, the detection accuracy gradually increases from early layers to late layers, exceeding 99% in most middle and late layers for all three mod-els. For better understanding, we visualize the attack detection rate of our model in Figure 8-10. In contrast, for optimized jailbreak attacks such as AutoDAN, PAIR, and TAP, the de-tection accuracy remains almost perfect across all layers, reaching nearly 100% for all evalu-ated models. This observation indicates that optimized jailbreak prompts produce highly distinguishable activation patterns in the rep-resentation space, allowing GUARD-SLM to reliably detect them even in early transformer layers. A similar trend is observed for the remain-ing jailbreak categories shown in Tables 11, 12, and 13. For GCG, Cipher, DeepInception, CodeChameleon, ICA, and Jailbroken attacks, the detection accuracy stays close to 100% across almost all layers for all three models. Compared to direct malicious prompts, which may partially overlap with benign representa-tions in early layers, optimized jailbreak attacks form more consistent and separable regions throughout the network. These results con-firm that jailbreak-related features are present across the entire representation space and can be detected without relying on a specific layer. Overall, the experimental results demonstrate that GUARD-SLM provides stable and robust detection performance across different mod-els, attack strategies, and transformer layers, achieving near-perfect detection accuracy for most optimized jailbreak attacks. Table 9: Layer-wise jailbreak detection accuracy using GUARD-SLM across LLaMA-7B, Vicuna-7B, and Mistral-7B models. 
+
+Acc(%) on HarmBench Acc(%) on AutoDAN Layers LLaMA-7B Vicuna-7B Mistral-7B LLaMA-7B Vicuna-7B Mistral-7B 
+
+0 53.00% 50.00% 52.52% 100.0% 100.0% 100.0% 1 52.50% 53.50% 58.50% 100.0% 100.0% 100.0% 2 62.00% 62.50% 68.50% 100.0% 100.0% 100.0% 3 66.50% 69.50% 71.50% 100.0% 100.0% 100.0% 4 75.50% 76.00% 77.50% 100.0% 100.0% 100.0% 5 81.50% 77.50% 79.00% 100.0% 100.0% 100.0% 6 84.50% 85.50% 82.00% 100.0% 100.0% 100.0% 7 89.00% 87.00% 84.50% 100.0% 100.0% 100.0% 8 89.50% 85.50% 85.50% 100.0% 100.0% 100.0% 9 89.00% 82.50% 90.50% 100.0% 100.0% 100.0% 10 92.50% 86.50% 90.50% 100.0% 100.0% 100.0% 11 95.50% 84.50% 93.50% 100.0% 100.0% 100.0% 12 95.50% 86.50% 94.50% 100.0% 100.0% 100.0% 13 96.50% 87.50% 97.00% 100.0% 100.0% 100.0% 14 97.50% 88.50% 96.00% 100.0% 100.0% 100.0% 15 98.50% 90.00% 97.00% 100.0% 100.0% 100.0% 16 99.50% 91.00% 97.50% 100.0% 100.0% 100.0% 17 99.50% 91.00% 98.00% 100.0% 100.0% 100.0% 18 99.50% 91.00% 98.00% 100.0% 100.0% 100.0% 19 99.50% 91.50% 98.00% 100.0% 100.0% 100.0% 20 99.50% 92.00% 98.00% 100.0% 100.0% 100.0% 21 99.50% 92.50% 98.50% 100.0% 100.0% 100.0% 22 99.50% 93.50% 98.50% 100.0% 100.0% 100.0% 23 99.50% 93.50% 98.50% 100.0% 100.0% 100.0% 24 99.50% 93.50% 98.50% 100.0% 100.0% 100.0% 25 99.50% 93.50% 98.50% 100.0% 100.0% 100.0% 26 99.50% 92.50% 99.00% 100.0% 100.0% 100.0% 27 99.50% 92.00% 98.50% 100.0% 100.0% 100.0% 28 99.50% 90.00% 98.50% 100.0% 100.0% 100.0% 29 99.50% 89.00% 99.00% 100.0% 100.0% 100.0% 30 99.50% 89.50% 98.50% 100.0% 100.0% 100.0% 31 99.50% 88.50% 98.50% 100.0% 100.0% 100.0% Table 10: Layer-wise jailbreak detection accuracy using GUARD-SLM across LLaMA-7B, Vicuna-7B, and Mistral-7B models. 
+
+Acc(%) on PAIR Acc(%) on TAP Layers LLaMA-7B Vicuna-7B Mistral-7B LLaMA-7B Vicuna-7B Mistral-7B 
+
+0 100.0% 100.0% 100.0% 100.0% 100.0% 100.0% 1 100.0% 99.50% 100.0% 100.0% 100.0% 100.0% 2 100.0% 100.0% 100.0% 100.0% 100.0% 100.0% 3 100.0% 100.0% 100.0% 100.0% 100.0% 100.0% 4 100.0% 100.0% 100.0% 100.0% 100.0% 100.0% 5 100.0% 100.0% 100.0% 100.0% 100.0% 100.0% 6 100.0% 100.0% 100.0% 100.0% 100.0% 100.0% 7 100.0% 100.0% 100.0% 100.0% 100.0% 100.0% 8 100.0% 100.0% 100.0% 100.0% 100.0% 100.0% 9 100.0% 100.0% 100.0% 100.0% 100.0% 100.0% 10 100.0% 100.0% 100.0% 100.0% 100.0% 100.0% 11 100.0% 100.0% 100.0% 100.0% 100.0% 100.0% 12 100.0% 100.0% 100.0% 100.0% 100.0% 100.0% 13 100.0% 100.0% 100.0% 100.0% 100.0% 100.0% 14 100.0% 100.0% 100.0% 100.0% 100.0% 100.0% 15 100.0% 100.0% 100.0% 100.0% 100.0% 100.0% 16 100.0% 100.0% 100.0% 100.0% 100.0% 100.0% 17 100.0% 100.0% 100.0% 100.0% 100.0% 100.0% 18 100.0% 99.50% 100.0% 100.0% 100.0% 100.0% 19 100.0% 99.50% 99.50% 100.0% 100.0% 100.0% 20 100.0% 99.50% 99.50% 100.0% 100.0% 100.0% 21 100.0% 99.50% 99.50% 100.0% 99.50% 100.0% 22 100.0% 99.50% 99.50% 100.0% 99.50% 100.0% 23 100.0% 99.50% 99.50% 100.0% 99.50% 100.0% 24 100.0% 99.50% 99.50% 100.0% 100.0% 100.0% 25 100.0% 99.50% 99.50% 100.0% 100.0% 100.0% 26 100.0% 99.50% 99.50% 100.0% 100.0% 100.0% 27 100.0% 99.50% 99.50% 100.0% 100.0% 100.0% 28 100.0% 99.50% 99.50% 100.0% 100.0% 99.50% 29 100.0% 99.50% 99.50% 100.0% 100.0% 100.0% 30 100.0% 99.50% 99.50% 100.0% 100.0% 100.0% 31 100.0% 99.50% 99.50% 100.0% 100.0% 99.50% Table 11: Layer-wise jailbreak detection accuracy using GUARD-SLM across LLaMA-7B, Vicuna-7B, and Mistral-7B models. 
+
+Acc(%) on GCG Acc(%) on Cipher Layers LLaMA-7B Vicuna-7B Mistral-7B LLaMA-7B Vicuna-7B Mistral-7B 
+
+0 100.0% 100.0% 100.0% 100.0% 100.0% 100.0% 1 100.0% 100.0% 99.50% 100.0% 100.0% 100.0% 2 100.0% 100.0% 100.0% 100.0% 100.0% 100.0% 3 100.0% 100.0% 100.0% 100.0% 100.0% 100.0% 4 100.0% 100.0% 100.0% 100.0% 100.0% 100.0% 5 100.0% 100.0% 100.0% 100.0% 100.0% 100.0% 6 100.0% 100.0% 100.0% 100.0% 100.0% 100.0% 7 100.0% 100.0% 100.0% 100.0% 100.0% 100.0% 8 100.0% 100.0% 100.0% 100.0% 100.0% 100.0% 9 100.0% 100.0% 100.0% 100.0% 100.0% 100.0% 10 100.0% 100.0% 100.0% 100.0% 100.0% 100.0% 11 100.0% 100.0% 100.0% 100.0% 100.0% 100.0% 12 100.0% 100.0% 100.0% 100.0% 100.0% 100.0% 13 100.0% 100.0% 100.0% 100.0% 100.0% 100.0% 14 100.0% 100.0% 100.0% 100.0% 100.0% 100.0% 15 100.0% 100.0% 100.0% 100.0% 100.0% 100.0% 16 100.0% 100.0% 100.0% 100.0% 100.0% 100.0% 17 100.0% 100.0% 100.0% 100.0% 100.0% 100.0% 18 100.0% 100.0% 100.0% 100.0% 100.0% 100.0% 19 100.0% 100.0% 100.0% 100.0% 100.0% 100.0% 20 100.0% 100.0% 100.0% 100.0% 100.0% 100.0% 21 100.0% 100.0% 100.0% 100.0% 100.0% 100.0% 22 100.0% 100.0% 100.0% 100.0% 100.0% 100.0% 23 100.0% 100.0% 100.0% 100.0% 100.0% 100.0% 24 100.0% 100.0% 100.0% 100.0% 100.0% 100.0% 25 100.0% 100.0% 100.0% 100.0% 100.0% 100.0% 26 100.0% 100.0% 100.0% 100.0% 100.0% 100.0% 27 100.0% 100.0% 100.0% 100.0% 100.0% 100.0% 28 100.0% 100.0% 100.0% 100.0% 100.0% 100.0% 29 100.0% 100.0% 100.0% 100.0% 100.0% 100.0% 30 100.0% 100.0% 100.0% 100.0% 100.0% 100.0% 31 100.0% 100.0% 100.0% 100.0% 100.0% 100.0% Table 12: Layer-wise jailbreak detection accuracy using GUARD-SLM on DeepInception and CodeChameleon attacks across LLaMA-7B, Vicuna-7B, and Mistral-7B models. 
+
+Acc(%) on DeepInception Acc(%) on CodeChameleon Layers LLaMA-7B Vicuna-7B Mistral-7B LLaMA-7B Vicuna-7B Mistral-7B 
+
+0 100.0% 100.0% 100.0% 100.0% 100.0% 100.0% 1 100.0% 100.0% 100.0% 100.0% 100.0% 100.0% 2 100.0% 100.0% 100.0% 100.0% 100.0% 100.0% 3 100.0% 100.0% 100.0% 100.0% 100.0% 100.0% 4 100.0% 100.0% 100.0% 100.0% 100.0% 100.0% 5 100.0% 100.0% 100.0% 100.0% 100.0% 100.0% 6 100.0% 100.0% 100.0% 100.0% 100.0% 100.0% 7 100.0% 100.0% 100.0% 100.0% 100.0% 100.0% 8 100.0% 100.0% 100.0% 100.0% 100.0% 100.0% 9 100.0% 100.0% 100.0% 100.0% 100.0% 100.0% 10 100.0% 100.0% 100.0% 100.0% 100.0% 100.0% 11 100.0% 100.0% 100.0% 100.0% 100.0% 100.0% 12 100.0% 100.0% 100.0% 100.0% 100.0% 100.0% 13 100.0% 100.0% 100.0% 100.0% 100.0% 100.0% 14 100.0% 100.0% 100.0% 100.0% 100.0% 100.0% 15 100.0% 100.0% 100.0% 100.0% 100.0% 100.0% 16 100.0% 100.0% 100.0% 100.0% 100.0% 100.0% 17 100.0% 100.0% 100.0% 100.0% 100.0% 100.0% 18 100.0% 100.0% 100.0% 100.0% 100.0% 100.0% 19 100.0% 100.0% 100.0% 100.0% 100.0% 100.0% 20 100.0% 100.0% 100.0% 100.0% 100.0% 100.0% 21 100.0% 100.0% 100.0% 100.0% 100.0% 100.0% 22 100.0% 100.0% 100.0% 100.0% 100.0% 100.0% 23 100.0% 100.0% 100.0% 100.0% 100.0% 100.0% 24 100.0% 100.0% 100.0% 100.0% 100.0% 100.0% 25 100.0% 100.0% 100.0% 100.0% 100.0% 100.0% 26 100.0% 100.0% 100.0% 100.0% 100.0% 100.0% 27 100.0% 100.0% 100.0% 100.0% 100.0% 100.0% 28 100.0% 100.0% 100.0% 100.0% 100.0% 100.0% 29 100.0% 100.0% 100.0% 100.0% 100.0% 100.0% 30 100.0% 100.0% 100.0% 100.0% 100.0% 100.0% 31 100.0% 100.0% 100.0% 100.0% 100.0% 100.0% Table 13: Layer-wise jailbreak detection accuracy using GUARD-SLM on ICA and Jailbroken attacks across LLaMA-7B, Vicuna-7B, and Mistral-7B models. 
+
+Acc(%) on ICA Acc(%) on Jailbroken Layers LLaMA-7B Vicuna-7B Mistral-7B LLaMA-7B Vicuna-7B Mistral-7B 
+
+0 100.0% 100.0% 100.0% 86.36% 87.64% 86.50% 1 100.0% 100.0% 100.0% 88.57% 85.33% 88.02% 2 100.0% 100.0% 100.0% 86.97% 86.03% 80.60% 3 100.0% 100.0% 100.0% 84.78% 85.50% 86.66% 4 100.0% 100.0% 100.0% 86.14% 87.03% 93.21% 5 100.0% 100.0% 100.0% 89.78% 92.24% 93.93% 6 100.0% 100.0% 100.0% 92.57% 94.31% 95.62% 7 100.0% 100.0% 100.0% 93.26% 93.98% 93.86% 8 100.0% 100.0% 100.0% 96.47% 93.22% 94.71% 9 100.0% 100.0% 100.0% 97.97% 92.19% 96.24% 10 100.0% 100.0% 100.0% 98.48% 93.78% 97.12% 11 100.0% 100.0% 100.0% 98.83% 95.14% 96.88% 12 100.0% 100.0% 100.0% 99.00% 95.66% 98.33% 13 100.0% 100.0% 100.0% 99.26% 97.17% 98.72% 14 100.0% 100.0% 100.0% 99.24% 94.95% 98.74% 15 100.0% 100.0% 100.0% 99.12% 94.69% 98.67% 16 100.0% 100.0% 100.0% 99.19% 94.67% 97.86% 17 100.0% 100.0% 100.0% 99.10% 94.78% 98.05% 18 100.0% 100.0% 100.0% 99.05% 93.93% 96.79% 19 100.0% 100.0% 100.0% 98.97% 93.48% 96.64% 20 100.0% 100.0% 100.0% 99.02% 92.93% 96.43% 21 100.0% 100.0% 100.0% 98.79% 92.59% 96.74% 22 100.0% 100.0% 100.0% 98.52% 93.28% 96.09% 23 100.0% 100.0% 100.0% 98.10% 92.31% 95.72% 24 100.0% 100.0% 100.0% 97.79% 92.05% 95.43% 25 100.0% 100.0% 100.0% 97.81% 92.09% 95.53% 26 100.0% 100.0% 100.0% 98.14% 91.07% 94.57% 27 100.0% 100.0% 100.0% 98.21% 90.64% 94.62% 28 100.0% 100.0% 100.0% 98.03% 90.88% 94.78% 29 100.0% 100.0% 100.0% 98.22% 91.17% 94.33% 30 100.0% 100.0% 100.0% 98.16% 91.15% 94.26% 31 100.0% 100.0% 100.0% 98.47% 90.76% 93.38%

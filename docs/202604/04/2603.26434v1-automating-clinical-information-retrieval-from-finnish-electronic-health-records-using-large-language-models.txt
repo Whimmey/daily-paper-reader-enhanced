@@ -1,0 +1,903 @@
+Title: Automating Clinical Information Retrieval from Finnish Electronic Health Records Using Large Language Models
+
+URL Source: https://arxiv.org/pdf/2603.26434v1
+
+Published Time: Mon, 30 Mar 2026 01:01:21 GMT
+
+Number of Pages: 57
+
+Markdown Content:
+# Automating Clinical Information Retrieval from Finnish Electronic Health Records Using Large Language Models 
+
+## Mikko Saukkoriipi 1* , Nicole Hernandez 2, Jaakko Sahlsten 1,Kimmo Kaski 1, Otso Arponen 2,3 
+
+> 1
+
+Department of Computer Science, Aalto University School of Science, Espoo, 02150, Finland. 
+
+> 2
+
+Faculty of Medicine and Health Technology, Tampere University, Tampere, 33520, Finland. 
+
+> 3
+
+Department of Oncology, TAYS Cancer Centrer, Tampere University Hospital, Tampere, 33520, Finland. *Corresponding author(s). E-mail(s): mikko.1.saukkoriipi@aalto.fi; 
+
+Abstract 
+
+Clinicians often need to search for patient-specific information within electronic health records (EHRs) containing heterogeneous longitudinal documentation, a task that can be time-consuming, cognitively demanding, and error-prone. Here we present a locally deployable Clinical Contextual Question Answering (CCQA) framework that answers patient-specific clinical questions using information from EHRs without transmitting data outside institutional boundaries. Open-source large language models (LLMs) ranging from 4 billion (4B) to 70 billion (70B) parameters were benchmarked under fully offline conditions. The models were evaluated using 1,664 expert-annotated question-answer pairs derived from records of 183 patients undergoing breast cancer screening, diagnosis, or treat-ment. The dataset contained predominantly Finnish clinical text with occasional English and Latin terminology. In free-text generation, Llama-3.1-70B achieved 95.3% accuracy and 97.3% consistency in semantically equivalent question vari-ants, while the mid-sized Qwen3-30B-A3B-2507 model achieved comparable performance despite its smaller parameter count. In a multiple-choice setting, the models achieved similar accuracy while enabling probabilistic calibration analysis, which revealed considerable variability in calibration between models. This indicates that for clinical deployment, calibration should be considered in 
+
+1       
+
+> arXiv:2603.26434v1 [cs.CL] 27 Mar 2026 Based on the patient’s
+> record, in what year was
+> the breast cancer first
+> detected?
+> 1. THE CHALLENGE 2. THE SOLUTION 3. THE OUTCOME
+> Time consuming manual review
+> Extracting patient -related information
+> from complex EHRs
+> LLM -driven CCQA pipeline
+> Patient -specific
+> comprehensive
+> EHRs
+> Keyword search
+> Fi Eng Longitudinal
+> •Temporal and
+> clinical reasoning
+> •Multilingual
+> narrative and context
+> Precise, actionable insight
+> Q: Based on the patient’s
+> record, in what year was the
+> breast cancer first detected?
+> A: The first breast cancer
+> was detected in 2018
+> Improved decision
+> support
+> Scalable healthcare
+> delivery
+
+Fig. 1 Visual abstract of the Clinical Contextual Question Answering (CCQA) pipeline. A clinician submits a natural language question about a patient record. A long-context large language model pro-cesses the complete electronic health record and generates a context-aware answer, which is returned to the clinician for use in clinical practice. 
+
+conjunction with accuracy. We also found that low-precision quantization (4-bit and 8-bit) preserved predictive performance for most models while markedly reducing GPU memory requirements, improving feasibility for on-site hospital deployment. Models adapted to medical tasks or to the Finnish language did not demonstrate systematic advantages over general-purpose LLMs. In addition, clin-ical evaluation of responses from the best-performing model indicated that 2.9% of outputs contained clinically significant errors. Semantically equivalent ques-tion formulations produced discordant responses in a small proportion of cases, including instances in which one formulation yielded a correct response and the other a clinically significant error (0.96% of all responses). These findings indicate that locally hosted open-source LLMs can accurately retrieve clinically rele-vant patient-specific information from longitudinal EHRs using natural-language queries, supporting secure clinical information retrieval while emphasizing the need for careful validation, robustness assessment, and human oversight in clinical deployment. 
+
+Keywords: Large Language Models, Clinical Question Answering, Electronic Health Record, Multilingual Clinical NLP, Oncology, Breast Cancer 
+
+# 1 Introduction 
+
+Modern clinical practice faces an information paradox. Electronic health records (EHRs) contain extensive longitudinal patient data, yet the volume and fragmenta-tion of these records impose a substantial cognitive burden on clinicians in their daily practice [1–3]. In oncology and other multidisciplinary medical specialities, patient histories are distributed across years of heterogeneous EHR documentation, including 2radiology and pathology reports, surgical summaries, and medication records [4]. Syn-thesizing this information during active consultations is time-consuming and prone to oversight, potentially increasing workload, and delaying interpretation, particularly when clinicians rely on manual review or keyword-based search across dispersed doc-umentation [5]. Systems must therefore support flexible, natural language querying of patient EHRs and return precise, context-aware answers grounded in complete longi-tudinal records. Such capabilities could improve workflow efficiency, reduce cognitive burden, and support higher-quality clinical decision-making [1, 6]. Large language models (LLMs) have recently been applied to question answering over EHRs to improve access to complex clinical information [7]. In this work, we refer to patient-specific QA grounded in longitudinal clinical records as clinical contextual question answering (CCQA). Unlike standard document retrieval, this task requires synthesizing information across multiple sources to derive clinically relevant variables such as diagnosis timing, disease characteristics, or treatment sequences. Previous work has shown that LLMs can encode clinical knowledge and achieve strong performance on medical question answering tasks [8–10], and these models have been applied to EHR-based QA using synthetic patient records [7]. However, synthetic data may not capture the scale and complexity of real-world clinical information, which spans years of heterogeneous structured and unstructured patient records. As a result, patient-specific QA over EHRs using LLMs remains comparatively underexplored in studies using real-world clinical data. This gap is further pronounced in healthcare settings involving non-English clinical texts [11]. In Finland’s healthcare system, EHRs are primarily written in Finnish, with embedded English and Latin terminology, domain-specific abbreviations, and complex linguistic structures that challenge general-domain language models [12, 13]. Prior work in Finnish clinical NLP is limited and has focused mainly on task-specific classifi-cation and information extraction, with no prior studies, to our knowledge, evaluating generative LLMs for patient-specific clinical question answering over Finnish-language EHRs [12–14]. More broadly, these challenges reflect pretraining imbalances, as med-ical text constitutes only a small fraction of large-scale corpora and many languages remain under-represented [10, 11, 15]. Together, this setting provides a stringent test of model generalization beyond standard benchmarks. Historically, many clinically relevant natural language processing systems have relied on retrieval-augmented generation (RAG) to manage long documents by retriev-ing and processing subsets of the record [7, 16]. Such approaches can be limited in tasks requiring longitudinal reasoning, particularly when it is unclear which parts of the patient history are relevant [6, 17]. In complex specialties such as oncology, accu-rate interpretation often requires integrating events separated by months or years, distinguishing active disease from historical or resolved findings, and reasoning over the clinical timeline [18]. Recent advances in large language models have enabled sub-stantially longer input sequences [19–21], allowing models to process full patient EHRs and support end-to-end reasoning over longitudinal clinical histories. Despite rapid progress in LLM development, several important questions remain unresolved [22]. First, it is unclear how model scale, architecture, and domain spe-cialization influence performance in real-world CCQA over longitudinal EHRs [9, 23]. 3Second, although low-precision quantization has been proposed to enable deploy-ment on resource-constrained hardware, its impact on clinical reliability remains unknown [24]. Third, most prior medical LLM research focuses on general question answering, narrowly defined extraction tasks, or synthetic data, leaving uncertainty about performance in multilingual, longitudinal clinical narratives [25, 26]. Finally, accuracy alone is insufficient for clinical adoption. Consistency across semantically equivalent queries and calibration of model confidence are essential for trustworthy integration into clinical workflows [9, 27–29]. Recent advances enable language models to process complete patient records while remaining deployable on hospital-governed hardware, supporting privacy-preserving analysis of sensitive clinical data [6, 7, 10, 30]. However, empirical evaluation remains limited in real-world multilingual oncology settings involving longitudinal EHRs [25, 26]. In this study, we present a systematic benchmark of retrieval-free long-context LLMs for Clinical Contextual Question Answering in a multilingual oncology environ-ment. Using a dataset of 1,664 expert-annotated question–answer pairs derived from EHRs of 183 patients undergoing breast cancer screening or treatment, we evaluated five families of open-source models ranging from 4 billion to 70 billion parameters. Our analysis examines accuracy, response consistency across semantically equivalent queries, calibration of model confidence, memory footprint under extended sequence lengths, and the impact of quantization and prompting strategies. In addition, we con-ducted a clinical safety evaluation of incorrect responses from the highest-performing model to assess their clinical significance. By providing a comprehensive comparison of locally deployable models operating on full patient histories, this work demonstrates the feasibility of privacy-preserving, retrieval-free clinical information retrieval and offers practical insights into how model scale, architecture, and deployment constraints shape real-world clinical AI performance. 
+
+# 2 Results 
+
+We evaluated 16 instruction-tuned large language models from five developers on 1,664 clinical question–answer pairs derived from electronic health records of 183 patients undergoing breast cancer screening or treatment. Two models exceeded the available 160 GB GPU memory limit and were thus excluded, leaving 14 models for evaluation against a rule-based approach that served as the baseline result. 
+
+## Overall model accuracy 
+
+The accuracy of the models varied substantially across architectures (Table 1). For the primary question formulation (V1), the highest performance was achieved by larger models, including Llama-3.1-70B (95.3%), Llama-3.3-70B (94.9%), DeepSeek-R1-Distill-Llama-70B (94.8%), and Qwen3-30B-A3B-2507 (95.1%). The 30B-parameter Qwen3 model achieved accuracy comparable to that of the best 70B-parameter mod-els. Performance also varied among models of similar scale. Qwen3-4B-2507 achieved an accuracy of 91.1%, whereas the reasoning-oriented R1-Distill-Qwen-7B achieved 4Table 1 Clinical contextual question answering performance and deployment metrics. 
+
+Accuracy is reported for two question variants (V1 and V2) and their consistency across variants. Peak VRAM and latency are reported as the minimum and maximum per-query values across the dataset. The best results per column are shown in bold. OOM indicates models exceeding the 160 GB memory limit. Models marked with † were evaluated on a reduced subset ( N = 955) due to context window constraints. All other models were evaluated on the full dataset ( N = 1 ,664).                                                                                                                                         
+
+> Developer Model Accuracy (%) ↑VRAM (GB) ↓Latency (s) ↓
+> V1 V2 Cons. Min Max Min Max
+> Google Gemma-3-4B-it [31] 72.6 68.2 83.2 8.5 18.4 0.2 5.8 Gemma-3-27B-it [31] 92.7 92.8 96.3 52.4 71.9 0.7 16.6 MedGemma-4B-it [10] 74.5 73.1 89.6 8.5 18.4 0.3 5.9 MedGemma-27B-text-it [10] 92.1 90.0 94.0 51.6 71.2 0.7 16.7 DeepSeek R1-Distill-Qwen-7B [32] 50.4 51.2 43.4 14.7 22.6 5.7 41.4 R1-Distill-Qwen-32B [32] 92.7 94.6 94.7 62.1 77.7 11.0 91.3 R1-Distill-Llama-70B [32] 94.8 95.1 97.0 132.8 148.2 18.7 153.3 Meta Llama-3.1-8B [33] 79.9 80.2 94.2 15.5 22.7 0.2 2.7 Llama-3.1-70B [33] 95.3 94.2 97.3 132.5 148.2 1.2 19.7 Llama-3.3-70B [33] 94.9 94.9 97.9 132.5 148.2 1.2 19.8 Llama-4-Scout-17B [34] OOM OOM –––––OpenAI GPT-OSS-20B [35] OOM OOM –––––Qwen Qwen3-4B-2507 [36] 91.1 89.8 95.3 8.0 15.0 0.2 2.7 Qwen3-30B-A3B-2507 [36] 95.1 94.4 97.7 57.2 61.8 2.7 8.9 LumiOpen Llama-Poro-2-8B [37] †70.2 69.3 82.1 15.3 16.8 0.3 19.5 Llama-Poro-2-70B [37] †90.6 91.8 92.5 132.1 135.1 2.1 154.1 Baseline Rule-based (substring) 45.4 45.4 100 ––<0.1 <0.1
+
+only 50.4% accuracy. Performance generally increased with model scale across eval-uated model families. For example, within the DeepSeek R1-Distill family, accuracy increased with scale from 50.4% to 92.7% and 94.8% for the 7B, 32B, and 70B models, respectively. The rule-based substring baseline achieved substantially lower accuracy (45.4%), indicating that many answers required contextual interpretation beyond simple lexical matching. The confidence intervals for model accuracy are reported in Supplementary Table 5. Statistical comparisons using paired McNemar tests indicated that Llama-3.1-70B significantly outperformed Gemma-3-27B and MedGemma-27B (Holm-adjusted P < 
+
+0.001), whereas differences among the top-performing models were not statistically significant (Supplementary Table 6). 
+
+## Robustness and consistency of responses 
+
+The robustness to linguistic variation was evaluated using two semantically equivalent question formulations: a primary formulation (V1) and a rephrased variant (V2) used to assess consistency (Table 1). Accuracy on the rephrased questions (V2) closely matched that of the primary formulation (V1) across most models. Differences between formulations showed no consistent direction, as some models performed better with V1 and others with V2. Consistency was defined as agreement in the semantic meaning of model outputs across the two formulations, irrespective of correctness. Consistency was highest among 5the top-performing models, with Llama-3.3-70B achieving 97.9%. Qwen3-30B-A3B-2507 and Llama-3.1-70B also showed high consistency (97.7% and 97.3%, respectively). In contrast, R1-Distill-Qwen-7B showed substantially lower consistency (43.4%). 
+
+## Domain- and language-specialized models 
+
+Medical domain–adapted models (MedGemma) and Finnish language–specialized models (Llama-Poro-2) did not demonstrate systematic performance advantages over generalist instruction-tuned models (Table 1). At comparable parameter scales, their accuracy was generally comparable to but not consistently higher than that of gener-alist models. For example, MedGemma models achieved similar accuracy to Gemma models of the same size, while Finnish-language Llama-Poro-2 models showed lower accuracy than other Llama-family models evaluated on the same tasks, although these models were evaluated on a reduced dataset due to context window constraints. These results indicate that domain-specific pretraining or language specialization alone does not guarantee improved performance for clinical question answering on Finnish-language electronic health records. 
+
+## Reasoning models 
+
+DeepSeek R1-Distill models showed accuracy comparable to similarly sized gener-alist models at larger parameter scales (Table 1). R1-Distill-Llama-70B achieved 94.8% accuracy, similar to Llama-3.1-70B (95.3%) and Llama-3.3-70B (94.9%). The median reasoning trace length for R1-Distill-Llama-70B was 295 tokens (range 135– 1001 tokens). In contrast, R1-Distill-Qwen-7B showed lower accuracy (50.4%) and consistency (43.4%) than non-reasoning models of comparable size. 
+
+## Performance variability across clinical questions 
+
+The performance of the model varied substantially between individual clinical ques-tions despite similar aggregate scores (Supplementary Tables 2 and 3). The most variable question (CQ6), which assessed whether neoadjuvant therapy had been administered prior to surgery, showed accuracies ranging from 4.7% to 98.7% across systems. Another challenging question was CQ14, which required the extraction of the percentage of progesterone receptor expression and showed accuracies ranging from 25.0% to 95.7%. The mean accuracy between models ranged from 62.8% (CQ6) to 93.7% (CQ3). We found that seven questions consistently showed high accuracy in all models, with mean accuracy ranging from 88.9% to 93.7%. The highest accuracy per-question was distributed between multiple models and no single model achieved the best performance on all questions. 
+
+## Performance as a function of EHR length 
+
+Accuracy varied with EHR length (Fig. 2 and Supplementary Table 4). Records were stratified into quartiles spanning 1,420–26,739 tokens (Q1–Q4, shortest to longest). Several models maintained high accuracy across quartiles with only modest declines, including Llama-3.1-70B (96.4% to 93.8%), Llama-3.3-70B (96.6% to 92.6%), and 64000 6000 8000 10000 12000 14000 
+
+> EHR length (tokens)
+> 88.00
+> 90.00
+> 92.00
+> 94.00
+> 96.00
+> 98.00
+> 100.00
+> Mean accuracy
+> Qwen3-30B-A3B-Instruct-2507 (ACC 94.7)
+> Llama-3.1-70B-Instruct (ACC 93.8)
+> DeepSeek-R1-Distill-Llama-70B (ACC 91.8)
+> medgemma-27b-text-it (ACC 89.6)
+> gemma-3-27b-it (ACC 89.3)
+> Llama-Poro-2-70B-Instruct (ACC 6.2)
+
+Fig. 2 Accuracy as a function of EHR length for the best-performing model from each model family. Results are shown across quartiles of EHR length (Q1–Q4), each containing 25% of the dataset. The x-axis represents the median EHR length (tokens) within each quartile, and the y-axis shows average accuracy. Accuracy values reported next to each model correspond to performance in the longest-length quartile (Q4). 
+
+Qwen3-30B-A3B-2507 (96.3% to 94.7%). Llama-3.1-70B achieved the highest accuracy for the shortest records (Q1), whereas Qwen3-30B-A3B-2507 achieved the highest accuracy for the longest records (Q4). In contrast, reasoning-oriented models in the R1-Distill family showed greater sensitivity to longer inputs, with R1-Distill-Llama-70B declining from 96.9% to 91.8%, R1-Distill-Qwen-32B from 94.7% to 91.3%, and R1-Distill-Qwen-7B from 61.3% to 40.6%. The Llama-Poro-2 variants showed pronounced deterioration on longer records, where EHR lengths exceeded their supported input length, with accuracy declining from 92.6% to 6.2% for Llama-Poro-2-70B and from 74.5% to 0.9% for Llama-Poro-2-8B. Because the quartiles differed not only in input length but also in patient cases and question distribution, these results reflect combined effects of record length and case composition rather than a purely causal effect of length alone. 
+
+## Memory requirements and inference latency 
+
+GPU memory consumption and inference latency varied substantially across mod-els under bfloat16 precision (Table 1, Supplementary Fig. 1). Large models required peak memory allocations exceeding 130 GB, whereas smaller models operated below approximately 25 GB. Two models exceeded the available 160 GB memory limit and could not be further evaluated. Latency ranged from sub-second responses for smaller models to more than 150 s for the slowest configurations. Notably, the reasoning models showed markedly longer response times than generalist models of comparable 7size. DeepSeek-R1-Distill-Qwen-32B required up to 91 s per query and DeepSeek-R1-Distill-Llama-70B up to 153 s. Similarly sized generalist models typically responded within 20 s. The Finnish-language Llama-Poro-2-70B model also exhibited prolonged latency. In contrast, Qwen3-30B-A3B-2507 produced responses in under 10 seconds even for long inputs. 
+
+Table 2 Quantization effects on clinical contextual question answering accuracy and memory usage. Accuracy is reported for the V1 formulation at three numerical precisions (bf16, 4-bit, and 8-bit). Peak 4-bit VRAM is reported as the minimum and maximum per-query values across the dataset. The best results per column are shown in bold. Models marked with † were evaluated on a reduced subset ( N = 955) due to context window constraints. All other models were evaluated on the full dataset ( N = 1 ,664).                                                                                  
+
+> Developer Model Accuracy (%) ↑4-bit VRAM (GB) ↓
+> bf16 4-bit 8-bit Min Max
+> Google Gemma-3-4B-it [31] 72.6 66.9 71.8 3.4 11.6 Gemma-3-27B-it [31] 92.7 92.5 92.6 16.7 36.0 MedGemma-4B-it [10] 74.5 74.0 74.3 3.4 11.6 MedGemma-27B-text-it [10] 92.1 93.0 92.2 16.5 35.8 DeepSeek R1-Distill-Qwen-7B [32] 50.4 46.3 49.8 5.6 10.2 R1-Distill-Qwen-32B [32] 92.7 92.4 92.6 18.8 29.6 R1-Distill-Llama-70B [32] 94.8 81.3 11.2 38.7 53.6 Meta Llama-3.1-8B [33] 79.9 72.6 79.3 6.0 13.0 Llama-3.1-70B [33] 95.3 92.1 65.1 38.6 53.6 Llama-3.3-70B [33] 94.9 84.6 61.4 38.6 53.6 Qwen Qwen3-4B-2507 [36] 91.1 85.3 91.5 3.0 10.0
+> Qwen3-30B-A3B-2507 [36] 95.1 94.1 94.5 15.9 20.5 LumiOpen Llama-Poro-2-8B [37] †70.2 68.0 46.6 5.8 10.2 Llama-Poro-2-70B [37] †90.6 90.9 6.8 38.2 40.5
+
+## Accuracy and memory effects of low-precision quantization 
+
+Low-precision weight quantization substantially reduced GPU memory requirements while largely preserving accuracy for most models (Table 2, Supplementary Figs. 2 and 3). For example, Llama-3.1-70B accuracy decreased from 95.3% (bf16) to 92.1% at 4-bit precision, while the peak memory footprint dropped from 148.2 GB to 53.6 GB. Similarly, Qwen3-30B-A3B-2507 retained high accuracy, decreasing from 95.1% in bf16 to 94.1% in 4-bit precision, while memory usage decreased from 61.8 GB to 20.5 GB. In contrast, several models exhibited pronounced accuracy degradation under 8-bit quantization despite intermediate memory savings. Notably, the accuracy of Llama-3.1-70B fell to 65.1% in 8-bit precision, and R1-Distill-Llama-70B to 11.2% compared to 94.8% in bf16. The magnitude of degradation varied between model architectures, indicating that the quantization effects depend strongly on the model design and the quantization scheme. These results support 4-bit quantization as a practical strategy for deploying large models under memory constraints, with only a modest accuracy trade-off in most architectures. 8Effects of prompt conditioning 
+
+Here, two prompt conditioning strategies were evaluated: one-shot prompting, which provides a single example case in the prompt, and context conditioning, which adds extended explanations of the clinical task (Supplementary Table 1). In general, both strategies produced only modest changes relative to baseline performance. One-shot prompting yielded variable effects across models, with accuracy increasing for some model architectures and decreasing for others. For example, Gemma-3-4B-it decreased from 72.6% to 69.5%, while Qwen3-4B-2507 increased from 91.1% to 92.3%. Context conditioning produced similarly small changes, generally within one to two percentage points. Several higher-performing models showed slight improvements or no changes, including Llama-3.1-70B (from 95.3% to 95.7%) and Qwen3-30B-A3B-2507 (remained 95.1%). Context-limited models could not be evaluated because the additional prompt content exceeded their supported input window. In summary, prompt conditioning did not produce consistent performance gains across model families. 
+
+Table 3 Calibration performance for clinical contextual question answering under multiple-choice selection. Accuracy is reported for the V1 question formulation. Calibration metrics include expected calibration error (ECE), maximum calibration error (MCE), and bias. The best results per column are shown in bold. Models marked with † were evaluated on a reduced subset ( N = 955) due to context window constraints. All other models were evaluated on the full dataset ( N = 1 ,664). DeepSeek R1 models were excluded because their architecture requires intermediate reasoning generation.                                                        
+
+> Developer Model Acc. (%) ↑ECE ↓MCE ↓Bias ↓ |·|
+> Google Gemma-3-4B-it [31] 72.5 0.238 0.397 0.114 Gemma-3-27B-it [31] 94.1 0.045 0.277 0.023 MedGemma-4B-it [10] 73.9 0.156 0.539 -0.007
+> MedGemma-27B-text-it [10] 93.7 0.193 0.707 -0.193 Meta Llama-3.1-8B [33] 80.3 0.186 0.624 -0.186 Llama-3.1-70B [33] 95.7 0.123 0.561 -0.123 Llama-3.3-70B [33] 95.0 0.039 0.643 0.038 Qwen Qwen3-4B-2507 [36] 91.2 0.059 0.435 0.059 Qwen3-30B-A3B-2507 [36] 95.1 0.083 0.478 -0.066 LumiOpen Llama-Poro-2-8B [37] †67.1 0.149 0.311 0.055 Llama-Poro-2-70B [37] †92.7 0.068 0.511 0.068
+
+## Multiple-choice accuracy and calibration 
+
+The accuracy in multiple-choice selection was similar to that observed with free-text generation (Table 3). Relative performance rankings were largely preserved, with the highest accuracy achieved by larger models. This evaluation setting enabled direct assessment of probabilistic calibration and revealed substantial variability in con-fidence calibration across model architectures. High accuracy did not consistently correspond to well-calibrated predictions. For example, Llama-3.1-70B achieved the highest accuracy (95.7%) but showed a moderate calibration error (ECE 0.123), while Llama-3.3-70B exhibited slightly lower accuracy (95.0%) but the lowest ECE value (0.039). Gemma-3-27B-it combined high accuracy with strong calibration (ECE 90.045, MCE 0.277), while MedGemma-27B-text-it demonstrated comparable accuracy but markedly poorer calibration (MCE 0.707). Smaller models generally exhibited larger calibration errors. The bias values indicated heterogeneous tendencies toward overconfidence or underconfidence, and several high-accuracy models showed mild underconfidence. Models evaluated on a reduced dataset due to context window constraints showed similar qualitative patterns but are not directly comparable. In general, restricting responses to predefined options revealed substantial differences in the reliability of model confidence estimates without materially affecting accuracy. 
+
+## Clinical significance of model errors 
+
+To assess the clinical significance of model errors, we conducted two complementary analyses. First, all V1 responses flagged as incorrect by the autograder (78 out of 1,664) were reviewed by a medical oncologist. Expert adjudication reclassified 15 responses as correct, 15 as having clinically insignificant errors, and 48 as having clinically sig-nificant errors, thus indicating that approximately 3% of all V1 responses contained clinically significant errors. Second, we examined cases in which semantically equiv-alent V1 and V2 questions produced inconsistent responses, focusing on instances where one response was correct and the other incorrect. Of 38 pairs of this type, three were reclassified as correct after expert review, leaving 35 pairs. Within these, 16 pairs (0.96% of all 1,664 V1 questions) included one correct response and one clinically sig-nificant error, and 19 pairs (1.14%) included one correct response and one clinically insignificant error. 
+
+# 3 Discussion 
+
+In this study we have evaluated 14 locally deployable, instruction-tuned open-source large language models for Clinical Contextual Question Answering (CCQA) across complete longitudinal electronic health records in a Finnish oncology setting. Sev-eral long-context generalist models demonstrated high accuracy and strong agreement across semantically equivalent question formulations. This suggests that patient-specific clinical information can be accurately retrieved from heterogeneous Finnish EHR narratives when complete records are processed without retrieval-based preselec-tion. All experiments were performed within a closed offline computing environment without external data transmission. By assessing accuracy, response consistency, probabilistic calibration, inference latency, GPU memory requirements, quantization behaviour, and clinician-adjudicated safety, this work provides a deployment-oriented characterization of model performance under realistic offline constraints. Prior work on medical natural language processing has focused primarily on med-ical question-answering benchmarks or narrowly scoped extraction tasks [8, 9]. In this study, we address patient-specific reasoning in complete longitudinal records in an under-represented clinical language setting, specifically EHRs in Finnish, where clini-cally relevant information may be distributed across years of documentation. Rather than segmenting records using retrieval pipelines [16], we examined retrieval-free ingestion of complete patient histories, enabling assessment of contextual integration across temporally separated clinical events. This design reflects clinical scenarios in 10 which relevant information may be dispersed and not easily identifiable through local similarity-based retrieval alone. The observed performance suggests that long-context instruction-tuned models can support privacy-preserving clinical information retrieval within institutionally governed infrastructure [28, 38]. For large language models, performance generally improves with scale [22, 24]. However, we found that parameter count alone did not determine clinical task perfor-mance. A mid-sized 30B-parameter model achieved accuracy comparable to the leading 70B models, while requiring substantially less memory and lower latency, suggest-ing that architectural efficiency and instruction tuning influence downstream clinical utility. Furthermore, reasoning-oriented LLMs [32, 39] reached similar accuracy but incurred longer inference times due to intermediate reasoning steps, without consistent gains in final answer accuracy. In time-constrained clinical workflows, such latency may limit usability [28]. Thus, model selection in healthcare settings should jointly consider predictive performance, computational efficiency, and workflow compatibility. Agreement across semantically equivalent question formulations was high among the top-performing systems, with several models achieving consistency rates between 97% and 98%. Such stability is desirable in clinical settings, where queries can be phrased in multiple ways [28]. Nevertheless, our clinical safety analysis revealed that paraphrasing can produce divergent responses in some cases, with some formulations yielding correct answers while others lead to clinically significant errors. The robust-ness to linguistic variation, therefore, remains only partially resolved and should be considered when integrating LLMs into clinical workflows. Because model outputs may depend on the precise wording of an input, evaluation frameworks for clinical language models should account for potential sensitivity to question formulation. For individual clinical questions, the best-performing models achieved high accu-racy, with question-specific performance ranging from 87% to 100% (Supplementary Tables 2 and 3). Questions involving categorical attributes typically documented in pathology reports or treatment summaries, such as tumour laterality or invasive-ness, histological subtype, and receptor status, were answered with consistently high accuracy. In contrast, lower performance was observed in tasks requiring temporal rea-soning over treatment timelines or interpretation of quantitative values in electronic health records. For example, determining whether a patient received neoadjuvant therapy (i.e., treatment administered before surgery), requires integrating temporally separated information. These patterns suggest that long-context language models per-form most reliably when clinical variables are explicitly documented, whereas tasks requiring contextual interpretation across longitudinal documentation remain more challenging. Models also differed in their deployment characteristics. The maximum usage of GPU memory for long EHR input ranged from approximately 15 GB to exceeding the available 160 GB memory limit. The inference latency varied similarly widely, from sub-second responses to several minutes per query. In clinical encounters in which multiple queries may be issued, response times measured in minutes may be incom-patible with routine clinical workflows. These findings highlight that the selection of models for clinical deployment should consider not only predictive performance but also GPU memory requirements and inference latency. In particular, the Qwen3-30B 11 model achieved accuracy comparable to the best 70B-parameter models while requiring substantially lower GPU memory and inference time. We found that performance varied with increasing EHR length, indicating hetero-geneous robustness to extended clinical documentation. Several long-context models maintained relatively high accuracy across record-length quartiles with only modest declines, whereas others showed greater sensitivity to longer inputs. These findings suggest that nominal support for long context windows does not guarantee stable performance on long clinical records. Because the record-length quartiles comprised different patient cases, the observed differences likely reflect combined effects of input length and case composition rather than a purely causal effect of record length. Overall, these results indicate that strong performance on short-text tasks does not necessarily generalize to longer electronic health records, even when models nominally support context lengths exceeding the record length. Quantization reduced memory requirements while largely preserving predictive performance. In particular, 4-bit quantization enabled substantial reductions in GPU memory usage with only modest declines in accuracy across several architectures, improving feasibility for deployment on lower-cost hardware. However, the effects of quantization varied substantially between models. Some architectures maintained accuracy comparable to bf16, whereas others exhibited pronounced degradation. For example, the accuracy of Llama-3.1-70B decreased from 95.3% to 65.1%, and R1-Distill-Llama-70B decreased from 94.8% to 11.2% under 8-bit quantization. These findings indicate that quantization can substantially improve computational effi-ciency but does not guarantee preserved performance. Quantized configurations should therefore be empirically validated prior to clinical deployment. We also found that the calibration analysis revealed variability in the alignment between model confidence and empirical accuracy. High predictive accuracy did not consistently correspond to well-calibrated probability estimates, and some architec-tures demonstrated more reliable calibration than others [29]. In clinical settings, confidence estimates from well-calibrated models can help determine when the out-put is likely reliable and when clinician verification is required. Therefore, calibration metrics provide complementary information to accuracy when selecting and validating models for clinical deployment. Neither language specialization nor medical domain specialization conferred an advantage in our evaluation. Models adapted for medical text or specialized for Finnish language did not outperform generalist models at comparable parameter scales when answering patient-specific clinical questions from EHRs. These results suggest that broad multilingual pretraining may already provide sufficient representational capacity to interpret heterogeneous clinical documentation written in Finnish. These findings highlight the importance of evaluating models directly in the target clinical tasks rather than assuming advantages from domain or language specialization. Clinical safety evaluation provided additional insight into the potential risks asso-ciated with model-generated responses. The clinical safety analysis was performed on the highest-performing model (Llama-3.1-70B). Although the overall accuracy was 95.3%, expert review showed that 2.8% of all responses contained clinically significant errors. In addition, semantically equivalent questions occasionally produced divergent 12 responses, with one formulation yielding a correct answer and another a clinically significant error (0.96% of responses). These findings provide empirical evidence that high overall accuracy does not capture the clinical severity of errors in LLM outputs, and that clinically significant errors may still occur. This study has several limitations. The evaluation was conducted using a dataset of 183 patient records from a single Finnish hospital region and focused on one oncol-ogy domain, which may limit the generalizability of the findings to other languages, clinical domains, healthcare settings or documentation practices. The clinical records were primarily in Finnish and contained embedded medical terminology in English and Latin typical of routine documentation, and therefore the generalizability in other lin-guistic or healthcare settings remains uncertain. Raw clinical texts cannot be publicly released due to privacy constraints, which limits full external reproducibility. The task focused on predefined clinical variables with restricted answer options and may not capture the full scope of open-ended clinical queries or diagnostic rea-soning. Although the models generated free-text responses, predefined answer options were embedded within the prompt to encourage standardized terminology and enable reliable automated classification aligned with the annotated label space. This design may have influenced the formulation of the response and increased the observed consis-tency relative to the answer of fully unconfined questions. The study was retrospective and did not evaluate prospective workflow outcomes such as time savings, reduc-tion of cognitive load, or impact on clinical decision-making. Annotation relied on a single expert with repeat labelling to assess intra-annotator reliability, and residual labelling bias cannot be excluded. Deterministic decoding was used to ensure repro-ducible and auditable behaviour consistent with clinical validation requirements, which means that identical inputs always produced the same output without stochastic vari-ation. Deployments using stochastic decoding strategies may exhibit greater response variability and would require independent evaluation. In summary, several locally deployable open-source LLMs were able to accurately retrieve clinically relevant patient-specific information from longitudinal Finnish EHRs in response to natural-language clinical questions without requiring external data transmission. However, predictive performance alone does not determine readiness for clinical deployment. The presence of clinically significant errors indicates that such systems should be deployed as clinician-support tools rather than autonomous decision-makers, consistent with prior work showing that LLMs may produce clinically incorrect outputs and hallucinations despite strong overall performance [40–42]. Clin-ical deployment further depends on factors including consistency across semantically equivalent queries, calibration, latency, memory requirements, and quantization stabil-ity. Prospective multi-site validation and workflow-integrated evaluation in real-world clinical settings are essential next steps. By jointly analysing predictive performance, computational feasibility, and clinician-adjudicated safety within a privacy-preserving offline framework, this study provides practical guidance for integrating large language models into routine clinical information retrieval workflows. 13 4 Methods 
+
+We conducted a retrospective observational study to evaluate automated extraction of clinically relevant breast cancer information from electronic patient records using instruction-tuned large language models. The study utilized routinely collected clinical documentation generated during diagnostic evaluation, treatment, and follow-up care in Finnish hospital systems. Eligible records corresponded to patients with undergoing breast cancer screening or treatment. All analyses were performed on pseudonymised data within a secure, access-controlled offline computing environment compliant with institutional data protection policies and the General Data Protection Regulation (GDPR) [43]. The study did not influence patient management and involved no direct patient contact. The study was approved and the need for patients’ informed consent was waived by the Institutional Review Board of the Wellbeing Services County of Pirkanmaa (permission code: R24221). 
+
+## 4.1 Dataset and annotation 
+
+We assembled a retrospective dataset of 183 pseudonymised patient records from the Wellbeing Services County of Pirkanmaa, Finland. The cohort included individ-uals with current or prior breast cancer, suspected disease, or screening encounters without malignant findings. The cohort included patients with current and previous breast cancers, and records also contained information on other medical conditions and treatments. Data were extracted by the data-providing authority in accordance with data-minimization principles to include only clinical information relevant to breast cancer diagnosis, treatment, surveillance, and related investigations. The resulting dataset was delivered in pseudonymised form and analysed within a secure offline research environment. A detailed description of the data structure is provided in Supplementary Section A. Patient records were represented as a standardized table of 26 predefined clini-cal fields (key–value pairs), where individual field values ranged from coded entries to extended narrative text spanning multiple pages. These included pseudonymised patient identifiers, temporal information on clinical events, coded clinical entries, and free-text narratives describing imaging, pathology, surgical procedures, systemic ther-apies, medications, and information of follow-ups. Documentation was primarily in Finnish, with occasional English and Latin medical terminology reflecting routine clin-ical practice. No translation or language normalization was applied. Patient-specific observation periods ranged from 2 to 62 years, with a median of 14 years. Record length ranged from 408 to 5,508 words, with a median of 1,792 words. This corresponded to 3,828 to 51,007 characters, with a median of 17,365 characters including spaces. Each record was annotated using up to 21 predefined clinical question–answer pairs addressing breast cancer history, tumour characteristics, receptor status, lat-erality, nodal involvement, metastatic disease, and primary treatments. Responses were restricted to categorical labels or numeric values, with an “Unknown” category assigned when relevant information was absent or inconclusive. Questions not applica-ble to a given patient were omitted. For example, tumour-specific or treatment-related 14 questions were not applied to patients without confirmed invasive breast cancer. Anno-tations were restricted to clinical events occurring in or after 2015 to establish a consistent temporal reference window across patients with potentially multiple cancer episodes. An exception was CQ1 (year of first breast cancer diagnosis), which required identification of the earliest documented breast cancer regardless of the year of the diagnosis. Clinical documentation predating 2015 was retained because accurate deter-mination of post-2015 clinical variables often depended on prior diagnostic history, treatments, and longitudinal disease trajectories. The same temporal constraints were incorporated into the prompts provided to the models, ensuring alignment between annotation criteria and model instructions. Detailed definitions of all questions and response categories are provided in Supplementary Section B. Annotations were performed by a medical oncologist with 6 years of specializa-tion in breast cancer. To assess intra-annotator reliability, the annotator repeated the labelling process after a two-month interval while blinded to the initial annotations. Of the 1,927 question–answer instances annotated in both rounds, 1,685 (87.4%) were identical. Instances with discordant labels were excluded from further analysis. From these high-confidence annotations, 21 instances (one per clinical question) were reserved for framework development and construction of a single one-shot demonstration example included in the prompt. These instances were not part of the evaluation dataset. The final evaluation dataset therefore comprised 1,664 question–answer pairs. All records were pseudonymised by the data-providing authority prior to transfer. Direct identifiers were removed and replaced with study-specific pseudo-identifiers, and the linkage key enabling re-identification was retained exclusively by the data con-troller and was not accessible to the investigators. The dataset therefore constituted pseudonymised personal data under the General Data Protection Regulation (GDPR). Data processing and analysis were conducted within a secure, access-controlled offline environment compliant with GDPR requirements. Due to privacy constraints, nei-ther the original identifiable records nor the pseudonymised clinical texts used in this study can be publicly released. Synthetic examples that preserve the structure and key characteristics of the dataset are provided in Supplementary Section A. 
+
+## 4.2 Models evaluated 
+
+Sixteen instruction-tuned large language models were evaluated, spanning general-purpose (Gemma-3, Llama-3.x, Qwen3), medically adapted (MedGemma), Finnish language-specialised (Poro-2), and reasoning-oriented architectures (DeepSeek R1, Llama-4-Scout-17B, GPT-OSS-20B) (Table 1). Two models (Llama-4-Scout-17B and GPT-OSS-20B) exceeded the 160,GB GPU memory limit and were therefore excluded from the main experiments. Detailed memory profiling is provided in Supplementary Section I. Most models supported input context lengths exceeding those of the patient records analysed in this study. The Finnish language-specialised Poro-2 models were the excep-tion, with a maximum input length of 8,192 tokens, and were retained to represent language-specialised architectures despite this constraint. 15 All models, weights, and tokenizers were obtained from official Hugging Face repos-itories without modification [44]. Repository identifiers and exact commit hashes used for inference are provided in Supplementary Section G to ensure full reproducibility. 
+
+## 4.3 Experimental Setup 
+
+Experiments were conducted in a secure offline computing environment using an AMD EPYC 75F3 32-core CPU, 256 GB RAM, and two NVIDIA A100 GPUs with 80 GB VRAM each (160 GB total GPU memory). Models were executed using the Hug-ging Face Transformers framework [44], with low-bit quantization implemented via bitsandbytes [45] where supported. Prior to the main experiments, GPU memory profiling was performed to determine which models could be deployed within the available hardware constraints. Profiling was conducted in an open high-performance computing environment using higher-capacity hardware to characterize memory requirements across a wide range of input lengths. Synthetic input sequences of controlled length were used to measure peak memory consumption during a single forward decoding step, with sequence lengths ranging from minimal input to 25,120 tokens in increments of 512 tokens. Model inclusion in the main experiments was determined by feasibility within the 160 GB deployment budget. Profiling was performed without clinical data, and each model was evaluated in an isolated process to ensure accurate measurement. Additional details and full results are provided in Supplementary Section I. For each evaluation instance, the complete patient record was provided to the model without prior filtering or retrieval. Records consisted of all predefined clinical fields formatted as a single text document by concatenating column names and their contents as key–value pairs separated by blank lines. Individual field values ranged from short coded entries to extended narrative text. Data were presented exactly as stored in the source records. The full prompt template is provided in Supplementary Section C. Models were evaluated using a question format with predefined answer options included in the prompt to encourage use of the target terminology and to reduce scoring errors arising from lexical variation, synonyms, or language differences. Answer options were ordered alphabetically to avoid positional bias or unintended information leakage. Inference was performed in bfloat16 precision for all models, except in dedicated analyses of low-precision deployment. Additional experiments using 8-bit and 4-bit quantization were conducted only for models compatible with the bitsandbytes library. To obtain deterministic outputs, stochastic decoding was disabled by setting tem-perature to zero and disabling sampling and beam search. Models were instructed to produce only the final answer without explanation, resulting in short responses typically consisting of a single word or numeric value. Maximum output length was limited to 25 tokens for standard instruction-tuned models to allow minor verbosity without truncating valid responses. Reasoning-oriented models that generate interme-diate reasoning traces prior to the final response were allowed up to 1,000 tokens to ensure completion of the reasoning process, although only the final answer was used for evaluation. 16 All models were evaluated using their native tokenizers and instruction-tuned checkpoints. Identical prompts, patient records, and evaluation scripts were used across all experiments to ensure consistency and reproducibility. 
+
+## 4.4 Prompting Strategies 
+
+All experiments employed structured prompts comprising task instructions and input data, including the patient EHR record, clinical questions, and predefined answer options. Prompts were constructed using each model’s native chat template to ensure consistent formatting across models. Task instructions specified an expert mammog-raphy radiologist role and directed the model to base responses solely on the patient record, select the single most accurate option from predefined choices, and return only the final answer without explanation. Predefined categorical or numeric answer options were included to guide responses toward standardized terminology, with an 
+
+Unknown option used when relevant information was absent or inconclusive. Tem-poral constraints consistent with the annotation protocol were specified in the task instructions. These instructed the model to restrict responses to events occurring in or after 2015, except for the first breast cancer diagnosis, which required identifying the earliest documented date. Patient records were provided in full without filtering or retrieval and were repre-sented as a single text by concatenating all available data fields. Prompts were applied consistently across both free-text generation and multiple-choice tasks to maintain comparability (Supplementary Section C). To examine the influence of prompt design on model performance and robustness, several specialized prompting strategies were evaluated: 
+
+• Task-specific context: Medically relevant background information was prepended to provide additional guidance for clinically nuanced questions (e.g., definitions of invasive cancer or tumour laterality). 
+
+• One-shot prompting: A single in-context example consisting of a patient record, question, answer options, and correct answer was included, drawn from data not used in the evaluation set. 
+
+• Consistency testing: Target questions were replaced with semantically equivalent paraphrases to assess robustness to variations in wording while preserving clinical meaning. This framework enabled controlled comparison of prompt configurations while maintaining identical task requirements. 
+
+## 4.5 Evaluation and Metrics 
+
+Models were evaluated under two configurations: free-text generation and multiple-choice selection. In the free-text generation setting, models produced open-ended responses, reflecting standard generative LLM behaviour. Decoding was deterministic (temperature = 0, sampling disabled), ensuring identical outputs for identical inputs and supporting reproducible and predictable behaviour, consistent with guidance of AI systems for health [38]. Generated text was graded according to the procedure described below. 17 In the multiple-choice selection setting, models selected from a set of K predefined answer options {O1, . . . , O K }. Prompts and patient records were identical across both settings. For each option i, we computed a length-normalized score si as the aver-age log-probability of its constituent tokens given the prompt. To enable calibration analysis, these scores were converted into a probability distribution using the softmax function: 
+
+P (Oi) = exp( si)
+
+PKj=1 exp( sj ) (1) The option with the highest probability was selected as the model’s response, and its corresponding probability max  
+
+> i
+
+P (Oi) was recorded as the model’s confidence for that prediction. 
+
+Rule-based substring baseline 
+
+For comparison, we included a deterministic rule-based method based on case-insensitive substring matching (Rule-based (substring)). Each answer option was searched directly within the patient record text, and the option with the highest match frequency was selected as the prediction. This approach relies solely on surface-level text matching and does not incorporate contextual understanding, temporal reasoning, or cross-sentence inference. 
+
+Answer Matching and Metrics 
+
+Performance was assessed using instance-level binary grading. Each patient–question pair constituted one evaluation instance, and model outputs were scored as either correct or incorrect. Model outputs were graded in a case-insensitive manner against the reference answers. A response was graded as correct if the target answer option could be identified in the model output and no incorrect alternatives were present. Responses containing explanatory text or additional content were accepted provided that this condition was satisfied. Otherwise, the response was graded as incorrect. All question–answer pairs were designed to yield either a numeric value such as year or tumor size or a categorical label from a predefined set such as left, right, or bilateral. These answer formats were explicitly specified in the prompt to guide models toward standardized outputs suitable for automated grading. Hierarchical labels such as N1 and N1a were matched using specificity-aware rules to prevent misclassification due to partial matches. Overall accuracy was computed as the proportion of correctly graded instances: Accuracy = Ncorrect 
+
+Ntotal 
+
+. (2) Results are reported as overall accuracy across the dataset and as per-question accuracies for the 21 clinical variables (Supplementary Section E). To quantify sta-tistical uncertainty, 95% confidence intervals for accuracy were computed using the exact Clopper–Pearson method for binomial proportions (Supplementary Section G). 18 Statistical differences in accuracy between models were evaluated using paired McNemar tests applied to binary correctness outcomes (correct vs. incorrect) for each question–answer pair under the Version 1 (V1) question formulation. Comparisons were performed on matched predictions for the same instances across models. The test used the exact binomial formulation based on the number of discordant instances (n10 and n01 ) between two models. To control for multiple comparisons across model pairs, P values were adjusted using the Holm correction. Detailed contingency counts and adjusted P values are reported in Supplementary Section G. 
+
+Consistency Analysis 
+
+To assess robustness to linguistic variation in query phrasing, each clinical question was expressed in two semantically equivalent formulations referring to the same under-lying clinical variable, denoted Version 1 (V1) and Version 2 (V2). The two versions differed only in wording while preserving identical clinical meaning and target labels. Both V1 and V2 were evaluated independently for each applicable patient record, and performance was computed separately for each version. Consistency was defined as agreement between the answers extracted from the model outputs for V1 and V2, with answer assignment performed as described in 4.5. An instance was classified as consistent if both versions yielded the same answer and inconsistent otherwise. Overall consistency was reported as the proportion of instances with identical responses across versions, irrespective of correctness. 
+
+Calibration Analysis 
+
+Calibration was evaluated in the multiple-choice selection setting by assessing the agreement between predicted confidence and observed accuracy. Confidence for each prediction was defined as the maximum softmax probability over the predefined answer options, max  
+
+> i
+
+P (Oi), computed from length-normalized token log-probabilities. The primary metric was the Expected Calibration Error (ECE) [46], which quantifies the weighted average discrepancy between confidence and accuracy across 
+
+M = 10 equally spaced confidence bins over the interval [0 , 1]: ECE = 
+
+> M
+
+X
+
+> m=1
+
+|Bm|
+
+N |acc( Bm) − conf( Bm)| , (3) where N is the total number of instances and Bm denotes the subset of predictions in bin m.We also report the Maximum Calibration Error (MCE) , defined as the largest calibration gap across bins, and Calibration Bias , defined as the difference between mean predicted confidence and mean accuracy, where positive values indicate overcon-fidence, negative values indicate underconfidence, and values closer to zero indicate better calibration. 19 Clinical Safety Evaluation 
+
+To evaluate potential clinical risk associated with LLM-generated responses, we con-ducted a blinded expert review of outputs from the highest-performing model in the free-text generation setting (Llama-3.1-70B, Version 1 accuracy 95.3%). The assessment comprised two complementary analyses. First, all V1 responses flagged as incorrect by the automated grader (78 of 1,664) were reviewed to determine the clinical significance of errors. Second, all patient-specific question–answer pairs in which semantically equivalent V1 and V2 questions produced inconsistent responses were included, focusing on instances in which one response was correct and the other incorrect (38 of 1,664 V1+V2 pairs). All cases were presented in random order prior to assessment. A medical oncolo-gist with 6 years of subspecialty experience in breast cancer, who had performed the original annotations, reviewed each case while blinded to patient identifiers and to the reference annotation labels. Only the model’s final answer text generated under free-text generation was evaluated. The reviewer had access to the patient record and the corresponding clinical question for each case. Each response was classified into one of three mutually exclusive outcome categories: 
+
+• Correct: The response accurately reflects the clinical information in the record without clinically relevant errors. 
+
+• Clinically significant error: An error with potential to influence diagnostic reasoning, treatment decisions, or patient management. 
+
+• Clinically insignificant error: An inaccuracy unlikely to affect clinical judgment or patient care. 
+
+## 4.6 Ethical Considerations and Clinical Safety 
+
+Ethical approval was obtained from the Institutional Review Board of the Wellbeing Services County of Pirkanmaa (permission code R24221), with patient consent waived in accordance with Finnish law and institutional policy. All patient records were fully pseudonymised at the hospital before transfer to a secure, offline environment, in compliance with GDPR [43]. Models were assessed solely for research purposes. All illustrative examples are synthetic to maintain patient privacy. 
+
+Supplementary information. Supplementary material provides additional methodological detail and complete results that support the main text. It includes the full structure and definitions of the structured EHR input table used to construct model prompts, with synthetic examples illustrating typical content in Section A. It also contains the complete Clinical Contextual Question Answering (CCQA) question set from CQ1 to CQ21, including wording variants, answer options, and curated clini-cal definitions used for expert annotation and optional prompt conditioning in Section B. Per question performance is reported by clinical question type for the primary wording variant V1 across all evaluated models and a deterministic keyword matching baseline in Supplementary Tables 1 and 2. The exact prompt template and serializa-tion procedure used for consistent evaluation across models are provided in Section 20 D, including the optional one-shot and task-specific context variants. Reproducibil-ity metadata for every model are listed with Hugging Face repository identifiers and commit hashes in Table 3. GPU memory profiling experiments that quantify mem-ory usage as a function of sequence length under the 160 GB budget are described in Section F and shown in Figures 1 to 3. 
+
+Acknowledgements. This work was supported by Business Finland under the project Medical AI and Immersion (2024–2026, decision number 10912/31/2022), Tampere University Hospital (State Research Funding for university-level health research / OOO project (2022–2024)), the Cancer Foundation Finland (2024–2025), and the Finnish Medical Foundation (2023–2026). The funders had no role in study design, data collection and analysis, decision to publish, or preparation of the manuscript. 
+
+Author contributions. M.S. contributed to conceptualization, study design, methodology development, software implementation, formal analysis, and writing of the main manuscript. N.H. contributed to study design, data collection, data curation, and figure preparation. O.A. provided clinical supervision, performed data annota-tion, and conducted the clinical safety evaluation of model outputs, and contributed to manuscript editing. J.S. and K.K. contributed to conceptualization and manuscript editing. All authors reviewed the manuscript. 
+
+Competing interests. The authors declare no conflicts of interest. 
+
+Data availability. The clinical datasets analysed during the current study are not publicly available due to data protection regulations (GDPR) and institutional poli-cies of the Wellbeing Services County of Pirkanmaa governing patient data access. Synthetic data samples and record schemas are provided in the supplementary information. 
+
+Code availability. The source code for the CCQA pipeline and evaluation scripts is available on GitLab at: version.aalto.fi/gitlab/saukkom3/mammo-llm. 21 Supplementary Information 
+
+Clinical Contextual Question Answering with Locally Deployable Large Language Models for Longitudinal Electronic Health Records. This file contains supplementary tables, figures, and methods supporting the main manuscript. 
+
+## Contents 
+
+A. Structure of the Input Data B. Question Set C. Prompt Template and Construction D. Prompt Conditioning Experiments E. Per-question Accuracy by Clinical Question F. Performance as a Function of EHR Length G. Statistical Analysis H. Model Reproducibility I. GPU Memory Profiling 
+
+# A. Structure of the Input Data 
+
+This section describes the structure of the input data used in the retrieval of answers to clinical questions. The data is formatted as a structured table, where each column contains either categorical metadata or free-form clinical text. All columns and their definitions were explicitly included in the input prompt to ensure that language models had full access to relevant contextual information. These structured patient records served as the basis for manual annotation and were necessary to answer all defined clinical questions. The same column schema was used across all experiments to ensure consistency and comparability between expert-provided labels and model predictions. Below, we document each column and provide synthetic examples to illustrate typical content. Real patient data cannot be published due to privacy regulations. All examples are presented in English for readability; however, the actual model inputs used in our experiments were in Finnish, English, or Latin, without translation. 1. Column: maligni patlaus 
+
+Description: maligni patlaus column contains pathologists’ reports regard-ing tissue samples, primarily from patients with breast cancer, but also includes results of samples from other anatomic locations. The entries detail findings related to malignancy, including carcinoma type, presence or absence of malignancy in specified locations (e.g., in breast or lymph nodes), his-tological grades (e.g., I-III), receptor status (e.g., estrogen receptor (ER), progesterone receptor (PgR), Human Epidermal Growth Factor Receptor 2 (HER2) expression status, presence of metastases, and specific diagnos-tic codes or classifications. This information represents a mix of diagnostic results, histological descriptions, and assessment of malignancy status. 
+
+Example: (2020-01-01: PAD Axillary lymph node; (right): No evidence of 22 malignancy; (0/5)), (2020-01-01: PAD Female breast, right: Ductal carci-noma (gradus 1) Axillary lymph node; (right): No evidence of malignancy; (0/5)) 2. Column: maligni pat kertomus 
+
+Description: maligni pat kertomus column contains pathology reports, pri-marily concerning breast tissue, lymph nodes, and sometimes other organs. It details findings from histological examinations of biopsies, fine-needle aspi-rations, or surgical specimens, including descriptions of tumor type, presence or absence of malignancy in specified locations (e.g., in breast or lymph nodes), histological grades (e.g., I-III), receptor status (e.g., estrogen recep-tor (ER), progesterone receptor (PgR), Human Epidermal Growth Factor Receptor 2 (HER2) expression status, presence of metastases, and specific diagnostic codes or classifications. 
+
+Example: (2020-01-01: PAD Axillary lymph node; (right): No evidence of malignancy; (0/5)), (2020-01-01: PAD Female breast, right: Ductal carci-noma (gradus 1) Axillary lymph node; (right): No evidence of malignancy; (0/5)) 3. Column: rintasyopa patlaus 
+
+Description: rintasyopa patlaus column contains detailed histopathologi-cal reports of breast cancer diagnoses, often following surgical resection or biopsy. It includes information on tumor type, presence or absence of malig-nancy in specified locations (e.g., in breast or lymph nodes), histological grades (e.g., I-III), receptor status (e.g., estrogen receptor (ER), proges-terone receptor (PgR), Human Epidermal Growth Factor Receptor 2 (HER2) expression status, presence of metastases, and specific diagnostic codes or classifications. 
+
+Example: (2020-01-01: el Doctor Doctor/ (2020-01-01: PAD Axillary lymph node; (right): No evidence of malignancy; (0/5)), (2020-01-01: PAD Female breast, right: Ductal carcinoma (gradus 1) Axillary lymph node; (right): No evidence of malignancy; (0/5)) 4. Column: rintasyopa pat kertomus 
+
+Description: rintasyopa pat kertomus column contains histopathological reports from breast cancer biopsies and resections, detailing surgical pro-cedures and tumor characteristics. It includes findings such as tumor type, presence or absence of malignancy in specified locations (e.g., in breast or lymph nodes), histological grades (e.g., I-III), receptor status (e.g., estro-gen receptor (ER), progesterone receptor (PgR), Human Epidermal Growth Factor Receptor 2 (HER2) expression status, presence of metastases, and specific diagnostic codes or classifications. 
+
+Example: (2020-01-01 12:12:12 PAT 1.1.2020 1234 Br-PAD-2 1.1.2020 /Doctor Doctor / Pyynt¨ o Rinnan histologinen tutkimus Ottopvm: 1.1.2020 50-vuotias nainen, jolla on molemmilla puolilla todettu rintasy¨ op¨ a.) 5. Column: rintasyopa kert muut 
+
+Description: rintasyopa kert muut column contains free-text clinical notes documenting patient encounters related to breast cancer care. The records 23 detail diagnoses, treatment history including surgeries and hormonal ther-apies, consultations, follow-up visits, and discussions regarding risks and management strategies. The entries are time-stamped, providing a longitudi-nal view of the patient’s journey, and also include information about family history and other comorbidities. This data represents a rich source of infor-mation regarding the comprehensive clinical management of breast cancer patients. 
+
+Example: (2020-01-01 12:12:12: Erotusdiagnoosina tulee kyseeseen rin-takarsinooma,), (2020-01-01 12:12:12 Suvussa sy¨ op¨ a¨ an liittyvi¨ a mutaatioita: ¨aidille tehtiin rinnanpoisto 50-vuotiaana.) 6. Column: kokopoistot patlaus 
+
+Description: kokopoistot patlaus column contains detailed histological and pathological findings from breast tissue samples. It includes tumor ttumor type, presence or absence of malignancy in specified locations (e.g., in breast or lymph nodes), histological grades (e.g., I-III), receptor status (e.g., estro-gen receptor (ER), progesterone receptor (PgR), Human Epidermal Growth Factor Receptor 2 (HER2) expression status, presence of metastases, and specific diagnostic codes or classifications. 
+
+Example: (2020-01-01: 1.1.2020 / Doctor Doctor/ pyynt¨ o RIN-NAN HISTOLOGINEN TUTKIMUS, LAAJA LEIKKAUSPREPARAATTI Ottopvm: 1.1.2020 12.12. tehty onkoplastinen resektio oikeaan rintaan siten, ett¨ a poistettu koko rinnan alamediaalinelj¨ annes n¨ annin kanssa karsinooman vuoksi.) 7. Column: kokopoistot pat kertomus 
+
+Description: kokopoistot pat kertomus column contains detailed pathology reports, primarily focusing on breast cancer diagnoses and treatments. It includes information on tumor type, presence or absence of malignancy in specified locations (e.g., in breast or lymph nodes), histological grades (e.g., I-III), receptor status (e.g., estrogen receptor (ER), progesterone receptor (PgR), Human Epidermal Growth Factor Receptor 2 (HER2) expression sta-tus, presence of metastases, specific diagnostic codes or classifications, and specific treatment recommendations or plans, such as the type of surgery (mastectomy, breast-conserving surgery), adjuvant therapies (radiotherapy, chemotherapy, hormonal therapy), and follow-up care. It also includes details of patient history related to cancer, such as family history, previous treat-ments, and relevant medical conditions. 
+
+Example: (2020-01-01 12:12:12 Hoidettu resektiolla ja vartijaimusolmuke-tutkimuksella 1.1. vasemmanpuoleinen alalateraalinen pT1a N0 gradus I duktaalinen invasiivinen rintasy¨ op¨ a.) 8. Column: osapoistot patlaus 
+
+Description: osapoistot patlaus column contains detailed pathology reports, primarily focusing on breast cancer diagnoses and treatments. It includes information on tumor type, presence or absence of malignancy in specified locations (e.g., in breast or lymph nodes), histological grades (e.g., I-III), receptor status (e.g., estrogen receptor (ER), progesterone receptor 24 (PgR), Human Epidermal Growth Factor Receptor 2 (HER2) expression status, presence of metastases, specific diagnostic codes or classifications, and specific treatment recommendations or plans, such as the type of surgery (mastectomy, breast-conserving surgery), adjuvant therapies (radio-therapy, chemotherapy, hormonal therapy), and follow-up care. It also includes details of patient history related to cancer, such as family history, previous treatments, and relevant medical conditions. 
+
+Example: (2020-01-01: Pyyd. yst. vartijaimusolmukkeiden tutkiminen. 1.1.2020 / Doctor Doctor / RINNAN HISTOLOGINEN TUTKIMUS, LAAJA LEIKKAUSPREPARAATTI N¨ aytenumero 0000000 RIN-TASY ¨OV ¨AN HISTOLOGINEN TUTKIMUS leikkaustyyppi: Osaresektaatti Kasvaimen tyypi: Duktaalinen (NST) Histologinen gradus: 1 Tubulusmuo-dostus (1-3): 1 Tuma-atypia (1-3): 1 Mitoosit (1-3): 1 Imutieinvaasio: Ei Ihoinvaasio: Ei Karsinomaan l¨ apimitta (mm): 10 Lobulaarinen neoplasia: Ei. 9. Column: osapoistot pat kertomus 
+
+Description: osapoistot pat kertomus column contains detailed pathology reports from breast biopsies and resections, documenting findings related to breast cancer diagnosis and staging. It includes information on tumor type, presence or absence of malignancy in specified locations (e.g., in breast or lymph nodes), histological grades (e.g., I-III), receptor status (e.g., estrogen receptor (ER), progesterone receptor (PgR), Human Epidermal Growth Factor Receptor 2 (HER2) expression status, presence of metastases, specific diagnostic codes or classifications, and specific treatment recommen-dations or plans, such as the type of surgery (mastectomy, breast-conserving surgery), adjuvant therapies (radiotherapy, chemotherapy, hormonal ther-apy), and follow-up care. It also includes details of patient history related to cancer, such as family history, previous treatments, and relevant medical conditions. 
+
+Example: (2020-01-01 12:12:12: YHTEENVETO: vasemman rinnan onko-plastisen osaresekaatin alalateralisessa osassa on 10 mm alueella on epiteel-iproliferaatiota, jossa on DCIS 1-tasoinen l¨ oyd¨ os.) 10. Column: mastektomiat patlaus 
+
+Description: mastektomiat patlaus column contains pathology reports from breast tissue samples, primarily detailing findings from surgical proce-dures such as mastectomies and resections. It provides granular information, including tumor type (e.g., ductal, lobular, DCIS), histological grade, tumor size, invasive characteristics (e.g., lymphovascular invasion), margin status, lymph node status, and staging information (pTNM). These reports are crucial for diagnosis, prognosis, and treatment planning for breast cancer patients. 
+
+Example: (2020-01-01: P. k. PAD-tutkimusta kudosn¨ aytteist¨ a. 10.01.2020 /Doctor Doctor / Vastaus RINNAN HISTOLOGINEN TUTKIMUS, LAAJA LEIKKAUSPREPARAATTI N¨ aytenumero: 0000000 RIN-TASY ¨OV ¨AN HISTOLOGINEN TUTKIMUS Leikkaustyyppi: Mastektomia 25 Kasvaintyyppi: DCIS Histologinen gradus: 1 Verisuoninvaasio: Ei Invaasi-ivisen karsinooman l¨ apimitta (mm): 10 DCIS luokka (WHO v. 2012): 1 Marginaalit puhtaat RINTAKASVAIMEN POISTOMARGINAALIT Supe-riorinen/ inferiorinen (mm/mm): >30/ >30 Mediaalinen/ posteriorinen (mm/mm): >30/ >30 Anteriorinen/ posteriorinen (mm/mm): >30/ >30 pTNM (UICC 2017): pT1bN0 N¨ ayteen¨ a vasemman rinnan ablaatti, kooltaan noin 30 x 20 x 10 cm.) 11. Column: mastektomiat pat kertomus 
+
+Description: mastektomiat pat kertomus column contains detailed pathol-ogy reports from breast cancer surgeries, primarily mastectomies. It includes information on the surgical procedure type, specimen weight, laterality, and tumor ctype, presence or absence of malignancy in specified locations (e.g., in breast or lymph nodes), histological grades (e.g., I-III), receptor status (e.g., estrogen receptor (ER), progesterone receptor (PgR), Human Epi-dermal Growth Factor Receptor 2 (HER2) expression status, presence of metastases, specific diagnostic codes or classifications, and details relevant to neoadjuvant therapy response, such as RCB classification and changes in tumor grade after treatment. The reports also specify staging information based on the TNM classification system. 
+
+Example: (2020-01-01 12:12:12: Ottopvm: 01.01.2020 kysess¨ a potilas, joille aiemmin tehty mastektomia T1 N0 reseptoripositiivisen mamma-karsinooman vuoksi.) 12. Column: insitu patlaus 
+
+Description: insitu patlaus column contains detailed histopathological reports for breast cancer diagnoses. It specifies tumor characteristics such as type (e.g., ductal, lobular, adenocarcinoma), grade (1–3), size (in mm), presence of DCIS (ductal carcinoma in situ) with its grade and extent, and details of invasion (lymphatic, vascular, skin) and margin status. The reports also include staging information (pTNM classification), results from sentinel lymph node biopsies (presence or absence of metastasis), and, in some cases, immunohistochemical markers (ER, PgR, Ki-67, HER2). The entries detail findings from various surgical procedures, including mastectomies, resections, and sentinel node biopsies, representing comprehensive pathological assess-ments crucial for treatment planning and prognosis. 
+
+Example: (2022-01-01: DCIS-muutokset sijaitsevat hajanaisesti.), (2020-01-01: Arvioituna kasvaimen kokonaisl¨ apimitta on 20 mm.), (2020-01-01: Marginaali DCIS:st¨ a on posterolatelaalisesti 5 mm.) 13. Column: insitu pat kertomus 
+
+Description: insitu pat kertomus column contains detailed histopatholog-ical reports from breast tissue biopsies or resections, often prompted by mammographic findings or clinical suspicion. The reports document the type, presence or absence of malignancy in specified locations (e.g., in breast or lymph nodes), histological grades (e.g., I-III), receptor status (e.g., estro-gen receptor (ER), progesterone receptor (PgR), Human Epidermal Growth Factor Receptor 2 (HER2) expression status, presence of metastases, and 26 specific diagnostic codes or classifications. 
+
+Example: (2020-01-01: P. k. PAD-tutkimusta kudosn¨ aytteist¨ a. 01.01.2020 / Doctor Doctor / Vastaus RINNAN HISTOLOGINEN TUTKIMUS, LAAJA LEIKKAUSPREPARAATTI N¨ aytenumero: 0000000 RINTASY ¨OV ¨AN HIS-TOLOGINEN TUTKIMUS Leikkaustyyppi: Mastektomia Kasvaintyyppi: DCIS Histologinen gradus: 1 Verisuoninvaasio: Ei Invaasiivisen karsinooman l¨ apimitta (mm): 10 DCIS luokka (WHO v. 2012): 1 Marginaalit puh-taat RINTAKASVAIMEN POISTOMARGINAALIT Superiorinen/ inferior-inen (mm/mm): >30/ >30 Mediaalinen/ posteriorinen (mm/mm): >30/ >30 Anteriorinen/ posteriorinen (mm/mm): >30/ >30 pTNM (UICC 2017): pTisN0 N¨ ayteen¨ a vasemman rinnan ablaatti, kooltaan noin 30 x 20 x 10 cm.) 14. Column: insitu kert muut 
+
+Description: insitu kert muut column contains free-text pathology reports and clinical notes pertaining to breast cancer diagnoses and follow-up, span-ning multiple dates of patient encounters. The reports document the type, presence or absence of malignancy in specified locations (e.g., in breast or lymph nodes), histological grades (e.g., I-III), receptor status (e.g., estro-gen receptor (ER), progesterone receptor (PgR), Human Epidermal Growth Factor Receptor 2 (HER2) expression status, presence of metastases, and specific diagnostic codes or classifications. Example: (2020-01-01 12:12:12: Poistetussa resekaatissa l¨ oytynyt 10 mm kokoinen invaasiivinen duktaalinen karsinooma gradus I sek¨ a DCIS.) 15. Column: benigni patlaus 
+
+Description: benigni patlaus column contains histopathological reports from breast tissue samples, often following diagnostic imaging or biopsy. The reports document the type, presence or absence of malignancy in specified locations (e.g., in breast or lymph nodes), histological grades (e.g., I-III), receptor status (e.g., estrogen receptor (ER), progesterone receptor (PgR), Human Epidermal Growth Factor Receptor 2 (HER2) expression status, presence of metastases, and specific diagnostic codes or classifications. 
+
+Example: (2020-01-01 12:12:12: Benigni.) 16. Column: benigni pat kertomus 
+
+Description: benigni pat kertomus column contains pathology descrip-tions, often derived from surgical resection specimens or biopsies related to breast conditions. 
+
+Example: (2020-01-01 12:12:12: Benigni l¨ oyd¨ os) 17. Column: benigni kert muut 
+
+Description: benigni kert muut column contains free-text reports detailing various findings. It primarily describes mammography and ultrasound obser-vations, often comparing them to previous studies. 
+
+Example: (2020-01-01 12:12:12: Rinnassa on benigni muutos.) 18. Column: topografia morfologia 
+
+Description: topografia morfologia column details the specific anatomical locations and histological types of tissue samples obtained for pathological examination. It includes information on primary sites such as the breast and 27 lymph nodes, specifying right or left sides where applicable. The column also identifies metastatic sites and provides histological diagnoses. 
+
+Example: 2020-01-01 0000000 Female breast, right 0000000 No evidence of malignancy; 2020-01-01 Skin of breast, NOS, right 0000000 0000000 Sentinel lymph node, NOS, right 0000000 No evidence of malignancy (0/5) 19. Column: kuuri1 
+
+Description: kuuri1 column contains records of the first administered (chemo)therapeutic treatment, including specific drug names, routes of administration (e.g. intravenous, subcutaneous, oral), number of cycles, and the corresponding start and end dates for each treatment course. It primar-ily focuses on systemic therapies used in oncology—particularly for breast cancer management—and details regimens. 
+
+Example: Doketakseli: 1 sykli <e4 >(2020-1-1 – 2020-1-22) 20. Column: kuuri2 
+
+Description: kuuri2 column contains records of the second administered (chemo)therapeutic treatment, including specific drug names, routes of administration (e.g. intravenous, subcutaneous, oral), number of cycles, and the corresponding start and end dates for each treatment course. It primar-ily focuses on systemic therapies used in oncology—particularly for breast cancer management—and details regimens. 
+
+Example: Trastutsumabi: 1 sykli <e4 >(2020-1-1 – 2020-1-22) 21. Column: kuuri3 
+
+Description: kuuri3 column contains records of the third administered (chemo)therapeutic treatment, including specific drug names, routes of administration (e.g. intravenous, subcutaneous, oral), number of cycles, and the corresponding start and end dates for each treatment course. It primar-ily focuses on systemic therapies used in oncology—particularly for breast cancer management—and details regimens. 
+
+Example: Doketakseli: 1 sykli <e4 >(2020-1-1 – 2020-1-22) 22. Column: reseptit laakemaaraykset 
+
+Description: reseptit laakemaaraykset column contains a longitudinal record of medications prescribed to patients, denoted by ATC codes and generic drug names, alongside associated prescription dates. Entries rep-resent individual prescriptions with start and end dates where applicable, revealing the temporal pattern of pharmacological interventions for each patient. The data suggest a broad range of therapeutic classes, including analgesics, endocrine therapies, psychotropics, and cardiovascular medica-tions, potentially indicating the management of both cancer-related symp-toms and comorbidities. 
+
+Example: Doketakseli: 1 sykli <e4 >(2020-1-1 – 2020-1-22) 23. Column: kemokur 
+
+Description: kemokur column contains a historical record of medications administered to breast cancer patients, listing the specific drugs, their codes, and the dates of administration. It primarily details chemotherapy agents as well as targeted therapies. Additionally, supportive medications—including 28 antiemetics and analgesics are listed. 
+
+Example: (0000000 drug name: 2020-01-01) 24. Column: leikkaukset 
+
+Description: leikkaukset column provides a longitudinal record of surgical procedures performed on the patient, including major operations, as well as minor interventions such as diagnostic procedures. It captures the type of surgery, the anatomical location (e.g., breast, spine, lung), and often the associated surgical codes and dates, providing a comprehensive surgical his-tory relevant to the patient’s overall medical management. 
+
+Example: (00000 procedure name, 00000, 2020-01-01) 25. Column: tmp 
+
+Description: tmp column contains records of medical procedures and treat-ments performed on the patient, including diagnostic imaging and breast cancer-related procedures. Each record is time-stamped and encoded with a specific medical procedure or treatment code. 
+
+Example: (00000 procedure name, 00000, 2020-01-01 12:12:12) 26. Column: sadehoidot 
+
+Description: sadehoidot column contains records of radiation therapy pro-cedures, alongside dates and times of treatment delivery. The records are characterized by standardized codes indicating the type of radiation therapy. 
+
+Example: (00000 procedure name, 00000, 2020-01-01 12:12:12) 29 B. Question Set 
+
+This section describes the clinical questions evaluated in the Clinical Contextual Ques-tion Answering (CCQA) task. Each question corresponds to a specific clinical variable that must be inferred from the patient’s longitudinal electronic health record. For every question, predefined answer options and detailed contextual definitions were provided to ensure consistent interpretation across the annotator and models. Clinical question types are indexed as CQ1–CQ21. Each question includes two semantically equivalent wording variants designed to assess robustness to linguistic variation: V1 (primary formulation) and V2 (rephrased formulation). Unless otherwise specified, both variants require the same answer derived from the same underlying clinical evidence. 1. CQ1 — Breast cancer first detected :(a) Based on the patient’s record, in what year was breast cancer first detected? (b) What year was the breast cancer initially detected? 
+
+Answer options :(a) None (b) 4-Digit year (e.g., 2020) 
+
+Context : The ground truth answer must be a single, four-digit year (YYYY) corresponding to the earliest documented diagnosis of breast cancer . Answer “None” if there is no documented history of breast cancer. Benign conditions and negative diagnostic results do not count as cancer. 2. CQ2 — First diagnosis on or after 2015 :(a) Was the first breast cancer detected on or after 2015? (b) Based on the patient’s records, was the patient’s first-ever diagnosis of breast cancer made in 2015 or later? 
+
+Answer options :(a) Yes (b) No 
+
+Context : Answer “Yes” if the patient’s first-ever confirmed breast cancer diagnosis occurred in 2015 or later, and there is no evidence of any earlier breast cancer diagnosis. Answer “No” if the patient had a breast cancer diagnosis prior to 2015 or has never been diagnosed with breast cancer; benign findings and negative results should also be classified as “No.” 3. CQ3 — Breast cancer laterality :(a) Based on the patient’s record, on which side is the breast cancer located? (b) Which breast is affected by the breast cancer? 
+
+Answer options :(a) Left (b) Right (c) Bilateral 
+
+Context : Breast cancer may be located in the left breast, right breast, or both breasts (referred to as bilateral breast cancer). Laterality is typically determined 30 through clinical documentation, imaging studies (such as mammography, magnetic resonance imaging, or ultrasound), or pathology reports. 
+
+• If cancer is reported in the left breast only, select left. 
+
+• If cancer is reported in the right breast only, select right. 
+
+• If both breasts are affected, select bilateral. 
+
+• If the side is not documented or cannot be determined from the patient’s record, select Unknown. 4. CQ4 — Lesion invasiveness status :(a) Based on the patient’s record, what is the invasiveness status of the breast lesion? (b) Is the breast cancer invasive? 
+
+Answer options :(a) DCIS (b) Invasive 
+
+Context :
+
+• DCIS (ductal carcinoma in situ) refers to a non-invasive breast lesions of ductal origin. In DCIS, abnormal cells are confined within the milk ducts and have not invaded surrounding breast tissue. It is considered the earliest form of breast cancer and has not spread beyond the ductal system. 
+
+• Invasive breast cancer indicates that cancer cells have breached the duct or lobule walls and infiltrate surrounding breast tissue. This category includes types such invasive ductal carcinoma (IDC) i.e., carcinoma of no special type (NST), inva-sive lobular carcinoma (ILC), medullary carcinoma, tubular carcinoma, papillary carcinoma, mucinous carcinoma, and cribriform carcinoma. Invasive cancers have the potential to spread to lymph nodes or distant organs. 5. CQ5 — Histological subtype of invasive breast cancer :(a) Based on the patient’s record, what is the histological subtype of the invasive breast cancer? (b) If the breast cancer is invasive, what is the subtype? 
+
+Answer options :(a) Ductal (b) Lobular (c) Other (d) Unknown 
+
+Context : Histological subtypes of invasive breast cancer are determined by micro-scopic examination of tumor tissue and describe how the cancer cells are organized and appear [47]. The classification is based on the World Health Organization (WHO) criteria. 
+
+• Ductal : Arises from the epithelial cells of the breast ducts and is the most common form of invasive breast cancer. Also referred to as invasive carcinoma of no special type (NST), this diagnosis is used when the tumor lacks features of a specific histological subtype. 31 • Lobular : Arises from the epithelial cells of the breast lobules and is the second most common form of invasive breast cancer (invasive lobular carcinoma). It is characterized by discohesive tumor cells with diffuse infiltration, often without a discrete mass, and is more difficult to detect on mammography. 
+
+• Other : Includes less common specific histological subtypes such as medullary carcinoma, tubular carcinoma, papillary carcinoma, mucinous carcinoma, and cribriform carcinoma. 
+
+• Unknown : Select this option if the histological subtype is not documented or cannot be determined from the patient record. 6. CQ6 — Receipt of neoadjuvant therapy :(a) Based on the patient’s record, has the patient received neoadjuvant therapy? (b) Was the patient a recipient of neoadjuvant therapy? 
+
+Answer options :(a) Yes (b) No 
+
+Context : Neoadjuvant therapy (NAT) is any systemic cancer treatment given before surgery [48, 49]. This includes chemotherapy, immunotherapy, HER2-targeted therapy, or endocrine therapy. If the patient record shows that systemic treatment was administered before surgery, select “Yes”. If systemic treatment was given only after surgery, select “No”. Evidence of NAT in the medical record may include explicit terms such as “neoadjuvant therapy”, “neoadjuvant chemotherapy”, “preoperative treatment”, or the word “neoadjuvantti”. It may also include documentation of systemic therapy given before surgery or pathology staging using ypT or ypN, which indicates post-neoadjuvant assessment. 7. CQ7 — Histological tumor grade :(a) Based on the patient’s record, what is the histological grade of the breast tumor? (b) Which histological grade of breast tumor appears on the patient’s record? 
+
+Answer options :(a) Grade 1 (b) Grade 2 (c) Grade 3 (d) Unknown 
+
+Context : The histological grade of a breast tumor reflects how abnormal the cancer cells appear under a microscope and how likely the tumor is to grow or spread fast. It is determined by a pathologist using tumor tissue samples [50]. 
+
+• Grade 1/I (low grade / well-differentiated): tumor cells closely resemble normal breast cells. These tumors tend to grow slowly and are less likely to spread. 
+
+• Grade 2/II (intermediate grade / moderately differentiated): tumor cells show more abnormalities than Grade 1 and have a moderate growth rate. 
+
+• Grade 3/III (high grade / poorly differentiated): tumor cells look very different from normal cells. These cancers tend to grow and spread more aggressively. 32 • If the grade is not documented or cannot be determined from the patient’s record, select Unknown. 8. CQ8 — Primary tumor T classification (TNM) :(a) Based on the patient’s record, what is the T classification of the breast cancer? (b) What breast tumor T classification is in the patient’s record? 
+
+Answer options :(a) Tx (b) Tis (c) T1 (d) T1a (e) T1b (f) T1c (g) T2 (h) T3 (i) T4 (j) ypTx (k) ypTis (l) ypT1mi (m) ypT1a (n) ypT1b (o) ypT1c (p) ypT2 (q) ypT3 (r) ypT4 (s) Unknown 
+
+Context : The stage of a cancer describes its size and whether it has spread from where it started. There are different ways to describe the stage of a cancer. The most commonly used one is the TNM staging system. The T classification describes the primary cancer’s size and extent. It may be determined based on clinical imaging, pathology, or post-neoadjuvant pathological assessment [49, 51]. 
+
+• Tis: Carcinoma in situ, including ductal carcinoma in situ (DCIS) and Paget’s disease of the nipple without invasion. 
+
+• T1mi: Microinvasion, defined as invasive cancer measuring 1 mm or less. 
+
+• T1a: Tumor larger than 0.1 cm but less than 0.5 cm. 
+
+• T1b: Tumor larger than 0.5 cm but less than 1.0 cm. 
+
+• T1c: Tumor larger than 1.0 cm but less than 2.0 cm. 
+
+• T2: Tumor larger than 2 cm but not larger than 5 cm. 
+
+• T3: Tumor larger than 5 cm. 
+
+• T4: Tumor has spread into the chest wall, skin, or is clinically assessed as inflammatory. 
+
+• Tx: Tumor size cannot be assessed. 
+
+• ypT: Indicates pathological post-neoadjuvant therapy tumor classification (e.g., ypT0, ypT1a). 
+
+• ypTx: Tumor size cannot be assessed pathologically after neoadjuvant therapy. 33 • Unknown: Use if the T classification is not available or cannot be determined from the record. 9. CQ9 — Largest invasive tumor diameter (mm) :(a) Based on the patient’s record, what is the maximum diameter of the largest breast tumor? Answer in millimeters. (b) How wide is the breast tumor? Answer in millimeters. 
+
+Answer format :(a) A numeric value between 1 and 100 (in millimeters; decimals not allowed) (b) Unknown 
+
+Context : The diameter of the largest invasive breast tumor refers to the greatest measurable dimension of the tumor in millimeters (mm), as assessed by pathology. This measurement corresponds to the T category in TNM staging [51]. yp refers to post-NAT tumor size. 
+
+• Tumors ≤ 2 mm may be classified as (yp)T1mi (microinvasion). 
+
+• Tumors > 2 mm and ≤5 mm are classified as (yp)T1a. 
+
+• Tumors > 5 mm and ≤10 mm are classified as (yp)T1b. 
+
+• Tumors > 10 mm and ≤20 mm are classified as (yp)T1c. 
+
+• Tumors > 20 mm and ≤50 mm are classified as (yp)T2. 
+
+• Tumors > 50 mm are classified as (yp)T3. 
+
+• If no tumor size is documented, the diameter should be marked as unknown. 10. CQ10 — Regional lymph node N classification (TNM) :(a) Based on the patient’s record, what is the N classification? (b) What breast tumor N classification is in the patient’s record? 
+
+Answer options :(a) N0 (b) N1 (c) N0itc (d) N1mi (e) N1a (f) N2a (g) N3a (h) NX (i) ypN0 (j) ypN1a (k) ypN2a (l) ypN3a (m) Unknown 
+
+Context : The stage of a cancer describes its size and whether it has spread from where it started. There are different ways to describe the stage of a cancer. The most commonly used one is the TNM staging system. The N classification describes the extent of regional lymph node involvement in breast cancer. It is based on either clinical (cN) or pathologic (pN/ypN) assessment [49, 51]. 34 • N0 indicates that no regional lymph node metastasis is present. 
+
+• N1–N3 indicate increasing levels of nodal involvement based on the number, size, and location of metastatic nodes. 
+
+• ITCs (isolated tumor cells, <0.2 mm) fall under N0itc. 
+
+• N1mi refers to micrometastasis (tumor deposits >0.2 mm but ≤2 mm). 
+
+• NX indicates that regional lymph nodes cannot be assessed. 
+
+• ypN denotes nodal staging after neoadjuvant therapy (e.g., ypN0, ypN1a, ypN2a, ypN3a). 
+
+• Use “Unknown” if the N classification is not documented in the patient’s record. 11. CQ11 — Lymph node involvement ratio :(a) Based on the patient’s record, what is the lymph node involvement ratio? Use the format [metastatic lymph nodes]/[removed lymph nodes]. (b) What is the ratio of involved lymph nodes to total lymph nodes? 
+
+Answer options :(a) Unknown (b) Numeric ratio in the format [metastatic nodes]/[removed nodes], e.g., 0/5. 
+
+Context : The lymph node involvement ratio refers to the number of positive (cancer-involved) lymph nodes out of the total number of lymph nodes exam-ined, typically after surgical removal [52]. It is expressed in the format: [positive nodes]/[total nodes]. This ratio helps assess the extent of regional spread and is routinely reported in breast cancer pathology. If lymph node data are unavailable or not documented, the value should be recorded as unknown [52]. 12. CQ12 — Presence of distant metastasis :(a) Based on the patient’s record, does the patient have metastatic disease? (b) Is there evidence of metastatic breast cancer in the patient’s record? 
+
+Answer options :(a) Yes (b) No (c) Unknown 
+
+Context : Metastatic breast cancer is defined by the presence of distant spread beyond the breast and regional lymph nodes. Common metastatic sites include the bone, liver, lungs, and brain. Detection typically involves imaging (CT, MRI, PET-CT, or bone scan) and may be supported by clinical symptoms or biopsy confirmation. Imaging is generally recommended in patients with advanced-stage tumors (T3/T4), multiple involved lymph nodes, aggressive subtypes, or symptoms suggestive of metastasis (e.g., bone pain, abnormal liver function tests). If the record does not indicate confirmed distant spread, metastatic status should be marked as unknown [53]. 13. CQ13 — Estrogen receptor (ER) expression percentage :(a) Based on the patient’s record, what is the estrogen receptor (ER) expression percentage? (b) What is the patient’s percentage of estrogen receptor expression? 35 Answer format :(a) An integer between 0 and 100 (representing percentage) (b) Unknown 
+
+Context : Estrogen receptor (ER) expression is determined using immunohisto-chemistry (IHC) and reported as the percentage of tumor cell nuclei that stain positive for ER. This percentage reflects the proportion of cancer cells expressing estrogen receptors and is recorded as an integer between 0 and 100. ER expression is routinely evaluated in breast cancer and plays a critical role in treatment plan-ning. If the ER percentage is not reported in the patient’s record, the value should be marked as unknown [54, 55]. 14. CQ14 — Progesterone receptor (PR/PgR) expression percentage :(a) Based on the patient’s record, what is the progesterone receptor (PR/PgR) expression percentage? (b) What is the patient’s percentage of progesterone receptor expression? 
+
+Answer format :(a) An integer between 0 and 100 (representing percentage) (b) Unknown 
+
+Context : Progesterone receptor (PR) expression is assessed by immunohistochem-istry (IHC) and reported as the percentage of tumor cell nuclei that stain positive for PR/PgR. The result reflects how many cancer cells express PR/PgR and is recorded as an integer between 0 and 100. PR/PgR expression is routinely reported in breast cancer pathology and helps guide treatment decisions. If no percentage is reported in the patient’s record, the value should be marked as unknown [55]. 15. CQ15 — Ki-67 proliferation index percentage :(a) Based on the patient’s record, what is the Ki-67 proliferation index percentage? (b) What is the patient’s percentage of Ki-67 proliferation index? 
+
+Answer format :(a) An integer between 0 and 100 (representing percentage) (b) Unknown 
+
+Context : Ki-67 is a protein found in the nucleus of dividing cancer cells. The Ki-67 proliferation index is reported as a percentage, representing the proportion of tumor cells actively dividing. In breast cancer, a higher Ki-67 percentage suggests a more aggressive tumor. Results are typically expressed as an integer from 0 to 100. If no Ki-67 value is available, the status is recorded as unknown [56]. 16. CQ16 — HER2 expression status :(a) Based on the patient’s record, what is the HER2 expression status? (b) Has the patient HER2 positive or negative tumor? 
+
+Answer options :(a) Positive (b) Negative (c) Unknown 
+
+Context : HER2 (human epidermal growth factor receptor 2) is a protein involved in cell growth. Immunohistochemistry (IHC) is a test which detects the amount of 36 HER2 protein on the surface of the cancer cells. Breast cancers are classified as HER2-positive if they show high levels of HER2 protein (IHC 3+) or have HER2 gene amplification (positive FISH). Cancers with no or low HER2 expression (IHC 0, 1+, or 2+ with negative FISH) are considered HER2-negative [55]. 17. CQ17 — Triple-negative breast cancer (TNBC) status :(a) Based on the patient’s record, is the breast cancer triple-negative? (b) Does the patient have triple-negative breast cancer? 
+
+Answer options :(a) Yes (b) No (c) Unknown 
+
+Context : Triple-negative breast cancer (TNBC) is defined as a tumor that tests negative for estrogen receptors (ER), progesterone receptors (PR), and HER2. If all three markers are negative, the cancer is considered triple-negative. If any of the three markers are positive, the tumor is not classified as triple-negative [57]. 18. CQ18 — Receipt of adjuvant chemotherapy :(a) Based on the patient’s record, has the patient received adjuvant chemotherapy? (b) Was the patient a recipient of adjuvant chemotherapy? 
+
+Answer options :(a) Yes (b) No (c) Unknown 
+
+Context : Adjuvant chemotherapy is given after surgery to reduce the risk of cancer recurrence by targeting microscopic disease that may remain in the body. It is recommended based on tumor characteristics—such as size, grade, lymph node involvement, and receptor status—as well as patient factors like age, overall health, and personal preference. Unlike in metastatic disease, there is no visible tumor response to assess [58]. 19. CQ19 — Receipt of adjuvant radiation therapy :(a) Based on the patient’s record, has the patient received adjuvant radiation therapy? (b) Was the patient a recipient of adjuvant radiation therapy? 
+
+Answer options :(a) Yes (b) No (c) Unknown 
+
+Context : Adjuvant therapy is treatment given after surgery to reduce the risk of cancer coming back. One common form is adjuvant radiation therapy, which uses high-energy beams (usually external beam radiation) to destroy any remaining can-cer cells in or near the breast or chest wall after surgery. This is often recommended for patients who had breast-conserving surgery or have higher risk of recurrence [59]. In the clinical records, information about this treatment might be explicitly mentioned: “Adjuvanttis¨ adehoito”. 37 20. CQ20 — Receipt of adjuvant hormonal therapy :(a) Based on the patient’s record, has the patient received adjuvant hormonal therapy? (b) Was the patient a recipient of adjuvant hormonal therapy? 
+
+Answer options :(a) Yes (b) No (c) Unknown 
+
+Context : Adjuvant therapy is treatment given after primary treatment, such as surgery, to reduce the risk of cancer recurrence. In hormone receptor–positive breast cancer, adjuvant hormonal therapy helps block or lower estrogen and/or progesterone to prevent cancer growth [59]. Common hormonal therapies include tamoxifen and aromatase inhibitors like anastrozole, letrozole, and exemestane. These are typically used in patients who have estrogen (ER) or progesterone (PR/PgR) receptor positive breast cancer [59]. In the clinical records, information about this treatment might be explicitly mentioned: “Adjuvanttihormonihoito”. 21. CQ21 — Receipt of adjuvant anti-HER2 therapy :(a) Based on the patient’s record, has the patient received adjuvant anti-HER2 therapy? (b) Was the patient a recipient of adjuvant anti-HER2 therapy? 
+
+Answer options :(a) Yes (b) No (c) Unknown 
+
+Context : Multiple effective therapies now target the HER2 pathway using dif-ferent mechanisms, acting either inside or outside the cell. Since the approval of trastuzumab in 2001—the first HER2-targeted therapy—several additional agents have been developed and evaluated in both metastatic and (neo)adjuvant settings in breast cancer. These include lapatinib, pertuzumab, neratinib, and T-DM1 [60]. In the adjuvant setting, trastuzumab has long been the cornerstone of treatment for HER2-positive breast cancer. More recently, combinations have been approved based on improved outcomes in selected patients [60]. In the clinical records, information about this treatment might be explicitly mentioned: ”Anti-HER2”. 38 C. Prompt Template and Construction 
+
+All large language models were evaluated using a unified role-based prompt format. Prompts were specified as structured messages with explicit system and user roles and converted to model-specific input text using the Hugging Face apply chat template 
+
+function prior to generation with model.generate() . This approach ensured consis-tent instructions and input structure across models. Each prompt consisted of two messages: (i) a system message containing general task instructions, optionally augmented with task-specific contextual information, and (ii) a user message containing the patient report, the question, and the allowed answer options. 
+
+## System message (instructions) 
+
+The base instruction text was: 
+
+> You are an expert mammography radiologist analyzing a mammography report. Answer the provided question based solely on the report’s details. Select the single most accurate option from the given choices. One option is always correct. Respond only with the selected answer (e.g., <first option>) without explanations.
+
+If task context=True , the system message was extended with the curated Context 
+
+text associated with the current question (see Section B). 
+
+## User message (content) 
+
+The user message contained four fixed blocks: 1. Patient Medical Report: the patient-specific EHR record, constructed by con-catenating all CSV fields into a single text string, with line breaks separating individual fields. 2. Question: the task-specific question. 3. Answer Options: a bullet list of all permitted answer strings, listed in alphabetical order to ensure a consistent, model-independent ordering. 4. Correct Answer: a placeholder line containing “ [Your answer here] ”, which remained empty during inference. 
+
+## One-shot variant 
+
+If one shot=True , the prompt began with an Example block consisting of a sample patient report, its corresponding question, the full set of answer options, and the correct answer. This example preceded the Task block, which contained the target patient report and an empty answer field. The example was drawn from data not included in the evaluation set. 39 Exact string layout 
+
+For the standard (non–one-shot) configuration, the user message followed a fixed structured format comprising the patient record, the clinical question, and predefined answer options. The template was defined as follows: 
+
+> **Patient Medical Report:** <key_1>: <value_1> ... <key_k>: <value_k> **Question:** <question text> **Answer Options:** - <option A> - <option B> ... **Correct Answer:** [Your answer here]
+
+## Chat serialization 
+
+Prior to model inference, prompts were serialized into a two-turn message struc-ture consisting of a system message containing task instructions and a user message containing the input data. The serialized format was defined as follows: 
+
+[{"role": "system", "content": <INSTRUCTIONS AS ABOVE> }, {"role": "user", "content": <CONTENT AS ABOVE> }]
+
+40 D. Prompt Conditioning Experiments 
+
+One-shot prompting and extended context conditioning were evaluated to assess whether additional task-specific guidance improves clinical contextual question answering performance. Accuracy results for both strategies are shown in Supple-mentary Table 1. Conditioning produced only modest and inconsistent effects across models, with small improvements observed for some architectures and negligible changes for others. Models marked with † were not evaluated under these strate-gies because the additional prompt content exceeded their supported context window. These findings are consistent with the main Results, indicating that performance on this task is driven primarily by intrinsic model capability rather than prompt design. 
+
+Table 1 Conditioning strategies for clinical contextual question answering. Accuracy is reported for models evaluated in BF16 precision under one-shot prompting and extended context conditioning. ∆ denotes absolute change in accuracy relative to baseline, expressed in percentage points. Models marked with † were not evaluated under these strategies because the additional prompt content exceeded their supported context window. All other models were evaluated on the full dataset ( N = 1 ,664).                                                                 
+
+> Developer Model 1-shot Context Acc. ∆Acc. ∆Google
+> Gemma-3-4B-it [31] 69.5 −3.172.5 −0.1Gemma-3-27B-it [31] 94.0 +1 .394.1 +1 .4MedGemma-4B-it [10] 70.4 −4.173.9 −0.6MedGemma-27B-text-it [10] 94.0 +1 .993.7 +1 .6
+> DeepSeek
+> R1-Distill-Qwen-7B [32] 50.3 −0.1N/A N/A R1-Distill-Qwen-32B [32] 92.3 −0.4N/A N/A R1-Distill-Llama-70B [32] 93.3 −1.5N/A N/A
+> Meta
+> Llama-3.1-8B [33] 79.9 0.080.3 +0 .4Llama-3.1-70B [33] 95.4 +0 .195.7 +0 .4Llama-3.3-70B [33] 94.5 −0.495.0 +0 .1
+> Qwen Qwen3-4B-2507 [36] 92.3 +1 .291.2 +0 .1Qwen3-30B-A3B-2507 [36] 93.8 −1.395.1 0.0
+> LumiOpen Llama-Poro-2-8B [37] †––––Llama-Poro-2-70B [37] †––––
+
+41 E. Per-question accuracy 
+
+Per-question accuracy varied substantially across clinical questions CQ1–CQ21 for the primary wording variant (V1), as shown in Supplementary Tables 2 and 3. Mean accuracy across models ranged from 62.8% for CQ6 to 93.7% for CQ3. Sev-eral questions demonstrated consistently high performance across models, including CQ3–CQ5, CQ7, CQ16, CQ18, and CQ21, each with mean accuracy between 88.9% and 93.7%. In contrast, CQ6 showed the lowest performance and the widest varia-tion across models, with accuracy ranging from 4.7% to 98.7%. CQ14 also exhibited comparatively low performance and substantial variability, ranging from 25.0% to 95.7%. Intermediate performance was observed for CQ8, CQ9, CQ11, and CQ13, with moderate inter-model variability. These findings indicate marked differences in task difficulty across clinical ques-tions, suggesting that aggregate benchmark scores may obscure clinically relevant weaknesses in specific information extraction tasks. 42 Table 2  Per-question accuracy (%) by model for clinical question types 1–11.  Entries report accuracy for the primary wording variant (V1) of each clinical question. Models marked with  † were evaluated on a context-limited subset ( ≤8,192 tokens,  N = 955) and are not directly comparable to long-context models. Bold indicates the highest accuracy for each clinical question among fully evaluated models (i.e., excluding  † models; ties jointly bolded). Keyword matching (regex) is a deterministic rule-based baseline using regular-expression matching. 
+
+> Developer  Model  Clinical question ID
+> CQ1  CQ2  CQ3  CQ4  CQ5  CQ6  CQ7  CQ8  CQ9  CQ10  CQ11 N=168  N=176  N=82  N=85  N=71  N=75  N=79  N=73  N=62  N=78  N=71 Google Gemma-3-4B-it  88.1  56.2  86.6  87.1  94.4  9.3  88.6  37.0  77.4  75.6  73.2 Gemma-3-27B-it  94.6  98.9  100  100  95.8  74.7  98.7  91.8  79.0  96.2  95.8 MedGemma-4B-it  85.1  55.1  85.4  96.5  93.0  41.3  87.3  11.0  77.4  93.6  60.6 MedGemma-27B-text-it  96.4  91.5  100  100  95.8  82.7  100  95.9  71.0  97.4  98.6
+> DeepSeek R1-Distill-Qwen-7B  44.0  70.5  58.5  40.0  69.0  41.3  63.3  43.8  35.5  51.3  12.7 R1-Distill-Qwen-32B  91.7  96.6  97.6  96.5  95.8  78.7  98.7  98.6  75.8  94.9  90.1 R1-Distill-Llama-70B  97.6  97.7  98.8  97.6  94.4  85.3  98.7  95.9  72.6  94.9  95.8 Meta Llama-3.1-8B  94.6  70.5  97.6  97.6  93.0  10.7  87.3  87.7  75.8  94.9  74.6 Llama-3.1-70B  96.4  98.3  100  100  90.1  92.0  98.7  97.3  83.9  94.9  95.8 Llama-3.3-70B  96.4  98.9  100  100  93.0  89.3  98.7  97.3  79.0  93.6  95.8 Qwen  Qwen3-4B-2507  90.5  94.9  100  96.5  93.0  86.7  96.2  94.5  83.9  96.2  70.4 Qwen3-30B-A3B-2507  96.4  97.2  100  100  93.0  98.7  100  97.3  87.1  92.3  93.0 LumiOpen  Llama-Poro-2-8B † 79.5  80.0  87.0  100  71.8  4.7  75.0  76.9  72.2  69.0  58.8 Llama-Poro-2-70B † 89.3  91.2  100  93.8  89.7  55.8  93.2  84.6  94.4  92.9  97.1 Baseline  Rule-based (substring)  48.2  53.4  67.1  15.3  85.9  4.0  59.5  37.0  4.8  83.3  90.1
+> Mean across models (LLMs only)  88.8  85.5  93.7  93.0  90.8  62.8  92.3  79.1  75.6  88.9  79.6
+
+43 Table 3  Per-question accuracy (%) by model for clinical question types 12–21.  Entries report accuracy for the primary wording variant (V1) for each question. Models marked with  † were evaluated on a context-limited subset ( ≤8,192 tokens,  N = 955) and are not directly comparable to long-context models. Bold indicates the highest accuracy for each clinical question among fully evaluated models (i.e., excluding  † models; ties jointly bolded). Keyword matching (regex) is a deterministic rule-based baseline using regular-expression matching. 
+
+> Developer  Model  Clinical question ID
+> CQ12  CQ13  CQ14  CQ15  CQ16  CQ17  CQ18  CQ19  CQ20  CQ21 N=78  N=45  N=46  N=51  N=61  N=72  N=71  N=75  N=72  N=73 Google Gemma-3-4B-it  73.1  66.7  47.8  92.2  93.4  61.1  88.7  86.7  72.2  67.1 Gemma-3-27B-it  76.9  84.4  58.7  86.3  98.4  100  95.8  97.3  93.1  100
+> MedGemma-4B-it  96.2  55.6  47.8  92.2  95.1  66.7  87.3  89.3  73.6  71.2 MedGemma-27B-text-it  79.5  71.1  63.0  70.6  98.4  100  95.8  96.0  97.2  100
+> DeepSeek R1-Distill-Qwen-7B  71.8  28.9  26.1  41.2  47.5  44.4  59.2  53.3  56.9  53.4 R1-Distill-Qwen-32B  74.4  91.9  91.3  98.0  98.4  100  94.4  88.0  91.7  98.6 R1-Distill-Llama-70B  73.1  93.3  95.7  98.0  100  98.6  98.6  96.0  98.6  100
+> Meta Llama-3.1-8B  61.5  37.8  76.1  92.2  100  66.7  85.9  90.7  72.2  89.0 Llama-3.1-70B  78.3  84.4  91.3  98.0  100  100  97.2  94.7  98.6  100
+> Llama-3.3-70B  71.8  88.9  95.7  96.1  100  100  97.2  94.7  95.8  100
+> Qwen  Qwen3-4B-2507  80.8  84.4  65.2  94.1  95.1  98.6  97.2  89.3  88.9  98.6 Qwen3-30B-A3B-2507  69.2  93.3  82.6  98.0  100  100  100  94.7  94.4  100
+> LumiOpen  Llama-Poro-2-8B † 78.0  33.3  25.0  85.2  74.2  57.5  59.0  85.4  71.8  58.5 Llama-Poro-2-70B † 87.8  87.5  70.8  96.3  100  95.0  100  92.7  87.2  100 Baseline  Rule-based (substring)  0.0  11.1  8.7  3.9  78.7  16.7  62.0  88.0  66.7  17.8
+> Mean across models (LLMs only)  76.1  72.3  68.3  88.3  93.3  85.5  90.4  89.2  85.6  88.9
+
+44 F. Performance as a Function of EHR Length 
+
+Accuracy varied with electronic health record (EHR) length, as summarized in Supple-mentary Table 4. Records were stratified into quartiles spanning 1,420–26,739 tokens (Q1–Q4, shortest to longest). Sensitivity to increasing EHR length varied across mod-els. For example, Llama-3.1-70B, Llama-3.3-70B, and Qwen3-30B-A3B-2507 showed only small decreases in accuracy across input lengths. In contrast, some models exhibited greater sensitivity to record length, with R1-Distill-Qwen-7B showing a pronounced decline across quartiles. Poro-2 models, with a nominal maximum input length of 8,192 tokens, showed substantial deterioration on longer records, indicating reduced performance when inputs exceeded the context lengths for which the model was optimized. Because quartiles differed in both input length and underlying patient cases, these results reflect combined effects of record length and case composition and complexity rather than a purely causal effect of length alone. 
+
+Table 4 Clinical contextual question answering accuracy by electronic health record length quartile. Records were stratified into quartiles based on input length measured in tokens using the Meta Llama tokenizer as a fixed reference (Q1 shortest, Q4 longest; ranges: Q1 1,420–5,808, Q2 5,808–8,197, Q3 8,197–11,635, Q4 11,635–26,739 tokens). Token counts may vary slightly across models because of tokenizer differences. Values report accuracy for the primary question variant (V1). Results marked with † were evaluated only on records that fully fit within the supported context window ( ≤8,192 tokens, N = 955) and are not directly comparable across all quartiles. Bold indicates the highest accuracy among directly comparable models within each quartile.                                                                
+
+> Developer Model V1 Acc. (%) Q1 Q2 Q3 Q4
+> Google Gemma-3-4B-it [31] 67.9 73.1 73.0 76.2 Gemma-3-27B-it [31] 94.6 93.4 93.5 89.3 MedGemma-4B-it [10] 70.9 71.1 77.0 78.2 MedGemma-27B-text-it [10] 94.1 93.4 91.6 89.6 DeepSeek R1-Distill-Qwen-7B [32] 61.3 56.1 48.3 40.6 R1-Distill-Qwen-32B [32] 94.7 93.2 92.2 91.3 R1-Distill-Llama-70B [32] 96.9 95.5 93.9 91.8 Meta Llama-3.1-8B [33] 78.5 80.9 84.6 74.8 Llama-3.1-70B [33] 96.4 94.9 95.8 93.8 Llama-3.3-70B [33] 96.6 94.9 94.8 92.6 Qwen Qwen3-4B-2507 [36] 92.0 91.9 90.6 90.3 Qwen3-30B-A3B-2507 [36] 96.3 95.2 94.4 94.7
+> LumiOpen Llama-Poro-2-8B [37] †74.5 65.8 36.6 0.9 Llama-Poro-2-70B [37] †92.6 89.1 72.4 6.2
+
+45 G. Statistical analysis 
+
+Statistical uncertainty of model accuracy was quantified using 95% confidence inter-vals computed with the exact Clopper–Pearson method for binomial proportions (Supplementary Table 5). Pairwise statistical comparisons between models were per-formed using paired McNemar tests applied to the binary correctness outcomes for each patient–question instance under the Version 1 (V1) question formulation. Exact binomial tests were used to compute two-sided P values based on the number of dis-cordant instances ( n10 and n01 ). To account for multiple comparisons, P values were adjusted using the Holm correction, and the resulting comparisons are reported in Supplementary Table 6. 
+
+Table 5 Clinical contextual question answering accuracy with 95% confidence intervals. Accuracy is reported for Version 1 (V1) and Version 2 (V2) questions, as well as consistency across variants. Confidence intervals (CI) were computed using the exact Clopper–Pearson method. Bold indicates the best result. OOM indicates models that exceeded the available GPU memory and could not be evaluated. Models marked with † were evaluated on a reduced subset ( N = 955). All other models were evaluated on the full dataset ( N = 1 ,664). 
+
+Developer Model V1 accuracy V2 accuracy Consistency (V1–V2) % (95% CI) % (95% CI) % (95% CI) 
+
+Google Gemma-3-4B-it [31] 72.6 (70.4–74.7) 68.2 (65.9–70.4) 83.2 (81.3–85.0) Gemma-3-27B-it [31] 92.7 (91.4–93.9) 92.8 (91.4–94.0) 96.3 (95.3–97.2) MedGemma-4B-it [10] 74.5 (72.3–76.5) 73.1 (70.9–75.3) 89.6 (88.0–91.0) MedGemma-27B-text-it [10] 92.1 (90.7–93.4) 90.0 (88.4–91.4) 94.0 (92.7–95.1) DeepSeek R1-Distill-Qwen-7B [32] 50.4 (47.9–52.8) 51.2 (48.8–53.6) 43.4 (41.1–45.9) R1-Distill-Qwen-32B [32] 92.7 (91.3–93.9) 94.6 (93.4–95.6) 94.7 (93.5–95.7) R1-Distill-Llama-70B [32] 94.8 (93.6–95.8) 95.1 (93.9–96.1) 97.0 (96.1–97.8) Meta Llama-3.1-8B [33] 79.9 (77.9–81.8) 80.2 (78.2–82.1) 94.2 (92.9–95.2) Llama-3.1-70B [33] 95.3 (94.2–96.6) 94.2 (93.0–95.3) 97.3 (96.4–98.0) Llama-3.3-70B [33] 94.9 (93.7–95.9) 94.9 (93.7–95.9) 97.9 (97.1–98.5) Llama-4-Scout-17B [34] OOM OOM —OpenAI GPT-OSS-20B [35] OOM OOM —Qwen Qwen3-4B-2507 [36] 91.1 (89.6–92.4) 89.8 (88.2–91.2) 95.3 (94.1–96.2) Qwen3-30B-A3B-2507 [36] 95.1 (93.9–96.1) 94.4 (93.2–95.5) 97.7 (96.8–98.3) LumiOpen Llama-Poro-2-8B [37] † 70.2 (67.1–73.0) 69.3 (66.3–72.2) 82.1 (79.5–84.5) Llama-Poro-2-70B [37] † 90.6 (88.5–92.4) 91.8 (89.9–93.5) 92.5 (90.6–94.1) Baseline Rule-based (substring) 45.4 (42.9–47.7) 45.4 (42.9–47.7) 100 (99.8–100.0) 
+
+46 Table 6 Pairwise McNemar tests comparing the best-performing model with competing models. The contingency counts report the number of questions where Model A was correct and Model B incorrect ( n10 ), and where Model A was incorrect and Model B correct ( n01 ). The McNemar test was computed using the exact binomial formulation on paired predictions across N = 1 ,664 questions. Holm correction was applied for multiple comparisons.                           
+
+> Model A Model B n10 n01 p-value
+> Llama-3.1-70B Qwen3-30B-A3B-it-2507 35 31 0.843 Llama-3.1-70B R1-Distill-Llama-70B 36 27 0.843 Llama-3.1-70B Gemma-3-27B-it 70 27 <0.001 Llama-3.1-70B MedGemma-27B-text-it 83 30 <0.001 Llama-3.1-70B Llama-3.3-70B 19 12 0.843
+
+47 H. Model Reproducibility 
+
+All instruction-tuned models evaluated in this study were obtained from their official Hugging Face repositories. To ensure exact reproducibility, we specify the repository identifier and the corresponding commit hash for each model, which uniquely defines the repository state from which model weights, configuration files, and tokenizers were loaded for inference. Table 7 lists these identifiers for all models included in the experiments. No modifications were made to model architectures or weights prior to evaluation. 
+
+Table 7 Full reproducibility information for all instruction-tuned models evaluated in this study. Includes Hugging Face repository identifiers and exact commit hashes used for inference. 
+
+Hugging Face Repository Commit Hash 
+
+google/gemma-3-4b-it 093f9f388b31de276ce2de164bdc2081324b9767 
+
+google/gemma-3-27b-it 005ad3404e59d6023443cb575daa05336842228a 
+
+google/medgemma-4b-it 290cda5eeccbee130f987c4ad74a59ae6f196408 
+
+google/medgemma-27b-text-it 5b667cf2ddcf064085bc90952edb35a0edbfb79c 
+
+deepseek-ai/DeepSeek-R1-Distill-Qwen-7B 916b56a44061fd5cd7d6a8fb632557ed4f724f60 
+
+deepseek-ai/DeepSeek-R1-Distill-Qwen-32B 711ad2ea6aa40cfca18895e8aca02ab92df1a746 
+
+deepseek-ai/DeepSeek-R1-Distill-Llama-70B b1c0b44b4369b597ad119a196caf79a9c40e141e 
+
+LumiOpen/Llama-Poro-2-8B-Instruct dce5619131a6dd295633045e51d00c12e8b0133c 
+
+LumiOpen/Llama-Poro-2-70B-Instruct ba7a467a544e2b8d944a8a8636120fd0fea9358d 
+
+meta-llama/Llama-3.1-8B-Instruct 0e9e39f249a16976918f6564b8830bc894c89659 
+
+meta-llama/Llama-3.1-70B-Instruct 1605565b47bb9346c5515c34102e054115b4f98b 
+
+meta-llama/Llama-3.3-70B-Instruct 6f6073b423013f6a7d4d9f39144961bfbfbc386b 
+
+meta-llama/Llama-4-Scout-17B-16E-Instruct 92f3b1597a195b523d8d9e5700e57e4fbb8f20d3 
+
+openai/gpt-oss-20b 6cee5e81ee83917806bbde320786a8fb61efebee 
+
+Qwen/Qwen3-4B-Instruct-2507 cdbee75f17c01a7cc42f958dc650907174af0554 
+
+Qwen/Qwen3-30B-A3B-Instruct-2507 0d7cf23991f47feeb3a57ecb4c9cee8ea4a17bfe 
+
+48 I. GPU Memory Profiling 
+
+Prior to the main experiments, memory profiling was conducted in an open high-performance computing environment using hardware with greater capacity than the deployment system in order to characterize memory requirements across a wide range of input lengths. Profiling was performed on three NVIDIA H200 GPUs, whereas the main experiments were restricted to a secure offline environment equipped with two NVIDIA A100 GPUs (80 GB each), providing a total memory budget of 160 GB. The objective was to determine which models could process long input sequences within this deployment constraint and to estimate the maximum feasible context length for each architecture. Memory usage was measured as a function of input sequence length using synthetic inputs of predefined sizes. For a sequence of length L, the input consisted of a deter-ministic series of token identifiers {1, 2, . . . , L }, enabling precise control of input length without reliance on natural language content. GPU memory was recorded during a single forward decoding step in which the model processed the full input and com-puted next-token logits (equivalently, one-token generation). Model outputs were not analyzed, as the objective was solely to quantify memory requirements as a function of context length. Sequence lengths ranged from 1 to 25,120 tokens. Lengths of 512 tokens and above were evaluated in increments of 512 tokens, with an additional single-token input included to capture the minimal context case. Figures 1–3 report memory usage for bfloat16 precision and for 8-bit and 4-bit quantized models, respectively. In each plot, the dashed horizontal line denotes the 160 GB memory budget applied in the main experiments. Profiling was performed in a non-clinical environment without patient data, allow-ing unrestricted scaling of input length. Each model was profiled in a separate isolated Python process to ensure a clean memory state and to avoid cross-run memory retention. Within each model run, sequence lengths were evaluated sequentially from shortest to longest while tracking peak GPU memory usage after each inference step. Results for 4-bit and 8-bit quantization do not include the 
+
+meta-llama/Llama-4-Scout-17B-16E-Instruct and openai/gpt-oss-20b models, as these architectures are not compatible with the bitsandbytes quantization library used in this study. 49 0 5000 10000 15000 20000 25000 
+
+Input length (tokens) 
+
+0
+
+50 
+
+100 
+
+150 
+
+200 
+
+250 
+
+300 
+
+> Memory usage (GB)
+
+GPU Memory vs Input Tokens (bf16) 
+
+Closed environment memory limit (160 GB) 
+
+meta-llama/Llama-4-Scout-17B-16E-Instruct 
+
+(291.7 GB @ 18k) 
+
+openai/gpt-oss-20b 
+
+(290.7 GB @ 14k) 
+
+LumiOpen/Llama-Poro-2-70B-Instruct 
+
+deepseek-ai/DeepSeek-R1-Distill-Llama-70B 
+
+meta-llama/Llama-3.1-70B-Instruct 
+
+meta-llama/Llama-3.3-70B-Instruct 
+
+(162.5 GB @ 26k) 
+
+deepseek-ai/DeepSeek-R1-Distill-Qwen-32B 
+
+(91.6 GB @ 26k) 
+
+google/medgemma-27b-text-it 
+
+(88.5 GB @ 26k) 
+
+google/gemma-3-27b-it 
+
+(87.2 GB @ 26k) 
+
+Qwen/Qwen3-30B-A3B-Instruct-2507 
+
+(76.2 GB @ 26k) 
+
+deepseek-ai/DeepSeek-R1-Distill-Qwen-7B 
+
+(36.8 GB @ 26k) 
+
+LumiOpen/Llama-Poro-2-8B-Instruct 
+
+meta-llama/Llama-3.1-8B-Instruct 
+
+(35.9 GB @ 26k) 
+
+google/gemma-3-4b-it 
+
+google/medgemma-4b-it 
+
+(32.0 GB @ 26k) 
+
+Qwen/Qwen3-4B-Instruct-2507 
+
+(23.8 GB @ 26k) Fig. 1 GPU memory usage as a function of input token length for bfloat16 precision. The dashed horizontal line indicates the 160 GB memory budget used in the main experiments. 
+
+50 0 5000 10000 15000 20000 25000 
+
+Input length (tokens) 
+
+0
+
+50 
+
+100 
+
+150 
+
+200 
+
+250 
+
+300 
+
+> Memory usage (GB)
+
+GPU Memory vs Input Tokens (8bit) 
+
+Closed environment memory limit (160 GB) 
+
+LumiOpen/Llama-Poro-2-70B-Instruct 
+
+deepseek-ai/DeepSeek-R1-Distill-Llama-70B 
+
+meta-llama/Llama-3.1-70B-Instruct 
+
+meta-llama/Llama-3.3-70B-Instruct 
+
+(108.9 GB @ 26k) 
+
+google/medgemma-27b-text-it 
+
+(71.3 GB @ 26k) 
+
+google/gemma-3-27b-it 
+
+(70.6 GB @ 26k) 
+
+deepseek-ai/DeepSeek-R1-Distill-Qwen-32B 
+
+(68.5 GB @ 26k) 
+
+Qwen/Qwen3-30B-A3B-Instruct-2507 
+
+(48.6 GB @ 26k) 
+
+deepseek-ai/DeepSeek-R1-Distill-Qwen-7B 
+
+(34.5 GB @ 26k) 
+
+LumiOpen/Llama-Poro-2-8B-Instruct 
+
+meta-llama/Llama-3.1-8B-Instruct 
+
+(32.4 GB @ 26k) 
+
+google/gemma-3-4b-it 
+
+google/medgemma-4b-it 
+
+(29.8 GB @ 26k) 
+
+Qwen/Qwen3-4B-Instruct-2507 
+
+(23.4 GB @ 26k) Fig. 2 GPU memory usage as a function of input token length for 8-bit quantization. The dashed horizontal line indicates the 160 GB memory budget used in the main experiments. Llama-4 and GPT-OSS models are not included because these architectures are not compatible with bitsandbytes quantization. 
+
+51 0 5000 10000 15000 20000 25000 
+
+Input length (tokens) 
+
+0
+
+50 
+
+100 
+
+150 
+
+200 
+
+250 
+
+300 
+
+> Memory usage (GB)
+
+GPU Memory vs Input Tokens (4bit) 
+
+Closed environment memory limit (160 GB) 
+
+LumiOpen/Llama-Poro-2-70B-Instruct 
+
+deepseek-ai/DeepSeek-R1-Distill-Llama-70B 
+
+meta-llama/Llama-3.1-70B-Instruct 
+
+meta-llama/Llama-3.3-70B-Instruct 
+
+(68.0 GB @ 26k) 
+
+google/medgemma-27b-text-it 
+
+(53.4 GB @ 26k) 
+
+google/gemma-3-27b-it 
+
+(53.2 GB @ 26k) 
+
+deepseek-ai/DeepSeek-R1-Distill-Qwen-32B 
+
+(48.4 GB @ 26k) 
+
+Qwen/Qwen3-30B-A3B-Instruct-2507 
+
+(34.9 GB @ 26k) 
+
+google/gemma-3-4b-it 
+
+google/medgemma-4b-it 
+
+(28.2 GB @ 26k) 
+
+deepseek-ai/DeepSeek-R1-Distill-Qwen-7B 
+
+(24.5 GB @ 26k) 
+
+LumiOpen/Llama-Poro-2-8B-Instruct 
+
+meta-llama/Llama-3.1-8B-Instruct 
+
+(23.6 GB @ 26k) 
+
+Qwen/Qwen3-4B-Instruct-2507 
+
+(13.4 GB @ 26k) Fig. 3 GPU memory usage as a function of input token length for 4-bit quantization. The dashed horizontal line indicates the 160 GB memory budget used in the main experiments. Llama-4 and GPT-OSS models are not included because these architectures are not compatible with bitsandbytes quantization. 
+
+52 References 
+
+[1] Beasley, J. W. et al. Information chaos in primary care: implications for physician performance and patient safety. The Journal of the American Board of Family Medicine 24 , 745–751 (2011). [2] Arndt, B. G. et al. Tethered to the ehr: primary care physician workload assess-ment using ehr event log data and time-motion observations. The Annals of Family Medicine 15 , 419–426 (2017). [3] Mazur, L. M., Mosaly, P. R., Moore, C. & Marks, L. Association of the usability of electronic health records with cognitive workload and performance levels among physicians. JAMA network open 2, e191709–e191709 (2019). [4] Hanauer, D. A., Mei, Q., Law, J., Khanna, R. & Zheng, K. Supporting informa-tion retrieval from electronic health records: a report of university of michigan’s nine-year experience in developing and using the electronic medical record search engine (emerse). Journal of biomedical informatics 55 , 290–300 (2015). [5] Natarajan, K., Stein, D., Jain, S. & Elhadad, N. An analysis of clinical queries in an electronic health record search utility. International journal of medical informatics 79 , 515–522 (2010). [6] Wiest, I. C. et al. Privacy-preserving large language models for structured medical information retrieval. NPJ Digital Medicine 7, 257 (2024). [7] Kothari, S. & Gupta, A. Question answering on patient medical records with private fine-tuned llms. arXiv preprint arXiv:2501.13687 (2025). [8] Singhal, K. et al. Large language models encode clinical knowledge. Nature 620 ,172–180 (2023). [9] Thirunavukarasu, A. J. et al. Large language models in medicine. Nature medicine 
+
+29 , 1930–1940 (2023). [10] Sellergren, A. et al. Medgemma technical report. arXiv preprint arXiv:2507.05201 
+
+(2025). [11] Ong, J. C. L. et al. Large language models in global health. Nature Health 1,35–47 (2026). [12] Virtanen, A. et al. Multilingual is not enough: Bert for finnish. arXiv preprint arXiv:1912.07076 (2019). [13] Myllyl¨ a, E. et al. Extracting information from unstructured medical reports written in minority languages: A case study of finnish. Data 10 , 104 (2025). 53 [14] Jaskari, J. et al. Dr-gpt: A large language model for medical report analysis of diabetic retinopathy patients. Plos one 19 , e0297706 (2024). [15] Gururangan, S. et al. Don’t stop pretraining: Adapt language models to domains and tasks. arXiv preprint arXiv:2004.10964 (2020). [16] Lewis, P. et al. Retrieval-augmented generation for knowledge-intensive nlp tasks. 
+
+Advances in neural information processing systems 33 , 9459–9474 (2020). [17] Shickel, B., Tighe, P. J., Bihorac, A. & Rashidi, P. Deep ehr: a survey of recent advances in deep learning techniques for electronic health record (ehr) analysis. 
+
+IEEE journal of biomedical and health informatics 22 , 1589–1604 (2017). [18] Zhang, J., Kowsari, K., Harrison, J. H., Lobo, J. M. & Barnes, L. E. Patient2vec: A personalized interpretable deep representation of the longitudinal electronic health record. IEEE access 6, 65333–65346 (2018). [19] Dao, T., Fu, D., Ermon, S., Rudra, A. & R´ e, C. Flashattention: Fast and memory-efficient exact attention with io-awareness. Advances in neural information processing systems 35 , 16344–16359 (2022). [20] Beltagy, I., Peters, M. E. & Cohan, A. Longformer: The long-document transformer. arXiv preprint arXiv:2004.05150 (2020). [21] Su, J. et al. Roformer: Enhanced transformer with rotary position embedding. 
+
+Neurocomputing 568 , 127063 (2024). [22] Kaplan, J. et al. Scaling laws for neural language models. arXiv preprint arXiv:2001.08361 (2020). [23] Bommasani, R. et al. On the opportunities and risks of foundation models. arXiv preprint arXiv:2108.07258 (2021). [24] Hoffmann, J. et al. Training compute-optimal large language models. arXiv preprint arXiv:2203.15556 (2022). [25] Safavi-Naini, S. A. A. et al. Benchmarking proprietary and open-source language and vision-language models for gastroenterology clinical reasoning. npj Digital Medicine (2025). [26] Gallifant, J. et al. Evaluating the use of large language models to answer patient-facing clinical trial questions. JCO Oncology Advances 2, e2500137 (2025). [27] Kadavath, S. et al. Language models (mostly) know what they know. arXiv preprint arXiv:2207.05221 (2022). [28] Ghassemi, M. et al. A review of challenges and opportunities in machine learn-ing for health. AMIA Summits on Translational Science Proceedings 2020 , 191 54 (2020). [29] Nakkiran, P. et al. Trained on tokens, calibrated on concepts: The emergence of semantic calibration in llms. arXiv preprint arXiv:2511.04869 (2025). [30] Dennst¨ adt, F., Hastings, J., Putora, P. M., Schmerder, M. & Cihoric, N. Implementing large language models in healthcare while balancing control, collaboration, costs and security. NPJ digital medicine 8, 143 (2025). [31] GemmaTeam et al. Gemma 3 technical report (2025). URL https://arxiv.org/ abs/2503.19786. arXiv:2503.19786. [32] Guo, D. et al. Deepseek-r1: Incentivizing reasoning capability in llms via reinforcement learning. arXiv preprint arXiv:2501.12948 (2025). [33] Grattafiori, A. et al. The llama 3 herd of models. arXiv preprint arXiv:2407.21783 
+
+(2024). [34] AI, M. The Llama 4 herd: The beginning of a new era of natively multimodal intelligence. https://ai.meta.com/blog/llama-4-multimodal-intelligence/ (2025). Meta AI Blog post (April 5, 2025). [35] Agarwal, S. et al. gpt-oss-120b & gpt-oss-20b model card. arXiv preprint arXiv:2508.10925 (2025). [36] Yang, A. et al. Qwen3 technical report. arXiv preprint arXiv:2505.09388 (2025). [37] Zosa, E. et al. Poro 2: Continued pretraining for language acquisition. LumiOpen (2025). [38] Organization, W. H. Ethics and governance of artificial intelligence for health: large multi-modal models. WHO guidance (World Health Organization, 2024). [39] Wei, J. et al. Chain-of-thought prompting elicits reasoning in large language models. Advances in neural information processing systems 35 , 24824–24837 (2022). [40] Asgari, E. et al. A framework to assess clinical safety and hallucination rates of llms for medical text summarisation. NPJ digital medicine 8, 274 (2025). [41] Roustan, D. & Bastardot, F. The clinicians’ guide to large language models: a general perspective with a focus on hallucinations. Interactive journal of medical research 14 , e59823 (2025). [42] Shool, S. et al. A systematic review of large language model (llm) evaluations in clinical medicine. BMC Medical Informatics and Decision Making 25 , 117 (2025). 55 [43] European Union. Regulation (eu) 2016/679 of the european parliament and of the council of 27 april 2016 on the protection of natural persons with regard to the processing of personal data and on the free movement of such data, and repealing directive 95/46/ec (general data protection regulation). Official Journal of the European Union, L 119/1 (2016). URL https://eur-lex.europa.eu/eli/reg/2016/ 679/oj. [44] Wolf, T. et al. Huggingface’s transformers: State-of-the-art natural language processing (2020). URL https://arxiv.org/abs/1910.03771. arXiv:1910.03771. [45] Dettmers, T., Lewis, M., Belkada, Y. & Zettlemoyer, L. Llm.int8(): 8-bit matrix multiplication for transformers at scale. arXiv preprint arXiv:2208.07339 (2022). [46] Guo, C., Pleiss, G., Sun, Y. & Weinberger, K. Q. Precup, D. & Teh, Y. W. (eds) On calibration of modern neural networks . (eds Precup, D. & Teh, Y. W.) 
+
+Proceedings of the 34th International Conference on Machine Learning , Vol. 70 of Proceedings of Machine Learning Research , 1321–1330 (PMLR, 2017). URL https://proceedings.mlr.press/v70/guo17a.html. [47] Lukasiewicz, S. et al. Breast cancer—epidemiology, risk factors, classifica-tion, prognostic markers, and current treatment strategies—an updated review. 
+
+Cancers 13 , 4287 (2021). [48] Baskin, A. S., Huppert, L. A., Kelil, T., Singer, L. & Mukhtar, R. A. The neoad-juvant approach to treatment of breast cancer: Multidisciplinary management to improve outcomes. Surgical Oncology Insight 1, 100059 (2024). [49] Susan G. Komen. Understanding your pathology report after neoadjuvant therapy. https://www.komen.org/breast-cancer/diagnosis/pathology-reports/ reading-your-pathology-report/ (2025). Accessed: 17.7.2025. [50] Macmillan Cancer Support. Staging and grading of breast cancer. https://www.macmillan.org.uk/cancer-information-and-support/breast-cancer/ staging-and-grading-of-breast-cancer (2023). Accessed: 17.7.2025. [51] Cancer Research UK. Tnm staging for breast cancer. https://www. cancerresearchuk.org/about-cancer/breast-cancer/stages-grades/tnm-staging (2023). Accessed: 17.7.2025. [52] Zhou, H., Lei, P.-j. & Padera, T. P. Progression of metastasis through lymphatic system. Cells 10 , 627 (2021). [53] Pesapane, F., Downey, K., Rotili, A., Cassano, E. & Koh, D.-M. Imaging diagnosis of metastatic breast cancer. Insights into imaging 11 , 79 (2020). [54] Susan G. Komen. Tumor characteristics. https://www.komen.org/breast-cancer/ diagnosis/factors-that-affect-prognosis/tumor-characteristics/ (2025). Accessed: 56 17.7.2025. [55] Susan G. Komen. Contents of a pathology report (2025). URL https://www.komen.org/breast-cancer/diagnosis/pathology-reports/contents/ #hormonereceptor. Accessed 17 July 2025. [56] Verywell Health. The ki-67 proliferation marker test and breast cancer treat-ment. https://www.verywellhealth.com/ki-67-tumor-marker-test-430609 (2025). Accessed: 17.7.2025. [57] National Breast Cancer Foundation. Triple negative breast cancer. https:// www.nationalbreastcancer.org/triple-negative-breast-cancer/ (2025). Accessed: 17.7.2025. [58] Jones, R. Cytotoxic chemotherapy: clinical aspects. Medicine 44 , 25–29 (2016). [59] Mayo Clinic. Adjuvant therapy: Treatment to keep cancer from return-ing. https://www.mayoclinic.org/diseases-conditions/cancer/in-depth/ adjuvant-therapy/art-20046687 (2024). Accessed: 17.7.2025. [60] Debiasi, M. et al. Efficacy of anti-her2 agents in combination with adjuvant or neoadjuvant chemotherapy for early and locally advanced her2-positive breast cancer patients: a network meta-analysis. Frontiers in Oncology 8, 156 (2018). 57

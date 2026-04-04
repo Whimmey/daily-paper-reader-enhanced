@@ -1,0 +1,749 @@
+Title: Diffusion Mental Averages
+
+URL Source: https://arxiv.org/pdf/2603.29239v1
+
+Published Time: Wed, 01 Apr 2026 00:34:13 GMT
+
+Number of Pages: 41
+
+Markdown Content:
+# Diffusion Mental Averages 
+
+# Phonphrm Thawatdamrongkit Sukit Seripanitkarn Supasorn Suwajanakorn VISTEC, Thailand “Ca t” “Jellyfish ”   
+
+> “Denver” “Doctor ”“Firefighter ”
+> “Marriage ”
+> “Giraffe ”
+> “Intelligence ”“Clock ”
+> DreamShaper PixelArt
+> Flat -2D -Animerge
+> Realistic Vision V5.1
+> Mental Averages of Concepts Model -Specific Mental Averages
+
+Figure 1. Our method unveils the Mental Averages encoded by pre-trained diffusion models across diverse concepts (left) and generalizes across different model variants (right), offering new tools for analyzing model biases and interpreting learned concept representations. 
+
+# Abstract 
+
+Can a diffusion model produce its own “mental average” of a concept—one that is as sharp and realistic as a typical sample? We introduce Diffusion Mental Averages (DMA), a model-centric answer to this question. While prior meth-ods aim to average image collections, they produce blurry results when applied to diffusion samples from the same prompt. These data-centric techniques operate outside the model, ignoring the generative process. In contrast, DMA averages within the diffusion model’s semantic space, as discovered by recent studies. Since this space evolves across timesteps and lacks a direct decoder, we cast aver-aging as trajectory alignment: optimize multiple noise la-tents so their denoising trajectories progressively converge toward shared coarse-to-fine semantics, yielding a single sharp prototype. We extend our approach to multimodal concepts (e.g., dogs with many breeds) by clustering sam-ples in semantically-rich spaces such as CLIP and apply-ing Textual Inversion or LoRA to bridge CLIP clusters into diffusion space. This is, to our knowledge, the first ap-proach that delivers consistent, realistic averages, even for abstract concepts, serving as a concrete visual summary and a lens into model biases and concept representation. Please visit our project page: https://diffusion-mental-averages.github.io 
+
+# 1. Introduction 
+
+When most people imagine a bird, they picture something small and ordinary, perhaps a sparrow rather than a large os-trich or the exotic Nene. That mental prototype reflects our exposure, preferences, and cultural context. Diffusion mod-els can generate countless variations of a single concept, yet one might ask whether they, too, hold a single “mental av-erage” that defines what they consider typical. Visualizing such prototypes provides a tangible summary of a prompt, reveals biases in the model and its training data, and offers new ways to analyze or steer its generative behavior. To create a concept prototype learned by diffusion mod-els like StableDiffusion [76], we can begin by generat-ing many samples of the same concept. Prior work visu-ally summarizes such collections by selecting representa-tive samples according to some criteria [15, 40, 85], or by identifying discriminative patches [20, 36, 46, 84]. Data Distillation [12, 13, 89] instead synthesizes a compact set 1
+
+> arXiv:2603.29239v1 [cs.CV] 31 Mar 2026
+
+of prototypes by distilling information from the entire im-age collection. Our goal, however, is to synthesize a sin-gle prototype that reconciles cross-sample variations, which selection-based methods cannot achieve. Unlike Data Dis-tillation, which targets downstream objectives and often yields unnatural or inconsistent prototypes, we target con-cept summarization via prototypes that match the sharpness and realism of typical samples from the probe model. A common way to synthesize such prototypes is by av-eraging pixels across spatially aligned samples [26, 39, 56, 70, 106]. However, spatial alignment is rarely feasible be-yond constrained domains like faces [18, 70, 90] or ani-mals [70], and virtually impossible for abstract concepts like “poverty.” Even with perfect alignment, fine details tend to average out at the pixel level, yielding unrealis-tic appearance [56, 70]. A promising direction is to per-form averaging in a semantic space, where distances reflect conceptual similarity [37]. This can be done by encod-ing images into the semantic space, averaging their embed-dings, then decoding—a straightforward process in autoen-coders [2, 3], VAEs [43], or GANs [28, 37] equipped with inversion mechanisms [107]. Diffusion models, however, lack such an explicit bottleneck representation. Although some studies have identified “semantic layers” within dif-fusion models [44], the semantic information is distributed across timesteps, with no direct way to decode a time-averaged embedding into a realistic average. To address this, we recast averaging as trajectory align-ment within the diffusion model. Instead of generating sam-ples then averaging them post hoc, we jointly optimize mul-tiple noise latents so that their denoising trajectories pro-gressively converge toward shared coarse-to-fine semantics. Conceptually, the process first aligns high-level structures, such as global shape and layout, toward a semantic mean, then gradually refines alignment to local patterns, enabling spatial averaging of fine details without sacrificing realism. During optimization, each sample follows its own denois-ing trajectory while being constrained to match the mean semantic representation of all samples at each timestep. The resulting trajectory forms a semantic consensus across sam-ples, which can then be decoded into a single sharp and re-alistic prototype—effectively the model’s own “mental av-erage” of the concept. While averaging captures a concept’s shared structure, many real-world concepts are visually multimodal or am-biguous: “dog” spans many breeds, while “bike” may mean a bicycle or a motorbike. In such cases, a single average may blur distinct modes and obscure diversity. To cap-ture this, we create mode-specific prototypes by cluster-ing samples in a semantic space and averaging within each cluster. We find that CLIP [74] serves as a stable and se-mantically rich space, leading to clearer mode separation than diffusion-based feature spaces. Clustering can also be grounded using models like BLIP [50], enabling user-defined partitioning (e.g., by ethnicity for human faces). However, the latent space used for clustering (e.g., CLIP) differs from the one used for averaging within the diffusion model, causing inconsistencies between clusters and their prototypes. To bridge this gap, we adapt the conditioning of the diffusion model to be cluster-specific: for each cluster, we learn a textual inversion embedding [24] or LoRA [34] that captures its semantic subspace and guides the denoising process toward that region, yielding more faithful averages. We evaluate our method for generating concept averages across diverse categories, including animals, humans, ob-jects, and abstract concepts, and compare it against several baselines, including GANgealing [70] and adapted dataset distillation methods such as D 4M [89] and MGD 3 [13]. Our method produces results that are both visually realistic and consistent across different initial random seeds, whereas the baselines tend to be either consistent but blurry or realistic but inconsistent. We further demonstrate that our mode dis-covery method can effectively generate averages for multi-ple modes in both unsupervised and grounded setups, and that our approach generalizes to other diffusion architec-tures, such as DiT [69]. In summary, our contributions are: • We propose the first method to produce consistent and re-alistic averages directly from pre-trained diffusion models by formulating the task as trajectory alignment. • We demonstrate that DMA generalizes to multimodal concepts with light-weight model conditioning, as well as across diffusion model variants and architectures. 
+
+# 2. Related Work 
+
+Prototype image. A prototype image aims to represent the visual essence of a concept or dataset. Early ap-proaches decompose images into patches, group them by visual similarity, and use these clusters as prototypical ele-ments [19, 20, 27, 36, 46, 51, 75, 84, 86]. While effective for analyzing local features, patch-based prototypes fail to capture holistic relationships between visual components. Other works instead select entire images to serve as proto-types [10, 15, 40, 85]. However, this approach is limited by the finite sample set, potentially overlooking variations or information contained in other samples. Beyond selecting existing samples, another line of work focuses on synthesizing prototype images. Dataset distil-lation methods [11, 12, 16, 47, 93, 98, 103–105] generate synthetic images that encapsulate the knowledge of an en-tire class, but their prototypes often lack recognizable struc-ture and visual coherence. Recent methods in dataset distil-lation employ diffusion models to distill class-level repre-sentations into a set of high-quality prototypes [13, 29, 89]. However, they primarily target downstream tasks over con-ceptual summarization and can exhibit inconsistent gener-2ations. Pixel-space averaging on spatially aligned images provides an intuitive way to summarize visual informa-tion [26, 56, 106]. Although alignment methods [5, 45, 62, 65, 70] preserve the overall structure of the average image, fine details are averaged out and blurred because pixel-space averaging operates on low-level image features, such as texture and illumination, which vary significantly across samples. A more effective strategy is to perform av-eraging in a semantic latent space, where high-level con-cept information is encoded. This can be done by encod-ing samples into the latent space, computing their mean representation, and decoding it back into the image do-main [2, 3, 28, 37, 43]. However, this remains unexplored in the context of diffusion models, which lack an explicit semantic latent space and a dedicated decoder for recon-struction. Building on this idea, we aim to construct high-quality average images of any concept by leveraging the seman-tic space of pre-trained diffusion models, without requir-ing access to the underlying dataset. Closest to our work, Feng et al. [22] use compositional generation [55] in a dif-fusion model fine-tuned with GPS signals to produce av-erage representations for specific geographic areas, relying on multiple location-based conditions. In contrast, we op-erate in text-to-image diffusion models, where such multi-conditional inputs (e.g., GPS coordinates) are impractical, as each concept is defined solely by a single text prompt. 
+
+Semantic space in diffusion models. Our method lever-ages the semantic spaces of UNet–based diffusion models to generate average images. Some studies have explored these spaces for tasks such as segmentation [4, 52, 59, 60, 64, 71, 78, 92, 96], visual correspondence [57, 60, 91, 99], and concept ablation [7, 8]. However, these semantic spaces typically retain spatial information, suitable for their tasks but suboptimal for ours, as they can introduce the same blur-ring issues seen in pixel-space averaging. Other works at-tempt to create high-level semantic spaces, as in autoen-coders or VAEs [43], by using an encoder to compress im-ages into semantic latent vectors that guide the denoising process [35, 48, 72, 94]. However, this requires retraining the entire network and is unsuitable for our goal of find-ing the mental average within a pre-trained diffusion model. Kwon et al. [44] show that the U-Net bottleneck layer ( h-space) exhibits properties, such as linearity, that make it an effective semantic representation for our task. Semantic in-formation in diffusion models is also found to spread across timesteps, with early steps capturing coarse structure and later steps encoding fine details [14, 17, 68, 80]. We lever-age the h-space for its low spatial specificity and rich se-mantic content. 
+
+Noise optimization in diffusion models. Once the average semantic latent is obtained, decoding it into an average im-age is non-trivial. A naive approach is to directly substitute the h-space latent with the average during denoising, but this often produces inconsistent outputs because skip con-nections allow unconstrained information from other layers to influence the output. To constrain activations in other lay-ers without modifying model parameters, noise optimiza-tion has proven effective. Prior works have employed this approach for enhancing image quality [21, 30, 41, 73], gen-erating rare concepts [79], and motion editing [38, 54, 66]. We adopt noise optimization to decode the average se-mantic latent into an average image by applying it sequen-tially across diffusion timesteps. 
+
+# 3. Background on T2I Diffusion Models 
+
+Modern text-to-image (T2I) diffusion models [33, 87] can be viewed as discrete-time instances within the broader family of score-based [88] and flow-matching [53] gener-ative models, which learn to transform Gaussian noise into data through a reverse stochastic or deterministic process. These models generate high-resolution images efficiently by operating in a latent space rather than directly in pixel space [76]. A Variational Autoencoder (VAE) [43] first maps images into a compact latent space, where the dif-fusion process is applied. For text-conditioned generation, a prompt c is encoded by a transformer-based text encoder to guide the denoising trajectory. At inference, generation begins from a Gaussian latent zT ∼ N (0 , I ) and progressively denoises it into a clean latent z0, which is decoded by the VAE decoder into the final image. At each timestep t, the model predicts the noise ϵt = ϵθ (zt, t, c ) and the next latent zt−1 is computed using, e.g., the DDIM update [87]: 
+
+zt−1 = √αt−1
+
+ zt − √1 − αt ϵt
+
+√αt
+
+
+
++ p1 − αt−1 ϵt. (1) To improve image-prompt fidelity, Ho and Salimans [32] introduced classifier-free guidance (CFG), which blends conditional and unconditional predictions: 
+
+˜ϵθ (zt, t, c ) = (1 − w) ϵθ (zt, t, c ) − w ϵ θ (zt, t ), (2) where w is the guidance scale controlling the trade-off be-tween text faithfulness and sample diversity. 
+
+# 4. Method 
+
+Given a concept prompt, we aim to synthesize an average image that captures the concept’s shared semantics under a probe diffusion model while preserving visual realism. Averaging across diffusion samples is conceptually sim-ple yet technically challenging: pixel-space averaging de-stroys realism, and feature-space averaging is ill-defined be-cause diffusion models lack a semantic bottleneck and de-coder. Semantic information is instead distributed along the 3Mean Activation 
+
+L2
+
+L2
+
+L2
+
+> Mean Activation
+> …
+> …
+> …
+> …
+> Mean Activation
+> …
+> …
+> …
+
+# …
+
+# …
+
+# … 
+
+> Optimize
+> Noises
+> 1
+> One -step
+> Denoise
+> 4
+> Optimize
+> Noises
+> 3
+> Optimize
+> Noises
+> 5
+> 6N
+> One -step
+> Denoise
+> One -step
+> Denoise
+> 2
+
+L2
+
+L2
+
+L2
+
+L2
+
+L2
+
+L2Figure 2. Overview. Multiple noise latents are jointly optimized so that their denoising trajectories converge toward shared semantics. At each timestep t, their h-space activations are averaged to form a semantic target, and each latent is optimized to match it before denoising to the next step. Repeating this process across timesteps aligns coarse-to-fine semantics, yielding a single “mental average” of the concept. 
+
+denoising trajectory, evolving from coarse layout to fine de-tail. This motivates performing averaging not in image or latent space confined to a single layer, but along the model’s denoising process itself. We therefore recast the problem as aligning multiple denoising trajectories so that they con-verge toward a shared semantic consensus. Figure 2 pro-vides an overview. To achieve this, we leverage a semantically meaning-ful latent layer, referred to as the h-space, across multiple 
+
+diffusion timesteps. This layer, located near the middle of the U-Net denoiser, has been shown to encode interpretable and approximately linear semantics [44, 49, 67, 83]. Rather than collapsing h-space representations from all timesteps into a single latent vector, which would be non-decodable, we progressively align the h-space representations of multi-ple noise latents to their means along the denoising process. This mirrors the diffusion model’s inherent generation from high-level to low-level attributes, enabling the model to first reach agreement on global structure, such as pose and com-position, before successively aligning lower-level attributes. Specifically, we start with K noisy latents {z(0)  
+
+> k
+
+}Kk=1 ,each drawn from N (0 , I). At each diffusion timestep t, we perform the following steps: 
+
+1. Compute the average h-space activation. For each noisy latent z(t) 
+
+> k
+
+, we feed it into the diffusion model condi-tioned on timestep t and the prompt to extract its h-space ac-tivation H(z(t) 
+
+> k
+
+), and compute the average activation across all K latents, denoted as ¯A(t) = 1
+
+> K
+
+PKk=1 H(z(t) 
+
+> k
+
+).
+
+2. Noise optimization. To align each noisy latent with the average activation ¯A(t), we optimize each z(t) 
+
+> i
+
+using the following objective: 
+
+min 
+
+> z(t)
+> i
+
+H(z(t) 
+
+> i
+
+) − ¯A(t) 22 . (3) Minimizing this loss gradually shifts each latent toward the shared semantic feature at timestep t. The optimization is performed for N iterations for each latent. 
+
+3. Denoising. After aligning the noisy latents with the mean semantic features, each optimized latent is denoised to the next timestep using DDIM sampling [87]. This process is repeated across diffusion timesteps until a cutoff tstop < T , which helps reduce computation cost. Then, we continue denoising with standard DDIM sampling until completion and decode any final latent z(T ) 
+
+> k
+
+with the VAE decoder to produce the prototype image, as outlined in Algorithm 1. We examine how different noise latents converge under varying cutoff values tstop in Appendix C.4. 
+
+## 4.1. Mode Discovery 
+
+While our method aligns multiple trajectories toward a sin-gle semantic consensus, this process may oversimplify con-cepts that the diffusion model represents through several distinct semantic modes. For example, “crane” can refer to a bird or a construction machine—two modes that are difficult to meaningfully blend into a single prototype. We extend our method with a simple mode separation step: we first cluster the noise latents and then compute an average image per cluster. Effective mode discovery re-quires a feature space that captures high-level semantics. Although the internal h-space encodes semantic content, its representations are stochastic and vary across timesteps, making it unreliable for consistent mode separation. In-stead, we use the CLIP embedding space [74], which offers a stable, high-level semantic representation [6, 9, 25, 77, 82]. To support user-specified clustering (e.g., by ethnicity for “doctor”), we alternatively employ a grounded approach using BLIP-VQA [50] to obtain attribute-focused embed-dings [56] for targeted mode discovery. Noise latents are 4Algorithm 1 Diffusion Mental Averaging 
+
+Require: Diffusion model D, concept prompt c, optimiza-tion cutoff tstop , diffusion timestep schedule {τt}Tt=1 ,number of sampled latents K, number of optimization steps N , learning rate η, h-space activation H(·)
+
+Ensure: Prototype Image I 
+
+> 1:
+
+Initialize a set of K noisy latents Z(0) = {z(0)  
+
+> k
+
+}Kk=1 
+
+with z(0)  
+
+> k
+
+∼ N (0 , I) 
+
+> 2:
+
+for t = 0 to T − 1 do  
+
+> 3:
+
+if t ≤ tstop then  
+
+> 4:
+
+¯At ← 1
+
+K
+
+X
+
+> z∈Z(t)
+
+H z; D, τ t, c  
+
+> 5:
+
+for k = 1 to K do  
+
+> 6:
+
+for i = 1 to N do  
+
+> 7:
+
+L ← H
+
+
+
+z(t) 
+
+> k
+
+; D, τ t, c 
+
+
+
+− ¯At 
+
+> 22
+> 8:
+
+Update z(t) 
+
+> k
+
+using Adam (∇z(t)
+
+> k
+
+L, η ) 
+
+> 9:
+
+end for  
+
+> 10:
+
+end for  
+
+> 11:
+
+end if  
+
+> 12:
+
+Z(t+1) ← DDIM-Sampling  Z(t); D, τ t, c  
+
+> 13:
+
+end for  
+
+> 14:
+
+I ← VAE-Decode (z(T ) 
+
+> k
+
+) for any k 
+
+> 15:
+
+Return: Prototype Image I
+
+clustered by generating samples through standard denois-ing, embedding them with CLIP or BLIP-VQA, and apply-ing a clustering method such as GMM; cluster assignments are then mapped back to the latents. After clustering, a straightforward approach is to apply DMA independently within each cluster. However, we find that this often yields prototypes that do not faithfully re-flect their cluster’s semantics. We hypothesize that this in-consistency stems from a mismatch between the semantic space used for clustering and the diffusion model’s h-space. Since these spaces encode semantics differently, samples that form a coherent mode in one space may scatter across the other, causing the average to lose semantic coherence. To mitigate this, we adjust the model’s conditioning to steer denoising toward each cluster’s semantic subregion. This can be done using techniques such as Textual Inver-sion [24], which learns a compact textual embedding from a set of images, or by training a LoRA [34] to fine-tune the model’s conditioning pathway. While Textual Inversion can handle simple or well-defined modes, we find that its lim-ited capacity struggles with complex modes [102]. LoRA, being more expressive, captures richer intra-mode variation and provides better alignment between semantic modes and their corresponding prototypes. We compare the two ap-proaches in our experiments. With these lightweight con-ditioning methods, our approach is able to summarize each concept’s mode with greater semantic fidelity. 
+
+# 5. Experiments 
+
+Implementation details. Unless stated otherwise, we use a variant of Stable Diffusion called Realistic Vision v5.1 [81] due to its higher image quality. All experiments use classifier-free guidance (CFG) scale of 7.0 and 20 DDIM sampling steps. We set the number of latents K = 1000 .At each diffusion timestep, each latent is optimized using Adam [42] with a learning rate of 2 × 10 −2 for 300 itera-tions. We set the cutoff tstop = 10 . The optimization process took about 10 hours on an NVIDIA RTX 4080. Additional details are provided in Appendix A. 
+
+## 5.1. Baselines 
+
+As no method currently exists for averaging diffusion mod-els, we compare DMA to adapted versions of two related approaches: congealing and dataset distillation. All meth-ods use the same 1,000 noise latents or their samples. 
+
+Average VAE. Starting from noisy latents, we denoise them, compute their mean in VAE latent space, and decode it once into pixel space. 
+
+GANgealing [70]. We generate samples from the same noise latents and use GANgealing’s pretrained Spatial Transformer Network to align the images. The aligned im-ages are then averaged in pixel space. 
+
+D4M [89] uses cluster centers in VAE space as prototypes and refines them by adding noise and denoising through a diffusion model. In our adaptation, we set IPC = 1, so the prototype becomes the average of all clean VAE latents. We inject noise into this averaged latent at timestep t = 6 
+
+(equivalent to the default SDEdit strength 0.7) and denoise once to obtain the prototype image. 
+
+MGD 3 [13] also uses cluster centers as prototypes but in-troduces Mode Guidance to steer predicted noise toward the prototype. In our adaptation, we also set IPC = 1, and apply Mode Guidance for the first 10 steps (default 50% of total steps) with the default mode guidance of 0.1, followed by standard denoising to obtain the prototype image. See our Appendix D for results using other hyperparameter values. 
+
+## 5.2. Prototypical Image Evaluation 
+
+We evaluate on 12 concepts spanning four categories (Ani-mal, Person, Object, Abstract). For each concept, we gen-erate 10 sets of 1,000 samples, and each method produces 10 prototypes per set, yielding 100 prototypes per concept per method. This evaluation does not perform clustering as in the multimodal setting (Sec. 4.1). We use three metrics: 
+
+1. Consistency ( ↓) measures how reliably a method con-verges to the same prototype when starting from differ-ent initializations. For each set, we compute the aver-5Samples GANgealing [70] Avg VAE D4M [89] MGD 3 [13] Ours 
+
+N/A               
+
+> Figure 3. Qualitative comparison across methods: GANgealing [70], Avg. VAE ,D4M[89], MGD 3[13], and DMA (Ours) . Rows show concepts: astronaut ,dog ,bicycle ,freedom . GANgealing cannot process abstract concepts, so its freedom cell is intentionally left blank.
+
+age pairwise distance among the 10 generated prototypes using CLIP [74] cosine distance, DreamSim [23], and LPIPS [101]. We report consistency scores averaged over all sets in each category, where lower is better. 
+
+2. Representativeness ( ↓) assesses how well each proto-type captures the semantic center of its concept distribution. For each prototype, the Representativeness score is the av-erage distance to the 1,000 samples in its set. We use the same three distance functions as in the Consistency metric and report scores averaged across all sets in each category, where lower is better. 
+
+3. ImageReward [97] ( ↑) is a learned reward model trained on large-scale human preference data. This metric reflects human preference by jointly evaluating image quality and text–image alignment. For each concept set, we compute the average score across the 10 generated prototypes, and then report the average ImageReward over all sets within each category, where higher is better. Quantitative scores are shown in Table 1, with qualita-  
+
+> Figure 4. Quality Trade-off. DMA achieves a superior balance of representativeness, consistency, and perceptual quality.
+
+tive results in Figure 3. Avg. VAE and GANgealing achieve perfect consistency scores of zero by design, as they always produce identical outputs given the same image set. How-ever, their averages are blurry and lack realism. DMA is sig-nificantly more consistent than D 4M and MGD 3 with better consistency scores across all three distance metrics. DMA also achieves the best ImageReward and representativeness scores across all metrics, demonstrating more faithful and 6Table 1. Average scores across four categories ( Animal , Person , Object , Abstract ) on Consistency ( ↓), Representativeness ( ↓), and Im-ageReward ( ↑). GANgealing † is evaluated only on three non-abstract categories, as it lacks pretrained GANs on abstract concepts                                              
+
+> Consistency ( ↓)Representativeness ( ↓)ImageReward ( ↑)Method CLIP DreamSim LPIPS CLIP DreamSim LPIPS GANgealing †[70] 0000.386 0.477 0.851 −0.684
+> Avg VAE 0000.473 0.806 0.805 −2.262
+> D4M [89] 0.168 0.274 0.572 0.197 0.363 0.672 0.823 MGD 3[13] 0.180 0.319 0.643 0.195 0.364 0.687 0.755
+> DMA (Ours) 0.031 0.032 0.129 0.179 0.341 0.655 1.002
+
+visually preferred concept summaries than all baselines. Qualitatively, DMA generates clear, structured averages, for example, a detailed astronaut in uniform with averaged attributes, such as centered composition. By contrast, the baselines only capture vague helmet shapes and omit key components like the helmet’s visor or uniform altogether. For abstract concepts, like “freedom,” DMA consistently depicts the Statue of Liberty, whereas D 4M and MGD 3
+
+generate inconsistent or distorted versions of the statue. GANgealing, meanwhile, cannot handle such concepts be-cause no pretrained GAN exists for them. Furthermore, as shown in the trade-off plots in Figure 4, DMA delivers the most balanced performance, combining high consistency, strong representativeness, and perceptual realism. 
+
+## 5.3. Mode Averages 
+
+In this section, we present results of applying DMA to clus-tered images. To refine the model’s conditioning for each mode, we use a CFG scale of 3.0 during inference and train a rank-1 LoRA for 2,000 steps with a learning rate of 10 −4.For Textual Inversion, we use a CFG scale of 7.0 during inference and train for 3,000 steps with a learning rate of 
+
+10 −2. For mode separation, we first reduce the computed features of CLIP-ViT-B/32 or BLIP-VQA-base [56] using PCA (to 2 dimensions for unsupervised clustering and 10 for grounded clustering), then cluster them using a Gaus-sian Mixture Model to obtain mode assignments. 
+
+Unsupervised clustering. Figure 5 presents our cluster av-erages discovered through unsupervised clustering, along with a single overall average, for four concepts. We ob-serve that the single average is biased toward the dominant mode, thereby suppressing less frequent ones (e.g., the fan 
+
+average only depicts an electric fan). In contrast, our clus-ter averages successfully reveal the distinct semantic modes within each concept. 
+
+Grounded clustering. Figure 6 presents our cluster aver-ages from grounded clustering using BLIP-VQA. The re-sults show that DMA can generate accurate average im-ages across different grounded criteria. For the car concept      
+
+> Fan Crane Pumpkin Boat
+> Average Mode 1 Mode 2
+> Figure 5. DMA prototypes of unsupervised modes. Top row: overall average. Bottom rows: averages of discovered modes.
+
+grounded by color, the averages show that yellow and silver cars look similar, while red and blue cars form another con-sistent group. This demonstrates how DMA can be used as a probing tool to reveal how models organize and associate attributes within a concept. 
+
+LoRA and Textual Inversion. Figure 7 shows that using LoRA or Textual Inversion helps guide the model toward cluster-specific regions, producing averages that better re-flect the modes’ semantics, with LoRA better preserving color and car shape than Textual Inversion. This suggests that both methods help capture semantics beyond the h-space, including aspects typically encoded in the noisy la-tent, such as color and image layout [63, 95, 100]. 
+
+## 5.4. Generalization Across SD Variants 
+
+We evaluate DMA across several Stable Diffusion variants: SD1.5, Realistic Vision v5.1, Dreamshaper PixelArt, and Flat-2D Animerge. In Figure 8, DMA can produce av-erages that are specific to each variant, revealing distinct stylistic or demographic interpretations. The concept sol-dier exhibits strong identity bias: SD1.5 and Realistic Vi-sion consistently generate male soldiers, whereas PixelArt appears more gender-neutral, and Flat-2D Animerge ren-7Cluster 1 Cluster 2 Cluster 3 Cluster 4               
+
+> Dog (“Breed”)
+> Astronaut (“Ethnicity”)
+> Car (“Model”)
+> Car (“Color”)
+> Figure 6. DMA prototypes of grounded modes. We cluster as-tronaut by ethnicity, dog by breed, and car by model or color.
+> Cluster Images DMA +TI +LoRA
+> Figure 7. LoRA & Textual Inversion bridge the gap between the clustering and the h-spaces, enabling cluster-specific prototypes.
+
+ders a female anime-style cadet. For Italy , all models con-verge to a similar “Venice canal” scene despite stylistic dif-ferences, indicating a shared dominant bias. This highlights that DMA generalizes across models and helps diagnose how fine-tuning alters or preserves concept semantics. 
+
+## 5.5. Generalization Across Architectures 
+
+We extend DMA to DiT-XL [69], a class-conditional, transformer-based diffusion model. Since DiT lacks a U-Net-style semantic bottleneck like the h-space, we instead use the output of the final transformer block, which yields the most consistent results (Figure 9). See Appendix A.4 and C.7 for implementation details and block comparisons. 
+
+# 6. Limitations and Discussion 
+
+As with sample generation, the concept and hyperparam-eters, like CFG, affect the quality and consistency of the       
+
+> SD1.5 Realistic Vision V5 Dreamshaper PixelArt Flat 2d Animerge Soldier Dolphin Italy
+> Figure 8. DMA prototypes of various SD Variants. Soldier in-herits model-specific gender bias, while Italy exhibits a persistent static bias toward a Venice-like scene across all variants.
+> Figure 9. DMA generalizes to the DiT architecture [69].
+
+average image. High-variation concepts require more sam-ples for stable averages, while higher CFG improves prompt alignment but reduces diversity, influencing the final result. Our clustering relies on external encoders and thus in-herits their biases [1, 31, 58]; however, the averaging pro-cess remains unbiased once clusters are defined. Evaluating the representativeness score remains challenging as it de-pends on the specific embedding space, which can be sub-jective. We discuss this further in Appendix B.4. Extending DMA to other diffusion architectures requires identifying a semantic layer analogous to the h-space, which remains an open direction for future work. Currently, our method re-quires high computational costs, which are detailed in Ap-pendix B.2. Further discussions regarding potential appli-cations and limitations of our mode discovery are provided in Appendix B.1 and B.3. 
+
+Conclusion. We present a simple yet effective method for generating high-quality average images from pretrained dif-fusion models. By progressively aligning denoising trajec-tories across multiple noise latents, DMA produces con-sistent, representative results and extends to concepts with multiple meanings and modes. DMA outperforms baselines in consistency, image quality, and representativeness, and generalizes across diffusion models and architectures. 8Acknowledgment. This research was supported by Thailand Science Research and Innovation (TSRI) Fundamental Fund (Grant number: FRB690039/0457; Project number: 4823418), SCB Public Com-pany Limited, and PTT Public Company Limited. 
+
+# References 
+
+[1] Vatsal Baherwani and Joseph James Vincent. Racial and gender stereotypes encoded into clip representations. In The Second Tiny Papers Track at ICLR 2024 , 2024. 8 [2] Pierre Baldi. Autoencoders, unsupervised learning, and deep architectures. In Proceedings of ICML workshop on unsupervised and transfer learning , pages 37–49. JMLR Workshop and Conference Proceedings, 2012. 2, 3 [3] Dor Bank, Noam Koenigstein, and Raja Giryes. Autoen-coders. Machine learning for data science handbook: data mining and knowledge discovery handbook , pages 353– 374, 2023. 2, 3 [4] Dmitry Baranchuk, Ivan Rubachev, Andrey Voynov, Valentin Khrulkov, and Artem Babenko. Label-efficient se-mantic segmentation with diffusion models. arXiv preprint arXiv:2112.03126 , 2021. 3 [5] Nir Barel, Ron Shapira Weber, Nir Mualem, Shahaf E Finder, and Oren Freifeld. Spacejam: a lightweight and regularization-free method for fast joint alignment of im-ages. In European Conference on Computer Vision , pages 180–197. Springer, 2024. 3 [6] Manuele Barraco, Marcella Cornia, Silvia Cascianelli, Lorenzo Baraldi, and Rita Cucchiara. The unreasonable effectiveness of clip features for image captioning: an ex-perimental analysis. In proceedings of the IEEE/CVF con-ference on computer vision and pattern recognition , pages 4662–4670, 2022. 4 [7] Samyadeep Basu, Nanxuan Zhao, Vlad I Morariu, So-heil Feizi, and Varun Manjunatha. Localizing and edit-ing knowledge in text-to-image generative models. In The Twelfth International Conference on Learning Representa-tions , 2023. 3 [8] Samyadeep Basu, Keivan Rezaei, Priyatham Kattakinda, Vlad I Morariu, Nanxuan Zhao, Ryan A Rossi, Varun Man-junatha, and Soheil Feizi. On mechanistic knowledge lo-calization in text-to-image generative models. In Forty-first International Conference on Machine Learning , 2024. 3 [9] Usha Bhalla, Alex Oesterling, Suraj Srinivas, Flavio Cal-mon, and Himabindu Lakkaraju. Interpreting clip with sparse linear concept embeddings (splice). Advances in Neural Information Processing Systems , 37:84298–84328, 2024. 4 [10] Jorge E Camargo and Fabio A Gonz´ alez. Multimodal latent topic analysis for image collection summarization. Infor-mation Sciences , 328:270–287, 2016. 2 [11] George Cazenavette, Tongzhou Wang, Antonio Torralba, Alexei A Efros, and Jun-Yan Zhu. Dataset distillation by matching training trajectories. In Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition , pages 4750–4759, 2022. 2 [12] George Cazenavette, Tongzhou Wang, Antonio Torralba, Alexei A Efros, and Jun-Yan Zhu. Generalizing dataset distillation via deep generative prior. In Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition , pages 3739–3748, 2023. 1, 2 [13] Jeffrey A Chan-Santiago, Praveen Tirupattur, Gaurav Ku-mar Nayak, Gaowen Liu, and Mubarak Shah. MGD 3:Mode-guided dataset distillation using diffusion models. 
+
+arXiv preprint arXiv:2505.18963 , 2025. 1, 2, 5, 6, 7, 8, 9, 20, 21, 22, 23, 24, 25, 26, 27, 28 [14] Jooyoung Choi, Jungbeom Lee, Chaehun Shin, Sungwon Kim, Hyunwoo Kim, and Sungroh Yoon. Perception pri-oritized training of diffusion models. In Proceedings of the IEEE/CVF conference on computer vision and pattern recognition , pages 11472–11481, 2022. 3 [15] David J Crandall, Lars Backstrom, Daniel Huttenlocher, and Jon Kleinberg. Mapping the world’s photos. In Pro-ceedings of the 18th international conference on World wide web , pages 761–770, 2009. 1, 2 [16] Justin Cui, Ruochen Wang, Si Si, and Cho-Jui Hsieh. Scal-ing up dataset distillation to imagenet-1k with constant memory. In International Conference on Machine Learn-ing , pages 6565–6590. PMLR, 2023. 2 [17] Giannis Daras and Alexandros G Dimakis. Multiresolution textual inversion. arXiv preprint arXiv:2211.17115 , 2022. 3[18] Jiankang Deng, Jia Guo, Evangelos Ververas, Irene Kot-sia, and Stefanos Zafeiriou. Retinaface: Single-shot multi-level face localisation in the wild. In Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition , pages 5203–5212, 2020. 2 [19] Carl Doersch, Abhinav Gupta, and Alexei A Efros. Mid-level visual element discovery as discriminative mode seek-ing. Advances in neural information processing systems ,26, 2013. 2 [20] Carl Doersch, Saurabh Singh, Abhinav Gupta, Josef Sivic, and Alexei A Efros. What makes paris look like paris? 
+
+Communications of the ACM , 58(12):103–110, 2015. 1, 2[21] Luca Eyring, Shyamgopal Karthik, Karsten Roth, Alexey Dosovitskiy, and Zeynep Akata. Reno: Enhancing one-step text-to-image models through reward-based noise optimiza-tion. Advances in Neural Information Processing Systems ,37:125487–125519, 2024. 3 [22] Chao Feng, Ziyang Chen, Aleksander Holynski, Alexei A Efros, and Andrew Owens. Gps as a control signal for im-age generation. In Proceedings of the Computer Vision and Pattern Recognition Conference , pages 2766–2778, 2025. 3[23] Stephanie Fu, Netanel Tamir, Shobhita Sundaram, Lucy Chai, Richard Zhang, Tali Dekel, and Phillip Isola. Dream-sim: Learning new dimensions of human visual similar-ity using synthetic data. arXiv preprint arXiv:2306.09344 ,2023. 6 [24] Rinon Gal, Yuval Alaluf, Yuval Atzmon, Or Patash-nik, Amit H Bermano, Gal Chechik, and Daniel Cohen-Or. An image is worth one word: Personalizing text-to-
+
+9image generation using textual inversion. arXiv preprint arXiv:2208.01618 , 2022. 2, 5 [25] Yossi Gandelsman, Alexei A Efros, and Jacob Steinhardt. Interpreting clip’s image representation via text-based de-composition. arXiv preprint arXiv:2310.05916 , 2023. 4 [26] Shiry Ginosar, Kate Rakelly, Sarah Sachs, Brian Yin, and Alexei A Efros. A century of portraits: A visual historical record of american high school yearbooks. In Proceedings of the IEEE International Conference on Computer Vision Workshops , pages 1–7, 2015. 2, 3 [27] Sonal Goel, Sarthak Ahuja, A V Subramanyam, and Ponnu-rangam Kumaraguru. # visualhashtags: Visual summariza-tion of social media events using mid-level visual elements. In Proceedings of the 25th ACM international conference on Multimedia , pages 1434–1442, 2017. 2 [28] Ian Goodfellow, Jean Pouget-Abadie, Mehdi Mirza, Bing Xu, David Warde-Farley, Sherjil Ozair, Aaron Courville, and Yoshua Bengio. Generative adversarial networks. Com-munications of the ACM , 63(11):139–144, 2020. 2, 3 [29] Jianyang Gu, Saeed Vahidian, Vyacheslav Kungurtsev, Haonan Wang, Wei Jiang, Yang You, and Yiran Chen. Effi-cient dataset distillation via minimax diffusion. In Proceed-ings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition , pages 15793–15803, 2024. 2, 1 [30] Xiefan Guo, Jinlin Liu, Miaomiao Cui, Jiankai Li, Hongyu Yang, and Di Huang. Initno: Boosting text-to-image diffu-sion models via initial noise optimization. In Proceedings of the IEEE/CVF Conference on Computer Vision and Pat-tern Recognition , pages 9380–9389, 2024. 3 [31] Kimia Hamidieh, Haoran Zhang, Walter Gerych, Thomas Hartvigsen, and Marzyeh Ghassemi. Identifying implicit social biases in vision-language models. In Proceedings of the AAAI/ACM Conference on AI, Ethics, and Society ,pages 547–561, 2024. 8 [32] Jonathan Ho and Tim Salimans. Classifier-free diffusion guidance. arXiv preprint arXiv:2207.12598 , 2022. 3 [33] Jonathan Ho, Ajay Jain, and Pieter Abbeel. Denoising dif-fusion probabilistic models. Advances in neural informa-tion processing systems , 33:6840–6851, 2020. 3 [34] Edward J Hu, Yelong Shen, Phillip Wallis, Zeyuan Allen-Zhu, Yuanzhi Li, Shean Wang, Lu Wang, Weizhu Chen, et al. Lora: Low-rank adaptation of large language models. 
+
+ICLR , 1(2):3, 2022. 2, 5 [35] Drew A Hudson, Daniel Zoran, Mateusz Malinowski, An-drew K Lampinen, Andrew Jaegle, James L McClelland, Loic Matthey, Felix Hill, and Alexander Lerchner. Soda: Bottleneck diffusion models for representation learning. In 
+
+Proceedings of the IEEE/CVF Conference on Computer Vi-sion and Pattern Recognition , pages 23115–23127, 2024. 3[36] Yong Jae Lee, Alexei A Efros, and Martial Hebert. Style-aware mid-level representation for discovering visual con-nections in space and time. In Proceedings of the IEEE international conference on computer vision , pages 1857– 1864, 2013. 1, 2 [37] Tero Karras, Samuli Laine, and Timo Aila. A style-based generator architecture for generative adversarial networks. In Proceedings of the IEEE/CVF conference on computer vision and pattern recognition , pages 4401–4410, 2019. 2, 3[38] Korrawe Karunratanakul, Konpat Preechakul, Emre Aksan, Thabo Beeler, Supasorn Suwajanakorn, and Siyu Tang. Op-timizing diffusion noise can serve as universal motion pri-ors. In Proceedings of the IEEE/CVF Conference on Com-puter Vision and Pattern Recognition , pages 1334–1345, 2024. 3 [39] Ira Kemelmacher-Shlizerman, Supasorn Suwajanakorn, and Steven M Seitz. Illumination-aware age progression. In Proceedings of the IEEE conference on computer vision and pattern recognition , pages 3334–3341, 2014. 2 [40] Lyndon S Kennedy and Mor Naaman. Generating diverse and representative image search results for landmarks. In 
+
+Proceedings of the 17th international conference on World Wide Web , pages 297–306, 2008. 1, 2 [41] Byungjun Kim, Soobin Um, and Jong Chul Ye. Diverse text-to-image generation via contrastive noise optimization. 
+
+arXiv preprint arXiv:2510.03813 , 2025. 3 [42] Diederik P Kingma and Jimmy Ba. Adam: A method for stochastic optimization. arXiv preprint arXiv:1412.6980 ,2014. 5 [43] Diederik P Kingma and Max Welling. Auto-encoding vari-ational bayes. arXiv preprint arXiv:1312.6114 , 2013. 2, 3[44] Mingi Kwon, Jaeseok Jeong, and Youngjung Uh. Diffusion models already have a semantic latent space. arXiv preprint arXiv:2210.10960 , 2022. 2, 3, 4 [45] Erik G Learned-Miller. Data driven image models through continuous joint alignment. IEEE Transactions on Pattern Analysis and Machine Intelligence , 28(2):236–250, 2005. 3 [46] Stefan Lee, Nicolas Maisonneuve, David Crandall, Alexei A Efros, and Josef Sivic. Linking past to present: Discovering style in two centuries of architecture. In IEEE International Conference on Computational Photography ,2015. 1, 2 [47] Saehyung Lee, Sanghyuk Chun, Sangwon Jung, Sangdoo Yun, and Sungroh Yoon. Dataset condensation with con-trastive signals. In International Conference on Machine Learning , pages 12352–12364. PMLR, 2022. 2 [48] Yipeng Leng, Qiangjuan Huang, Zhiyuan Wang, Yangyang Liu, and Haoyu Zhang. Diffusegae: controllable and high-fidelity image manipulation from disentangled representa-tion. In Proceedings of the 5th ACM International Confer-ence on Multimedia in Asia , pages 1–7, 2023. 3 [49] Hang Li, Chengzhi Shen, Philip Torr, Volker Tresp, and Jin-dong Gu. Self-discovering interpretable diffusion latent di-rections for responsible text-to-image generation. In Pro-ceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition , pages 12006–12016, 2024. 4 [50] Junnan Li, Dongxu Li, Caiming Xiong, and Steven Hoi. Blip: Bootstrapping language-image pre-training for uni-fied vision-language understanding and generation. In In-ternational conference on machine learning , pages 12888– 12900. PMLR, 2022. 2, 4 [51] Yao Li, Lingqiao Liu, Chunhua Shen, and Anton van den Hengel. Mining mid-level visual patterns with deep cnn 
+
+10 activations. International Journal of Computer Vision , 121 (3):344–364, 2017. 2 [52] Ziyi Li, Qinye Zhou, Xiaoyun Zhang, Ya Zhang, Yan-feng Wang, and Weidi Xie. Open-vocabulary object seg-mentation with diffusion models. In Proceedings of the IEEE/CVF International Conference on Computer Vision ,pages 7667–7676, 2023. 3 [53] Yaron Lipman, Ricky TQ Chen, Heli Ben-Hamu, Maxim-ilian Nickel, and Matt Le. Flow matching for generative modeling. arXiv preprint arXiv:2210.02747 , 2022. 3 [54] Hanchao Liu, Xiaohang Zhan, Shaoli Huang, Tai-Jiang Mu, and Ying Shan. Programmable motion generation for open-set motion control tasks. In Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition ,pages 1399–1408, 2024. 3 [55] Nan Liu, Shuang Li, Yilun Du, Antonio Torralba, and Joshua B Tenenbaum. Compositional visual generation with composable diffusion models. In European confer-ence on computer vision , pages 423–439. Springer, 2022. 3[56] Sasha Luccioni, Christopher Akiki, Margaret Mitchell, and Yacine Jernite. Stable bias: Evaluating societal representa-tions in diffusion models. Advances in Neural Information Processing Systems , 36:56338–56351, 2023. 2, 3, 4, 7, 1 [57] Grace Luo, Lisa Dunlap, Dong Huk Park, Aleksander Holynski, and Trevor Darrell. Diffusion hyperfeatures: Searching through time and space for semantic correspon-dence. Advances in Neural Information Processing Sys-tems , 36:47500–47510, 2023. 3 [58] Yan Luo, Min Shi, Muhammad Osama Khan, Muham-mad Muneeb Afzal, Hao Huang, Shuaihang Yuan, Yu Tian, Luo Song, Ava Kouhana, Tobias Elze, et al. Fairclip: Har-nessing fairness in vision-language learning. In Proceed-ings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition , pages 12289–12301, 2024. 8 [59] Chaofan Ma, Yuhuan Yang, Chen Ju, Fei Zhang, Jinxiang Liu, Yu Wang, Ya Zhang, and Yanfeng Wang. Diffusionseg: Adapting diffusion towards unsupervised object discovery. 
+
+arXiv preprint arXiv:2303.09813 , 2023. 3 [60] Benyuan Meng, Qianqian Xu, Zitai Wang, Xiaochun Cao, and Qingming Huang. Not all diffusion model activations have been evaluated as discriminative features. Advances in Neural Information Processing Systems , 37:55141–55177, 2024. 3 [61] Chenlin Meng, Yutong He, Yang Song, Jiaming Song, Jia-jun Wu, Jun-Yan Zhu, and Stefano Ermon. Sdedit: Guided image synthesis and editing with stochastic differential equations. arXiv preprint arXiv:2108.01073 , 2021. 6 [62] Erik G Miller, Nicholas E Matsakis, and Paul A Viola. Learning from one example through shared densities on transforms. In Proceedings IEEE Conference on Com-puter Vision and Pattern Recognition. CVPR 2000 (Cat. No. PR00662) , pages 464–471. IEEE, 2000. 3 [63] Ryugo Morita, Stanislav Frolov, Brian Bernhard Moser, Takahiro Shirakawa, Ko Watanabe, Andreas Dengel, and Jinjia Zhou. Tkg-dm: Training-free chroma key content generation diffusion model. In Proceedings of the Com-puter Vision and Pattern Recognition Conference , pages 13031–13040, 2025. 7 [64] Koichi Namekata, Amirmojtaba Sabour, Sanja Fidler, and Seung Wook Kim. Emerdiff: Emerging pixel-level se-mantic knowledge in diffusion models. arXiv preprint arXiv:2401.11739 , 2024. 3 [65] Dolev Ofri-Amar, Michal Geyer, Yoni Kasten, and Tali Dekel. Neural congealing: Aligning images to a joint se-mantic atlas. In Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition , pages 19403– 19412, 2023. 3 [66] Sakuya Ota, Qing Yu, Kent Fujiwara, Satoshi Ikehata, and Ikuro Sato. Pino: Person-interaction noise optimization for long-duration and customizable motion generation of arbitrary-sized groups. In Proceedings of the IEEE/CVF In-ternational Conference on Computer Vision , pages 10676– 10685, 2025. 3 [67] Rishubh Parihar, Abhijnya Bhat, Abhipsa Basu, Saswat Mallick, Jogendra Nath Kundu, and R Venkatesh Babu. Balancing act: distribution-guided debiasing in diffusion models. In Proceedings of the IEEE/CVF conference on computer vision and pattern recognition , pages 6668–6678, 2024. 4 [68] Yong-Hyun Park, Mingi Kwon, Jaewoong Choi, Junghyo Jo, and Youngjung Uh. Understanding the latent space of diffusion models through the lens of riemannian geometry. 
+
+Advances in Neural Information Processing Systems , 36: 24129–24142, 2023. 3 [69] William Peebles and Saining Xie. Scalable diffusion mod-els with transformers. In Proceedings of the IEEE/CVF international conference on computer vision , pages 4195– 4205, 2023. 2, 8, 1 [70] William Peebles, Jun-Yan Zhu, Richard Zhang, Anto-nio Torralba, Alexei A Efros, and Eli Shechtman. Gan-supervised dense visual alignment. In Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition , pages 13470–13481, 2022. 2, 3, 5, 6, 7, 9, 20, 21, 22, 23, 24, 25, 26, 27, 28 [71] Koutilya Pnvr, Bharat Singh, Pallabi Ghosh, Behjat Sid-diquie, and David Jacobs. Ld-znet: A latent diffusion ap-proach for text-based image segmentation. In Proceedings of the IEEE/CVF international conference on computer vi-sion , pages 4157–4168, 2023. 3 [72] Konpat Preechakul, Nattanat Chatthee, Suttisak Wizad-wongsa, and Supasorn Suwajanakorn. Diffusion autoen-coders: Toward a meaningful and decodable representation. In Proceedings of the IEEE/CVF conference on computer vision and pattern recognition , pages 10619–10629, 2022. 3[73] Zipeng Qi, Lichen Bai, Haoyi Xiong, and Zeke Xie. Not all noises are created equally: Diffusion noise selection and optimization. arXiv preprint arXiv:2407.14041 , 2024. 3 [74] Alec Radford, Jong Wook Kim, Chris Hallacy, Aditya Ramesh, Gabriel Goh, Sandhini Agarwal, Girish Sastry, Amanda Askell, Pamela Mishkin, Jack Clark, et al. Learn-ing transferable visual models from natural language super-vision. In International conference on machine learning ,pages 8748–8763. PmLR, 2021. 2, 4, 6 
+
+11 [75] Konstantinos Rematas, Basura Fernando, Frank Dellaert, and Tinne Tuytelaars. Dataset fingerprints: Exploring im-age collections through data mining. In Proceedings of the IEEE Conference on Computer Vision and Pattern Recog-nition , pages 4867–4875, 2015. 2 [76] Robin Rombach, Andreas Blattmann, Dominik Lorenz, Patrick Esser, and Bj¨ orn Ommer. High-resolution image synthesis with latent diffusion models. In Proceedings of the IEEE/CVF conference on computer vision and pattern recognition , pages 10684–10695, 2022. 1, 3 [77] Fawaz Sammani and Nikos Deligiannis. Interpreting and analysing clip’s zero-shot image classification via mutual knowledge. Advances in Neural Information Processing Systems , 37:39597–39631, 2024. 4 [78] Dvir Samuel, Rami Ben-Ari, Matan Levy, Nir Darshan, and Gal Chechik. Where’s waldo: Diffusion features for per-sonalized segmentation and retrieval. Advances in Neu-ral Information Processing Systems , 37:128160–128181, 2024. 3 [79] Dvir Samuel, Rami Ben-Ari, Simon Raviv, Nir Darshan, and Gal Chechik. Generating images of rare concepts us-ing pre-trained diffusion models. In Proceedings of the AAAI Conference on Artificial Intelligence , pages 4695– 4703, 2024. 3 [80] Antonio Sclocchi, Alessandro Favero, and Matthieu Wyart. A phase transition in diffusion models reveals the hierarchi-cal nature of data. Proceedings of the National Academy of Sciences , 122(1):e2408799121, 2025. 3 [81] SG 161222. Realistic vision v6.0 b1. https : / / civitai . com / models / 4201 / realistic -vision-v60-b1 , 2023. Accessed: 2025-11-12. 5 [82] Shuai Shen, Wanhua Li, Xiaobing Wang, Dafeng Zhang, Zhezhu Jin, Jie Zhou, and Jiwen Lu. Clip-cluster: Clip-guided attribute hallucination for face clustering. In Pro-ceedings of the IEEE/CVF international conference on computer vision , pages 20786–20795, 2023. 4 [83] Yingdong Shi, Changming Li, Yifan Wang, Yongxiang Zhao, Anqi Pang, Sibei Yang, Jingyi Yu, and Kan Ren. Dissecting and mitigating diffusion bias via mechanistic in-terpretability. In Proceedings of the Computer Vision and Pattern Recognition Conference , pages 8192–8202, 2025. 4[84] Ioannis Siglidis, Aleksander Holynski, Alexei A Efros, Mathieu Aubry, and Shiry Ginosar. Diffusion models as data mining tools. In European Conference on Computer Vision , pages 393–409. Springer, 2024. 1, 2 [85] Ian Simon, Noah Snavely, and Steven M Seitz. Scene sum-marization for online image collections. In 2007 IEEE 11th International conference on computer vision , pages 1–8. IEEE, 2007. 1, 2 [86] Saurabh Singh, Abhinav Gupta, and Alexei A. Efros. Un-supervised discovery of mid-level discriminative patches, 2012. 2 [87] Jiaming Song, Chenlin Meng, and Stefano Ermon. Denoising diffusion implicit models. arXiv preprint arXiv:2010.02502 , 2020. 3, 4 [88] Yang Song, Jascha Sohl-Dickstein, Diederik P Kingma, Abhishek Kumar, Stefano Ermon, and Ben Poole. Score-based generative modeling through stochastic differential equations. arXiv preprint arXiv:2011.13456 , 2020. 3 [89] Duo Su, Junjie Hou, Weizhi Gao, Yingjie Tian, and Bowen Tang. Dˆ 4: Dataset distillation via disentangled diffu-sion model. In Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition , pages 5809– 5818, 2024. 1, 2, 5, 6, 7, 9, 20, 21, 22, 23, 24, 25, 26, 27, 28 [90] Supasorn Suwajanakorn, Steven M Seitz, and Ira Kemelmacher-Shlizerman. What makes tom hanks look like tom hanks. In Proceedings of the IEEE international conference on computer vision , pages 3952–3960, 2015. 2 [91] Luming Tang, Menglin Jia, Qianqian Wang, Cheng Perng Phoo, and Bharath Hariharan. Emergent correspondence from image diffusion. Advances in Neural Information Pro-cessing Systems , 36:1363–1389, 2023. 3 [92] Junjiao Tian, Lavisha Aggarwal, Andrea Colaco, Zsolt Kira, and Mar Gonzalez-Franco. Diffuse attend and seg-ment: Unsupervised zero-shot segmentation using stable diffusion. In Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition , pages 3554– 3563, 2024. 3 [93] Kai Wang, Bo Zhao, Xiangyu Peng, Zheng Zhu, Shuo Yang, Shuo Wang, Guan Huang, Hakan Bilen, Xinchao Wang, and Yang You. Cafe: Learning to condense dataset by aligning features. In Proceedings of the IEEE/CVF Con-ference on Computer Vision and Pattern Recognition , pages 12196–12205, 2022. 2 [94] Yingheng Wang, Yair Schiff, Aaron Gokaslan, Weishen Pan, Fei Wang, Christopher De Sa, and Volodymyr Kuleshov. Infodiffusion: Representation learning us-ing information maximizing diffusion models. In Inter-national conference on machine learning , pages 36336– 36354. PMLR, 2023. 3 [95] Yuxin Wen, Yuchen Liu, Chen Chen, and Lingjuan Lyu. Detecting, explaining, and mitigating memorization in dif-fusion models. In The Twelfth International Conference on Learning Representations , 2024. 7 [96] Weijia Wu, Yuzhong Zhao, Mike Zheng Shou, Hong Zhou, and Chunhua Shen. Diffumask: Synthesizing images with pixel-level annotations for semantic segmentation using dif-fusion models. In Proceedings of the IEEE/CVF Interna-tional Conference on Computer Vision , pages 1206–1217, 2023. 3 [97] Jiazheng Xu, Xiao Liu, Yuchen Wu, Yuxuan Tong, Qinkai Li, Ming Ding, Jie Tang, and Yuxiao Dong. Imagere-ward: Learning and evaluating human preferences for text-to-image generation. Advances in Neural Information Pro-cessing Systems , 36:15903–15935, 2023. 6 [98] Zeyuan Yin, Eric Xing, and Zhiqiang Shen. Squeeze, re-cover and relabel: Dataset condensation at imagenet scale from a new perspective. Advances in Neural Information Processing Systems , 36:73582–73603, 2023. 2 [99] Junyi Zhang, Charles Herrmann, Junhwa Hur, Luisa Pola-nia Cabrera, Varun Jampani, Deqing Sun, and Ming-Hsuan 
+
+12 Yang. A tale of two features: Stable diffusion complements dino for zero-shot semantic correspondence. Advances in Neural Information Processing Systems , 36:45533–45547, 2023. 3 [100] Kaiwen Zhang, Yifan Zhou, Xudong Xu, Bo Dai, and Xin-gang Pan. Diffmorpher: Unleashing the capability of diffu-sion models for image morphing. In Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition , pages 7912–7921, 2024. 7 [101] Richard Zhang, Phillip Isola, Alexei A Efros, Eli Shecht-man, and Oliver Wang. The unreasonable effectiveness of deep features as a perceptual metric. In Proceedings of the IEEE conference on computer vision and pattern recogni-tion , pages 586–595, 2018. 6 [102] Xulu Zhang, Xiao-Yong Wei, Jinlin Wu, Tianyi Zhang, Zhaoxiang Zhang, Zhen Lei, and Qing Li. Compositional inversion for stable diffusion models. In Proceedings of the AAAI Conference on Artificial Intelligence , pages 7350– 7358, 2024. 5 [103] Bo Zhao and Hakan Bilen. Dataset condensation with dif-ferentiable siamese augmentation. In International Confer-ence on Machine Learning , pages 12674–12685. PMLR, 2021. 2 [104] Bo Zhao and Hakan Bilen. Dataset condensation with dis-tribution matching. In Proceedings of the IEEE/CVF Win-ter Conference on Applications of Computer Vision , pages 6514–6523, 2023. [105] Bo Zhao, Konda Reddy Mopuri, and Hakan Bilen. Dataset condensation with gradient matching. arXiv preprint arXiv:2006.05929 , 2020. 2 [106] Jun-Yan Zhu, Yong Jae Lee, and Alexei A Efros. Average-explorer: Interactive exploration and alignment of visual data collections. ACM Transactions on Graphics (TOG) ,33(4):1–11, 2014. 2, 3 [107] Jun-Yan Zhu, Philipp Kr¨ ahenb¨ uhl, Eli Shechtman, and Alexei A Efros. Generative visual manipulation on the nat-ural image manifold. In European conference on computer vision , pages 597–613. Springer, 2016. 2 
+
+13 Diffusion Mental Averages 
+
+# Supplementary Material 
+
+# A. Additional Implementation Details 
+
+## A.1. Prompt Templates 
+
+Our method uses category-specific prompt templates as in-put to the Stable Diffusion model: • Animal: A photo of a {concept name }
+
+• Person: Photo portrait of a {concept name }
+
+• Object: A photo of a {concept name }
+
+• Abstract: A conceptual photo representing {concept name }
+
+For Dreamshaper PixelArt, we append “pixel art style, de-tailed” to the end of the prompt. 
+
+## A.2. Negative Prompt 
+
+For each variant, we use the negative prompt recommended by the respective author. All weighted negative prompts were encoded using Compel 1.
+
+Realistic Vision v5.1’s negative prompt : (deformed iris, deformed pupils, semi-realistic, cgi, 3d, render, sketch, car-toon, drawing, anime:1.4), text, close up, cropped, out of frame, worst quality, low quality, jpeg artifacts, ugly, du-plicate, morbid, mutilated, extra fingers, mutated hands, poorly drawn hands, poorly drawn face, mutation, de-formed, blurry, dehydrated, bad anatomy, bad proportions, extra limbs, cloned face, disfigured, gross proportions, mal-formed limbs, missing arms, missing legs, extra arms, extra legs, fused fingers, too many fingers, long neck” 
+
+Dreamshaper PixelArt’s negative prompt : “worst qual-ity” 
+
+Flat 2D Animerge’s negative prompt : (worst qual-ity:0.8), verybadimagenegative v1.3, (surreal:0.8), (mod-ernism:0.8), (art deco:0.8), (art nouveau:0.8)” 
+
+## A.3. BLIP-VQA for Grounded Clustering 
+
+We follow the grounded clustering method introduced in Stable Bias [56], where it is used as one of several tools for evaluating bias in diffusion models. This method clus-ters image embeddings produced by BLIP-VQA to group images that share similar attributes. In their work, these embeddings are conditioned on a question prompt, such as “What word best describes this person’s ethnicity?”, which ensures that the resulting embedding focuses on the spec-ified attribute (in this example, ethnicity). We adapt this work for our task using the following prompt: “What word best describes this {concept name }’s {attribute }?”. 
+
+> 1https://github.com/damian0815/compel
+
+## A.4. DiT Implementation Details 
+
+We use the DiT-XL/2-256 model [69], a large-scale Diffu-sion Transformer trained for class-conditional image gen-eration. Unless otherwise noted, all DiT results are gener-ated using a classifier-free guidance scale of 10.0, a learning rate of 5 × 10 −4, 20 inference steps, and a DMA stopping timestep of tstop = 20 . We use the output of the last trans-former block in place of the Stable Diffusion’s h-space to perform averaging in Algorithm 1. Experiment C.7 evalu-ates the use of different transformer blocks in DMA. 
+
+# B. Additional Discussion 
+
+## B.1. Practical Applications of Mental Averages 
+
+Mental averages offer a concrete visual summary of a learned concept, enabling analysis beyond individual sam-ples and elucidating the model’s internal representation.  
+
+> French English
+
+Questions like “What dis-tinguishes French from En-glish gardens?” are hard to answer from samples alone, as people often lack clear vi-sual expectations and do not know what to look for. In-specting thousands of samples for statistical significance is inefficient and still not as conclusive, as it relies on the viewer’s ability to detect both between- and within-class patterns. Averages can readily reveal French as more geo-metric and English as more organic—direct visual evidence that individual samples rarely make obvious (please see our website for more results). Running attribute classifiers for “geometricness” could offer summaries, but it is infeasible when relevant attributes are not known in advance or easily described by words. This summary can assist in auditing model bias and di-agnosing how different model variants alter a specific con-cept as shown in Figure 8. Beyond visualization, mental averages could serve as a tool to compress data into com-pact statistics for faster interpretation or privacy-preserving downstream training (e.g., dataset distillation [13, 29, 89]). Furthermore, they may act as regularizers and facilitate model debiasing. We leave these directions for future work. 
+
+## B.2. Computational Costs 
+
+The current optimization process takes around 10 hours per concept on a single NVIDIA RTX 4080, with K = 1000 ,
+
+tstop = 10 , and N = 300 . This remains our primary limita-tion. However, the three hyperparameters—the DMA num-ber of optimization steps N , the stopping timestep tstop , and 1the number of sampled latents K—enable a trade off be-tween consistency and efficiency. The computation cost of DMA scales linearly with these hyperparameters. As shown in Figure 10, reducing N from 300 to 5 speeds up DMA by approximately 60 times (taking only 10 minutes) and produces averages that already capture the same layout and composition. Increasing N to 10 improves color fidelity, and N = 300 captures fine details like leaf veins. Simi-larly, tstop acts as an early stopping point for noise optimiza-tion; without it, all diffusion steps must be optimized. As shown in Figure 10, setting tstop to 10 doubles the optimiza-tion speed with only minor degradation, while lowering K
+
+also helps accelerate DMA but may result in inconsistency across disjoint sets (Sec. C.6). Ultimately, the choices for these hyperparameters de-pend on the specific task and the extent to which consistency can be traded for efficiency. For instance, a coarse-grained alignment of textures might be sufficient for general visu-alization (e.g., dog visualization can tolerate fur misalign-ment), whereas tasks like plant species recognition may re-quire fine alignment of intricate features like leaf veins. 
+
+## B.3. Limitations of Mode Discovery and Averages 
+
+In mode discovery (Section 4.1), our method focuses on computing the average of each cluster once they are estab-lished. This clustering is treated as a modular preprocess-ing step, currently using standard techniques like GMM on CLIP features, that can be independently replaced or im-proved. We observe that because different algorithms par-tition the space differently, the resulting mode averages are inherently dependent on the specific clustering method. While applying LoRA on each cluster (Section 4.1) helps improve the model’s conditioning of specific subconcepts, it modifies the original model being probed and may be less ideal as a diagnostic tool for the original model. Nonethe-less, since our LoRA is trained exclusively on generated samples from the original model, it avoids introducing bi-ases from external data. 
+
+## B.4. Discussion on Representativeness Score 
+
+Formally, the average of a set of images is defined as the point that minimizes the mean squared distance to all im-ages in the set. Based on this principle, we compute dis-tances within semantic latent spaces such as CLIP, Dream-Sim, and LPIPS to quantify the optimality of the average, or the Representativeness Score. However, a good score in these spaces could only reflect the quality of the average within those specific spaces. We suggest that identifying the most suitable latent space for evaluating the perceptual and semantic fidelity of average images remains an interesting direction for future work. 
+
+# C. Ablation Studies 
+
+## C.1. Progressive Mean Alignment 
+
+In DMA, the mean h-space activation at each timestep is computed progressively using the current set of latents op-timized from the previous timestep. As a baseline, we con-sider an alternative approach that precomputes the means for all timesteps using K independent full denoising pro-cesses: we completely denoise each of the K latents, ex-tract their h-space activations at every timestep, and average them to obtain the per-timestep mean. DMA is then rerun from the start using the original K latents from N (0 , I),but with the precomputed means used as alignment targets during noise optimization. As shown in Figure 11, this baseline produces arti-facts and increasingly corrupted results as optimization pro-gresses toward later timesteps (i.e., closer to the final out-put). In contrast, our method yields high-quality images, highlighting its effectiveness. 
+
+## C.2. Multi-Timestep Optimization 
+
+We consider a baseline that optimizes noise latents only at a single timestep, while all other timesteps follow standard inference. As shown in Fig. 12, single-timestep optimiza-tion produces inconsistent results regardless of the chosen timestep, and optimizing at later timesteps introduces arti-facts and degrades output quality. In contrast, DMA yields more consistent and high-quality results. 
+
+## C.3. Noise Optimization 
+
+We present a naive baseline, dubbed the replacement base-line , that directly substitutes the averaged h-space at each timestep during denoising instead of performing noise op-timization. Here, the averaged h-space is computed in the same way as in DMA, and this substitution is applied across diffusion timesteps similarly until a cutoff tstop < T . As shown in Figure 13, the baseline produces inconsistent re-sults for all tstop values. This inconsistency arises from skip connections, which can introduce stochastic informa-tion from individual noise latents, highlighting the need for noise optimization to constrain activations in other layers. 
+
+## C.4. Effects of tstop 
+
+We analyze the effects of varying the cutoff timestep tstop in Figure 14. The results show that a low tstop = 5 leads to inconsistent average images, such as architectural incoher-ence in the castle , ground-plane variations in the dog , and costume inconsistencies in the firefighter . Increasing tstop 
+
+beyond 10 provides only minor improvements in visual con-sistency for most concepts. We therefore set tstop = 10 as a balance between computational efficiency and cross-sample consistency. 2tstop =1 tstop =2 tstop =3 tstop =4 tstop =5 tstop =10                      
+
+> 0.053 0.036 0.033 0.026 0.021 0.009
+> N= 1 N= 5 N= 10 N= 100 N= 300 N= 500
+> 0.045 0.021 0.027 0.015 0.009 0.010
+
+Figure 10. Efficiency trade-off. We vary tstop and N , and show consistency scores ( ↓). Red is our default setting. Lower tstop and N
+
+trade consistency for speed and are up to the user.    
+
+> Timestep 5 Timestep 10 Timestep 15 Timestep 20
+> Baseline Ours
+
+Figure 11. Comparison with the pre-computed activation baseline. The pre-computed baseline (top) degrades over timesteps, while DMA (bottom) remains stable and consistent. 
+
+## C.5. Effects of Classifier-Free Guidance Scale 
+
+We examine the effects of different Classifier-Free Guid-ance (CFG) scales across various concepts in Figure 16. Low CFG values (1.0–5.0) produce structurally invalid re-sults, such as distorted monstera leaves, while excessively high values (e.g., 12.0) lead to oversaturated images. The optimal CFG, however, varies across concepts: higher val-ues benefit high-variation concepts like monstera , whereas lower values suffice for low-variation concepts, such as ze-bra . In this paper, we use a CFG scale of 7.0 for all con-cepts. 3Timestep 1 Timestep 10 Timestep 20 Ours 
+
+Figure 12. Comparison with the single-timestep optimization baseline. This baseline produces inconsistent results and introduces noticeable artifacts if optimization is done in later timesteps. In contrast, our method maintains both semantic consistency and visual quality. 
+
+> Standard Denoising Samples
+
+(tstop = 0 ) tstop = 5 tstop = 10 tstop = 15 tstop = 20 
+
+> car teacher dog castle
+
+Figure 13. Results of the replacement baseline with different tstop . This baseline yields inconsistent images, even with high tstop values. 
+
+## C.6. Effects of Number of Noisy Latents ( K)
+
+We analyze how the number of initial noisy latents, K, af-fects the variability of the resulting averages. For each value 4Standard Denoising Samples          
+
+> (tstop = 0 )tstop = 5 tstop = 10 tstop = 15 tstop = 20
+> castle dog firefighter zebra
+
+Figure 14. Effects of different tstop values on visual consistency. tstop = 10 yields consistent images with reduced computational cost. 
+
+Figure 15. Quality trade-off across baseline hyperparameters. 
+
+Across the full range of hyperparameter settings for each baseline, our method consistently achieves superior representativeness, con-sistency, and visual quality. 
+
+of K, we sample four disjoint sets of K noisy latents, and compute an average image for each set under the same con-cept prompt. As shown in Figure 17, the variation among the four averages decreases as K increases, consistent with expected statistical behavior. We find that K = 1,000 
+
+is sufficient for most concepts to appear visually consis-tent, whereas smaller K often yields noticeable differences across sets. 
+
+## C.7. DiT Semantic Layer Selection 
+
+In Figure 18, we experiment with using the output of dif-ferent transformer blocks for DMA. Preliminary results in-dicate that the final block produces the most consistent re-sults. While these findings demonstrate the feasibility of ex-tending DMA to DiT, this block-selection strategy is likely suboptimal, as DiT contains many other components that may provide more meaningful latent representations. Amore comprehensive analysis is needed to understand how transformer-based models behave. 
+
+# D. Implementation Details of D 4M and MGD 3
+
+Both D4M [89] and MGD 3 [13] are dataset-distillation methods that compress a full dataset into a small set of 5CFG 1.0 CFG 3.0 CFG 5.0 CFG 7.0 CFG 12.0    
+
+> artist cat
+> lady sitting on bench with handbag
+> panda monstera
+> Figure 16. Effects of CFG scale on visual quality. Low CFG scales fail to generate faithful structures (as seen in monstera ), while excessively high CFG scales lead to oversaturated colors and unnatural contrast.
+
+synthetic prototypes. Unlike earlier approaches that train a classifier in the loop, they generate representatives di-rectly from a pre-trained diffusion model, without extra optimization or task-specific losses, and benefit from the model’s generative prior to produce higher-quality results. Both encode the dataset using a VAE, cluster the latents into w clusters (where w corresponds to the number of out-put prototypes per class (IPC)), and use the cluster cen-troids as prototype latents for guiding synthesis. D4M adds noise to each centroid and denoises it (as in SDEdit [61]), whereas MGD 3 introduces Mode Guidance , using the cen-troid as an attractor that steers the denoising trajectory at every timestep. In our experiment in the main paper, we adapt D4M
+
+and MGD 3 to evaluate how well they can produce an av-erage image of a diffusion model. Given generated samples from a single class, we treat them as the “dataset to distill” and distill them into a single prototype (IPC = 1). We re-6𝐾 = 100 𝐾 = 300 𝐾 = 500 𝐾 = 1,000 
+
+Example Averages for Each Set 
+
+## (𝑲 = 𝟏𝟎𝟎 )            
+
+> Set 1 Set 2 Set 3 Set 4 Figure 17. Effect of the number of noisy latents K.In the blue box, we sample four distinct sets of K= 100 noisy latents and compute their averages. For each set, we show eight example averages (in a 4x2 grid), each computed from a random latent in that set, which converge to similar-looking images within each set . However, at K= 100 , noticeable variations are still observed across the four sets
+> shown in the images with colored borders. As Kincreases, averages across distinct sets become more similar, consistent with the statistical behavior of larger sample sizes.
+
+implemented both baselines on the same Stable Diffusion model as ours, using the same VAE encoder/decoder, and a 20-step DDIM sampler with classifier-free guidance scale 7.0. 
+
+D4M [89]. We implement D 4M following Su et al . [89], adapting it to our single-class setting in which all samples belong to the same class. Since we aim to distill the class into one representative image (IPC = 1), the cluster cen-troid simplifies to the average VAE latent computed over all samples. D 4M injects noise into this prototype at diffu-sion timestep t using the forward diffusion step, followed by a denoising loop to synthesize the final representative image. For a fair comparison, we sweep the noise-injection timestep t ∈ { 2, 4, 6, 8, 10 }, where the main-paper con-figuration t = 6 corresponds to the recommended SDEdit strength of 0.7. Results are shown in Figure 19. 
+
+MGD 3 [13]. We implement MGD 3 following Algorithm 1 in Chan-Santiago et al . [13], adapting it to our single-class setting in which all samples belong to the same class. In this case, the estimate prototype m reduces to the average VAE latent . Starting from noisy latents, at each denoising step t,we compute the DDIM prediction of the clean latent bz (T )
+
+> t
+
+and form the mode-guidance direction gt = m − bz (T ) 
+
+> t
+
+. The predicted noise is then modified according to Algorithm 1: 
+
+ˆϵ ← ϵθ (z, t, c ) − √1 − ¯αt λ gt.
+
+For a fair comparison, we sweep the guidance weight 
+
+λ ∈ { 0.01 , 0.02 , 0.05 , 0.1, 0.2} using 10 guided steps, as recommended in the paper; the main-paper setting uses λ =0.1. Results are shown in Figure 20. 
+
+Comparison. Figure 15 offers a more comprehensive comparison by sweeping hyperparameters, yielding curves that show how each baseline’s performance varies across the tradeoff space. Our method outperforms both D 4Mand MGD 3 in terms of consistency. While these base-lines approach our performance in representativeness at cer-tain hyperparameter settings, those settings result in signif-icantly reduced consistency, demonstrating that our method achieves a superior overall tradeoff. 7E. Additional Results 
+
+## E.1. Quantitative Scores 
+
+We report a detailed breakdown by concept category of the scores from Table 1. We report representativeness scores in Table 4 and consistency scores in Table 3. As shown in the tables, our method surpasses the baselines across all categories. 
+
+DiT quantitative scores. We evaluate our method on 32 random classes from ImageNet with 1,000 samples per class. Since MGD 3 originally supports the DiT architec-ture, we use it as our baseline and adopt the default hyper-parameters from their paper [13]. We report the results in Table 2, showing that our method consistently outperforms MGD 3 across all metrics. 
+
+Table 2. Quantitative comparison on DiT. (CLIP / LPIPS / Dream-Sim)          
+
+> Method Representativeness ( ↓)Consistency ( ↓)ImageReward ( ↑)MGD 30.165 / 0.678 / 0.364 0.147 / 0.610 / 0.317 -0.8151 DMA (Ours) 0.151 / 0.626 / 0.318 0.050 / 0.192 / 0.093 -0.7085
+
+## E.2. Qualitative Results 
+
+Average Images. Additional results for average images of more concepts are shown in Figure 21-24. 
+
+Mode Discovery. Additional results for mode discovery using DMA with LoRA are shown in Figure 25-34. 
+
+# F. Potential Negative Impacts 
+
+DMA is designed to reveal how a diffusion model internally represents a concept; any harmful biases present are inher-ent to the probe model and not a direct result of our method. Nonetheless, there are risks in how DMA representations are interpreted. For example, computing only a single or a few averages may marginalize minority modes. Using these averages as authoritative summaries or to stereotype groups or attributes can be misleading and harmful. To mit-igate these concerns, we emphasize that DMA averages re-flect only the biases of the specific probe model and should not be interpreted as ground-truth representation of any real population or concept. 8Table 3. Consistency ( ↓) across concept categories. Lower values indicate higher consistency of prototypes within each seed. Each category includes representative concepts: Animal — Bird, Cat, Dog; Person — Astronaut, Doctor, Firefighter; Object — Bicycle, Car, TV Monitor; Abstract — Anger, Freedom, Poverty. 
+
+Animal Person Object Abstract Method CLIP ↓ DreamSim ↓ LPIPS ↓ CLIP ↓ DreamSim ↓ LPIPS ↓ CLIP ↓ DreamSim ↓ LPIPS ↓ CLIP ↓ DreamSim ↓ LPIPS ↓
+
+GANgealing [70] 0 0 0 0 0 0 0 0 0 – – –Avg VAE 0 0 0 0 0 0 0 0 0 0 0 0D4M [89] 0.123 0.191 0.615 0.127 0.174 0.510 0.193 0.308 0.627 0.229 0.425 0.534 MGD 3 [13] 0.122 0.224 0.679 0.131 0.202 0.598 0.215 0.342 0.686 0.251 0.508 0.610 DMA (Ours) 0.015 0.021 0.138 0.022 0.019 0.118 0.040 0.039 0.158 0.047 0.049 0.101 Table 4. Representativeness ( ↓) across concept categories. Lower values indicate closer alignment between the prototype and the overall concept distribution. 
+
+Animal Person Object Abstract Method CLIP ↓ DreamSim ↓ LPIPS ↓ CLIP ↓ DreamSim ↓ LPIPS ↓ CLIP ↓ DreamSim ↓ LPIPS ↓ CLIP ↓ DreamSim ↓ LPIPS ↓
+
+GANgealing [70] 0.310 0.394 0.839 0.523 0.599 0.866 0.323 0.439 0.848 – – –Avg VAE 0.505 0.867 0.831 0.504 0.780 0.796 0.464 0.832 0.882 0.420 0.746 0.711 D4M [89] 0.158 0.320 0.708 0.144 0.230 0.613 0.224 0.379 0.714 0.260 0.522 0.652 MGD 3 [13] 0.155 0.310 0.718 0.140 0.230 0.636 0.223 0.375 0.724 0.262 0.543 0.671 
+
+DMA (Ours) 0.143 0.307 0.669 0.142 0.208 0.595 0.202 0.368 0.718 0.229 0.479 0.638 
+
+9Transformer Block 0 Transformer Block 13 Transformer Block 27 
+
+> baseball player gas helmet crane husky
+
+Figure 18. Ablation on DiT transformer block selection for DMA. See details in Section C.7. 
+
+10 t = 2 t = 4 t = 6 t = 8 t = 10 
+
+> Bird Astronaut Car Freedom
+
+Figure 19. Hyperparameter tuning of D 4M for fair comparison. We sweep the noise-injection timestep t ∈ { 2, 4, 6, 8, 10 } across four concepts: bird , astronaut , car , and freedom . Larger values of t preserve the averaged latent more strongly but lead to blurrier outputs, while smaller values make the result less consistent. 
+
+11 λ = 0 .01 λ = 0 .02 λ = 0 .05 λ = 0 .1 λ = 0 .2
+
+> Bird Astronaut Car Freedom
+
+Figure 20. Hyperparameter tuning of MGD 3 for fair comparison. We sweep the mode-guidance weight λ ∈{0.01 , 0.02 , 0.05 , 0.1, 0.2} across four concepts: bird , astronaut , car , and freedom . Larger λ increases attraction toward the estimated mode, improving structure but sometimes introducing over-sharpening or hallucinations. 
+
+12 Asian Caucasian African Middle Easterner 
+
+> Person House Cloth
+
+Figure 21. Average images of person , house , and cloth from different ethnicities. 
+
+good person bad person rich person poor person good-looking person bad-looking person 
+
+brave person curious person kind person mysterious person smart person trustworthy person 
+
+Figure 22. Average images of a person with different attributes. 
+
+13 cheap car luxury car crowded market quiet market 
+
+fast dog slow dog new house old house 
+
+Figure 23. Average images of additional concepts with two different attributes. 
+
+alien kungfu master wizard CEO fear dance 
+
+breakfast dinner aurora ferris wheel childhood destiny 
+
+infinity mysterious peace strength wabi-sabi war 
+
+Figure 24. Average images of various concepts. 
+
+14 Cluster 1 Cluster 2 Cluster 3 
+
+Average Average Average 
+
+Figure 25. Cluster averages for the Bicycle concept grounded by color . Top: Diffusion samples grouped into clusters according to the grounding attribute color . Bottom: Cluster averages computed by DMA with LoRA. These averages highlight how our method captures the dominant visual characteristics within each cluster. 
+
+Cluster 1 Cluster 2 Cluster 3 
+
+Average Average Average 
+
+Figure 26. Cluster averages for the Cake concept grounded by type . Top: Diffusion samples grouped into clusters according to the grounding attribute type . Bottom: Cluster averages computed by DMA with LoRA. These averages highlight how our method captures the dominant visual characteristics within each cluster. 
+
+15 Cluster 1 Cluster 2 Cluster 3 
+
+Average Average Average 
+
+Figure 27. Cluster averages for the Jellyfish concept grounded by color . Top: Diffusion samples grouped into clusters according to the grounding attribute color . Bottom: Cluster averages computed by DMA with LoRA. These averages highlight how our method captures the dominant visual characteristics within each cluster. 
+
+Cluster 1 Cluster 2 Cluster 3 
+
+Average Average Average 
+
+Figure 28. Cluster averages for the Toy concept grounded by shape . Top: Diffusion samples grouped into clusters according to the grounding attribute shape . Bottom: Cluster averages computed by DMA with LoRA. These averages highlight how our method captures the dominant visual characteristics within each cluster. 
+
+16 Cluster 1 Cluster 2 Cluster 3 
+
+Average Average Average 
+
+Figure 29. Cluster averages for the Nurse concept grounded by ethnicity . Top: Diffusion samples grouped into clusters according to the grounding attribute ethnicity . Bottom: Cluster averages computed by DMA with LoRA. These averages highlight how our method captures the dominant visual characteristics within each cluster. 
+
+Cluster 1 Cluster 2 Cluster 3 
+
+Average Average Average 
+
+Figure 30. Cluster averages for the Place concept grounded by environment . Top: Diffusion samples grouped into clusters according to the grounding attribute environment . Bottom: Cluster averages computed by DMA with LoRA. These averages highlight how our method captures the dominant visual characteristics within each cluster. 
+
+17 Cluster 1 Cluster 2 Cluster 3 
+
+Average Average Average 
+
+Figure 31. Cluster averages for the Object concept grounded by shape . Top: Diffusion samples grouped into clusters according to the grounding attribute shape . Bottom: Cluster averages computed by DMA with LoRA. These averages highlight how our method captures the dominant visual characteristics within each cluster. 
+
+Cluster 1 Cluster 2 Cluster 3 
+
+Average Average Average 
+
+Figure 32. Cluster averages for the Building concept grounded by architecture . Top: Diffusion samples grouped into clusters according to the grounding attribute architecture . Bottom: Cluster averages computed by DMA with LoRA. These averages highlight how our method captures the dominant visual characteristics within each cluster. 
+
+18 Cluster 1 Cluster 2 Cluster 3 
+
+Average Average Average 
+
+Figure 33. Cluster averages for the Person with musical instrument concept grounded by instrument . Top: Diffusion samples grouped into clusters according to the grounding attribute instrument . Bottom: Cluster averages computed by DMA with LoRA. These averages highlight how our method captures the dominant visual characteristics within each cluster. 
+
+Cluster 1 Cluster 2 Cluster 3 
+
+Average Average Average 
+
+Figure 34. Cluster averages for the Person with pet concept grounded by pet . Top: Diffusion samples grouped into clusters according to the grounding attribute pet . Bottom: Cluster averages computed by DMA with LoRA. These averages highlight how our method captures the dominant visual characteristics within each cluster. 
+
+19 Generated Samples 
+
+GANgealing [70] D4M [89] MGD 3 [13] Ours Figure 35. Baseline comparison for the astronaut concept. Top: Generated samples from the diffusion model. Bottom: Average images produced by GANgealing [70], D 4M [89], MGD 3 [13], and our method. 
+
+20 Generated Samples 
+
+GANgealing [70] D4M [89] MGD 3 [13] Ours Figure 36. Baseline comparison for the firefighter concept. Top: Generated samples from the diffusion model. Bottom: Average images produced by GANgealing [70], D 4M [89], MGD 3 [13], and our method. 
+
+21 Generated Samples 
+
+GANgealing [70] D4M [89] MGD 3 [13] Ours Figure 37. Baseline comparison for the doctor concept. Top: Generated samples from the diffusion model. Bottom: Average images produced by GANgealing [70], D 4M [89], MGD 3 [13], and our method. 
+
+22 Generated Samples 
+
+GANgealing [70] D4M [89] MGD 3 [13] Ours Figure 38. Baseline comparison for the bird concept. Top: Generated samples from the diffusion model. Bottom: Average images produced by GANgealing [70], D 4M [89], MGD 3 [13], and our method. 
+
+23 Generated Samples 
+
+GANgealing [70] D4M [89] MGD 3 [13] Ours Figure 39. Baseline comparison for the cat concept. Top: Generated samples from the diffusion model. Bottom: Average images produced by GANgealing [70], D 4M [89], MGD 3 [13], and our method. 
+
+24 Generated Samples 
+
+GANgealing [70] D4M [89] MGD 3 [13] Ours Figure 40. Baseline comparison for the dog concept. Top: Generated samples from the diffusion model. Bottom: Average images produced by GANgealing [70], D 4M [89], MGD 3 [13], and our method. 
+
+25 Generated Samples 
+
+GANgealing [70] D4M [89] MGD 3 [13] Ours Figure 41. Baseline comparison for the bicycle concept. Top: Generated samples from the diffusion model. Bottom: Average images produced by GANgealing [70], D 4M [89], MGD 3 [13], and our method. 
+
+26 Generated Samples 
+
+GANgealing [70] D4M [89] MGD 3 [13] Ours Figure 42. Baseline comparison for the car concept. Top: Generated samples from the diffusion model. Bottom: Average images produced by GANgealing [70], D 4M [89], MGD 3 [13], and our method. 
+
+27 Generated Samples 
+
+GANgealing [70] D4M [89] MGD 3 [13] Ours Figure 43. Baseline comparison for the tvmonitor concept. Top: Generated samples from the diffusion model. Bottom: Average images produced by GANgealing [70], D 4M [89], MGD 3 [13], and our method. 
+
+28

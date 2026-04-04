@@ -6,87 +6,78 @@
 </div>
 
 ## 每次日报
-- 最新运行日期：2026-04-03
-- 运行时间：<span class="dpr-runtime" data-beijing="04-04 03:49 (UTC+8)" data-utc="04-03 19:49 UTC">04-04 03:49 (UTC+8) / 04-03 19:49 UTC</span>
+- 最新运行日期：2026-04-04
+- 运行时间：<span class="dpr-runtime" data-beijing="04-05 03:43 (UTC+8)" data-utc="04-04 19:43 UTC">04-05 03:43 (UTC+8) / 04-04 19:43 UTC</span>
 - 运行状态：成功
-- 本次总论文数：23
-- 精读区：12
+- 本次总论文数：20
+- 精读区：9
 - 速读区：11
 
 ### 今日简报（AI）
-今日精读12篇、速读11篇论文，聚焦Transformer架构创新与因果推理应用。Transformer上下文关系表达力与动态注意力机制研究取得突破性进展。建议关注Switch Attention技术如何提升模型效率，以及因果引导扩散在特征选择中的实际应用。
-- 详情：[/202604/03/README](/202604/03/README)
+今日深度研读20篇LLM前沿论文，聚焦模型不确定性分析、医疗信息检索及去偏技术等方向。LLM在医疗领域的自动化信息检索应用及文本生成不确定性分析框架最具实用价值。关注LLM在专业领域的落地应用，特别是医疗和公平性方面的最新进展。
+- 详情：[/202604/04/README](/202604/04/README)
 
 ### 精读区论文标签
-1. [On the Expressive Power of Contextual Relations in Transformers](/202604/03/2603.25860v1-on-the-expressive-power-of-contextual-relations-in-transformers)  
+1. [A Formal Framework for Uncertainty Analysis of Text Generation with Large Language Models](/202604/04/2603.26363v1-a-formal-framework-for-uncertainty-analysis-of-text-generation-with-large-language-models)  
    标签：评分：9.0/10、query:dl-cv
-   evidence：Transformer上下文关系的数学框架
-2. [Switch Attention: Towards Dynamic and Fine-grained Hybrid Transformers](/202604/03/2603.26380v1-switch-attention-towards-dynamic-and-fine-grained-hybrid-transformers)  
+   evidence：大语言模型文本生成的不确定性分析
+2. [Automating Clinical Information Retrieval from Finnish Electronic Health Records Using Large Language Models](/202604/04/2603.26434v1-automating-clinical-information-retrieval-from-finnish-electronic-health-records-using-large-language-models)  
    标签：评分：9.0/10、query:dl-cv
-   evidence：混合Transformer注意力机制
-3. [Learning to Predict Future-Aligned Research Proposals with Language Models](/202604/03/2603.27146v1-learning-to-predict-future-aligned-research-proposals-with-language-models)  
+   evidence：大语言模型用于临床信息检索
+3. [CounterMoral: Editing Morals in Language Models](/202604/04/2603.27338v1-countermoral-editing-morals-in-language-models)  
    标签：评分：9.0/10、query:dl-cv
-   evidence：用于研究提案生成的LLM
-4. [Efficient Inference of Large Vision Language Models](/202604/03/2603.27960v1-efficient-inference-of-large-vision-language-models)  
+   evidence：编辑LLM道德判断的技术
+4. [GUARD-SLM: Token Activation-Based Defense Against Jailbreak Attacks for Small Language Models](/202604/04/2603.28817v1-guard-slm-token-activation-based-defense-against-jailbreak-attacks-for-small-language-models)  
    标签：评分：9.0/10、query:dl-cv
-   evidence：大视觉语言模型优化
-5. [PAR$^2$-RAG: Planned Active Retrieval and Reasoning for Multi-Hop Question Answering](/202604/03/2603.29085v1-par2-rag-planned-active-retrieval-and-reasoning-for-multi-hop-question-answering)  
+   evidence：小型语言模型的防御机制
+5. [Developing Adaptive Context Compression Techniques for Large Language Models (LLMs) in Long-Running Interactions](/202604/04/2603.29193v1-developing-adaptive-context-compression-techniques-for-large-language-models-llms-in-long-running-interactions)  
    标签：评分：9.0/10、query:dl-cv
-   evidence：检索增强LLM问答
-6. [Long-Document QA with Chain-of-Structured-Thought and Fine-Tuned SLMs](/202604/03/2603.29232v1-long-document-qa-with-chain-of-structured-thought-and-fine-tuned-slms)  
+   evidence：针对长程LLM交互的自适应上下文压缩
+6. [MAC-Attention: a Match-Amend-Complete Scheme for Fast and Accurate Attention Computation](/202604/04/2604.00235v1-mac-attention-a-match-amend-complete-scheme-for-fast-and-accurate-attention-computation)  
    标签：评分：9.0/10、query:dl-cv
-   evidence：结构化思考的文档问答
-7. [Locally Confident, Globally Stuck: The Quality-Exploration Dilemma in Diffusion Language Models](/202604/03/2604.00375v1-locally-confident-globally-stuck-the-quality-exploration-dilemma-in-diffusion-language-models)  
+   evidence：大语言模型的新型注意力计算
+7. [Can Large Language Models Self-Correct in Medical Question Answering? An Exploratory Study](/202604/04/2604.00261v2-can-large-language-models-self-correct-in-medical-question-answering-an-exploratory-study)  
    标签：评分：9.0/10、query:dl-cv
-   evidence：扩散语言模型解码
-8. [To Memorize or to Retrieve: Scaling Laws for RAG-Considerate Pretraining](/202604/03/2604.00715v1-to-memorize-or-to-retrieve-scaling-laws-for-rag-considerate-pretraining)  
+   evidence：大型语言模型在医疗问答中的自我纠正
+8. [Adapting Text LLMs to Speech via Multimodal Depth Up-Scaling](/202604/04/2604.00489v1-adapting-text-llms-to-speech-via-multimodal-depth-up-scaling)  
    标签：评分：9.0/10、query:dl-cv
-   evidence：研究语言模型预训练中的RAG
-9. [Positional Cognitive Specialization: Where Do LLMs Learn To Comprehend and Speak Your Language?](/202604/03/2604.00923v1-positional-cognitive-specialization-where-do-llms-learn-to-comprehend-and-speak-your-language)  
+   evidence：通过多模态深度上缩放将文本LLM适配到语音
+9. [SelfGrader: Stable Jailbreak Detection for Large Language Models using Token-Level Logits](/202604/04/2604.01473v1-selfgrader-stable-jailbreak-detection-for-large-language-models-using-token-level-logits)  
    标签：评分：9.0/10、query:dl-cv
-   evidence：大语言模型多语言适应
-10. [WARP: Guaranteed Inner-Layer Repair of NLP Transformers](/202604/03/2604.00938v1-warp-guaranteed-inner-layer-repair-of-nlp-transformers)  
-   标签：评分：9.0/10、query:dl-cv
-   evidence：NLP变压器修复框架
-11. [Phase transition on a context-sensitive random language model with short range interactions](/202604/03/2604.00947v1-phase-transition-on-a-context-sensitive-random-language-model-with-short-range-interactions)  
-   标签：评分：9.0/10、query:dl-cv
-   evidence：语言模型的统计力学
-12. [Bilevel Programming Approach for Image Restoration Problems with Automatically Hyperparameter Selection](/202604/03/2604.01866v1-bilevel-programming-approach-for-image-restoration-problems-with-automatically-hyperparameter-selection)  
-   标签：评分：9.0/10、query:dl-cv
-   evidence：图像修复的自动超参数选择
+   evidence：大型语言模型的越狱检测
 
 ### 速读区论文标签
-1. [NoveltyAgent: Autonomous Novelty Reporting Agent with Point-wise Novelty Analysis and Self-Validation](/202604/03/2603.20884v1-noveltyagent-autonomous-novelty-reporting-agent-with-point-wise-novelty-analysis-and-self-validation)  
+1. [CatRAG: Functor-Guided Structural Debiasing with Retrieval Augmentation for Fair LLMs](/202604/04/2603.21524v1-catrag-functor-guided-structural-debiasing-with-retrieval-augmentation-for-fair-llms)  
    标签：评分：8.0/10、query:dl-cv
-   evidence：新颖性检测系统
-2. [Sparse Weak-Form Discovery of Stochastic Generators](/202604/03/2603.20904v3-sparse-weak-form-discovery-of-stochastic-generators)  
+   evidence：大模型去偏见框架
+2. [LLM-Based Test Case Generation in DBMS through Monte Carlo Tree Search](/202604/04/2603.21530v1-llm-based-test-case-generation-in-dbms-through-monte-carlo-tree-search)  
    标签：评分：8.0/10、query:dl-cv
-   evidence：基于SINDy的随机方程新框架
-3. [Causally-Guided Diffusion for Stable Feature Selection](/202604/03/2603.20930v1-causally-guided-diffusion-for-stable-feature-selection)  
+   evidence：LLM用于SQL测试用例生成
+3. [Toward a Theory of Hierarchical Memory for Language Agents](/202604/04/2603.21564v1-toward-a-theory-of-hierarchical-memory-for-language-agents)  
    标签：评分：8.0/10、query:dl-cv
-   evidence：用于特征选择的创新深度学习方法
-4. [ORACLE: Optimizing Reasoning Abilities of Large Language Models via Constraint-Led Synthetic Data Elicitation](/202604/03/2603.21140v1-oracle-optimizing-reasoning-abilities-of-large-language-models-via-constraint-led-synthetic-data-elicitation)  
+   evidence：语言代理的分层记忆理论
+4. [Guideline-grounded retrieval-augmented generation for ophthalmic clinical decision support](/202604/04/2603.21925v1-guideline-grounded-retrieval-augmented-generation-for-ophthalmic-clinical-decision-support)  
    标签：评分：8.0/10、query:dl-cv
-   evidence：优化大语言模型的推理能力
-5. [VolDiT: Controllable Volumetric Medical Image Synthesis with Diffusion Transformers](/202604/03/2603.25181v1-voldit-controllable-volumetric-medical-image-synthesis-with-diffusion-transformers)  
+   evidence：多模态视觉RAG系统用于临床决策支持
+5. [Towards GUI Agents: Vision-Language Diffusion Models for GUI Grounding](/202604/04/2603.26211v1-towards-gui-agents-vision-language-diffusion-models-for-gui-grounding)  
    标签：评分：7.0/10、query:dl-cv
-   evidence：用于体积图像合成的扩散变换器
-6. [Beyond Via: Analysis and Estimation of the Impact of Large Language Models in Academic Papers](/202604/03/2603.25638v2-beyond-via-analysis-and-estimation-of-the-impact-of-large-language-models-in-academic-papers)  
+   evidence：用于GUI的视觉语言扩散模型
+6. [Entanglement as Memory: Mechanistic Interpretability of Quantum Language Models](/202604/04/2603.26494v1-entanglement-as-memory-mechanistic-interpretability-of-quantum-language-models)  
    标签：评分：7.0/10、query:dl-cv
-   evidence：分析大语言模型对学术写作模式的影响
-7. [PSDesigner: Automated Graphic Design with a Human-Like Creative Workflow](/202604/03/2603.25738v1-psdesigner-automated-graphic-design-with-a-human-like-creative-workflow)  
+   evidence：量子语言模型可解释性研究
+7. [A Regression Framework for Understanding Prompt Component Impact on LLM Performance](/202604/04/2603.26830v1-a-regression-framework-for-understanding-prompt-component-impact-on-llm-performance)  
    标签：评分：7.0/10、query:dl-cv
-   evidence：使用多模态大语言模型进行图形设计
-8. [NeedleDB: A Generative-AI Based System for Accurate and Efficient Image Retrieval using Complex Natural Language Queries](/202604/03/2603.27464v1-needledb-a-generative-ai-based-system-for-accurate-and-efficient-image-retrieval-using-complex-natural-language-queries)  
+   evidence：提示词统计分析框架
+8. [TailNLG: A Multilingual Benchmark Addressing Verbalization of Long-Tail Entities](/202604/04/2603.27768v1-tailnlg-a-multilingual-benchmark-addressing-verbalization-of-long-tail-entities)  
    标签：评分：7.0/10、query:dl-cv
-   evidence：使用生成式AI进行图像检索
-9. [ColBERT-Att: Late-Interaction Meets Attention for Enhanced Retrieval](/202604/03/2603.25248v1-colbert-att-late-interaction-meets-attention-for-enhanced-retrieval)  
+   evidence：评估LLM知识表达能力的基准
+9. [Diffusion MRI Transformer with a Diffusion Space Rotary Positional Embedding (D-RoPE)](/202604/04/2603.25977v1-diffusion-mri-transformer-with-a-diffusion-space-rotary-positional-embedding-d-rope)  
    标签：评分：6.0/10、query:dl-cv
-   evidence：注意力增强检索
-10. [Quantitative mapping of dynamic 3D transport in growing cells via volumetric spatio-temporal image correlation spectroscopy (vSTICS)](/202604/03/2603.27484v1-quantitative-mapping-of-dynamic-3d-transport-in-growing-cells-via-volumetric-spatio-temporal-image-correlation-spectroscopy-vstics)  
+   evidence：用于扩散MRI处理的Transformer
+10. [The Future of AI is Many, Not One](/202604/04/2603.29075v1-the-future-of-ai-is-many-not-one)  
    标签：评分：6.0/10、query:dl-cv
-   evidence：三维成像分析
-11. [A Robust Low-Rank Prior Model for Structured Cartoon-Texture Image Decomposition with Heavy-Tailed Noise](/202604/03/2603.27579v1-a-robust-low-rank-prior-model-for-structured-cartoon-texture-image-decomposition-with-heavy-tailed-noise)  
+   evidence：认知多样化的AI代理促进创新
+11. [Diffusion Mental Averages](/202604/04/2603.29239v1-diffusion-mental-averages)  
    标签：评分：6.0/10、query:dl-cv
-   evidence：鲁棒图像分解
+   evidence：扩散模型概念平均
 
