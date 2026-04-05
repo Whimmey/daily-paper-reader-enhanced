@@ -1,0 +1,1137 @@
+Title: PubMed Reasoner: Dynamic Reasoning-based Retrieval for Evidence-Grounded Biomedical Question Answering
+
+URL Source: https://arxiv.org/pdf/2603.27335v1
+
+Published Time: Tue, 31 Mar 2026 00:46:42 GMT
+
+Number of Pages: 20
+
+Markdown Content:
+# PubMed Reasoner: Dynamic Reasoning-based Retrieval for Evidence-Grounded Biomedical Question Answering 
+
+Yiqing Zhang 1,2 and Xiaozhong Liu 2 and Fabricio Murai 2
+
+> 1
+
+PayPal, 2Worcester Polytechnic Institute 
+
+yiqizhang@paypal.com, {xliu14,fmurai}@wpi.edu 
+
+Abstract 
+
+Trustworthy biomedical question answering (QA) systems must not only provide accurate answers but also justify them with current, verifiable evidence. Retrieval-augmented ap-proaches partially address this gap but lack mechanisms to iteratively refine poor queries, whereas self-reflection methods kick in only after full retrieval is completed. In this context, we introduce PubMed Reasoner, a biomedical QA agent composed of three stages: self-critic query refinement evaluates MeSH terms for coverage, alignment, and redundancy to en-hance PubMed queries based on partial (meta-data) retrieval; reflective retrieval processes articles in batches until sufficient evidence is gathered; and evidence-grounded response generation produces answers with explicit ci-tations. PubMed Reasoner with a GPT-4o backbone achieves 78.32% accuracy on Pub-MedQA, slightly surpassing human experts, and showing consistent gains on MMLU Clini-cal Knowledge. Moreover, LLM-as-judge eval-uations prefer our responses across: reason-ing soundness, evidence grounding, clinical relevance, and trustworthiness. By orchestrat-ing retrieval-first reasoning over authoritative sources, our approach provides practical assis-tance to clinicians and biomedical researchers while controlling compute and token costs. 
+
+1 Introduction 
+
+Trustworthiness is essential in biomedical domains. Biomedical question answering (QA) systems must be factually grounded, current, and interpretable. Yet, large language models (LLMs) that rely primar-ily on parametric memory can hallucinate (Kalai et al., 2025), drift out of date, or omit key evidence (Guan et al., 2023; Xu et al., 2024). While prior works have explored retrieval-augmented methods, to our knowledge, this is the first work to explicitly support citation-backed responses on biomedical QA datasets, ensuring that each response is trans-parently grounded in published evidence. (a) Retrieval-augmented  
+
+> Methods (c) PubMed Reasoner
+> User Question
+> Response
+> Generation
+> Knowledge
+> Injection
+> Few-shot
+> Examples
+> Evidence
+> Search with Self-Critic
+> Reflective Article
+> Retrieval
+> (b) Self-reflection
+> Agent
+> User Question
+> Evidence-
+> Grounded
+> Response
+> Generation
+> Query
+> Generation
+> Search
+> Article
+> Retrieval
+> Consistent?
+> User Question
+> Evidence-Grounded
+> Response Generation
+> No
+> Evidence-Grounded
+> Response Generation
+> q*
+> q
+
+Figure 1: RAG, Self-reflection vs. PubMed Reasoner. 
+
+(a) RAG baselines: uses few-shot exemplars or custom databases but lack retrieval feedback. (b) Self-reflection agents: inspired our proposal; generates responses first and only reflects after completion. (c) PubMed Rea-soner: a search-first approach that performs self-critic query refinement, reflective article retrieval in batches w/ early stopping once evidence is sufficient, and evidence-grounded response generation with explicit citations. 
+
+Existing retrieval-augmented generation (RAG) approaches remain limited in biomedical settings (see Fig. 1a): (i) Few-shot prompting retrieves a few in-distribution exemplars (few-shot samples) and prompt the LLM to imitate them (Nori et al., 2023b,a). While this can improve accuracy on sim-ilar cases, it does not yield structured explanations (Singhal et al., 2025). The link between examples is built via clustering and similarity search, which requires sizable, well-labeled exemplar data. As a result, exemplar RAG is brittle and biased: it op-timizes for local pattern matching rather than con-cept coverage or causal explanations. (ii) Private knowledge databases consist of bespoke stores such as entity graphs (Abu-Rasheed et al., 2024) or schema-aligned tables (Arslan et al., 2024) which can support step-wise explanations, but require strong priors and heavy maintenance, with lim-ited reusability across domains. In biomedicine, where PubMed and MeSH (Medical Subject Head-ings) terms continue to grow, keeping such stores complete and current is prohibitively expensive. 1
+
+> arXiv:2603.27335v1 [cs.CL] 28 Mar 2026
+
+A parallel line of work equips LLMs with web search capabilities (“deep research”), producing re-sponses with citations. Yet, these systems typically lack the ability to constrain retrieval to authoritative biomedical sources such as PubMed, often yielding citations from less reliable or incomplete domains. Recent “self-reflection” agents (Figure 1b) provide another direction, using consistency checks (Wang et al., 2022) or reward-based signals (Leike et al., 2018; Shinn et al., 2023) to refine final answers. However, reflection occurs only after retrieval and response generation are complete, making the pro-cess computationally costly and unable to correct poor upstream retrieval or query formulation. 
+
+Our approach. We present PubMed Reasoner, a multi-stage agent that mirrors the workflow of a biomedical researcher. Unlike prior methods that reflect only after producing responses, PubMed Reasoner introduces feedback much earlier. Dur-ing query planning, a self-critic evaluates candi-date MeSH terms and their Boolean composition directly against live PubMed metadata, eliminat-ing the need for static private databases. This structured feedback prevents low-quality queries from propagating downstream and balances recall with precision. The refined query is then issued to PubMed, where a reflective retriever processes articles in small batches and halts once sufficient evidence is gathered, controlling token usage. Fi-nally, PubMed Reasoner synthesizes an evidence-grounded response with explicit inline citations, ensuring transparency and interpretability. Instead of treating the LLM as a one-shot gen-erator, PubMed Reasoner introduces a dynamic reasoning-based paradigm , orchestrating three interconnected stages over external evidence. This work makes the following contributions: • We shift biomedical QA beyond one-shot gen-eration by introducing an iterative workflow that plans, retrieves, and reasons over external evidence. • We integrate self-critic query refinement with batch-wise reflective retrieval over the PubMed database, enabling robust evidence grounding without maintaining private knowl-edge stores. • We demonstrate consistent improvements in accuracy, explanation quality, and computa-tional efficiency on PubMedQA and MMLU Clinical Knowledge, outperforming strong LLM, RAG and self-reflection baselines. 
+
+2 Preliminaries 
+
+PubMed and MeSH Terms. PubMed is the pri-mary biomedical literature database, indexing over 35 million references. Each article is annotated with Medical Subject Headings (MeSH), a con-trolled vocabulary that organizes biomedical con-cepts into a hierarchical taxonomy. Queries of-ten combine MeSH terms with Boolean operators (AND, OR, NOT), enabling structured retrieval. 
+
+Biomedical Question Answering. The input is a natural language question Q (e.g., “ Do leukotrienes play a key role in asthma? ”), and the output is a response R that is both factually accurate and explicitly supported by authoritative literature. 
+
+Problem Setup. Given a user question Q, an op-tional task specification T (e.g., “ answer yes/no with a justification ”), and optional context C, the objective is to retrieve a set of relevant biomedical articles A and synthesize a final response R that is evidence-grounded and interpretable. 
+
+Search Result Assessment Metrics. To enable iterative query refinement, we adapt evaluation dimensions from search benchmarks (Gao et al., 2013; Jiang et al., 2024) to the biomedical QA set-ting, defining three structured feedback signals: • Coverage: Does the MeSH term retrieve articles that represent the core biomedical concept? • Alignment: Are the retrieved articles relevant to the original question? • Redundancy: Does the MeSH term overlap with others, reducing retrieval efficiency? These signals guide improvements to the evolv-ing query, ensuring that downstream reasoning is grounded in a high-quality evidence pool. 
+
+3 Proposed Method 
+
+We introduce PubMed Reasoner, a multi-stage agent framework inspired by the workflow of a biomedical researcher. Unlike direct LLM-based answering or one-shot retrieval-augmented gener-ation, PubMed Reasoner explicitly separates rea-soning into three phases: (1) Search with Self-Critic Query Refinement , (2) Reflective Article Retrieval with Early Stopping , and (3) Evidence-Grounded Response Generation . This design ensures that the system does not rely solely on parametric memory, but grounds its explanation in authoritative biomedical literature. 
+
+3.1 Search with Self-Critic Query Refinement Query Generation. The first stage constructs a structured query that serves as the initial search 2Evidence-Grounded Response 
+
+Generation Reflective Article Retrieval Search with Self-Critic 
+
+Step1: Query Generation 
+
+Step2: Self-Critic 
+
+Refinement(s) 
+
+Step1: Summary Writer 
+
+Step2: Answer Generation 
+
+> LLM
+> Refinement
+> Yes
+
+User Question          
+
+> “Are children with sleep
+> deprivation at higher risk
+> for obesity?”
+> Task requirement: Yes/No
+
+PubMed Reasoner 
+
+Search with 
+
+Self-Critic 
+
+Reflective Article 
+
+Retrieval 
+
+Evidence-Grounded 
+
+Response Generation                    
+
+> (Child OR Adolescent)
+> AND Sleep Deprivation
+> AND (Obesity OR
+> Overweight)
+> Optimal query
+> Sleep AND Obesity
+> AND Children
+> Query
+> Sleep: low alignment: Sleep
+> Deprivation
+> Obesity: low coverage: Obesity +
+> Overweight
+> Suggested MeSH: Seep Disorder/
+> Adolescent/Infant
+> MeSH & Rationale
+
+User Question                                                  
+
+> “Are children …… risk
+> for obesity?”
+> Filtered
+> Summary/Papers
+> Impacts of School Nutrition
+> Interventions …… and Meta-
+> Analysis.
+> No
+> Raw Sources:
+> [1]: Evidence1
+> [2]: Evidence2
+> Citations:
+> [1] PMID40893196: xxx
+> [2] PMID40652980: xxx
+> Evidence
+> Refined Resources
+> Recent studies have
+> highlighted xxx [1]; xxx
+> [2];
+> Citations:
+> [1] PMID40893196: xxx
+> [2] PMID40652980: xxx
+> Title & Abstract
+> Impacts of School Nutrition
+> Interventions on the Nutritional
+> Status of School-Aged Children
+> in Asia: ASystematic Review and
+> Meta-Analysis.
+> Associations between sleep,
+> obesity, and mental health in
+> adolescents: Understanding sex-
+> speci fi cvulnerabilities.
+
+User Question     
+
+> “Are children …… risk
+> for obesity?”
+
+User Question                 
+
+> “Are children …… risk
+> for obesity?”
+> Yes. +Explanation
+> Response
+> (Child OR Adolescent)
+> AND Sleep Deprivation
+> AND (Obesity OR
+> Overweight)
+> Refined query
+> Yes. +Explanation
+> Response
+> Aligned?
+> Coverage?
+> +
+> Evidence n
+> New Evidence
+> Raw Sources:
+> xxxxxx
+> Citations:
+> Xxxxxx
+> Evidence
+> Yes
+
+Figure 2: PubMed Reasoner stages. (1) Search with Self-Critic Query Refinement. From a user question, MeSH terms and a structured query are proposed. Self-critic evaluates each term for coverage , alignment , and redundancy ,iteratively refining the query. (2) Reflective Article Retrieval with Early Stopping. PubMed Reasoner queries PubMed, filters results by title/abstract, and extracts supporting evidence in batches, checking whether accumulated evidence sufficiently covers the question; if so, retrieval is terminated early to save tokens and avoid unnecessary processing. (3) Evidence-Grounded Response Generation. Retained evidence is synthesized into final answer with explicit inline citations, ensuring factual grounding and traceability. More case studies are provided in App. G. 
+
+plan for PubMed retrieval. Given a user question Q
+
+grounded in biomedical knowledge, together with optional contextual information C, a large language model (LLM) is employed to generate a broad set of candidate Medical Subject Headings (MeSH) terms. Each candidate term is accompanied by a brief rationale explaining its relevance to the query. Formally, this process is defined as: 
+
+M0 ← LLM mesh _gen (Q, C ), (1) where M0 = {(MeSH i, r i)}Ni=1 , MeSH i denotes a candidate MeSH term, and ri provides the corre-sponding semantic justification for its inclusion. From the initial candidate pool M0, the LLM selects a subset of MeSH terms based on multiple criteria, including the model’s confidence for each term, the plausibility of its accompanying rationale, and the degree of semantic alignment between the term and the input question: 
+
+M′
+
+0 = LLM mesh _select (M0, Q, C ), (2) where M′
+
+0 ⊆ M 0 denotes the set of candidate terms with their rationales. The selected subset 
+
+M′
+
+0 is then combined using Boolean operators to form the initial structured query: 
+
+q0 ← LLM query _gen (M′
+
+0, Q, C ). (3) Core concepts are typically linked with AND to enforce precision, while broader synonyms or alter-natives are connected with OR to maximize recall. Temporal filters (e.g., publication date restrictions) are then applied to constrain retrieval during eval-uation. This formulation mirrors the workflow of human researchers, who begin with broad but struc-tured queries and iteratively refine them based on preliminary search results. 
+
+Iterative Self-Critic Query Refinement. Once the initial query is generated, the self-critic mech-anism guides iterative refinement. At each itera-tion t, PubMed Reasoner submits the current query 
+
+qt−1 to the PubMed search engine, which returns a ranked list of retrieved records (e.g., title, abstract, and PubMed ID): 
+
+At ← PubMedSearch( qt−1). (4) From the ranked results At, we extract metadata fields that serve as inputs to the self-critic. We denote these self-critic signals as: 
+
+St = (title i, abstract i) |A t|
+
+i=1 . (5) Rather than analyzing full texts which would in-cur substantial computational and token costs, the self-critic operates solely on St. This design en-ables efficient evaluation of candidate MeSH terms 3while preserving sufficient semantic information for relevance assessment. Given the current candi-date MeSH pool M′
+
+> t−1
+
+, each term is then evaluated along three structured dimensions (Sec. 2), which collectively provide actionable feedback for itera-tive query refinement: Coverage measures whether the concept represented by a candidate MeSH i term appears in the self-critic signals St; Alignment eval-uates whether the articles associated with each can-didate MeSH i term are pertinent to the user ques-tion; Redundancy identifies whether a candidate term overlaps with, or is superfluous given other terms in the current set, as well as the logical com-position (AND/OR) implied by the query intent. The evaluation of M′ 
+
+> t−1
+
+along these dimensions is done through the following operators: 
+
+Cvg t ← LLM coverage 
+
+ M′
+
+> t−1
+
+, St
+
+, (6) 
+
+Align t ← LLM alignment 
+
+ M′
+
+> t−1
+
+, St, Q , (7) 
+
+Redun t ← LLM redundancy 
+
+ M′
+
+> t−1
+
+, St, q t−1
+
+.
+
+(8) Each of Cvg t, Align t, and Redun t is a list of pairs 
+
+{(yt,i , r t,i )}|M ′ 
+
+> t−1|
+> i=1
+
+, where yt,i ∈ { Yes , No } is a binary outcome indicating the result of the corre-sponding operator for candidate term MeSH i, and 
+
+rt,i provides a textual rationale that informs sub-sequent refinement. In particular, for Redun t, rt,i 
+
+both explains the redundancy verdict and includes the recommended boolean linkage under the previ-ous search query qt−1.Given the previous MeSH terms, current self-critic signals St, and per–term feedback, we refine the candidate MeSH set: 
+
+Mt ← LLM update 
+
+
+
+M′
+
+> t−1
+
+, Q, C, 
+
+St, Cvg t, Align t, Redun t
+
+
+
+,
+
+(9) where Mt is the revised set (with rationales). The update favors terms that increase coverage without harming alignment, and prunes (or merges) terms flagged as redundant. From the refined MeSH terms Mt, PubMed Rea-soner drafts a new query, then enforces syntactic validity with a rule-based normalizer: 
+
+˜qt ← LLM refine 
+
+ Mt, St, H, Q, C , (10) 
+
+qt ← QueryNormalize  ˜qt
+
+, (11) where H stores the query history {q0, ..., q t−1}.The refinement aims to balance recall and pre-cision using the proxies above: encourage addi-tions that improve coverage (recall) if alignment remains high, and remove or demote terms that are misaligned or redundant (precision). The normal-izer applies rule-based checks for operator place-ment, parenthesization, and field qualifiers, repair-ing common errors to guarantee a valid PubMed query. The self-critic loop then repeats with qt
+
+until a stopping rule is met (e.g., no gain in cov-erage/alignment or a budget limit). The final opti-mized query q∗ is returned for downstream retrieval. A detailed algorithm is provided in Algo. 1, and the prompts for each stage are included in App. E. 
+
+3.2 Reflective Article Retrieval with Early Stopping 
+
+PubMed Reasoner operates on the final retrieved records A⋆ = {a1, . . . , a M } returned by the search step (Eq. 4) together with their corresponding meta-data S∗(Eq. 5). Since PubMed search prioritizes records by relevance, highly pertinent evidence is expected to appear early in the ranked list. Ac-cordingly, PubMed Reasoner enforces an early-stopping rule: once sufficient supporting evidence has been accumulated, retrieval halts to avoid fur-ther token consumption. 
+
+Coarse Filtering. Each retrieved record is first screened using metadata S∗ to assess coarse rele-vance to the query. Only plausibly relevant records are retained for subsequent processing: 
+
+  vi, r filter 
+
+> i
+
+ |A ⋆| 
+
+> i=1
+
+← LLM filter 
+
+ S⋆, Q , (12) where vi ∈ { Yes , No } indicates keep/drop and rfilter 
+
+> i
+
+provides a short rationale. Since A⋆ is ranked by PubMed, the retained set A+ = { ai ∈ A ⋆ : vi =
+
+Yes } preserves the original order and enables early prioritization of high-quality evidence. To control retrieval cost, coarse filtering is applied only to the top Mmax ranked articles, the maximum budget of articles allowed for downstream processing. Addi-tional details regarding Mmax and token budget T
+
+are provided in App. C. 
+
+Reflective Evidence Extraction. For each ai ∈A+, we extract candidate evidence and evaluate 
+
+alignment (i.e., does the candidate evidence di-rectly address Q?): 
+
+(Ei, align i, r align  
+
+> i
+
+) |A +| 
+
+> i=1
+
+= LLM extract 
+
+ A+, Q ,
+
+(13) where Ei is the extracted passage, align i ∈{Yes , No } indicates whether the passage directly addresses Q, and ralign  
+
+> i
+
+provides a rationale. The evolving evidence pool is then 
+
+E = { Ei : align i = Yes }. (14) 4Batching and Early Stopping. To reduce token costs, we process the ranked results in batches. We partition A+ into batches {B 1, . . . , BK } of size 
+
+m (e.g., m=5 ). After processing batch b, we up-date the evidence pool: E(b) = E(b−1) ∪ { Ei :
+
+ai ∈ B b, align i = Yes }, E(0) = ∅. A reflective module then judges whether the current evidence 
+
+E(b) provides sufficient coverage of the query (i.e., whether the major aspects of Q are addressed). 
+
+is_sufficient ← LLM CoverageCheck (E(b), Q )
+
+(15) Retrieval stops early when is_sufficient = Yes ,the marginal utility of additional articles becomes negligible, or the token budget is reached. A de-tailed algorithm is provided in Algo. 2, and the prompts for each stage are included in App. E. 
+
+3.3 Evidence-Grounded Response Generation 
+
+Given the final curated evidence pool E, PubMed Reasoner composes a final response by integrating the most relevant findings into a coherent, citation-supported explanation. 
+
+Summary–of–Evidence (SoE). To convert the vet-ted evidence E into a compact and citable repre-sentation, PubMed Reasoner groups passages by article and distills key observations that directly ad-dress question Q. This produces a structured sum-mary SoE ← LLM summary (E, Q ), ensuring that every factual claim remains linked to its supporting source. Each retained citation is preserved explic-itly, promoting transparency and reproducibility. 
+
+Response Generation. Finally, the system gen-erates the user-facing answer by conditioning on the question Q, task requirements T , optional con-text C, and the SoE. Formally, the final response is produced as R ← LLM response (Q, T, C, SoE) , en-suring that the explanation is grounded, verifiable, and aligned with the task specification. This staged design turns the LLM into a rea-soning orchestrator: every statement in the final answer is linked to specific citations, improving interpretability and clinical trustworthiness. Imple-mentation details are provided in App. C. 
+
+4 Experiments 
+
+We evaluate PubMed Reasoner on two biomedical QA datasets: PubMedQA (Jin et al., 2019) and MMLU Clinical Knowledge (MMLU-CK) (Wang et al., 2024). For each dataset, we report both prediction accuracy and explanation quality, and conduct ablation studies to quantify the contribu-tion of each component of PubMed Reasoner to overall performance. PubMedQA additionally pro-vides supporting context for each question; in our setting, we restrict retrieval to articles published within the official dataset’s specified year range to ensure consistency. 
+
+4.1 Evaluation Metrics 
+
+We assess model performance along several di-mensions: prediction accuracy, explanation quality, cost analysis and evidence sufficiency depth. • Accuracy: Proportion of questions for which the model produces the correct answer label. • Explanation Quality: Using an LLM-as-a-judge (see prompt in App. H), we perform pairwise comparisons and assign five-point Likert scores on four axes: reasoning soundness, evidence grounding, clinical relevance and trustworthiness. • Cost Analysis: To quantify the computational efficiency of each method, we measure four com-plementary cost indicators: (1) input token usage, (2) output token usage, (3) number of LLM API calls, and (4) number of PubMed search calls issued during retrieval. • Query Term Quality: To evaluate the effective-ness of search query formulation, we measure precision and recall of the MeSH terms gener-ated after self-critic refinement, both crucial for downstream retrieval and reasoning performance. • Evidence Sufficiency Depth (ESD): We addi-tionally track how many articles are processed before early stopping is triggered. This metric reflects retrieval efficiency. Detailed results are provided in App. I. Detailed definitions and justification for each met-ric are provided in App. B. 
+
+4.2 Baselines 
+
+We compare PubMed Reasoner with the following representative baselines: • LLM Baseline: A strong LLM that answers ques-tions without explicit retrieval or search planning. • Human Performance: Reported accuracy on PubMedQA, which serves as an approximate up-per bound for model performance. • RAG Method: LLM generates a single search query, retrieves relevant articles from PubMed search engine, and incorporates them into re-sponse generation. • Self-reflection Agent: A reasoning-based base-line that combines retrieval with self-reflection to gradually refine the final answer. Detailed configuration of each baseline can be found in App. D. 5Table 1: Accuracy on PubMedQA and MMLU-CK test sets for PubMed Reasoner variants, strong LLMs, RAG method, self-reflection agents, and human performance. Best result per column is bold-faced ; second best is underlined . Additional results for PubMed Reasoner with Qwen variants are provided in App. F.                     
+
+> Method PubMedQA MMLU-CK
+> Without retrieval
+> Gemini-2.5 Pro 75.64% 60.52% GPT4o (leaderboard) 75.20% 60.64% Human performance 78.00% –
+> RAG method
+> with Gemini 72.30% 58.94% with GPT 73.28% 58.26%
+> Self-reflection
+> with Gemini 77.08% 60.67% with GPT 77.12% 60.79%
+> PubMed Reasoner
+> with Gemini 77.26% 61.36% with GPT 78.32% 63.21%
+
+4.3 PubMedQA Accuracy. Table 1 shows that PubMed Reasoner achieves near-human or superior accuracy on Pub-MedQA. In particular, PubMed Reasoner (GPT) attains 78.32% accuracy, slightly exceeding the reported human expert performance. Compared to other baselines, PubMed Reasoner consistently outperforms both direct LLM inference and RAG-based methods, improving upon the GPT baseline by 3.12% and yielding clear gains over RAG. No-tably, standard RAG underperforms direct LLM inference, likely due to noisy retrieval caused by unrefined, one-shot query generation that intro-duces weakly aligned or irrelevant evidence into the model context. Relative to the self-reflection agent, PubMed Reasoner achieves modest but con-sistent accuracy improvements. Importantly, these gains are obtained with substantially lower compu-tational cost (shown in Table 3). Together, these results demonstrate that PubMed Reasoner offers a more favorable accuracy–efficiency trade-off than existing baselines, delivering practical accuracy improvements while significantly reducing compu-tational overhead. Qualitative error analysis and representative failure cases are provided in App. J. 
+
+Reasoning Quality. On PubMedQA, PubMed Reasoner with the Gemini backbone consistently outperforms Gemini-2.5 Pro across all four LLM-judge dimensions, as reported in Table 2. The pair-wise win rate rises by 14.9% in Reasoning Sound-ness, by 14.6% in Evidence Grounding, by 14.2% in Clinical Relevance, and by 17.2% in Trustwor-thiness, while tie rates remain low. The average Likert score also increases respectively by 0.168, 0.180, 0.146, and 0.163, yielding explanations that are more coherent, better grounded in evidence, more clinically focused, and more trustworthy. 
+
+Cost Analysis. As shown in Table 3, PubMed Reasoner achieves substantial reductions in com-putational overhead compared to the self-reflection baseline. Across key cost metrics, PubMed Rea-soner reduces input token usage by 55.34%, lowers the number of LLM API calls by 41.82%, and de-creases PubMed search calls by 41.36%. These ef-ficiency gains stem from structured query planning and early stopping, which avoid unnecessary re-trieval and redundant reasoning steps. Although the overall cost of PubMed Reasoner remains higher than that of the one-shot LLM baseline, it produces citation-grounded and verifiable responses, offer-ing substantially stronger reliability than direct gen-eration. Compared to the RAG baseline, which of-ten yields shallow or weakly aligned search results, PubMed Reasoner performs more targeted retrieval and accumulates higher-quality evidence. 
+
+Query Term Quality. As shown in Table 4, PubMed Reasoner maintains high precision while substantially improving recall due to self-critic refinement during query planning. With a GPT backbone, recall improves by 20.99% over the GPT baseline and by 7.6% over the self-reflection agent. With a Gemini backbone, recall improves by 17.18% over the baseline and also surpasses the self-reflection agent. These results demon-strate that self-critic refinement broadens concep-tual coverage without sacrificing alignment, pro-ducing higher-quality search queries. 
+
+4.4 MMLU Clinical Knowledge Accuracy. On MMLU-CK dataset (Table 1), self-reflection offers only a marginal lift over the raw LLM baseline. In contrast, PubMed Reasoner de-livers consistent gains over the respective back-bones: 1.11% over Gemini-2.5 Pro and 2.69% over GPT-4o. This underscores that our self-critic im-proves accuracy beyond what self-reflection can achieve. Moreover, as shown in Table 3, these ac-curacy gains are achieved with substantially lower computational overhead. 
+
+Explanation Quality. On MMLU-CK, PubMed Reasoner consistently surpasses Gemini-2.5 Pro across all LLM-judge dimensions (Table 2). Pair-wise win rates rise by 1.2% in reasoning soundness, 38.9% in evidence grounding, 11.2% in clinical relevance, and 13.5% in trustworthiness, with low tie rates. Average Likert scores also increase by 6–12% across dimensions, indicating clearer logic, 6Table 2: Explanation quality evaluation on PubMedQA (left) and MMLU-CK (right) test sets: Gemini w/o retrieval vs. PubMed Reasoner. Win/tie/loss rates from pairwise comparisons judged by GPT-4; average Likert scores (1–5).                                                  
+
+> Metric PubMedQA MMLU-CK Loss / Tie / Win (%) Avg. Likert (1–5) Loss / Tie / Win (%) Avg. Likert (1–5) Gemini Tie Ours Gemini Ours Gemini Tie Ours Gemini Ours Reasoning Soundness 39.7 5.7 54.6 3.416 3.584 44.0 10.8 45.2 3.307 3.699
+> Evidence Grounding 40.8 3.8 55.4 3.421 3.601 25.2 11.7 64.1 3.209 3.595
+> Clinical Relevance 39.2 7.4 53.4 3.438 3.584 34.4 20.0 45.6 3.525 3.732
+> Trustworthiness 38.7 5.4 55.9 3.424 3.587 35.3 15.9 48.8 3.386 3.712
+
+Table 3: Cost comparison on PubMedQA and MMLU-CK using a shared GPT-4 backbone for PubMed Reasoner and baselines. For PubMedQA, input and output token counts are reported as ratios relative to the direct LLM baseline. For each metric, the lower value between the self-reflection agent and PubMed Reasoner is bolded .                                                
+
+> PubMedQA MMLU-CK
+> Input Output LLM Search Input Output LLM Search Method Tokens Tokens Calls Calls Tokens Tokens Calls Calls
+> LLM 542.70 144.90 1090.24 98.64 10RAG method ×1.64 ×2.40 21×4.00 ×3.06 21Self-reflection ×225.27 ×13.60 13.08 3.52 ×1914.53 ×24.35 14.61 4.77 PubMed Reasoner ×97.25 ×12.67 7.61 2.49 ×1098.26 ×24.86 10.72 3.59
+
+Table 4: Search quality on PubMedQA. Precision/recall computed by comparing set of predicted MeSH terms from the final query against gold MeSH annotations.               
+
+> Method Precision Recall Gemini-2.5 Pro 0.9422 0.6848 +Self-reflection 0.9745 0.7900 +PubMed Reasoner 0.9826 0.8025
+> GPT-4o 0.9874 0.7052 +Self-reflection 0.9562 0.7928 +PubMed Reasoner 0.9868 0.8532
+
+stronger evidence support, sharper clinical focus, and greater trustworthiness. In sum, PubMed Rea-soner produces better clinical explanations. 
+
+Cost Analysis. As shown in Table 3, the MMLU-CK results exhibit a pattern similar to PubMedQA: PubMed Reasoner consistently incurs substantially lower computational cost than the self-reflection baseline. In particular, PubMed Reasoner requires fewer input tokens, fewer LLM API calls, and fewer PubMed search calls, reflecting a more ef-ficient retrieval and reasoning workflow on this broader clinical knowledge benchmark as well. 
+
+Query Term Quality. MMLU does not provide MeSH term annotations, hence cannot be assessed. 
+
+4.5 Ablation Study Ablation Setup. We ablate two components: (1) self-critic refinement , (2) reflective evidence ex-traction and (3) batching and early stopping us-ing the PubMed Reasoner (Gemini) variant from 
+
+Table 5: Ablation on PubMedQA with PubMed Rea-soner (Gemini): impact of self-critic module. Evidence-Grounded Response Rate (EGR) : fraction of questions whose final response cites ≥ 1 extracted findings that pass coverage and alignment checks in reflective stage.        
+
+> Method / Config. Accuracy EGR PubMed Reasoner 77.26% 82.64%
+> w/o self-critic 75.60% 64.46%
+
+App. C, unless otherwise noted. 
+
+Self-Critic Refinement. Table 5 reports accu-racy and the Evidence-Grounded Response Rate (EGR)—the fraction of questions whose final re-sponse cites at least one extracted finding that passes coverage and alignment checks. Remov-ing the self-critic markedly lowers EGR (drop of 28.20%) and also reduces accuracy 2.2%. This con-firms that the self-critic is not only improving final correctness, but also producing robust, well-formed queries that retrieve on-point evidence. 
+
+Reflective Evidence Extraction. We disable the alignment filter and instead summarize all retrieved articles before producing a final answer. As shown in Table 6, accuracy remains unchanged, but the quality of explanations shifts: reflective integration improves reasoning soundness and clinical rele-vance, while introducing more diverse evidence slightly lowers grounding precision. These trends match the more fine-grained analysis in App. K. 
+
+Batching and Early Stopping. The ablation 7Table 6: Ablation on PubMedQA with PubMed Rea-soner (Gemini): impact of reflective retrieval (RR).              
+
+> Metric w/o RR Ours Accuracy (%) 77.24 77.26
+> Reasoning Soundness 3.422 3.554
+> Evidence Grounding 3.554 3.427 Clinical Relevance 3.443 3.573
+> Trustworthiness 3.432 3.432
+
+study results in App. L highlight the importance of providing evidence at the appropriate granular-ity. High-level condensations, such as abstracts or naive summaries fail to capture essential rea-soning cues, whereas our selective early-stopping framework preserves critical information and yields markedly improved performance. 
+
+5 Related Work 
+
+LLMs & Retrieval-Augmented Methods. De-spite the remarkable progress achieved by LLMs in natural language understanding, reasoning, and generation, when applied to high-stakes biomed-ical tasks, they often hallucinate facts or rely on outdated parametric memory, raising concerns about reliability and safety (Guan et al., 2023; Xu et al., 2024). To address these issues, RAG has emerged as a promising paradigm. Existing RAG approaches either incorporate structured resources such as knowledge graphs (Abu-Rasheed et al., 2024) or augment prompts with retrieved content from domain-specific corpora (Arslan et al., 2024). While these strategies improve factual grounding, they face persistent challenges: retrieval systems of-ten struggle with the coverage–relevance trade-off ,returning either too little evidence or overwhelm-ing the model with irrelevant content (Liu et al., 2024). Moreover, once an initial query is issued, most RAG pipelines lack mechanisms for itera-tive refinement, making them brittle in complex biomedical scenarios (Dai et al., 2024). 
+
+Search Query Optimization. A complementary direction focuses on enhancing the query quality. Early work in information retrieval explored query expansion and relevance feedback (Sparck Jones, 1974; Crane and Bernier, 1951), but such meth-ods often relied on manual heuristics (Arasu et al., 2001) and lacked semantic explanation capabilities (Boytsov, 2011). More recently, query optimiza-tion has also been framed as a reinforcement learn-ing problem, where the model learns to improve retrieval performance through policy gradients or preference-based objectives such as PPO (Schul-man et al., 2017), DPO (Rafailov et al., 2023), or GRPO (Shao et al., 2024). While effective, these methods typically require a separate reward model or explicit training signals, making them computa-tionally expensive and less flexible in specialized domains like biomedicine. In contrast, our work in-troduces a training-free self-critic mechanism that performs query refinement without external super-vision or gradient updates. Unlike prior RL-based or heuristic based method, the self-critic provides fine-grained feedback on MeSH query terms, iter-atively improves retrieval quality, mitigates error propagation and enhances factual grounding. 
+
+Self-Reflection and Reasoning Agents. Another line of research seeks to improve LLM reliabil-ity through self-reflection and agent-based reason-ing. Self-reflection methods allow models to re-examine their own outputs and refine answers, while reward modeling (Leike et al., 2018; Choud-hury, 2025) and verbal reinforcement learning (Shinn et al., 2023) aim to align reasoning with human-like preferences. Self-consistency sampling further increases robustness by aggregating mul-tiple reasoning trajectories (Wang et al., 2022). However, these methods generally intervene at the 
+
+answer-generation stage , which makes them com-putationally expensive and unable to prevent low-quality retrieval from propagating downstream. As a result, they provide limited control over the evi-dence collection process itself. 
+
+6 Conclusion 
+
+Altogether, these results demonstrate that combin-ing structured self-critique with evidence-based in-tegration moves biomedical QA closer to expert-level explanation, while remaining efficient and re-producible. More broadly, our findings suggest de-sign principles for multi-stage LLM agents in high-stakes domains: shifting reflection earlier in the pipeline can prevent compounding errors; explicit grounding in external evidence improves trans-parency and reliability; and adaptive mechanisms such as early stopping enable practical deploy-ment without sacrificing rigor. Notably, self-critic is especially effective in multi-step reasoning set-tings, where revising only problematic steps rather than regenerating the entire chain ensures both effi-ciency and logical consistency. These mechanisms can be generalized beyond biomedicine, provid-ing a blueprint for building trustworthy, domain-specialized LLM systems in areas such as law, fi-nance, and scientific discovery. 87 Limitations 
+
+Although the self-critic mechanism substantially improves query quality, it remains heuristic and may inherit biases from the underlying LLM back-bone, particularly in subdomains with limited train-ing data. Additionally, the reflective retrieval stage may overlook lower-ranked yet relevant articles, potentially reducing evidence coverage in long-tail biomedical topics. Moreover, the current pipeline is largely linear at the stage-level: once reason-ing progresses to later stages, earlier retrieval or query decisions cannot be revisited. This lack of backward adaptivity limits the system’s ability to iteratively correct upstream errors or expand under-represented evidence when inconsistencies arise in the final response. Revisiting previous stages could improve robustness and coverage but would introduce additional computational and token costs, highlighting the trade-off between accuracy and efficiency inherent to our design. 
+
+References 
+
+Hasan Abu-Rasheed, Christian Weber, and Madjid Fathi. 2024. Knowledge graphs as context sources for llm-based explanations of learning recommendations. In 
+
+2024 IEEE Global Engineering Education Confer-ence (EDUCON) , pages 1–5. IEEE. Arvind Arasu, Junghoo Cho, Hector Garcia-Molina, An-dreas Paepcke, and Sriram Raghavan. 2001. Search-ing the web. ACM Transactions on Internet Technol-ogy (TOIT) , 1(1):2–43. Rahul K Arora, Jason Wei, Rebecca Soskin Hicks, Pre-ston Bowman, Joaquin Quiñonero-Candela, Foivos Tsimpourlas, Michael Sharman, Meghan Shah, An-drea Vallone, Alex Beutel, and 1 others. 2025. Healthbench: Evaluating large language models towards improved human health. arXiv preprint arXiv:2505.08775 .Muhammad Arslan, Hussam Ghanem, Saba Munawar, and Christophe Cruz. 2024. A survey on rag with llms. Procedia computer science , 246:3781–3790. Leonid Boytsov. 2011. Indexing methods for approx-imate dictionary searching: Comparative analysis. 
+
+Journal of Experimental Algorithmics (JEA) , 16:1–1. Sanjiban Choudhury. 2025. Process reward models for llm agents: Practical framework and directions. 
+
+arXiv preprint arXiv:2502.10325 .EJ Crane and Charles L Bernier. 1951. Indexing and index-searching. Punched Cards: Their Applications to Science and Industry , page 331. Sunhao Dai, Chen Xu, Shicheng Xu, Liang Pang, Zhen-hua Dong, and Jun Xu. 2024. Bias and unfairness in information retrieval systems: New challenges in the llm era. In Proceedings of the 30th ACM SIGKDD Conference on Knowledge Discovery and Data Min-ing , pages 6437–6447. Wanling Gao, Yuqing Zhu, Zhen Jia, Chunjie Luo, Lei Wang, Zhiguo Li, Jianfeng Zhan, Yong Qi, Yongqiang He, Shiming Gong, and 1 others. 2013. Bigdatabench: a big data benchmark suite from web search engines. arXiv preprint arXiv:1307.0320 .Jian Guan, Jesse Dodge, David Wadden, Minlie Huang, and Hao Peng. 2023. Language models hallucinate, but may excel at fact verification. arXiv preprint arXiv:2310.14564 .Dongzhi Jiang, Renrui Zhang, Ziyu Guo, Yanmin Wu, Jiayi Lei, Pengshuo Qiu, Pan Lu, Zehui Chen, Chaoyou Fu, Guanglu Song, and 1 others. 2024. Mm-search: Benchmarking the potential of large mod-els as multi-modal search engines. arXiv preprint arXiv:2409.12959 .Qiao Jin, Bhuwan Dhingra, Zhengping Liu, William W Cohen, and Xinghua Lu. 2019. Pubmedqa: A dataset for biomedical research question answering. arXiv preprint arXiv:1909.06146 .Adam Tauman Kalai, Ofir Nachum, Santosh S Vem-pala, and Edwin Zhang. 2025. Why language models hallucinate. arXiv preprint arXiv:2509.04664 .Jan Leike, David Krueger, Tom Everitt, Miljan Martic, Vishal Maini, and Shane Legg. 2018. Scalable agent alignment via reward modeling: a research direction. 
+
+arXiv preprint arXiv:1811.07871 .Zheng Liu, Yujia Zhou, Yutao Zhu, Jianxun Lian, Chaozhuo Li, Zhicheng Dou, Defu Lian, and Jian-Yun Nie. 2024. Information retrieval meets large language models. In Companion Proceedings of the ACM Web Conference 2024 , pages 1586–1589. Harsha Nori, Nicholas King, Scott Mayer McKinney, Dean Carignan, and Eric Horvitz. 2023a. Capabili-ties of gpt-4 on medical challenge problems. arXiv preprint arXiv:2303.13375 .Harsha Nori, Yin Tat Lee, Sheng Zhang, Dean Carignan, Richard Edgar, Nicolo Fusi, Nicholas King, Jonathan Larson, Yuanzhi Li, Weishung Liu, and 1 others. 2023b. Can generalist foundation models outcom-pete special-purpose tuning? case study in medicine. 
+
+arXiv preprint arXiv:2311.16452 .Rafael Rafailov, Archit Sharma, Eric Mitchell, Christo-pher D Manning, Stefano Ermon, and Chelsea Finn. 2023. Direct preference optimization: Your language model is secretly a reward model. Advances in neural information processing systems , 36:53728–53741. John Schulman, Filip Wolski, Prafulla Dhariwal, Alec Radford, and Oleg Klimov. 2017. Proxi-mal policy optimization algorithms. arXiv preprint arXiv:1707.06347 .
+
+9Zhihong Shao, Peiyi Wang, Qihao Zhu, Runxin Xu, Junxiao Song, Xiao Bi, Haowei Zhang, Mingchuan Zhang, YK Li, Yang Wu, and 1 others. 2024. Deepseekmath: Pushing the limits of mathematical reasoning in open language models. arXiv preprint arXiv:2402.03300 .Noah Shinn, Federico Cassano, Ashwin Gopinath, Karthik Narasimhan, and Shunyu Yao. 2023. Re-flexion: Language agents with verbal reinforcement learning. Advances in Neural Information Process-ing Systems , 36:8634–8652. Karan Singhal, Tao Tu, Juraj Gottweis, Rory Sayres, Ellery Wulczyn, Mohamed Amin, Le Hou, Kevin Clark, Stephen R Pfohl, Heather Cole-Lewis, and 1 others. 2025. Toward expert-level medical ques-tion answering with large language models. Nature Medicine , 31(3):943–950. Karen Sparck Jones. 1974. Automatic indexing. Jour-nal of documentation , 30(4):393–432. Xuezhi Wang, Jason Wei, Dale Schuurmans, Quoc Le, Ed Chi, Sharan Narang, Aakanksha Chowdhery, and Denny Zhou. 2022. Self-consistency improves chain of thought reasoning in language models. arXiv preprint arXiv:2203.11171 .Yubo Wang, Xueguang Ma, Ge Zhang, Yuansheng Ni, Abhranil Chandra, Shiguang Guo, Weiming Ren, Aaran Arulraj, Xuan He, Ziyan Jiang, and 1 others. 2024. Mmlu-pro: A more robust and challenging multi-task language understanding benchmark. Ad-vances in Neural Information Processing Systems ,37:95266–95290. Ziwei Xu, Sanjay Jain, and Mohan Kankanhalli. 2024. Hallucination is inevitable: An innate lim-itation of large language models. arXiv preprint arXiv:2401.11817 .
+
+A Algorithms 
+
+Algorithms 1 and 2 respectively describe the steps involved in Self-Critic Query Refinement with Query History and Reflective Article Retrieval with Early Stopping .
+
+B Evaluation Metrics 
+
+This appendix provides detailed definitions and justifications for the evaluation metrics used in our experiments, which are designed to assess not only predictive correctness but also reasoning quality, evidence usage, and computational efficiency. 
+
+Accuracy. Prediction accuracy is defined as the proportion of questions for which the model pro-duces the correct answer label. This metric cap-tures the model’s ability to arrive at the correct final decision and serves as a primary indicator of task performance. Accuracy is reported over the full 
+
+Algorithm 1 Self-Critic Query Refinement with Query History  
+
+> 1:
+
+Input: Initial query q0 from Eq. 3  
+
+> 2:
+
+Output: Refined query q∗ 
+
+> 3:
+
+Initialize history H ← [q0] 
+
+> 4:
+
+for iteration t = 1 , . . . , T do  
+
+> 5:
+
+Retrieve article metadata St (Eqs. 4–5)  
+
+> 6:
+
+Self-critic evaluation of MeSH terms:  
+
+> 7:
+
+Evaluate coverage (Eq. 6), alignment 
+
+(Eq. 7), and redundancy (Eq. 8) from St 
+
+> 8:
+
+Update MeSH terms (Eq. 9)  
+
+> 9:
+
+Refine query qt (Eq. 10)  
+
+> 10:
+
+Rule-based normalization (Eq. 11)  
+
+> 11:
+
+Append qt to history: H ← H ∪ { qt} 
+
+> 12:
+
+if retrieval quality converges or t = T then  
+
+> 13:
+
+q∗ ← qt; break  
+
+> 14:
+
+end if  
+
+> 15:
+
+end for  
+
+> 16:
+
+return q∗
+
+evaluation set and is used to ensure comparability with prior biomedical question answering bench-marks. 
+
+Explanation Quality. Beyond answer correctness, we evaluate the quality of model-generated expla-nations using an LLM-as-a-judge framework. We adopt the HealthBench evaluation protocol (Arora et al., 2025), adapting the prompts to our dataset (the full prompt is provided in App. H). For each question, model outputs are assessed along four complementary axes: • Reasoning Soundness: Whether the explana-tion is logically coherent, internally consistent, and free of contradictions. • Evidence Grounding: Whether factual claims are supported by retrieved biomedi-cal evidence, with minimal hallucination or unsupported assertions. • Clinical Relevance: Whether the explanation directly addresses the biomedical or clinical aspects of the question in an appropriate and meaningful manner. • Trustworthiness: Whether the response aligns with established biomedical knowledge and avoids misleading or unsafe conclusions. Each axis is scored on a five-point Likert scale, with higher scores indicating better explanation quality. To isolate explanation quality from answer correctness, we evaluate only instances where both models predict the correct label. Pairwise com-parisons are performed with randomized response 10 Algorithm 2 Reflective Article Retrieval with Early Stopping  
+
+> 1:
+
+Input: Ranked result set A⋆ and metadata S⋆,question Q, maximum ranked-article budget 
+
+Mmax , batch size m, token budget T 
+
+> 2:
+
+Output: Final evidence pool E(final)  
+
+> 3:
+
+Initialize filtered ranked set A+ ← ∅ 
+
+> 4:
+
+Initialize evidence pool E(0) ← ∅ 
+
+> 5:
+
+Initialize token usage counter bused ← 0 
+
+> 6:
+
+// Coarse filtering up to ranked-article budget  
+
+> 7:
+
+for i = 1 to min  |A ⋆|, M max 
+
+ do  
+
+> 8:
+
+Coarse filtering each article (Eq. 12)  
+
+> 9:
+
+if vi = Yes then  
+
+> 10:
+
+A+ ← A + ∪ { ai} {Preserves original ranking order}  
+
+> 11:
+
+end if  
+
+> 12:
+
+end for  
+
+> 13:
+
+Partition A+ into batches {B 1, . . . , BK } of size at most m 
+
+> 14:
+
+for batch index b = 1 , . . . , K do  
+
+> 15:
+
+// Reflective evidence extraction for Bb 
+
+> 16:
+
+Extract candidate evidence (Eq. 13)  
+
+> 17:
+
+Update evidence pool (Eq. 14)  
+
+> 18:
+
+// Update token usage  
+
+> 19:
+
+tused ← tused + TokensUsed( Bb) 
+
+> 20:
+
+Check stopping criteria (Eq. 15)  
+
+> 21:
+
+if is_sufficient then  
+
+> 22:
+
+break // Coverage sufficient  
+
+> 23:
+
+end if  
+
+> 24:
+
+if tused ≥ T then  
+
+> 25:
+
+break // Token budget reached  
+
+> 26:
+
+end if  
+
+> 27:
+
+end for  
+
+> 28:
+
+E(final) ← E (b) 
+
+> 29:
+
+return E(final) 
+
+order, and ties are permitted to reduce positional bias. An independent LLM (GPT) judge is used to avoid self-evaluation effects. 
+
+Cost Analysis. To quantify computational effi-ciency, we measure four complementary cost indi-cators: (1) Input token usage , (2) Output token usage , (3) Number of LLM API calls , and (4) 
+
+Number of PubMed search calls issued during retrieval. These metrics capture both the direct inference cost associated with language model us-age and the operational overhead introduced by iterative retrieval and refinement. Reporting these indicators allows us to assess whether performance gains are achieved in a resource-efficient man-ner, which is particularly important for large-scale or deployment-oriented biomedical applications. 
+
+Query Term Quality: To evaluate the effective-ness of search query formulation, we compare the MeSH terms generated by each model against the ground-truth MeSH annotations associated with each question. Precision measures the alignment of proposed terms with the question intent, while recall reflects coverage of all key biomedical con-cepts. This metric assesses how effectively the model identifies relevant search concepts prior to retrieval, which is crucial for downstream reason-ing performance. 
+
+Evidence Sufficiency Depth (ESD). We introduce 
+
+Evidence Sufficiency Depth (ESD) to characterize retrieval efficiency under early stopping. ESD is defined as the number of retrieved articles pro-cessed before the early-stopping criterion is sat-isfied. Since PubMed returns results in relevance-ranked order, lower ESD values indicate that suf-ficient supporting evidence is identified earlier in the ranked list. This metric directly reflects the model’s ability to rapidly locate adequate evidence while minimizing unnecessary paper retrieval and token consumption. 
+
+C PubMed Reasoner Configurations 
+
+Backbone Model. We instantiate PubMed Rea-soner using three model families. PubMed Rea-soner (GPT) employs GPT-4o with temperature 
+
+t=0 , which promotes faithful extraction and re-duces the likelihood of introducing unsupported content that could compromise evidence fidelity. PubMed Reasoner (Gemini) is a hybrid of Gemini-2.5 Pro ( t=0 .8) and Gemini-2.5 Flash ( t=0 ): Pro is used primarily for the self-critic refinement and reflective extraction steps, while Flash is used for efficiency-critical calls. PubMed Reasoner (Qwen) uses three Qwen variants, namely Qwen2.5-1.5B, Qwen2.5-7B and Qwen2.5-72B, all with t=0 , en-couraging faithful extraction and minimizing added content that could compromise evidence fidelity. 
+
+Reflective Article Retrieval with Early Stopping. 
+
+In the reflective stage (Sec. 3.2), we process re-trieved articles in batches of size m=5 to balance context length with reflective efficiency. To further control token cost, we impose a maximum budget of the top Mmax = 20 ranked articles (i.e., at most four batches). This ensures that retrieval remains both efficient and grounded in the most relevant evidence returned by PubMed. We set the token budget T to infinity during benchmark evaluation. 11 D Baseline Configuration 
+
+LLM Baselines. We consider Gemini-2.5 Pro and GPT-4o as strong LLM baselines. In particular, we report the official leaderboard submission results as the GPT baseline on the PubMedQA benchmark. 
+
+Human Performance. For PubMedQA, we re-port the human performance published on the of-ficial leaderboard, which serves as a reference up-per bound. Human expert results are not available for MMLU-CK, and thus are not reported for that benchmark. 
+
+RAG Method. Since no pre-constructed re-trieval corpus or standardized RAG setup ex-ists for the PubMedQA dataset, we implement a retrieval-augmented baseline by directly querying the PubMed search engine at inference time. Re-trieved articles are incorporated as external knowl-edge to support response generation. To ensure a fair comparison, the RAG baseline uses the same query generation, article retrieval, summarization, and question-answering prompts as PubMed Rea-soner, which are provided in App. E. 
+
+Self-Reflection Agent. The self-reflection baseline is allowed to issue PubMed search queries to re-trieve supporting evidence. It generates multiple candidate responses and iteratively refines the fi-nal answer through an explicit reflection step. To ensure comparability, this baseline uses the same query generation, retrieval, summarization, and question-answering prompts as PubMed Reasoner, with the addition of a dedicated prompt for the self-reflection stage. Self-reflection Prompt 
+
+System Prompt: You are a self-reflection agent for evidence-grounded biomedical question answering. Your task is to identify conceptual gaps between the current answer and the veri-fied sources, and to generate one revised PubMed query that targets missing or weakly supported concepts. When gener-ating the revised query, you must avoid inef-fective or repetitive search patterns by con-sulting the search history. A concept gap exists if one or more of the following conditions hold: • A key claim in the answer lacks direct support from the retrieved context. • The context only partially addresses the question. • The context is overly general and fails to capture critical biomedical speci-ficity. 
+
+Logical operators :• Use AND to combine independent, par-allel constraints . Every term con-nected by AND must be satisfied. • Use OR only for similar or interchange-able concepts . When using OR , you must enclose the entire OR-group in parentheses, e.g.: (term1[mesh] OR term2[mesh]) .
+
+Requirements: 
+
+1. Use only the Boolean operator AND to connect terms. 2. Field tag priority: (a) Place MeSH terms first and apply the [mesh] tag whenever possi-ble. (b) Place date ranges next, formatted as either YYYY:YYYY[pdat] or 
+
+YYYY/MM/DD:YYYY/MM/DD[pdat] .(c) Place all remaining terms last. Do not apply special field tags unless explicitly specified. 3. Spacing: Separate each term and each 
+
+AND with exactly one space. 4. Date range format: YYYY:YYYY[pdat] 
+
+or YYYY/MM/DD:YYYY/MM/DD[pdat] 
+
+Natural Language Question: 
+
+{natural_language_question} 
+
+Verified Sources: 
+
+{verified_sources} 
+
+Answer: 
+
+{rationale_answer} 
+
+Search History (if any): 
+
+{search_history} 
+
+Output: 
+
+Return the answer strictly as JSON follow-ing this schema: 
+
+{"query": "The final PubMed query string as a single string.", "rationale": "A brief explanation describing the identified concept gaps and how the revised query addresses these gaps while following the 
+
+12 query construction rules." }
+
+Do not add any explanation or additional text outside the JSON. 
+
+We instantiate both the RAG method and the self-reflection agent using two backbone models, GPT-4o and Gemini-2.5 Pro/Flash, following the same parameter settings as described in App. C. To en-courage diverse reasoning trajectories, we employ higher decoding temperatures during the reflection stage (GPT at t = 1 .0 and Gemini at t = 0 .8). 
+
+E Prompt Design 
+
+Query Generation Prompt 
+
+System Prompt: 
+
+You are an expert in PubMed search syntax. Your task is to convert the provided natu-ral language description of the desired lit-erature, together with any contextual infor-mation, into a single valid PubMed query string. 
+
+Requirements: 
+
+1. Use only the Boolean operator AND to connect terms. 2. Field tag priority: (a) Place MeSH terms first and apply the [mesh] tag whenever possi-ble. (b) Place date ranges next, formatted as either YYYY:YYYY[pdat] or 
+
+YYYY/MM/DD:YYYY/MM/DD[pdat] .(c) Place all remaining terms last. Do not apply special field tags unless explicitly specified. 3. Spacing: Separate each term and each 
+
+AND with exactly one space. 4. Date range format: YYYY:YYYY[pdat] 
+
+or YYYY/MM/DD:YYYY/MM/DD[pdat] 
+
+Natural Language Question: 
+
+{natural_language_question} 
+
+Additional Context (if any): 
+
+{context} 
+
+Output: 
+
+Return the answer strictly as JSON follow-ing this schema: 
+
+{"query": "The final PubMed query string as a single string.", 
+
+"rationale": "A brief explanation of term selection, field tags, ordering, use of AND, and how the context was incorporated." }
+
+Do not add any explanation or additional text outside the JSON. 
+
+Self-critic Prompt 
+
+System Prompt: You are a PubMed search planning assistant. Your task is to produce one improved PubMed query for the next search step by: • Interpreting the natural-language ques-tion and any additional context. • Using search history to avoid ineffec-tive or repetitive patterns. • Evolving the candidate term set using coverage, alignment, and redundancy feedback. • Ensuring the final query strictly fol-lows the requirements. 
+
+Feedback Signals: 
+
+If no context is provided, return -1 for the corresponding signals. In producing the im-proved query, you must incorporate evolv-ing feedback from: 1. Coverage — 1 if the provided context sufficiently represents the concepts rel-evant to the question; 0 otherwise. 2. Alignment — 1 if the provided context is relevant and appropriately focused on the question; 0 otherwise. 3. Redundancy — 1 if there are no over-lapping, unnecessary, or logically un-intended terms; 0 otherwise. 
+
+Logical operators :• Use AND to combine independent, par-allel constraints . Every term con-nected by AND must be satisfied. • Use OR only for similar or interchange-able concepts . When using OR , you must enclose the entire OR-group in parentheses, e.g.: (term1[mesh] OR term2[mesh]) .
+
+Requirements: 
+
+1. Use only the Boolean operator AND to connect terms. 2. Field tag priority: 
+
+13 (a) Place MeSH terms first and apply the [mesh] tag whenever possi-ble. (b) Place date ranges next, formatted as either YYYY:YYYY[pdat] or 
+
+YYYY/MM/DD:YYYY/MM/DD[pdat] .(c) Place all remaining terms last. Do not apply special field tags unless explicitly specified. 3. Spacing: Separate each term and each 
+
+AND with exactly one space. 4. Date range format: YYYY:YYYY[pdat] 
+
+or YYYY/MM/DD:YYYY/MM/DD[pdat] 
+
+Natural Language Question: 
+
+{natural_language_question} 
+
+Additional Context (if any): 
+
+{search_meta} 
+
+Search History (if any): 
+
+{search_history} 
+
+Output: 
+
+Return the answer strictly as JSON follow-ing this schema: 
+
+{"query": "The final PubMed query string as a single string.", "rationale": "A brief explanation of term selection, field tags, ordering, use of logical operators, and how the context and feedback were incorporated." "feedback": { "coverage": int, "coverage_suggestion": "Suggested improvements", "alignment": int, "alignment_suggestion": "Suggested improvements", "redundancy": int, "redundancy_suggestion": "Suggested improvements" }}
+
+Do not add any explanation or additional text outside the JSON. 
+
+Reflective Article Retrieval Prompt 
+
+System Prompt: 
+
+You are a reflection assistant. Your task is to determine whether the pro-vided search results with current context (if provided) contain enough relevant and spe-cific information to answer the question. 
+
+Natural Language Question: 
+
+{natural_language_question} 
+
+Search Results: 
+
+{search_results_str} 
+
+Additional Context (if any): 
+
+{context} 
+
+Output: 
+
+Return your answer strictly as JSON follow-ing this schema: 
+
+{"is_sufficient": true | false, "rationale": "Concise explanation of why the information is sufficient or insufficient.", "needed_pmids": ["PMID1", "PMID2", ...] # PMIDs of additional relevant articles, if any }
+
+Do not include any explanation or text out-side the JSON. 
+
+Summary Prompt 
+
+System Prompt: 
+
+You are a professional academic rewriting assistant. Your task is to transform the provided raw sources into a single, semantically coherent, and well-structured paragraph. 
+
+Requirements: 
+
+1. Use only the information from the pro-vided raw sources, without adding ex-ternal content. 2. Preserve all original in-text citations exactly as they appear (e.g., [PMID: xxxx]). 3. Ensure the paragraph is logically con-nected, concise, and scientifically rig-orous. 
+
+Raw Sources: 
+
+{raw_sources} 
+
+Output: 
+
+14 Return the answer strictly as JSON follow-ing this schema: 
+
+{"verified_sources": "The final rewritten paragraph as a single string.", }
+
+Do not add any explanation or additional text outside the JSON. 
+
+Question Answering Prompt 
+
+System Prompt: 
+
+You are an expert assistant. When sources are provided, you should pri-marily base your answer on the information in the sources. If the sources do not con-tain enough information to fully answer the question, you may supplement your answer using your own knowledge. Provide your answer and a clear rationale explaining how you arrived at it. 
+
+Natural language question: 
+
+{natural_language_question} 
+
+Task instruction: 
+
+{task_instruction} 
+
+Additional context (if any): context 
+
+Sources: sources 
+
+Output: 
+
+Return the answer strictly as JSON follow-ing this schema: 
+
+{"answer": "Your answer according to the task instruction.", "rationale": "A clear explanation of how you arrived at the answer. }
+
+Do not add any explanation or additional text outside the JSON. 
+
+F Qwen Results 
+
+Table 7 summarizes the performance of all evalu-ated methods on PubMedQA and MMLU-CK. We report accuracy (%) across three Qwen2.5 model scales (1.5B, 7B, and 72B). Results are organized by (1) base model performance without retrieval, (2) self-reflection agent, and (3) our PubMed Rea-soner framework.                      
+
+> Table 7: Accuracy on PubMedQA and MMLU-CK test sets for PubMed Reasoner Qwen2.5 variants, strong LLMs, and self-reflection agents. Best result per column is bold-faced .
+> Model/Method PubMedQA MMLU-CK
+> Qwen2.5-1.5B
+> Without retrieval 68.08% 55.67%
+> Self-reflection agent 68.06% 51.44%
+> PubMed Reasoner 67.24% 51.42%
+> Qwen2.5-7B
+> Without retrieval 70.20% 56.64%
+> Self-reflection agent 71.12% 56.11%
+> PubMed Reasoner 71.08% 56.09%
+> Qwen2.5-72B
+> Without retrieval 74.89% 58.36% Self-reflection agent 76.22% 59.67%
+> PubMed Reasoner 76.42% 60.95%
+
+The effectiveness of PubMed Reasoner grows with model scale: while retrieval provides limited benefit for smaller Qwen variants (1.5B and 7B), the 72B model achieves the strongest gains, out-performing both its no-retrieval and self-reflection baselines on PubMedQA and MMLU-CK. 
+
+G Case study 
+
+We present several case studies comparing PubMed Reasoner with GPT-4o on PubMedQA-style ques-tions. Each case includes the user question, the model’s response, and the rationale provided. For PubMed Reasoner, the rationale is grounded in biomedical literature retrieved from PubMed, with inline citations (PMID identifiers) referencing spe-cific studies. These examples illustrate how PubMed Rea-soner improves over direct LLM reasoning in sev-eral ways: (i) grounding answers in authoritative biomedical sources, thereby reducing hallucina-tions; (ii) providing more detailed rationales that capture not only correlations but also evidence from longitudinal studies, randomized controlled trials, or meta-analyses; and (iii) maintaining inter-pretability through explicit evidence chains. 
+
+Question: Does early introduction of sugar-sweetened beverages increase the risk of obesity in children? 
+
+GPT-4o: Yes 
+
+Rationale: Evidence consistently shows that early introduction of sugar-sweetened beverages is linked with increased caloric intake, poor dietary habits, and higher risk 15 of obesity in children. 
+
+PubMed Reasoner (GPT-4o): Yes 
+
+Rationale: Evidence from longitudinal and randomized controlled trials indicates that early introduction of juice and sugar-sweetened beverages is associated with higher intake later in childhood, a well-established obesity risk factor. A cohort study [PMID:37150479] found that introducing juice before 6 months led to significantly higher juice consumption at 24 months, while an RCT [PMID:36146909] showed that parental education reduced early SSB introduction and may lower obe-sity risk. 
+
+Question: Is breastfeeding associated with a lower risk of childhood obesity? 
+
+GPT-4o: Yes 
+
+Rationale: Multiple studies have demon-strated that breastfeeding, especially exclu-sive breastfeeding, is associated with a mod-est but significant reduction in childhood obesity risk compared to formula feeding. 
+
+PubMed Reasoner (GPT-4o): Yes 
+
+Rationale: The evidence is mixed but over-all supports a protective effect. One study found no association between feeding in the first 4 months and obesity risk after ad-justing for confounders [PMID:40550602]. However, metabolomics analyses link for-mula feeding with obesity-related metabolic profiles [PMID:40452153]. A large cohort study found longer breast-feeding duration reduced risk, with effects differing by sex ( ≥ 8 months protective in girls, 3–7 months protective in boys) [PMID:40440349]. 
+
+Question: Can family-based lifestyle inter-ventions reduce obesity prevalence in chil-dren? 
+
+GPT-4o: Yes 
+
+Rationale: Family-based lifestyle interven-tions targeting diet, physical activity, and behavior change are effective in reducing BMI and obesity prevalence in children. 
+
+PubMed Reasoner (GPT-4o): Yes 
+
+Rationale: Studies show that parental obesity, education, and health behav-iors strongly influence child obesity risk. Family lifestyle patterns persist over time [PMID:29807535]. Interven-tions targeting the whole family, in-cluding parental health behaviors and socioeconomic supports, are associated with healthier child weight outcomes [PMID:40312675, PMID:36904286]. 
+
+Question: Is there a link between fast food consumption and childhood obesity? 
+
+GPT-4o: Yes 
+
+Rationale: High frequency of fast food con-sumption is associated with higher caloric intake, increased fat/sugar consumption, and greater obesity risk. 
+
+PubMed Reasoner (GPT-4o): Yes 
+
+Rationale: Evidence shows fast food and ultra-processed food (UPF) consumption contributes to childhood obesity. UPFs ac-counted for 40% of caloric intake in one study, with fast foods alone contributing 7.8% and being correlated with waist cir-cumference and overweight/obesity preva-lence [PMID:40102562]. Another large study found maternal junk food consumption increased children’s obe-sity odds by 39% [PMID:40481596]. 
+
+Question: Do school-based nutrition pro-grams improve weight outcomes in chil-dren? 
+
+GPT-4o: Yes 
+
+Rationale: School-based nutrition pro-grams promote healthier eating and physical activity, leading to modest improvements in BMI and obesity outcomes. 
+
+PubMed Reasoner (GPT-4o): Yes 
+
+Rationale: A 3-year prospective co-hort study in southern Taiwan found that lunchtime education and class-based nu-trition programs increased normal-weight prevalence and reduced overweight/obesity. The BMI trajectory flattened compared to regional trends, approaching national stan-
+
+16 dards [PMID:32381350]. 
+
+Question: Are children with sleep depriva-tion at higher risk for obesity? 
+
+GPT-4o: Yes 
+
+Rationale: Sleep deprivation alters appetite-regulating hormones, increases snacking, and is consistently linked with higher obesity risk in children. 
+
+PubMed Reasoner (GPT-4o): Yes 
+
+Rationale: Epidemiological studies link insufficient sleep to adverse metabolic, endocrine, and energy balance changes leading to obesity [PMID:38012858, PMID:38004130]. A large cohort found insufficient sleep in-creased early maturation risk in girls, with obesity as a mediator [PMID:38065690]. 
+
+Question: Is there an association between sedentary behavior and pediatric obesity? 
+
+GPT-4o: Yes 
+
+Rationale: Prolonged sitting and excessive screen time are strongly associated with higher adiposity and obesity in children. 
+
+PubMed Reasoner (GPT-4o): Yes 
+
+Rationale: Studies show sedentary be-havior is linked with pediatric obesity. Preschool children with more sedentary time and screen use had greater odds of overweight/obesity [PMID:40751144]. Among Chinese adolescents, screen-based sedentary behavior correlated with higher BMI, mediated by weight concerns [PMID:40611060]. Reviews confirm reducing sedentary behavior improves weight outcomes [PMID:40494564]. 
+
+Question: Does screen time reduction im-prove BMI in obese children? 
+
+GPT-4o: Yes 
+
+Rationale: Reducing screen time decreases sedentary behavior, encourages activity, and can improve BMI outcomes. 
+
+PubMed Reasoner (GPT-4o): No 
+
+Rationale: A meta-analysis of 14 RCTs (n=1,894) found screen time interventions reduced weekly screen use but did not sig-nificantly improve BMI or BMI z-scores. While effective for reducing sedentary be-havior, they are insufficient alone for BMI improvement [PMID:35248682]. 
+
+Question: Does physical activity combined with nutrition counseling improve BMI in obese children? 
+
+GPT-4o: Yes 
+
+Rationale: Combining physical activity with nutrition counseling effectively re-duces BMI in obese children. 
+
+PubMed Reasoner (GPT-4o): Yes 
+
+Rationale: A Cochrane meta-analysis [PMID:28639319] found multi-component interventions (diet, activity, behavior change) significantly reduced BMI ( ≈ -0.53 kg/m²). Another meta-analysis [PMID:32408483] reported that only combined interventions produced significant reductions ( ≈ -0.30, p<0.001), whereas exercise alone did not. Individual RCTs confirm these effects. 
+
+H Prompt: LLM-as-Judge 
+
+The four dimensions capture complementary as-pects of reasoning quality in biomedical QA: • Reasoning Soundness focuses on the logical structure of the answer. A response should be coherent, free of contradictions, and fol-low a clear reasoning chain. Even if evidence is present, poor logical flow reduces inter-pretability. • Evidence Grounding emphasizes factual sup-port. Claims must be explicitly backed by biomedical literature, reducing hallucinations. An answer with strong logical form but unsup-ported claims will score lower here. • Clinical Relevance measures whether the rea-soning directly addresses the biomedical ques-tion in an evidence-based manner. Answers that drift into tangential findings or generic biomedical facts are penalized, even if factu-ally correct. • Trustworthiness assesses safety and adher-ence to established biomedical knowledge. 17 This ensures that the reasoning avoids mislead-ing or potentially harmful statements, which is critical in high-stakes clinical contexts. Together, these criteria provide a multidimen-sional evaluation: soundness ensures logical clar-ity, grounding ensures factual reliability, rele-vance ensures task alignment, and trustworthiness 
+
+ensures clinical safety. By jointly considering all four, we obtain a more faithful measure of reason-ing quality than predictive accuracy alone. LLM-as-Judge Prompt 
+
+System Prompt: You are a neutral medical evaluator. Compare two answers from medi-cal language models for a PubMedQA-style question. Judge *reasoning quality only* (not model identity). Question: natural_language_question Answer A: answer_a Answer B: answer_b Evaluate each answer independently on four dimensions (1-5): 1) Reasoning Soundness - logical, coherent, internally consistent. 2) Evidence Grounding - claims supported by biomedical evidence; no hallucinations. 3) Clinical Relevance - directly addresses the question in an evidence-based manner. 4) Trustworthiness - safe, conforms to biomedical knowledge; not misleading. Instructions: - Assign a numeric score (1-5) for each di-mension to both A and B. - Give a brief justification (less than 2 sen-tences) for each score. - Provide an overall verdict based on reason-ing quality: "A", "B", or "tie". - Do not mention model names or speculate on sources. - Output strictly valid JSON matching this schema (and nothing else): 
+
+{"Answer A": { "Reasoning Soundness": { "score": <int>, "justification": "<string>" }, "Evidence Grounding": { "score": <int>, "justification": "<string>" 
+
+}, "Clinical Relevance": { "score": <int>, "justification": "<string>" }, "Trustworthiness": { "score": <int>, "justification": "<string>" }}, "Answer B": { "Reasoning Soundness": { "score": <int>, "justification": "<string>" }, "Evidence Grounding": { "score": <int>, "justification": "<string>" }, "Clinical Relevance": { "score": <int>, "justification": "<string>" }, "Trustworthiness": { "score": <int>, "justification": "<string>" }}, }
+
+I Evidence Sufficiency Depth 
+
+Fig. 3 illustrates the distribution of the number of retrieved papers required before reaching evi-dence sufficiency across PubMedQA and MMLU-CK datasets. 
+
+PubMedQA. Most questions achieve evidence sufficiency within the first five retrieved articles (65.8% for GPT and 65.2% for Gemini). Over 80% require no more than ten articles, demonstrat-ing that PubMed Reasoner efficiently capitalizes on PubMed’s ranking to identify relevant studies early. 
+
+MMLU-CK. Although questions are more diverse and less structured, more than 70% of cases still reach sufficiency within ten articles. This indicates that the reflective retriever generalizes well beyond domain-specific datasets. Fig. 3 illustrates the dis-tribution of the number of retrieved papers required before reaching evidence sufficiency across Pub-MedQA and MMLU-CK datasets. For both back-bones (GPT and Gemini), the majority of ques-18 PubMed  Reasoner  (GPT)  PubMed  Reasoner  (Gemini)               
+
+> [1,5] [6,10] [11,15] [16, 20]
+> 65.8 65.2
+> 13.6 15.7
+> 5.7
+> 8.6
+> 14.9
+> 10.5
+> 42.5
+> 45.6
+> 23.7
+> 25.7
+> 10.6
+> 12.9
+> 20.1 18.9
+> PubMedQA MMLU-CK
+> Distribution of number of retrieved papers
+> [1,5] [6,10] [11,15] [16, 20]
+
+Figure 3: Effectiveness of the reflective integration stage. Distribution of retrieval depth before early stopping. 
+
+tions obtain sufficient supporting evidence within the first five retrieved articles—65.8% for PubMed Reasoner (GPT) and 65.2% for PubMed Reasoner (Gemini). Across both datasets, ESD highlights PubMed Reasoner’s ability to rapidly and adaptively lo-cate adequate evidence, minimizing unnecessary retrieval while preserving grounding quality. 
+
+J Qualitative Error Analysis and Challenging Cases 
+
+To provide deeper insight into the limitations of PubMed Reasoner, we include here a qualitative er-ror taxonomy alongside representative failure cases. Our analysis is based on mispredicted examples from the PubMedQA dataset using the PubMed Reasoner (GPT) variant. 
+
+Error Taxonomy and Distribution. We catego-rize observed failures into three common patterns. The distribution of error types is as follows: • Case 1: No articles retrieved (54.1%) 
+
+Often caused by overly specific MeSH terms added during refinement, leading the query to become too restrictive. • Case 2: Incomplete MeSH coverage (29.3%) 
+
+The refined query omits critical concepts nec-essary for retrieving the correct evidence. • Case 3: Other errors (16.6%) 
+
+Includes request timeouts, API rate limits, and unexpected server or connection errors. 
+
+Case 1 Example: No Articles Retrieved. 
+
+• Question: Do molecular signatures of mood stabilisers highlight the role of the transcrip-tion factor REST/NRSF? • Ground-truth MeSH terms: 
+
+Antimanic Agents AND Cell Line AND Hu-mans AND Lithium Compounds AND Re-pressor Proteins AND Transcriptome AND Valproic Acid • Refined query MeSH terms: 
+
+Neuroblastoma AND Cells, Cultured AND Cell Line AND Lithium AND RE1-Silencing Transcription Factor AND Valproic Acid AND GAD1 AND Humans AND Time Fac-tors 
+
+Overly specific terms (bold) caused the search to become too narrow, retrieving zero results. 
+
+Case 2 Example: Incomplete MeSH Coverage. 
+
+• Question: Does blood viscosity but not shear stress associate with delayed flow-mediated dilation? • Ground-truth MeSH terms: 
+
+Age Factors AND Aged AND Blood Viscos-ity AND Brachial Artery AND Female AND Humans AND Male AND Middle Aged AND Stress, Mechanical AND Vasodilation • Refined query MeSH terms: 
+
+Middle Aged AND Aged AND Vasodila-tion AND Female AND Humans AND Male AND Brachial Artery AND Blood Flow Ve-locity AND Regression Analysis AND Cross-Sectional Studies 
+
+Critical concepts such as Blood Viscosity and 
+
+Stress, Mechanical were omitted, resulting in in-complete retrieval. 
+
+Case 3 Example: System or API Errors. Rep-resentative failures include rate limits, connection issues, and unexpected HTTP errors. Together, these examples highlight both concep-tual and infrastructural failure modes, illustrating where PubMed Reasoner can be further improved in robustness, coverage, and query generalization. 
+
+K Ablation Study for Reflective Evidence Extraction 
+
+Table 8 presents the ablation results for the reflec-tive integration stage on the PubMedQA test set. The comparison between PubMed Reasoner and its variant without reflective retrieval reveals that this stage substantially improves overall reasoning quality. In terms of win/tie/loss rates judged by GPT-4.1, PubMed Reasoner achieves clear advan-tages in Reasoning Soundness (76.4% wins) and 
+
+Clinical Relevance (58.6% wins), indicating that the reflective process helps the model produce more coherent and question-aligned explanations. The improvement is also reflected in the corresponding average Likert scores, which increase from 3.422 to 3.554 for soundness and from 3.443 to 3.573 for rel-19 Table 8: Explanation quality evaluation on PubMedQA test sets. Left: win/tie/loss rates from pairwise compar-isons judged by GPT-4.1. Right: average Likert scores (1–5). We compare PubMed Reasoner with and without the reflective retrieval stage.                           
+
+> Metric Loss / Tie / Win (%) Avg. Likert (1–5) w/o Tie Ours w/o Ours Reasoning Soundness 19.6 4.0 76.4 3.422 3.554
+> Evidence Grounding 26.2 54.3 19.4 3.554 3.427 Clinical Relevance 17.6 23.8 58.6 3.443 3.573
+> Trust-worthiness 10.0 75.8 14.2 3.432 3.432
+
+evance. Interestingly, while the score for Evidence Grounding slightly declines (from 3.554 to 3.427), this pattern aligns with our earlier observation that the reflective stage introduces a broader range of ev-idence, sometimes increasing conceptual diversity at the cost of strict grounding precision. Never-theless, the consistent or improved performance across other metrics demonstrates that reflective in-tegration enhances interpretability and contextual reasoning, enabling PubMed Reasoner to deliver explanations that are both clinically meaningful and logically sound. 
+
+L Ablation Study on Early-Stopping Mechanism 
+
+To further investigate the effectiveness of the early-stopping mechanism, we conducted an ablation study on the PubMedQA dataset Gemini variant. In our setup, the model processes up to 20 retrieved papers, reading them in batches of five. The early-stopping mechanism terminates the reading process once the model determines that the available con-text is sufficient to answer the question. To assess the performance implications of omit-ting this mechanism, we evaluated alternative set-tings in which the top 20 retrieved papers were supplied in condensed form. Owing to context-length constraints, we could not provide the full text of all 20 papers simultaneously. Instead, we considered two reduced-context variants: (1) pro-viding only the abstract (metadata) of each pa-per , and (2) generating a per-paper summary and concatenating these summaries before the final question-answering step. Table 9 reports the performance of each configu-ration. Both reduced-context approaches resulted in substantial degradation, demonstrating that the absence of key extracted observations from each paper significantly impairs reasoning quality. 
+
+Method Accuracy (%) 
+
+Abstract Only 67.20 Paper Summary 64.12 PubMed Reasoner 77.26 
+
+> Table 9: Ablation study comparing reduced-context variants to our selective early-stopping framework on PubMedQA.
+
+These results highlight the importance of provid-ing evidence at the appropriate granularity. High-level condensations, such as abstracts or naive summaries fail to capture essential reasoning cues, whereas our selective early-stopping framework preserves critical information and yields markedly improved performance. 20

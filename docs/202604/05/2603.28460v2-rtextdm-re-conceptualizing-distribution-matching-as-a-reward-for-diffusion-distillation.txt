@@ -1,0 +1,787 @@
+Title: $R_\text{dm}$: Re-conceptualizing Distribution Matching as a Reward for Diffusion Distillation
+
+URL Source: https://arxiv.org/pdf/2603.28460v2
+
+Published Time: Wed, 01 Apr 2026 01:20:25 GMT
+
+Number of Pages: 18
+
+Markdown Content:
+# Rdm : Re-conceptualizing Distribution Matching as a Reward for Diffusion Distillation 
+
+Linqian Fan 1,2 Peiqin Sun 1∗ Tiancheng Wen 1 Shun Lu 1 Chengru Song 1
+
+> 1
+
+KlingAI Research 2Tsinghua University DMD GNDM (ours) DMDR GNDMR (ours) 
+
+Figure 1: (Top) Samples from 4-step vanilla DMD and our GNDM. (Bottom) Samples from 4-step DMDR and our GNDMR. Our models achieve better perceptual fidelity with fewer artifacts and better details. 
+
+## Abstract 
+
+Diffusion models achieve state-of-the-art generative performance but are funda-mentally bottlenecked by their slow, iterative sampling process. While diffusion distillation techniques enable high-fidelity, few-step generation, traditional objec-tives often restrict the student’s performance by anchoring it solely to the teacher. Recent approaches have attempted to break this ceiling by integrating Reinforce-ment Learning (RL), typically through a simple summation of distillation and RL objectives. In this work, we propose a novel paradigm by re-conceptualizing dis-tribution matching as a reward , denoted as Rdm . This unified perspective bridges 
+
+> *Correspondence to speiqin@gmail.com Preprint.
+> arXiv:2603.28460v2 [cs.CV] 31 Mar 2026
+
+the algorithmic gap between Diffusion Matching Distillation (DMD) and RL, providing several primary benefits: (1) Enhanced Optimization Stability: We in-troduce Group Normalized Distribution Matching (GNDM), which adapts standard RL group normalization to stabilize Rdm estimation. By leveraging group-mean statistics, GNDM establishes a more robust and effective optimization direction. 
+
+(2) Seamless Reward Integration: Our reward-centric formulation inherently supports adaptive weighting mechanisms, allowing for the fluid combination of DMD with external reward models. (3) Improved Sampling Efficiency: By align-ing with RL principles, the framework readily incorporates Importance Sampling (IS), leading to a significant boost in sampling efficiency. Extensive experiments demonstrate that GNDM outperforms vanilla DMD, reducing the FID by 1.87. Furthermore, our multi-reward variant, GNDMR, surpasses existing baselines by striking an optimal balance between aesthetic quality and fidelity, achieving a peak HPS of 30.37 and a low FID-SD of 12.21. Ultimately, Rdm provides a flexible, stable, and efficient framework for real-time, high-fidelity synthesis. Codes are coming soon. 
+
+## 1 Introduction 
+
+Diffusion models[ 1 –5] have established a new state-of-the-art in generative modeling, but they are fundamentally limited by their iterative sampling process, which incurs significant computational overhead. To achieve high-fidelity, real-time synthesis, researchers have explored various distillation strategies[ 6–12 ]. Among these, Distribution Matching Distillation (DMD)[ 11 , 12 ] has been widely adopted due to its exceptional ability to enable high-fidelity generation in just one or a few steps. However, traditional distillation objectives inherently bottleneck the performance of student models, as the optimization target is derived exclusively from a pretrained teacher [ 13 , 14 ]. To break this performance ceiling, recent studies [ 15 , 16 , 13 ] have integrated Reinforcement Learning (RL) with diffusion distillation. However, these approaches typically rely on a naive linear combination of RL objectives and distillation losses. Departing from these paradigms, we adopt a fundamentally different perspective: re-conceptualizing distribution matching as a reward . This formulation allows the distillation objective to be seamlessly integrated and jointly optimized with task-specific rewards within a unified reward framework, as illustrated in Figure 2. Building upon this conceptual shift, we formally define distribution matching as Rdm . This transition reveals a critical challenge: as image noise increases, the variance of Rdm amplifies significantly. This escalating variance destabilizes the estimated optimization direction and leads to inefficient training, a phenomenon we analyze in Section 4.2. To mitigate this, we draw inspiration from established RL practices and introduce Group Normalization (GN) to provide a stabilized, superior optimization gradient, resulting in Group Normalized Distribution Matching (GNDM). Moreover, framing DMD strictly as a reward maximization problem unlocks several critical advantages when integrating with other rewards: First, Rdm naturally informs the design of an effective adaptive weighting function to balance multiple objectives. Second, it seamlessly incorporates Importance Sampling (IS), which significantly improves sampling efficiency during training. Most importantly, this paradigm shift effectively constructs a algorithmic bridge between diffusion distillation and the broader RL ecosystem. We can now effortlessly leverage established RL techniques[ 17 –20 ] to further refine the distillation process under a single, unified mathematical umbrella. Our contributions are summarized as follows: • We propose Rdm , which natively incorporates powerful RL techniques into the diffusion distillation pipeline. This unification resolves the optimization conflicts inherent in prior joint-training methods and enables more intuitive control over training dynamics. • We introduce Group Normalized Distribution Matching (GNDM) to provide high-fidelity directional guidance and propose a unified reward framework (GNDMR) to holisticlly optimize the distillation process. • We conduct extensive experiments demonstrating that GNDM achieves superior distillation performance over vanilla DMD. Furthermore, our unified GNDMR framework surpasses ex-isting baselines, yielding a highly optimal balance between visual aesthetics and distillation efficiency. 2Prompt      
+
+> ...
+> Real Score
+> Estimator
+> Fake Score
+> Estimator
+> Group
+> Norm.
+> ...
+> Group Trajectory
+> Sampler
+> Fake Score
+> Estimator
+> Unified Reward Framework: GNDMR
+> (Group Normalized Distribution Matching with other Rewards)
+> Generator
+> ... ...
+> Reward
+> Model 1
+> Reward
+> Model K
+> ...
+> Reward
+> Model 2
+
+Figure 2: Our unified reward framework GNDMR. After re-conceptualizing distribution matching as a reward, Rdm and other rewards perform GRPO simultaneously. 
+
+## 2 Related Work 
+
+Distribution Matching Distillation. Distribution Matching Distillation (DMD)[ 11 ] is a foundation work that applies score-based distillation to large-scale diffusion models. A lot of follow-up work emerged to enhance its stability, theoretical grounding, and generation quality. DMD2[ 12 ] integrates a GAN loss to eliminate the reliance on costly paired regression data. Flash-DMD[ 21 ] designs a timestep-aware strategy and incorporates pixel-GAN to achieve faster convergence and stable distillation. While numerous works need GAN to achieve better performance, TDM[ 22 ] combines trajectory distillation and distribution matching for better alignment and eliminates GAN. Decoupled DMD[ 23 ] mathematically decomposes the DMD objective, revealing that Classifier-Free Guidance (CFG) augmentation acts as the primary generative engine while distribution matching serves as a regularizer, enabling optimized decoupled noise schedules. DMDR[ 13 ] combines DMD with RL, utilizing the distribution matching loss as a regularization mechanism to safely allow the student generator to explore and ultimately outperform the teacher. 
+
+Reinforcement Learning for Diffusion Models. Reinforcement learning (RL) has been widely adopted to align diffusion models with human preferences. Various algorithms have been developed for this purpose: ReFL[ 24 ] achieves strong performance but inherently relies on differentiable reward models, whereas Direct Preference Optimization (DPO)[ 25 ] optimizes the policy using pairwise data. Alternatively, Denoising Diffusion Policy Optimization (DDPO)[ 26 ] requires only a scalar reward, a process that Group Relative Policy Optimization (GRPO)[ 18 ] further simplifies by eliminating the critic model via group normalization. Applying RL to distilled diffusion models is typically treated as an independent post-training phase: Pairwise Sample Optimization (PSO)[ 27 ] first adapted policy optimization for distilled models, and Hyper-SD[ 28 ] incorporated human feedback to further boost accelerated generation. Breaking away from decoupled training, DMDR[ 13 ] introduced the first framework to simultaneously optimize both DMD and RL objectives. Our proposed method is also built upon the DMDR * framework. 
+
+## 3 Preliminaries 
+
+3.1 Distribution Matching Distillation 
+
+The goal of Distribution Matching Distillation (DMD)[ 11 ] is to distill a multi-step diffusion model (teacher) into a high-fidelity, few-step generator (student) Gθ . The primary objective of DMD is Distribution Matching Loss (DML), which minimizes the reverse-KL divergence between the teacher’s distribution preal and student’s distribution pfake . The gradient of DML is: 
+
+∇θ LDMD = −Eε,t ′ (sreal (xt′ ) − sfake (xt′ )) ∇θ Gθ (ε), (1) where ε ∼ N (0, I), t′ ∼ U (Tmin , T max ) and x′ 
+
+> t
+
+is the diffused sample obtained by injecting noise into 
+
+x0 = Gθ (ε) at diffused time step t′. sreal and sfake are score functions given by score estimator μreal 
+
+> *We discuss only the GRPO-based variant of DMDR.
+
+3and μfake . During training, μfake with parameter ψ is initialized with μreal , and updating to track the distribution of Gθ through denoising diffusion objective: 
+
+Ldenoise = || μψ
+
+> fake
+
+(xt′ , t ′) − x0|| 22. (2) In few-step generation training, Gθ (ε) is revised by backward simulation as introduced from DMD2[ 12 ]. We follow SDE-based inference methods, starting from Standard Gaussian noise, it iteratively perform denoising ˆx0|t = Gθ (xt) and noising xt−1 = αt−1 ˆx0|t + σt−1ε. Thus, we have: 
+
+pθ (xt−1|xt) = N (αt−1Gθ (xt), σ 2
+
+> t−1
+
+I), (3) and we can redefine the gradient of one-step DML in Equation (1) to multi-step DML: 
+
+∇θ LDMD = −Et′,x t∼Gθ (sreal (xt′ ) − sfake (xt′ )) ∇θ Gθ (xt) (4) 
+
+3.2 Denoising Diffusion Policy Optimization 
+
+Following Denoising Diffusion Policy Optimization (DDPO)[ 26 ], we map the denoising process to the following multi-step Markov decision process (MDP): 
+
+st ≜ (t, x t, c ), π(at | st) = pθ (xt−1 | xt, c ), P (st+1 | st, a t) ≜  δc, δ t−1, δ xt−1
+
+,at ≜ xt−1, ρ0(s0) ≜  c, δ T , N (0, I), R(st, a t) ≜
+
+r(x0, c ), t = 0 ,
+
+0, otherwise .
+
+Where δx is Dirac delta distribution and T denoted the length of sampling trajectories. After collecting denoising trajectories {xT , x T −1, ..., x 0} and likelihoods log pθ , we can use policy gradient estimator depicted in REINFORCE[29, 30] to update parameter θ via gradient descent: 
+
+∇θ JDDPO = E
+
+"
+
+r(x0)
+
+> T
+
+X
+
+> t=1
+
+∇θ log pθ (xt−1 | xt)
+
+#
+
+, (5) To overcome the limitation where optimization is confined to one step per sampling round due to the on-policy requirement of the gradient, we utilize an importance sampling estimator[ 31 ]. This formulation facilitates multi-step optimization by reweighting gradients from trajectories produced by θold :
+
+∇θ JDDPO IS = E
+
+"
+
+r(x0)
+
+> T
+
+X
+
+> t=1
+
+pθ (xt−1 | xt)
+
+pθold (xt−1 | xt) ∇θ log pθ (xt−1 | xt)
+
+#
+
+(6) In this context, the expectation is taken with respect to the denoising sequences generated under the previous parameter set θold .Note that for ease of observation we omit the condition c in all formulas. Equation (5) is similar in form to Equation (4), which inspires us to regard term (sreal − sfake ) as a reward. 
+
+## 4 Methodology 
+
+4.1 Rdm : Distribution Matching as a Reward 
+
+The key to establishing the connection between Equation (4) and Equation (5) is uncovering the relationship between ∇θ Gθ (xt) and ∇θ log pθ (xt−1|xt), which are intrinsically linked through Equation (3). By taking the log-derivative of Equation (3), we obtain the following identity: 
+
+∇θ log p(xt−1 | xt) = xt−1 − μθ (xt)
+
+σ2
+
+> t−1
+
+· ∇ θ μθ (xt) (7) where μθ (xt) = αt−1Gθ (xt). Consequently, if we set 
+
+Rdm (xt, x t−1, t ′) = sreal (xt′ ) − sfake (xt′ )
+
+xt−1 − μθ (xt) · σ2
+
+> t−1
+
+αt−1
+
+, (8) 4the relationship between the ∇θ Gθ (xt) and ∇θ log pθ (xt−1|xt) can be formulated as: 
+
+Rdm (xt, x t−1, t ′)∇θ log pθ (xt−1|xt) = ( sreal (xt′ ) − sfake (xt′ )) ∇θ Gθ (xt).
+
+We define the policy gradient objective function for the distillation-based policy as: 
+
+∇θ JDDPO DM = Et′,x t∼Gθ [Rdm (xt, x t−1, t ′)∇θ log p(xt−1|xt)] , (9) Comparing to Equation (5), we use only one sample from the trajectory instead of all samples, ensuring consistency with the traditional DML as in Equation (4). Finally, We have ∇θ JDDPO DM =
+
+−∇ θ LDM D strictly established. 
+
+4.2 Revisiting the Distribution Matching Reward 
+
+Next, we further explore the meaning of our new-defined distribution matching reward Rdm . By substituting xt−1 − μθ (xt) = σt−1εx (εx is the standard gaussian noise which sampled to obtain 
+
+xt−1), we can rewrite Equation (8) as 
+
+Rdm (t, t ′) = Rs(t′) · σt−1
+
+αt−1εx , (10) where Rs(t′) := sreal (xt′ ) − sfake (xt′ ).
+
+Figure 3: Larger diffused timesteps, higher score vari-ance. The vector Rs(t′) functions as the critical guidance term that drives the generation of Gθ toward the manifold of preal and away from 
+
+pfake . However, Rs(t′) fluctuates across diffused samples xt′ at timesteps t′. Specifically, as t′ increases, the diffused sample xt′ be-comes increasingly blurred, resulting in more ambiguous directional information provided by Rs(t′), as shown in Figure 3. Although recent works leverage the sample weighting mechanisms introduced by DMD[ 11 ] to enhance stability and fidelity, the variance of Rs(t′)
+
+is higher at larger values of t′, which can mislead the optimiza-tion trajectory, thereby increasing the difficulty of effective model distillation. Further analysis in Section 5.3. Beyond the optimization challenges posed by the high variance at larger timesteps, the fundamental objective of the distribution match-ing reward Rdm diverges significantly from standard RL paradigms. Unlike conventional reward metrics such as HPS[ 32 ] or CLIP Score[ 33 ], where unbounded maximization often exacerbates re-ward hacking, Rdm essentially acts as a divergence measure that is optimized to approach zero. This stabilization dynamic is conceptually analogous to PREF-GRPO[ 34 ], where win-rate converges to 0.5. This fundamental shift from absolute maximization to distribution alignment introduces a critical advantage: Rdm provides an inherent safeguard against over-optimization, and it is a well-defined reward for regularization. 
+
+4.3 Group Normalized Distribution Matching 
+
+After re-concepting the distribution matching as a reward, we aim to address the inaccurate estimation issue in the calculation of Rs(t′). As Group Normalization (GN) on Rdm allows for a more stable estimation of the reward direction by the mean-subtraction mechanism, we naturally extend Rdm to a GRPO setting. Recall the MDP formulation defined in Section 3.2. The generator Gθ samples a groups of G individ-ual images {xi
+
+> 0
+
+}Gi=1 and the corresponding trajectories {(xiT , x iT −1, ..., x i
+
+> 0
+
+)}Gi=1 . The advantage of 
+
+i-th sample at trajectory step t and diffused timestep t′ is 
+
+Ai,t ′ 
+
+> dm ,t
+
+= Rdm (xit, x it−1, t ′) − mean ({Rdm (xit, x it−1, t ′)}Gi=1 )
+
+std ({Rdm (xit, x it−1, t ′)}Gi=1 ) . (11) The policy is updated by maximizing the Group Normalized Distribution Matching (GNDM) objec-tive: 
+
+JGNDM (θ) = Et,t ′,{xi}Gi=1 ∼Gθold 
+
+[f (r, A dm , θ, η )] , (12) 5where 
+
+f (r, A dm , θ, η ) = 1
+
+G
+
+> G
+
+X
+
+> i=1
+
+min 
+
+
+
+rit(θ)Ai,t ′
+
+> dm ,t
+
+, clip  rit(θ), 1 − η, 1 + ηAi,t ′
+
+> dm ,t
+
+
+
+, (13) 
+
+rit(θ) = pθ (xit | xit−1)
+
+pθold (xit | xit−1) .
+
+In each group, we share the generator timestep t and diffused timestep t′, separately. It maximizes component diversity while ensuring consistency within the group. We prove it is effective in ablation study Section 5.3. Furthermore, we introduced importance sampling in Equation (12), which enables to increase sampling efficiency while maintaining performance by update generator multiple times in once sampling, as discuss in Section 5.2. 
+
+4.4 GNDM with Other Rewards 
+
+To further improve the generative quality and alleviate mode seeking, following DMDR[ 13 ], we introduce other reward Ro in addition to the Rdm . As the same to Equation (11), We employ GN to 
+
+Ro:
+
+Ai 
+
+> o,t
+
+= Ro(xi
+
+> 0
+
+) − mean ({Ro(xi
+
+> 0
+
+)}Gi=1 )
+
+std ({Ro(xi
+
+> 0
+
+)}Gi=1 ) . (14) Unlike Ai,t ′
+
+> dm ,t
+
+, which is calculated as a dense reward on latent trajectory, Ai 
+
+> o,t
+
+is calculated as a sparse reward on final image. The total advantage of i-th sample Ai 
+
+> sum ,t
+
+at generation time t can be defined as the combination of the DM-derived advantage Ai,t ′ 
+
+> dm ,t
+
+and K auxiliary advantages Ai 
+
+> oj,t
+
+:
+
+Ai 
+
+> sum ,t
+
+= Ai,t ′ 
+
+> dm ,t
+
++
+
+> K
+
+X
+
+> j=1
+
+wj Ai 
+
+> oj,t
+
+, (15) where wj is the weighting funciton for j-th auxiliary reward. The final GRPO objective with multi-rewards is: 
+
+JGNDMR (θ) = Et,t ′,{xi}Gi=1 ∼Gθold 
+
+[f (r, A sum , θ, η )] . (16) 
+
+4.5 Adaptive Weight Design in Practice Implement 
+
+In practice, the term xt−1 − μθ (xt) introduces significant stochasticity and potential numerical instability, as xt−1 is obtained by adding gaussian noise from μθ (xt). To address this, we define a stabilized reward term Rdm by applying a sign-based normalization to the denominator to guarantee positive correlation. We also consider the weighting function proposed by DMD[ 11 ], as we found it can improve distillation efficiency. The final distillation matching reward can be defined as 
+
+Rdm (xt, x t−1, t ′) = sreal (xt′ ) − sfake (xt′ )
+
+sign (xt−1 − μθ (xt)) 
+
+CS 
+
+|| μreal (xt′ , t ′) − ˆx0|t|| 1
+
+, (17) where sign (x) = 1 if x > 0, and −1 otherwise. C and S is the number of channels and spatial locations, respectively. After applying GN towards Rdm , we multiply the scaler wdm with Adm to maintain the original amplitude: 
+
+wdm ,t = 1
+
+|xt−1 − μθ (xt)| + ϵσ2
+
+> t−1
+
+αt−1
+
+. (18) This formulation ensures a stable optimization signal by reducing the variance inherent in the raw sampling residuals. When incorporating with other rewards, we found multiply adaptive weight βdm ,t based on wdm ,t can effectively improve the target score without collapsing by keeping their amplitudes consistent: 
+
+βdm ,t = || wdm ,t || 1
+
+CS . (19) 6Algorithm 1: GNDMR training procedure 
+
+Input :Pretrained real diffusion model μreal , number of prompts N , number of generated samples per prompt M (group size), number inference timesteps T .
+
+Output : Distilled generator Gθ .// Initialize generator and fake score estimators from pretrained model  
+
+> 1
+
+Gθ ← copyWeights (μreal ), μfake ← copyWeights (μreal ) 
+
+> 2
+
+while train do 
+
+// Sample trajectories  
+
+> 3
+
+Sample a batch of prompts Q = {q1, q 2, . . . , q N } 
+
+> 4
+
+for each q ∈ Q do  
+
+> 5
+
+Sample a group of M trajectories {(xiT , x iT −1, ..., x i
+
+> 0
+
+)}Mi=1 
+
+// Update fake score estimation model  
+
+> 6
+
+Sample generated timesteps t and diffused timesteps t′ 
+
+> 7
+
+xt′ = forwardDiffusion(stopgrad( Gθ (xt)), t′) 
+
+> 8
+
+Ldenoise = denoisingLoss( μfake (xt′ , t ′), stopgrad( Gθ (xt))) // Equation (2)  
+
+> 9
+
+μfake = update( μfake , Ldenoise )// Compute rewards and advantages  
+
+> 10
+
+for each q ∈ Q do  
+
+> 11
+
+Sample generated timesteps t and diffused timesteps t′ 
+
+> 12
+
+for i = 1 to M do  
+
+> 13
+
+Ri 
+
+> dm
+
+= Rdm (xit, x it−1, t ′), Rio = RM (xi
+
+> 0
+
+) // Equation (17)  
+
+> 14
+
+Ai,t ′ 
+
+> dm ,t
+
+= GN (Ri
+
+> dm
+
+), Ai 
+
+> o,t
+
+= GN (Rio) // Equation (11), Equation (14)  
+
+> 15
+
+Ai 
+
+> sum ,t
+
+= weightedAdd( Ai,t ′
+
+> dm ,t
+
+, Ai
+
+> o,t
+
+) // Equation (20) // Update generator  
+
+> 16
+
+for train generator loop do  
+
+> 17
+
+Use the same generated timesteps t when compute rewards  
+
+> 18
+
+JGNDMR (θ) = GRPOLoss( Asum , rt(θ)) // Equation (16)  
+
+> 19
+
+Gθ = update( Gθ , JGNDMR (θ))
+
+As wdm ,t is pixel-wise, we keep it consistent with the other rewards’ dimensions by averaging them out in the sample dimension. As discussed in Section 5.3, βdm ,t shows significance on both DMDR and GNDMR. Finally, we rewrite Equation (15) with designed weight as 
+
+Ai 
+
+> sum ,t
+
+= wdm ,t Ai,t ′ 
+
+> dm ,t
+
++ βdm ,t 
+
+X
+
+> j
+
+wj Ai 
+
+> oj,t
+
+. (20) Algorithm 1 outlines the final training procedure. Additional details are provided in the supplementary materials. 
+
+## 5 Experiments 
+
+Experiment Setting. The distillation is conducted on the LAION-AeS-6.5+[ 35 ] solely with its prompts. We use DFN-CLIP[ 36 ] and HPSv2.1[ 32 ] as reward models by default, where HPS represents aesthetic quality and CLIP captures image–text alignment, jointly guiding DMD toward more diverse and semantically aligned modes. Meanwhile, to reduce sampling overhead, we propose a variant termed GNDMR-IS, which updates the generator twice for each sampling by importance sampling estimator. The trained distilled models are all flow-based[ 37 , 38 ] and support inference on stochastic sampling[ 39 ]. We also consider cold start strategy for faster and stable convergence[ 13 ], more experiment details can be found in the supplementary materials. 
+
+Evaluation Metrics. To comprehensively evaluate our approach, we adopt a diverse set of metrics. Fine-grained image-text semantic alignment is measured via the Human Preference Score (HPS) v2.1 [ 32 ], while PickScore (PS) [ 40 ] gauges overall aesthetic quality and perceptual appeal. To capture broader nuances of human judgment such as object accuracy, spatial relations, and attribute binding, we incorporate the recently proposed Multi-dimensional Preference Score (MPS) [ 41 ]. Beyond perceptual assessments, CLIP Score (CS) [ 36 ] and FID [ 42 ] serve to quantitatively verify distillation 7Table 1: Comparison against state-of-the-art methods. * denotes our reproduced results. Img-Free 
+
+represents whether the training requires external image data. Cost refers to the product of sample size and sampling iterations. The best results are marked in red , second-best in orange .                                                                                                                                                                  
+
+> Method NFE Res. Img-Free HPS ↑PS ↑MPS ↑CS ↑FID ↓FID-SD ↓Cost ↓
+> Stable Diffusion 3 Medium Comparison
+> Base Model (CFG=7) 50 1024 -29.00 22.72 12.10 38.86 24.48 --Flow-GRPO[18]* (CFG=7) 50 1024 -30.35 22.90 12.56 38.52 26.63 12.39 -Hyper-SD[28] (CFG=5) 81024 ✗27.20 21.90 11.22 37.76 26.94 10.09 -LCM[39] 41024 ✗27.76 22.31 11.61 36.97 27.71 15.90 -DMD2[12]* 41024 ✗26.64 22.36 11.37 38.00 27.28 16.51 -Flash-SD3[46] 41024 ✗27.47 22.65 11.98 38.07 26.01 12.21 -DMDR[13]* 41024 ✓29.50 22.77 11.98 38.10 29.10 14.11 -GNDMR-IS 41024 ✓30.00 22.89 12.48 38.15 28.84 12.47 128*4k GNDMR 41024 ✓30.37 22.88 12.53 38.20 28.02 12.21 128*8k
+> Stable Diffusion 3.5 Medium Comparison
+> Base Model (CFG=3.5) 50 512 -27.78 22.59 11.91 38.46 20.69 --Flow-GRPO[18]* (CFG=3.5) 50 512 -31.81 23.24 12.93 39.21 29.27 9.39 -DMD2[12]* 4512 ✗30.44 22.92 12.73 38.59 26.64 14.63 -DMDR[13]* 4512 ✓30.83 23.07 12.80 38.22 26.05 16.73 -GNDMR-IS 4512 ✓30.88 22.94 12.86 38.39 25.60 16.68 128*3k GNDMR 4512 ✓31.25 23.15 12.93 38.59 24.44 13.93 128*6k
+
+effectiveness. We also compute FID-SD [ 43 ] by comparing the outputs of all baselines against images generated by the original pre-trained diffusion models. 
+
+5.1 Comparison with State-Of-The-Art (SOTA) 
+
+We validate the text-to-image generation performance in both aesthetics alignment and distillation efficiency on 10K prompts from COCO2014[ 44 ] following the 30K split of karpathy. We compare our 4-step generative models GNDMR and its variant GNDMR-IS (update 2 times generator per sampling by importance sampling strategy) against SD3-Medium[ 1] and SD3.5-Medium[ 45 ], as well as other open-sourced SOTA distillation models. We reproduced DMD2[ 12 ], as it serves as the foundational distribution-based model in this domain. Additionally, we implemented DMDR (w/ GRPO)[ 13 ], a pioneer method within the same category. To further evaluate our model’s performance against RL techniques directly applied to the teacher model, we extended the application of Flow-GRPO[ 18 ] to the base model, positioning this as the ceiling of RL performance in this context. 
+
+Quantitative Comparison. As shown in Table 1, our quantitative analysis highlights the superiority of GNDMR across three key dimensions. Regarding Aesthetics Alignment , on both SD3 and SD3.5, GNDMR consistently outperforms existing 4-step models. It surpasses the teacher and achieves comparable aesthetic performance to this Flow-GRPO optimized model, underscoring the efficacy of our alignment formulation. Furthermore, it enables Highly Efficient, Data-Free Distillation .Operating without external image datasets, GNDMR achieves a strictly lower FID than the data-free DMDR baseline on both SD3 and SD3.5. For SD3, its remarkably low FID-SD indicates accurate teacher distribution matching without the aesthetic degradation seen in Hyper-SD, striking a superior balance between visual quality and distribution fidelity. Finally, our framework delivers Reduced Training Cost , the GNDMR-IS variant halves training expenses while maintaining highly competitive alignment, demonstrating the accelerated convergence and resource efficiency of our paradigm. 
+
+Qualitative Comparison. As shown in Figure 4, GNDMR consistently achieves superior aesthetic quality, exhibiting richer details, enhanced color vibrancy, and stronger prompt alignment across diverse styles. Furthermore, our method significantly mitigates the visual artifacts prevalent in DMDR outputs. Our GNDMR demonstrates an optimal balance between high aesthetic appeal and clean image synthesis. 
+
+5.2 Importance Sampling Correction 
+
+One significant advantage of treating distribution matching as a reward is the ability to leverage the Importance Sampling (IS) estimator [ 31 ]. This enables multi-step updates for the student model from 8Base Model Hyper -SD LCM Flash -SD3 DMDR GNDMR    
+
+> The image is of a raccoon wearing a Peaky Blinders hat, surrounded by swirling mist and rendered with fine detail.
+> A colorful digital painting with a front view and anime -inspired vibes featuring a magical composition.
+> An intricate and elegant art deco -inspired metropolis with retrofuturistic elements in a cyberpunk style.
+> A woman's face in profile, with white carapace plates extruding from the skin and red kintsurugi .
+> A hybrid creature concept painting of a zebra -striped unicorn with bunny ears and a colorful mane.
+
+Figure 4: Qualitative Results. Our GNDMR has better aesthetics than other models and fewer artifacts than DMDR. a single sampling iteration, effectively addressing the high sample demand typically associated with Reinforcement Learning (RL). Our experiments, conducted on SD3-Medium (512 ×512), employ HPSv2.1 as an auxiliary reward and report HPSv2.1 on HPDv2 test prompts[32]. As illustrated in Figure 5a, while increasing the batch size (e.g., from 16 × 8 to 32 × 16 ) enhances reward optimization per training step, it substantially raises the sampling cost. By implementing 5 training iterations per sample with a clip range of η = 0 .5, our 32 ×16 (w/ IS) configuration achieves a convergence rate and final performance comparable to the standard 32 ×16 setup, while requiring significantly fewer total samples even less than the baseline 16 ×8 configuration (see Figure 5b). Table 2: Ablation on Group Normalization (GN) on Rdm .We first only distill model for 500 iteration then continue training with different rewards. 
+
+Method only Rdm +HPS +PS FID ↓ FID ↓ HPS ↑ FID ↓ PS ↑
+
+GNDMR 23.07 24.47 30.22 22.32 22.76 w/o GN 24.94 25.40 30.39 24.61 22.71 
+
+Table 3: Ablation on sampling strategy (left) and timestep intervals of group nor-malization (right). 
+
+t′ t FID ↓
+
+24.94 
+
+✓ 24.34 
+
+✓ ✓ 23.07 
+
+Interval FID ↓
+
+[0 , 300] 23.71 
+
+[300 , 600] 23.46 
+
+[600 , 1000] 23.43 
+
+90 200 400 600 800 1000 
+
+> Training Steps
+> 31.4
+> 31.6
+> 31.8
+> 32.0
+> 32.2
+> 32.4
+> 32.6
+> HPS
+> 16x8
+> 16x16
+> 32x16
+> 32x16 (w/ IS)
+
+(a) Equal Updates Comparison 0 100000 200000 300000 400000 500000  
+
+> Total Samples
+> 31.4
+> 31.6
+> 31.8
+> 32.0
+> 32.2
+> 32.4
+> 32.6
+> HPS
+> 16x8
+> 16x16
+> 32x16
+> 32x16 (w/ IS)
+
+(b) Equal Sampling Budget Comparison 
+
+Figure 5: Importance Sampling (IS) improves sampling efficiency. (a) With the same number of training steps, larger batch sizes lead to better reward optimization, but (b) they also require more samples. By introducing IS, the 32×16 (w/ IS) setting achieves comparable performance under a reduced sampling budget. 
+
+5.3 Ablation Study 
+
+We explore the effectiveness of Rdm from multiple perspectives through ablation studies below. By default, we use SD3-Medium with 512 × 512 and first perform 500 iterations vanilla DMD for fast training and observation, the results were reported on COCO30K. 
+
+Effect of group normalization on Rdm . The primary advantage of our GNDMR lies in applying Group Normalization (GN) to Rdm . To investigate this effect, we conduct the experiments shown in Table 2. During the first 500 distillation training iterations, GNDMR results in a lower FID, providing a better initialization for subsequent optimization. In the follow-up training, where HPS and PS are separately introduced as additional rewards, GNDMR continues to achieve lower FID while maintaining comparable performance on the target rewards. 
+
+Sampling strategy of generation timestep t and diffused timestep t′. Since Group Normalization (GN) is applied to Rdm , the same t′ is shared within each group, as t′ determines the noise level of the diffused samples. We further examine whether sharing the same t within a group affects performance. The first row in Table 3 (left) corresponds to the vanilla DMD baseline. Sharing both t′ and t within a group yields the best performance, consistent with Equation (10), since Rdm depends on both t′ and t.
+
+Effect of diffused timestep intervals of group normalization on Rdm . As shown in Table 3 (right), larger timestep intervals correspond to higher noise levels, which increase the variance of 
+
+Rdm estimation as shown in Figure 3. Applying GN to regions with larger interval values effectively stabilizes the estimation and leads to lower FID. 
+
+Effect of βdm ,t . As illustrated in Figure 6, it is challenging to consistently improve the target reward through simple static weighting w. This difficulty arises because the distillation matching incorporates a dynamic coefficient wdm ,t that evolves during training. Without scaling the reward by the same level coefficient βdm ,t , it is nearly impossible to maintain a proper balance between the two terms using a fixed weight w, often leading to unstable optimization or suboptimal reward gains. By contrast, applying βdm ,t to the reward term ensures a synchronized weighting scheme, allowing the reward to improve steadily without collapse. 
+
+## 6 Conclusion 
+
+In this work, we present a novel framework for improving diffusion distillation by re-conceptualizing distribution matching as a reward. Our approach bridges the gap between diffusion distillation and RL, resulting in more efficient and stable training. Through extensive experiments, we demonstrate that GNDM outperforms vanilla DMD, achieving a notable reduction in FID scores. Furthermore, the GNDMR framework, which integrates additional rewards, achieves an optimal balance between aesthetic quality and fidelity. Our method offers a flexible, efficient, and stable framework for real-time, high-fidelity image synthesis, while also providing a novel direction for the application of 10 600 800 1000 1200 1400 
+
+> Training Steps
+> 31.0
+> 31.2
+> 31.4
+> 31.6
+> 31.8
+> 32.0
+> 32.2
+> HPS
+> w=1
+> w=10
+> w=100
+> w=10 (w/ beta)
+
+(a) Effect of βdm ,t on DMDR 600 800 1000 1200 1400  
+
+> Training Steps
+> 30.8
+> 31.0
+> 31.2
+> 31.4
+> 31.6
+> 31.8
+> 32.0
+> 32.2
+> HPS
+> w=1
+> w=10
+> w=100
+> w=10 (w/ beta)
+
+(b) Effect of βdm ,t on GNDMR 
+
+Figure 6: Ablation study on the effect of βdm ,t and the weighting factor w. "w/ beta" denotes the configuration using βdm ,t as defined in Equation (19), whereas other variants set βdm ,t = 1 . The HPS is evaluated on the HPDv2 test prompts. The results demonstrate that incorporating βdm ,t leads to more stable and superior reward optimization compared to static weighting under both DMDR and GNDMR setting. the latest RL techniques in diffusion model distillation, paving the way for future advancements in the field. 
+
+## References 
+
+[1] Patrick Esser, Sumith Kulal, Andreas Blattmann, Rahim Entezari, Jonas Müller, Harry Saini, Yam Levi, Dominik Lorenz, Axel Sauer, Frederic Boesel, et al. Scaling rectified flow trans-formers for high-resolution image synthesis. In Forty-first international conference on machine learning , 2024. [2] William Peebles and Saining Xie. Scalable diffusion models with transformers. In Proceedings of the IEEE/CVF international conference on computer vision , pages 4195–4205, 2023. [3] Robin Rombach, Andreas Blattmann, Dominik Lorenz, Patrick Esser, and Björn Ommer. High-resolution image synthesis with latent diffusion models. In Proceedings of the IEEE/CVF conference on computer vision and pattern recognition , pages 10684–10695, 2022. [4] Jonathan Ho, Ajay Jain, and Pieter Abbeel. Denoising diffusion probabilistic models. Advances in neural information processing systems , 33:6840–6851, 2020. [5] Yang Song, Jascha Sohl-Dickstein, Diederik P Kingma, Abhishek Kumar, Stefano Ermon, and Ben Poole. Score-based generative modeling through stochastic differential equations. arXiv preprint arXiv:2011.13456 , 2020. [6] Chenlin Meng, Robin Rombach, Ruiqi Gao, Diederik Kingma, Stefano Ermon, Jonathan Ho, and Tim Salimans. On distillation of guided diffusion models. In Proceedings of the IEEE/CVF conference on computer vision and pattern recognition , pages 14297–14306, 2023. [7] Tim Salimans and Jonathan Ho. Progressive distillation for fast sampling of diffusion models. 
+
+arXiv preprint arXiv:2202.00512 , 2022. [8] Yang Song and Prafulla Dhariwal. Improved techniques for training consistency models. In The Twelfth International Conference on Learning Representations , 2024. URL https: //openreview.net/forum?id=WNzy9bRDvG .[9] Weijian Luo, Zemin Huang, Zhengyang Geng, J Zico Kolter, and Guo-jun Qi. One-step diffusion distillation through score implicit matching. Advances in Neural Information Processing Systems , 37:115377–115408, 2024. [10] Mingyuan Zhou, Zhendong Wang, Huangjie Zheng, and Hai Huang. Guided score identity distillation for data-free one-step text-to-image generation. In The Thirteenth International Con-ference on Learning Representations , 2025. URL https://arxiv.org/abs/2406.01561 .11 [11] Tianwei Yin, Michaël Gharbi, Richard Zhang, Eli Shechtman, Fredo Durand, William T Freeman, and Taesung Park. One-step diffusion with distribution matching distillation. In 
+
+Proceedings of the IEEE/CVF conference on computer vision and pattern recognition , pages 6613–6623, 2024. [12] Tianwei Yin, Michaël Gharbi, Taesung Park, Richard Zhang, Eli Shechtman, Fredo Durand, and Bill Freeman. Improved distribution matching distillation for fast image synthesis. Advances in neural information processing systems , 37:47455–47487, 2024. [13] Dengyang Jiang, Dongyang Liu, Zanyi Wang, Qilong Wu, Liuzhuozheng Li, Hengzhuang Li, Xin Jin, David Liu, Zhen Li, Bo Zhang, et al. Distribution matching distillation meets reinforcement learning. arXiv preprint arXiv:2511.13649 , 2025. [14] Yanzuo Lu, Yuxi Ren, Xin Xia, Shanchuan Lin, Xing Wang, Xuefeng Xiao, Andy J Ma, Xiaohua Xie, and Jian-Huang Lai. Adversarial distribution matching for diffusion distillation towards efficient image and video synthesis. In Proceedings of the IEEE/CVF International Conference on Computer Vision , pages 16818–16829, 2025. [15] Zhiwei Jia, Yuesong Nan, Huixi Zhao, and Gengdai Liu. Reward fine-tuning two-step diffusion models via learning differentiable latent-space surrogate reward. In Proceedings of the Computer Vision and Pattern Recognition Conference , pages 12912–12922, 2025. [16] Weijian Luo. Diff-instruct++: Training one-step text-to-image generator model to align with human preferences. arXiv preprint arXiv:2410.18881 , 2024. [17] John Schulman, Filip Wolski, Prafulla Dhariwal, Alec Radford, and Oleg Klimov. Proximal policy optimization algorithms. arXiv preprint arXiv:1707.06347 , 2017. [18] Jie Liu, Gongye Liu, Jiajun Liang, Yangguang Li, Jiaheng Liu, Xintao Wang, Pengfei Wan, Di Zhang, and Wanli Ouyang. Flow-grpo: Training flow matching models via online rl. arXiv preprint arXiv:2505.05470 , 2025. [19] Jiajun Fan, Tong Wei, Chaoran Cheng, Yuxin Chen, and Ge Liu. Adaptive divergence regularized policy optimization for fine-tuning generative models. In The Thirty-ninth Annual Conference on Neural Information Processing Systems , 2025. URL https://openreview.net/forum? id=aXO0xg0ttW .[20] Shih-Yang Liu, Xin Dong, Ximing Lu, Shizhe Diao, Peter Belcak, Mingjie Liu, Min-Hung Chen, Hongxu Yin, Yu-Chiang Frank Wang, Kwang-Ting Cheng, Yejin Choi, Jan Kautz, and Pavlo Molchanov. Gdpo: Group reward-decoupled normalization policy optimization for multi-reward rl optimization, 2026. URL https://arxiv.org/abs/2601.05242 .[21] Guanjie Chen, Shirui Huang, Kai Liu, Jianchen Zhu, Xiaoye Qu, Peng Chen, Yu Cheng, and Yifu Sun. Flash-dmd: Towards high-fidelity few-step image generation with efficient distillation and joint reinforcement learning. arXiv preprint arXiv:2511.20549 , 2025. [22] Yihong Luo, Tianyang Hu, Jiacheng Sun, Yujun Cai, and Jing Tang. Learning few-step diffusion models by trajectory distribution matching. In Proceedings of the IEEE/CVF International Conference on Computer Vision , pages 17719–17728, 2025. [23] Dongyang Liu, Peng Gao, David Liu, Ruoyi Du, Zhen Li, Qilong Wu, Xin Jin, Sihan Cao, Shifeng Zhang, Steven HOI, and Hongsheng Li. Decoupled DMD: CFG augmentation as the spear, distribution matching as the shield. In The Fourteenth International Conference on Learning Representations , 2026. URL https://openreview.net/forum?id=jBztvOiCKE .[24] Jiazheng Xu, Xiao Liu, Yuchen Wu, Yuxuan Tong, Qinkai Li, Ming Ding, Jie Tang, and Yuxiao Dong. Imagereward: Learning and evaluating human preferences for text-to-image generation. 
+
+Advances in Neural Information Processing Systems , 36:15903–15935, 2023. [25] Bram Wallace, Meihua Dang, Rafael Rafailov, Linqi Zhou, Aaron Lou, Senthil Purushwalkam, Stefano Ermon, Caiming Xiong, Shafiq Joty, and Nikhil Naik. Diffusion model alignment using direct preference optimization. In Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition , pages 8228–8238, 2024. 12 [26] Kevin Black, Michael Janner, Yilun Du, Ilya Kostrikov, and Sergey Levine. Training diffusion models with reinforcement learning. arXiv preprint arXiv:2305.13301 , 2023. [27] Zichen Miao, Zhengyuan Yang, Kevin Lin, Ze Wang, Zicheng Liu, Lijuan Wang, and Qiang Qiu. Tuning timestep-distilled diffusion model using pairwise sample optimization. In The Thirteenth International Conference on Learning Representations , 2025. URL https://openreview. net/forum?id=fXnE4gB64o .[28] Yuxi Ren, Xin Xia, Yanzuo Lu, Jiacheng Zhang, Jie Wu, Pan Xie, Xing Wang, and Xuefeng Xiao. Hyper-sd: Trajectory segmented consistency model for efficient image synthesis. Advances in neural information processing systems , 37:117340–117362, 2024. [29] Ronald J Williams. Simple statistical gradient-following algorithms for connectionist reinforce-ment learning. Machine learning , 8(3):229–256, 1992. [30] Shakir Mohamed, Mihaela Rosca, Michael Figurnov, and Andriy Mnih. Monte carlo gradient estimation in machine learning. Journal of Machine Learning Research , 21(132):1–62, 2020. [31] Sham Kakade and John Langford. Approximately optimal approximate reinforcement learning. In Proceedings of the nineteenth international conference on machine learning , pages 267–274, 2002. [32] Xiaoshi Wu, Yiming Hao, Keqiang Sun, Yixiong Chen, Feng Zhu, Rui Zhao, and Hongsheng Li. Human preference score v2: A solid benchmark for evaluating human preferences of text-to-image synthesis. arXiv preprint arXiv:2306.09341 , 2023. [33] Jack Hessel, Ari Holtzman, Maxwell Forbes, Ronan Le Bras, and Yejin Choi. Clipscore: A reference-free evaluation metric for image captioning. In Proceedings of the 2021 conference on empirical methods in natural language processing , pages 7514–7528, 2021. [34] Yibin Wang, Zhimin Li, Yuhang Zang, Yujie Zhou, Jiazi Bu, Chunyu Wang, Qinglin Lu, Cheng Jin, and Jiaqi Wang. Pref-grpo: Pairwise preference reward-based grpo for stable text-to-image reinforcement learning. arXiv preprint arXiv:2508.20751 , 2025. [35] Christoph Schuhmann, Romain Beaumont, Richard Vencu, Cade Gordon, Ross Wightman, Mehdi Cherti, Theo Coombes, Aarush Katta, Clayton Mullis, Mitchell Wortsman, et al. Laion-5b: An open large-scale dataset for training next generation image-text models. Advances in neural information processing systems , 35:25278–25294, 2022. [36] Alex Fang, Albin Madappally Jose, Amit Jain, Ludwig Schmidt, Alexander Toshev, and Vaishaal Shankar. Data filtering networks. arXiv preprint arXiv:2309.17425 , 2023. [37] Yaron Lipman, Ricky TQ Chen, Heli Ben-Hamu, Maximilian Nickel, and Matt Le. Flow matching for generative modeling. arXiv preprint arXiv:2210.02747 , 2022. [38] Xingchao Liu, Chengyue Gong, and Qiang Liu. Flow straight and fast: Learning to generate and transfer data with rectified flow. arXiv preprint arXiv:2209.03003 , 2022. [39] Simian Luo, Yiqin Tan, Longbo Huang, Jian Li, and Hang Zhao. Latent consistency models: Synthesizing high-resolution images with few-step inference. arXiv preprint arXiv:2310.04378 ,2023. [40] Yuval Kirstain, Adam Polyak, Uriel Singer, Shahbuland Matiana, Joe Penna, and Omer Levy. Pick-a-pic: An open dataset of user preferences for text-to-image generation. Advances in neural information processing systems , 36:36652–36663, 2023. [41] Sixian Zhang, Bohan Wang, Junqiang Wu, Yan Li, Tingting Gao, Di Zhang, and Zhongyuan Wang. Learning multi-dimensional human preference for text-to-image generation. In Pro-ceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition , pages 8018–8027, 2024. [42] Martin Heusel, Hubert Ramsauer, Thomas Unterthiner, Bernhard Nessler, and Sepp Hochreiter. Gans trained by a two time-scale update rule converge to a local nash equilibrium. Advances in neural information processing systems , 30, 2017. 13 [43] Fu-Yun Wang, Zhaoyang Huang, Alexander Bergman, Dazhong Shen, Peng Gao, Michael Lingelbach, Keqiang Sun, Weikang Bian, Guanglu Song, Yu Liu, et al. Phased consistency models. Advances in neural information processing systems , 37:83951–84009, 2024. [44] Tsung-Yi Lin, Michael Maire, Serge Belongie, James Hays, Pietro Perona, Deva Ramanan, Piotr Dollár, and C Lawrence Zitnick. Microsoft coco: Common objects in context. In European conference on computer vision , pages 740–755. Springer, 2014. [45] Stability AI. Sd3.5. https://github.com/Stability-AI/sd3.5 , 2024. [46] Clement Chadebec, Onur Tasar, Eyal Benaroche, and Benjamin Aubin. Flash diffusion: Accel-erating any conditional diffusion model for few steps image generation. In Proceedings of the AAAI Conference on Artificial Intelligence , volume 39, pages 15686–15695, 2025. [47] Zeyue Xue, Jie Wu, Yu Gao, Fangyuan Kong, Lingting Zhu, Mengzhao Chen, Zhiheng Liu, Wei Liu, Qiushan Guo, Weilin Huang, et al. Dancegrpo: Unleashing grpo on visual generation. 
+
+arXiv preprint arXiv:2505.07818 , 2025. [48] Junzhe Li, Yutao Cui, Tao Huang, Yinping Ma, Chun Fan, Miles Yang, and Zhao Zhong. Mixgrpo: Unlocking flow-based grpo efficiency with mixed ode-sde. arXiv preprint arXiv:2507.21802 , 2025. 14 A Implementation Details 
+
+A.1 Experiment Details 
+
+We optimize both the generator and the fake score network using the AdamW optimizer. By default, the momentum parameters β1 and β2 are set to 0.9 and 0.999 , respectively. The fake score is updated once for every single generator update. All experiments are conducted on 8 NVIDIA H800 GPUs. 
+
+SD3-Medium We adopt a constant learning rate of 1 × 10 −6 for both the generator and the fake score. Gradient norm clipping is applied with a threshold of 1.0. The models are trained at a resolution of 
+
+1024 × 1024 with a total batch size of 128 , utilizing a group size of 8 and 16 groups. Classifier-Free Guidance (CFG) is set to 7.0. To accelerate convergence, we initially train for 500 iterations with the Human Preference Score (HPS) weight whps = 5 and CLIP Score weight wcs = 5 . Subsequently, we continue training for an additional 7.5k iterations, increasing both weights to 10 (whps = 10 ,
+
+wcs = 10 ). 
+
+SD3.5-Medium We adopt a constant learning rate of 1 × 10 −6 for both the generator and the fake score, with gradient norm clipping set to 1.0. Training is performed at a resolution of 512 × 512 with a batch size of 128 , a group size of 8, and 16 groups. The CFG is set to 3.5. The training process is completed within 8k iterations using whps = 10 and wcs = 10 .
+
+A.2 Training Algorithm Details 
+
+For a comprehensive understanding, Algorithm 2 details the specific implementation for constructing the weighted advantage aggregation used during our training process. 
+
+Algorithm 2: weightedAdd 
+
+# x_curr, x_next, x_0: current, next and final sample from trajectory # alpha_next, sigma_next: noise level at diffusion process # G: trained few-step generator # timestep: diffused timestep added in forward_diffusion noise = randn_like(x_curr) pred_x0 = G(x_curr) mu_next = alpha_next * pred_x0 x_next = mu_next + sigma_next * noise # diffused x noise = randn_like(x_curr) noisy_x = forward_diffusion(pred_x0, noise, timestep) # denoise using real and fake denoiser fake_x0 = mu_fake(noisy_x, timestep) real_x0 = mu_real(noisy_x, timestep) # calculate Rdm and weighting_factor introduced by DMD dm_factor = abs(pred_x0 - real_x0).mean(dim=[1,2,3], keepdim=True) R_dm = (real_x0 - fake_x0) / sign(x_next - mu_next) / dm_factor w_dm = (1 / abs(x_next - mu_next) + 1e-7) * (sigma_next **2 / alpha_next) # calculate other rewards for j in range(K): R_oj = RewardModel(x_0) beta_dm = w_dm.mean(dim=[1,2,3], keepdim=True) # calculate advantages and sum them up A_dm = GroupNorm(R_dm) A_oj = GroupNorm(R_oj) A_sum = w_dm * A_dm for j in range(K): A_sum += beta_dm * w_j * A_oj 
+
+15 Table 4: Comparison of different noise initialization strategies. 
+
+Strategy FID ↓
+
+Random 24.68 Shared 23.07 
+
+## B Additional Experiments 
+
+In this section, we provide further ablation studies to validate the design choices within our framework. By default, all experiments in this section are conducted using SD3-Medium at a resolution of 
+
+512 × 512 . For rapid evaluation, we solely consider the HPS reward and train GNDM for 500 iterations before executing the full GNDMR process. 
+
+B.1 Effect of Noise Initialization 
+
+When applying GNDM, the noise initialization strategy plays a critical role. Existing approaches diverge on this front: while DanceGRPO[ 47 ] and MixGRPO[ 48 ] utilize shared initial noise across all candidates within a group, Flow-GRPO[ 18 ] employs independent random initialization. Our empirical results, summarized in Table 4, demonstrate that shared noise initialization yields superior, more robust distillation performance, as evidenced by a lower FID score. 
+
+B.2 Design of the Adaptive Weight βdm ,t 
+
+The coefficient βdm ,t is designed to calibrate the influence of the distillation weight wdm ,t . A key technical challenge arises from the dimensionality mismatch: wdm ,t is a pixel-wise metric, whereas reinforcement learning rewards are typically sample-wise. To evaluate its necessity and the optimal granularity, we compare three configurations: 1. A baseline setting with no balancing coefficient (i.e., βdm ,t = 1 ). 2. A pixel-wise application, where βdm ,t is directly set to wdm ,t .3. A sample-wise variant, where βdm ,t is computed by taking the mean of wdm ,t over all dimensions except for the batch dimension. Experimental results in Figure 7 demonstrate that the sample-wise formulation of βdm ,t is significantly more effective at improving the HPS than both the pixel-wise and baseline configurations, as it provides a much more stable reward signal across the generated samples. 
+
+B.3 Sensitivity Analysis of the Reward Weight whps 
+
+To further analyze the sensitivity of our adaptive weight, we vary the reward weight for Rhps , denoted as whps , across the set {1, 10 , 15 , 20 }. As shown in Figure 9, enlarging whps improves the overall HPS performance. Furthermore, without integrating βdm ,t , the model struggles to improve the target HPS consistently, underscoring the need for our adaptive weight βdm ,t .
+
+B.4 Sensitivity of Clip Range η in Importance Sampling 
+
+The clip range η is a pivotal hyperparameter for importance sampling correction. While a larger 
+
+η permits more aggressive policy updates, it often introduces training instability. Conversely, an excessively low η restricts learning progress and may fail to correct for distribution shifts from the behavior policy. As shown in Figure 8, unlike standard GRPO-based fine-tuning, which typically uses a highly conservative clip range (e.g., 1 × 10 −5), our distillation framework benefits from a larger η to enable rapid, efficient convergence. 16 600 800 1000 1200 1400 
+
+Training Steps 
+
+> 31.2
+> 31.4
+> 31.6
+> 31.8
+> 32.0
+> 32.2
+> HPS
+> sample-wise
+> pixel-wise
+> baseline
+
+Figure 7: Design of the adaptive weight. 600 800 1000 1200 1400 
+
+Training Steps  
+
+> 30.0
+> 30.5
+> 31.0
+> 31.5
+> 32.0
+> 32.5
+> HPS
+> clip=0.05
+> clip=0.5
+> clip=2.5
+> clip=5
+
+Figure 8: Effect of the clip range. 600 800 1000 1200 1400 
+
+Training Steps 
+
+> 31.4
+> 31.6
+> 31.8
+> 32.0
+> 32.2
+> 32.4
+> 32.6
+> HPS
+> w=1
+> w=10
+> w=15
+> w=20
+
+(a) Sensitivity analysis of w with βdm ,t .600 800 1000 1200 1400 
+
+Training Steps  
+
+> 30.6
+> 30.8
+> 31.0
+> 31.2
+> 31.4
+> HPS
+> w=1
+> w=10
+> w=15
+> w=20
+
+(b) Sensitivity analysis of w without βdm ,t .
+
+Figure 9: Sensitivity analysis of the reward weight w.
+
+## C Additional Qualitative Results 
+
+Figure 10 presents additional qualitative comparisons between our proposed GNDMR and several state-of-the-art distillation baselines. Across various complex prompts, GNDMR consistently yields more aesthetically pleasing results with enhanced textural detail and structural integrity. 17 Base Model Hyper -SD LCM Flash -SD3 DMDR GNDMR 
+
+Two pilots in uniform stand in front of an airplane on a blue background. 
+
+ufo sightings, with ufo spacecraft and red lanterned light 
+
+a snap back new york yankees cap 
+
+A cat holding a sign that says '4 steps' 
+
+A close up of an old elderly man with green eyes looking straight at the camera 
+
+A raccoon trapped inside a glass jar full of colorful candies, the background is steamy with vivid colors Figure 10: Qualitative results. Text prompts are selected from DMDR [ 13 ] (top three rows) and Flash-SD [46] (bottom three rows). 18

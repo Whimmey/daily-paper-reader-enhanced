@@ -6,78 +6,69 @@
 </div>
 
 ## 每次日报
-- 最新运行日期：2026-04-04
-- 运行时间：<span class="dpr-runtime" data-beijing="04-05 03:43 (UTC+8)" data-utc="04-04 19:43 UTC">04-05 03:43 (UTC+8) / 04-04 19:43 UTC</span>
+- 最新运行日期：2026-04-05
+- 运行时间：<span class="dpr-runtime" data-beijing="04-06 03:37 (UTC+8)" data-utc="04-05 19:37 UTC">04-06 03:37 (UTC+8) / 04-05 19:37 UTC</span>
 - 运行状态：成功
-- 本次总论文数：20
-- 精读区：9
+- 本次总论文数：17
+- 精读区：6
 - 速读区：11
 
 ### 今日简报（AI）
-今日深度研读20篇LLM前沿论文，聚焦模型不确定性分析、医疗信息检索及去偏技术等方向。LLM在医疗领域的自动化信息检索应用及文本生成不确定性分析框架最具实用价值。关注LLM在专业领域的落地应用，特别是医疗和公平性方面的最新进展。
-- 详情：[/202604/04/README](/202604/04/README)
+今天精读了6篇高质量论文，重点关注多模态大模型和机器翻译优化，同时速读了11篇前沿研究。多模态大模型在增材制造领域的应用和基于过滤合成语料的双阶段LLM适配是当前最具突破性的研究方向。建议关注大模型知识蒸馏的收敛性和泛化理论，以及扩散解码技术在文档OCR中的创新应用。
+- 详情：[/202604/05/README](/202604/05/README)
 
 ### 精读区论文标签
-1. [A Formal Framework for Uncertainty Analysis of Text Generation with Large Language Models](/202604/04/2603.26363v1-a-formal-framework-for-uncertainty-analysis-of-text-generation-with-large-language-models)  
-   标签：评分：9.0/10、query:dl-cv
-   evidence：大语言模型文本生成的不确定性分析
-2. [Automating Clinical Information Retrieval from Finnish Electronic Health Records Using Large Language Models](/202604/04/2603.26434v1-automating-clinical-information-retrieval-from-finnish-electronic-health-records-using-large-language-models)  
-   标签：评分：9.0/10、query:dl-cv
-   evidence：大语言模型用于临床信息检索
-3. [CounterMoral: Editing Morals in Language Models](/202604/04/2603.27338v1-countermoral-editing-morals-in-language-models)  
-   标签：评分：9.0/10、query:dl-cv
-   evidence：编辑LLM道德判断的技术
-4. [GUARD-SLM: Token Activation-Based Defense Against Jailbreak Attacks for Small Language Models](/202604/04/2603.28817v1-guard-slm-token-activation-based-defense-against-jailbreak-attacks-for-small-language-models)  
-   标签：评分：9.0/10、query:dl-cv
-   evidence：小型语言模型的防御机制
-5. [Developing Adaptive Context Compression Techniques for Large Language Models (LLMs) in Long-Running Interactions](/202604/04/2603.29193v1-developing-adaptive-context-compression-techniques-for-large-language-models-llms-in-long-running-interactions)  
-   标签：评分：9.0/10、query:dl-cv
-   evidence：针对长程LLM交互的自适应上下文压缩
-6. [MAC-Attention: a Match-Amend-Complete Scheme for Fast and Accurate Attention Computation](/202604/04/2604.00235v1-mac-attention-a-match-amend-complete-scheme-for-fast-and-accurate-attention-computation)  
-   标签：评分：9.0/10、query:dl-cv
-   evidence：大语言模型的新型注意力计算
-7. [Can Large Language Models Self-Correct in Medical Question Answering? An Exploratory Study](/202604/04/2604.00261v2-can-large-language-models-self-correct-in-medical-question-answering-an-exploratory-study)  
-   标签：评分：9.0/10、query:dl-cv
-   evidence：大型语言模型在医疗问答中的自我纠正
-8. [Adapting Text LLMs to Speech via Multimodal Depth Up-Scaling](/202604/04/2604.00489v1-adapting-text-llms-to-speech-via-multimodal-depth-up-scaling)  
-   标签：评分：9.0/10、query:dl-cv
-   evidence：通过多模态深度上缩放将文本LLM适配到语音
-9. [SelfGrader: Stable Jailbreak Detection for Large Language Models using Token-Level Logits](/202604/04/2604.01473v1-selfgrader-stable-jailbreak-detection-for-large-language-models-using-token-level-logits)  
-   标签：评分：9.0/10、query:dl-cv
-   evidence：大型语言模型的越狱检测
+1. [AdditiveLLM2: A Multi-modal Large Language Model for Additive Manufacturing](/202604/05/2603.22017v1-additivellm2-a-multi-modal-large-language-model-for-additive-manufacturing)  
+   标签：评分：8.0/10、query:dl-cv
+   evidence：多模态制造领域大模型
+2. [Enhancing Document-Level Machine Translation via Filtered Synthetic Corpora and Two-Stage LLM Adaptation](/202604/05/2603.22186v1-enhancing-document-level-machine-translation-via-filtered-synthetic-corpora-and-two-stage-llm-adaptation)  
+   标签：评分：8.0/10、query:dl-cv
+   evidence：两阶段LLM适应用于文档翻译
+3. [LLM Enhanced Action Recognition via Hierarchical Global-Local Skeleton-Language Model](/202604/05/2603.27103v1-llm-enhanced-action-recognition-via-hierarchical-global-local-skeleton-language-model)  
+   标签：评分：8.0/10、query:dl-cv
+   evidence：大模型增强的骨架动作识别
+4. [Codebase-Memory: Tree-Sitter-Based Knowledge Graphs for LLM Code Exploration via MCP](/202604/05/2603.27277v1-codebase-memory-tree-sitter-based-knowledge-graphs-for-llm-code-exploration-via-mcp)  
+   标签：评分：8.0/10、query:dl-cv
+   evidence：Tree-Sitter知识图谱用于LLM代码探索
+5. [$R_\text{dm}$: Re-conceptualizing Distribution Matching as a Reward for Diffusion Distillation](/202604/05/2603.28460v2-rtextdm-re-conceptualizing-distribution-matching-as-a-reward-for-diffusion-distillation)  
+   标签：评分：8.0/10、query:dl-cv
+   evidence：创新的扩散模型蒸馏方法
+6. [Customer Analysis and Text Generation for Small Retail Stores Using LLM-Generated Marketing Presence](/202604/05/2603.29273v1-customer-analysis-and-text-generation-for-small-retail-stores-using-llm-generated-marketing-presence)  
+   标签：评分：8.0/10、query:dl-cv
+   evidence：创新的LLM营销文本生成应用
 
 ### 速读区论文标签
-1. [CatRAG: Functor-Guided Structural Debiasing with Retrieval Augmentation for Fair LLMs](/202604/04/2603.21524v1-catrag-functor-guided-structural-debiasing-with-retrieval-augmentation-for-fair-llms)  
+1. [Demystifying Low-Rank Knowledge Distillation in Large Language Models: Convergence, Generalization, and Information-Theoretic Guarantees](/202604/05/2603.22355v1-demystifying-low-rank-knowledge-distillation-in-large-language-models-convergence-generalization-and-information-theoretic-guarantees)  
    标签：评分：8.0/10、query:dl-cv
-   evidence：大模型去偏见框架
-2. [LLM-Based Test Case Generation in DBMS through Monte Carlo Tree Search](/202604/04/2603.21530v1-llm-based-test-case-generation-in-dbms-through-monte-carlo-tree-search)  
+   evidence：大语言模型低秩知识蒸馏的理论框架
+2. [Reasoner-Executor-Synthesizer: Scalable Agentic Architecture with Static O(1) Context Window](/202604/05/2603.22367v1-reasoner-executor-synthesizer-scalable-agentic-architecture-with-static-o1-context-window)  
    标签：评分：8.0/10、query:dl-cv
-   evidence：LLM用于SQL测试用例生成
-3. [Toward a Theory of Hierarchical Memory for Language Agents](/202604/04/2603.21564v1-toward-a-theory-of-hierarchical-memory-for-language-agents)  
+   evidence：三层大语言模型智能体架构
+3. [MinerU-Diffusion: Rethinking Document OCR as Inverse Rendering via Diffusion Decoding](/202604/05/2603.22458v1-mineru-diffusion-rethinking-document-ocr-as-inverse-rendering-via-diffusion-decoding)  
    标签：评分：8.0/10、query:dl-cv
-   evidence：语言代理的分层记忆理论
-4. [Guideline-grounded retrieval-augmented generation for ophthalmic clinical decision support](/202604/04/2603.21925v1-guideline-grounded-retrieval-augmented-generation-for-ophthalmic-clinical-decision-support)  
+   evidence：基于扩散的OCR框架替代自回归解码
+4. [Do Large Language Models Reduce Research Novelty? Evidence from Information Systems Journals](/202604/05/2603.22510v1-do-large-language-models-reduce-research-novelty-evidence-from-information-systems-journals)  
    标签：评分：8.0/10、query:dl-cv
-   evidence：多模态视觉RAG系统用于临床决策支持
-5. [Towards GUI Agents: Vision-Language Diffusion Models for GUI Grounding](/202604/04/2603.26211v1-towards-gui-agents-vision-language-diffusion-models-for-gui-grounding)  
+   evidence：测量研究论文的语义新颖性
+5. [TrendGen: An Outfit Recommendation and Display System](/202604/05/2603.27264v1-trendgen-an-outfit-recommendation-and-display-system)  
    标签：评分：7.0/10、query:dl-cv
-   evidence：用于GUI的视觉语言扩散模型
-6. [Entanglement as Memory: Mechanistic Interpretability of Quantum Language Models](/202604/04/2603.26494v1-entanglement-as-memory-mechanistic-interpretability-of-quantum-language-models)  
+   evidence：时尚AI的计算机视觉
+6. [Improving Attributed Long-form Question Answering with Intent Awareness](/202604/05/2603.27435v1-improving-attributed-long-form-question-answering-with-intent-awareness)  
    标签：评分：7.0/10、query:dl-cv
-   evidence：量子语言模型可解释性研究
-7. [A Regression Framework for Understanding Prompt Component Impact on LLM Performance](/202604/04/2603.26830v1-a-regression-framework-for-understanding-prompt-component-impact-on-llm-performance)  
+   evidence：LLM意图感知报告生成
+7. [Large Language Models in Game Development: Implications for Gameplay, Playability, and Player Experience](/202604/05/2603.27896v1-large-language-models-in-game-development-implications-for-gameplay-playability-and-player-experience)  
    标签：评分：7.0/10、query:dl-cv
-   evidence：提示词统计分析框架
-8. [TailNLG: A Multilingual Benchmark Addressing Verbalization of Long-Tail Entities](/202604/04/2603.27768v1-tailnlg-a-multilingual-benchmark-addressing-verbalization-of-long-tail-entities)  
+   evidence：研究游戏开发中的LLM集成
+8. [From Independent to Correlated Diffusion: Generalized Generative Modeling with Probabilistic Computers](/202604/05/2603.27996v1-from-independent-to-correlated-diffusion-generalized-generative-modeling-with-probabilistic-computers)  
    标签：评分：7.0/10、query:dl-cv
-   evidence：评估LLM知识表达能力的基准
-9. [Diffusion MRI Transformer with a Diffusion Space Rotary Positional Embedding (D-RoPE)](/202604/04/2603.25977v1-diffusion-mri-transformer-with-a-diffusion-space-rotary-positional-embedding-d-rope)  
+   evidence：生成式扩散模型用于图像创建
+9. [Dual-Path Learning based on Frequency Structural Decoupling and Regional-Aware Fusion for Low-Light Image Super-Resolution](/202604/05/2603.27301v1-dual-path-learning-based-on-frequency-structural-decoupling-and-regional-aware-fusion-for-low-light-image-super-resolution)  
    标签：评分：6.0/10、query:dl-cv
-   evidence：用于扩散MRI处理的Transformer
-10. [The Future of AI is Many, Not One](/202604/04/2603.29075v1-the-future-of-ai-is-many-not-one)  
+   evidence：低光图像重建
+10. [PubMed Reasoner: Dynamic Reasoning-based Retrieval for Evidence-Grounded Biomedical Question Answering](/202604/05/2603.27335v1-pubmed-reasoner-dynamic-reasoning-based-retrieval-for-evidence-grounded-biomedical-question-answering)  
    标签：评分：6.0/10、query:dl-cv
-   evidence：认知多样化的AI代理促进创新
-11. [Diffusion Mental Averages](/202604/04/2603.29239v1-diffusion-mental-averages)  
+   evidence：生物医学问答与检索
+11. [AI Civilization and the Transformation of Work](/202604/05/2603.27497v1-ai-civilization-and-the-transformation-of-work)  
    标签：评分：6.0/10、query:dl-cv
-   evidence：扩散模型概念平均
+   evidence：讨论AI驱动的工作创新转型
 
