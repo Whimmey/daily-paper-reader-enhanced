@@ -1,0 +1,737 @@
+Title: SGS-Intrinsic: Semantic-Invariant Gaussian Splatting for Sparse-View Indoor Inverse Rendering
+
+URL Source: https://arxiv.org/pdf/2603.27516v1
+
+Published Time: Tue, 31 Mar 2026 01:11:21 GMT
+
+Number of Pages: 18
+
+Markdown Content:
+# SGS-Intrinsic: Semantic-Invariant Gaussian Splatting for Sparse-View Indoor Inverse Rendering 
+
+## Jiahao Niu 1 Rongjia Zheng 1 Wenju Xu 2 Wei-Shi Zheng 1,3 Qing Zhang 1,3* 
+
+> 1
+
+Sun Yat-sen University, China 2 Amazon, USA  
+
+> 3
+
+Key Laboratory of Machine Intelligence and Advanced Computing, Ministry of Education, China Albedo Normal  
+
+> Roughness PBR Rendered
+> Input View1
+> Input View2
+
+Figure 1. Sparse-view indoor inverse rendering. Our method achieves high-quality scene-level disentanglement of illumination and material properties from sparse-view input images. As can be seen, our method allows to produce high-quality novel-view PBR rendering, and also outperforms previous methods, e.g., GeoSplat [50], IRGS [14], R3DG [13], SVGIR [37], and GSIR [24] on the Interiorverse dataset [56]. 
+
+## Abstract 
+
+We present SGS-Intrinsic, an indoor inverse render-ing framework that works well for sparse-view images. Unlike existing 3D Gaussian Splatting (3DGS) based methods that focus on object-centric reconstruction and fail to work under sparse view settings, our method al-lows to achieve high-quality geometry reconstruction and accurate disentanglement of material and illumina-tion. The core idea is to construct a dense and geometry-consistent Gaussian semantic field guided by seman-tic and geometric priors, providing a reliable founda-tion for subsequent inverse rendering. Building upon this, we perform material–illumination disentanglement by combining a hybrid illumination model and mate-rial prior to effectively capture illumination–material interactions. To mitigate the impact of cast shadows and enhance the robustness of material recovery, we introduce illumination-invariant material constraint to-gether with a deshadowing model. Extensive experi-ments on benchmark datasets show that our method con-sistently improves both reconstruction fidelity and in-
+
+> *Corresponding author (zhangq93@mail.sysu.edu.cn).
+
+verse rendering quality over existing 3DGS-based in-verse rendering approaches. Our code is available at 
+
+https://github.com/GrumpySloths/SGS_ Intrinsic.github.io .
+
+## 1. Introduction 
+
+Multi-view inverse rendering aims to decompose mate-rial, geometry, and lighting from a set of input-view im-ages (see Figure 1), which is of great significance for un-derstanding the entire 3D scene and can be extensively applied to various downstream tasks such as material editing, relighting, AR, VR, and more [9, 19, 24, 43, 55]. However, inverse rendering under sparse views, espe-cially for indoor scenes, remains a highly ill-posed prob-lem due to the sparsity of supervision signals [25, 44], scene complexity, and the strong coupling of material, lighting, and geometry [11, 24]. Specifically, sparse-view indoor inverse rendering us-ing Gaussian Splatting that we target in this paper, faces the following three challenges: (i) Under sparse-view settings, Gaussian reconstruction struggles to obtain re-liable geometry, adversely affecting the effectiveness of 
+
+> arXiv:2603.27516v1 [cs.CV] 29 Mar 2026
+
+subsequent inverse rendering. (ii) previous utilized il-lumination models are usually ineffective for character-izing complex indoor lighting conditions, and the lack of sufficient material priors makes it difficult to disen-tangle material and lighting, (iii) inverse rendering from sparse views poses challenge to accurately model spec-ular highlights and cast shadows, making shadows often erroneously baked into material. Numerous approaches [3, 12, 27, 40, 42, 44, 45, 47, 57] have explored Gaussian-based geometry reconstruc-tion under sparse-view settings. However, most of them focus solely on general geometric reconstruction with-out considering material disentanglement. Moreover, they primarily target the recovery of high-frequency ge-ometric fields, struggle to simultaneously recover mate-rial and geometric [25]. Another challenge for scene-level inverse rendering lies in illumination modeling. Prior works [7, 11, 13, 14, 19, 24, 37, 50] typically assume distant illumination sources — an assumption that provides a reasonable ap-proximation at the object level but fails to capture near-field, high-frequency lighting effects that are essential for accurate reconstruction of indoor scenes. In this paper, we present SGS-Intrinsic, a two-stage framework for sparse-view indoor inverse rendering. Unlike traditional SfM-based approaches [35], which yield only sparse point cloud that hinder reliable Gaus-sian optimization [44, 57], we first leverage VGGT [39] to construct a dense scene layout of point clouds. To further compensate for the limited supervision, we in-corporate normal and semantic priors distilled from a pretrained model into 3D Gaussian representation. Be-sides, a semantic consistency constraint between virtual and training views is introduced to alleviate overfitting. Next, we perform inverse rendering with a hybrid light-ing model [11], combining environment maps for am-bient illumination and SGMs [38] for high-frequency lighting. To achieve effective material–illumination dis-entanglement, we leverage diffusion-based material pri-ors and enforce cross-view and cross-illumination con-sistencies, harvesting lighting- and view-invariant ma-terial reconstruction. Finally, we employ a lightweight deshadowing module to explicitly model visibility, pre-venting shadows from being baked into albedo. In summary, our contributions are as follows: • We present an inverse rendering framework that enables high-quality geometry reconstruction and accurate disentanglement of material and illumina-tion from sparse-view indoor images. • We introduce several additional supervision signals to enable reliable inverse rendering under sparse views setting, and propose to resolve the issue of cast shadows being baked into material through an effective and lightweight deshadowing model. • Extensive experiments show that our method sig-nificantly outperforms state-of-the-art approaches on sparse-view indoor inverse rendering. 
+
+## 2. Related Work 
+
+Geometry reconstruction from sparse views. Exist-ing sparse-view geometry reconstruction methods can be broadly categorized into two groups: per-scene op-timization methods and pre-training based methods. Per-scene optimization methods [10, 15, 22, 30–32, 40, 53, 57] focus on learning to recover geometry of a specific scene, and thus cannot generalize to other scenes. In contrast, by taking full advantage of pow-erful priors from pre-trained models, pretraining based methods allow to generalize beyond the training scenes [20, 39, 41]. Despite the effectiveness of pretraining based methods, they basically lack the ability to achieve material-illumination disentanglement. 
+
+Inverse Rendering. Inverse rendering has long been a fundamental problem in computer vision and com-puter graphics. Early methods focus on predicting in-trinsic properties from a single image. Representative works include [5, 6, 8, 18, 23, 51, 52]. However, in-trinsic decomposition from a single image inherently lacks multi-view consistency and often struggles with out-of-distribution cases [11]. Hence, recent methods [11, 14, 24, 29, 36, 48] aim to recover a 3D-consistent intrinsic field from multiple input images. Although these methods demonstrate impressive results, they fo-cus primarily on object-level scenes, and fail to work well under sparse view conditions involving complex in-direct lighting and occlusion. 
+
+## 3. Method 
+
+Given sparse-view indoor images as input, our goal is to recover the scene geometry and intrinsic properties based on 3D Gaussian. As shown in Figure 2, our method consists of two stages. In stage I, we leverage semantic and geometric priors from pre-trained models to help construct a high-quality Gaussian-based geomet-ric field, while in stage II, we optimize the intrinsic prop-erties with a hybrid illumination model together with a material-consistency regularized training strategy. 
+
+3.1. Geometry and Semantic Reconstruction 
+
+Most previous 3D Gaussian reconstruction methods rely on an RGB reconstruction loss Lrgb [17] for training. However, under sparse-view supervision, they tend to overfit to the observed viewpoints, leading to unreli-able geometry reconstruction. To alleviate this issue, we choose to leverage powerful pre-trained models to Initialized 3D Gaussians 
+
+𝐿 𝑟𝑔𝑏 
+
+𝐿 𝑠𝑒𝑚𝑎𝑛𝑡𝑖𝑐 
+
+𝐿 𝑛𝑜𝑟𝑚𝑎𝑙 
+
+Rendered Ground Truth 
+
+> RGB
+> Normal
+> Semantic
+
+Pseudo View 
+
+𝐿 c𝑜𝑟𝑟𝑒𝑠𝑝𝑜𝑛𝑑𝑖𝑛𝑔 
+
+Coarse 3D Gaussians 
+
+Rasterization 
+
+Environment Map 
+
+Learnable Mixture Lighting 
+
+Visibility ෠𝑉 Deshadowing Model 
+
+Train View 
+
+Semantic ෠𝐹 Normal ෡𝑁 
+
+Albedo መ𝐴 Roughness ෠𝑅 
+
+Sparse-view Images 
+
+Physical-Based Rendering 
+
+> SG Point Lights
+
+Spherical Gaussian Point Lights 
+
+𝐿 𝑟𝑒𝑙𝑖𝑔ℎ𝑡 
+
+𝐿 𝑃𝐵𝑅 
+
+PBR Rendered PBR Relight PBR Pseudo-view 
+
+VGGT Model 
+
+Ground Truth 
+
+> MHE Grid Feature
+
+Stage I : Geometry and Semantic Reconstruction 
+
+Stage II : Inverse Rend ering on Fi xed Geo metry
+
+𝐿 𝑐𝑟𝑜𝑠𝑠_𝑠𝑒𝑚𝑎𝑛𝑡𝑖𝑐 Figure 2. Overview of our method. There are two-stage training in our framework. In stage I, we leverage a pretrained VGGT model to get a dense scene layout point cloud. Next, the geometry of the 3D Gaussians is supervised by normal and semantic priors distilled from a pretrained model. In state II, we perform inverse rendering based on the Gaussians obtained from the first stage. A mixture light model together with a deshadowing module are employed to model illumination and occlusion relationships, which are then integrated with the Gaussian-rendered G-buffer for physically based (PBR) novel view rendering. Moreover, to ensure consistent material representations during training, we incorporate an additional material consistency constraint. 
+
+provide additional supervisory signals. Specifically, we employ StableNormal [49] and LSEG [21] to provide normal guidance and semantic supervision, respectively. For normal, we define the following loss: 
+
+Lnormal = 1 − ˆnT nm, (1) where ˆn denotes the rendered normal from the Gaussian field, nm denotes normal predicted by StableNormal. For semantic supervision, we first encode the in-put images as pixel-level semantic features F ∈
+
+RH×W ×512 using LSEG encoder. We then employ Qwen3VL [2] to identify all object categories M , and obtain their corresponding textual embeddings T ∈
+
+RM ×512 via CLIP encoder [33]. Next, we com-pute a semantic label map S ∈ RH×W by Si,j =arg max m∈{ 1,...,M } cos (Fi,j , T m), where cos (·, ·) de-notes cosine similarity. With semantic features F and the label map S, we define the semantic constraint as: 
+
+Lsemantic = Lcos ( ˆF , F ) + Lce ( ˆS, S ), (2) where Lcos and Lce respectively denote cosine and cross-entropy losses. Following previous work [25], the rendered semantic feature ˆF is obtained via alpha blend-ing, while the rendered segmentation logits are defined as ˆS = cos( ˆF , T ).To avoid overfitting, we introduce a semantic consis-tency constraint between training and pseudo (virtual) views, which is formulated as: 
+
+Lcorresponding =
+
+> P
+
+X
+
+> p=1
+
+ˆFp ⊙ M ∗
+
+> p
+
+P M∗
+
+> p
+
+− ˆF ⊙ M 
+
+P M 2
+
+−
+
+> P
+
+X
+
+> p=1
+
+R[Φ( ˆS ⊙ M )] log( ˆS∗ 
+
+> p
+
+⊙ M ∗
+
+> p
+
+), (3) where P denotes the number of sampled pseudo-views (see the supplementary for details). M and M∗ 
+
+> p
+
+rep-resent SAM [34] generated masks for the training and pseudo-views, respectively. ⊙ denotes the element-wise product. Here, ˆF and ˆS refer to the rendered feature map and semantic label map of the training view, while ˆFp and ˆS∗ 
+
+> p
+
+denote their corresponding counterparts of the p-th pseudo-view. Φ is a seman-tic uniformity operation defined as Φ( ˆS ⊙ M ) =arg max c
+
+P 
+
+> i∈M
+
+1
+
+n
+
+arg max   ˆSi) = c
+
+o
+
+, where c is the dominant class within the region mask M, while R[·] re-shapes tensors to match the mask dimension. The goal of this operation is to apply a majority voting mecha-nism over each region to enforce semantic consistency. The overall loss function for stage I is expressed as: 
+
+LS1 = Lrgb +Lsemantic +λ1Lnormal +λ2Lcorresponding ,
+
+(4) where we set λ1 = 0 .05 , λ2 = 0 .3 in our experiments. 
+
+3.2. Inverse Rendering on Fixed Geometry 
+
+Previous methods often suffer from degraded perfor-mance at the scene level due to limited expressiveness of the illumination model and unrealiable geometry recon-struction under sparse-view settings. To address these issues, we introduce a hybrid illumination model and a lightweight deshadowing module, which enables ex-plicitly disentangling and modeling illumination as well as occlusion, respectively. Furthermore, to facilitate the decoupling of illumination and material, we introduce a material-consistent regularized training strategy. 
+
+Hybrid illumination model. To model complex light-ing effects, we propose to cast the incident light Li as a combination of learnable point lights LSGM  
+
+> i
+
+and differ-entiable environment illumination Lenv  
+
+> i
+
+, representing the high and low frequency lighting components: 
+
+Li = LSGM  
+
+> i
+
++ Lenv  
+
+> i
+
+, (5) where the point-light component LSGM  
+
+> i
+
+is represented by scattered Spherical Gaussians (SGMs) [11]: 
+
+SGM (ωi; b, λ, μ ) = 
+
+> Nsg
+
+X
+
+> k=1
+
+μk eλk (ωi·b−1  
+
+> k)
+
+· Wk , (6) 
+
+where bk, μk, and λk denote the axis, amplitude, and sharpness of the k-th Spherical Gaussian (SG), respec-tively. Wk represents the blending weight of each SG component within the light source, Nsg is the total num-ber of SG lobes employed in the mixture. For the en-vironment illumination component Lenv  
+
+> i
+
+, following [24], we represent it as a learnable cubemap with a spatial res-olution of 6 × 512 × 512 × 3.
+
+Lightweight deshadowing module. 
+
+As illustrated in Figure 3, the inherent difficulty of recovering accurate geometry from sparse-view images makes it difficult to obtain reliable occlusion relation-ships, which subsequently hinders the faithful model-ing of indirect illumination. Hence, we introduce a lightweight occlusion field to predict the visibility be-tween surface points and point lights explicitly. Specif-ically, we employ a multi-level hash encoder εo [28] to obtain multi-resolution feature encoding of the 3D R3DG [ 13 ] SVGIR [ 37 ] Ours GT    
+
+> R3DG [ 13 ]SVGIR [ 37 ]Ours Ref View
+
+Figure 3. Comparison of scene radiance and local-light render-ing for novel views. As shown, both R3DG and SVGIR fail to accu-rately model local illumination and occlusion for sparse-view indoor scenes, while our method produces physically plausible rendering with smooth local light effects. 
+
+scene, where a spatial position μi is mapped to an oc-clusion feature ei = εo(μi). By encoding the entire 3D space at multiple resolutions and performing inter-polated sampling for the given spatial points, we alle-viate the issue of inaccurate Gaussian-based geometric modeling and occlusion estimation that commonly arise under sparse-view settings. The encoded multi-scale spatial features ei, together with the relative direction 
+
+dji = pj −μi  
+
+> ∥pj−μi∥2
+
+and distance δji = ∥pj − μi∥2 of a point light j, are then fed into a lightweight decoder f (·)
+
+to predict the visibility by Vji = f (ei, δ ji , d ji ). This design enables the model to perceive the occlusion rela-tionships between spatial points and local light sources, allowing it to infer the general direction of cast shad-ows and disentangle them from intrinsic material ap-pearance. 
+
+Material-consistent regularized training. Inverse ren-dering is inherently ill-posed due to the strong coupling between illumination and material properties. Simply leveraging material priors from pretrained models for predicting the material attributes of Gaussian primitives is still insufficient, as the learned material (albedo) at-tributes often fall into undesired local optima (see Fig-ure 6). To address this issue, we propose to construct additional constraints based on the illumination invari-ance and multi-view consistency of material properties. Specifically, we introduce illumination perturbations under a fixed viewpoint to enforce albedo invariance. Given multiple lighting conditions, the rendered albedo 
+
+ˆA by alpha blending [24] should be unchanged. Follow-ing [6], we define the relighting consistency loss as: 
+
+Lrelight =
+
+> N
+
+X
+
+> i=1
+
+
+
+Lmse 
+
+ ˆA, A i, Mo
+
+
+
++ Lmsg 
+
+ ˆA, A i, Mo
+
+ 
+
+,
+
+Lmse ( ˆA, A i, Mo) = ( ˆA − Ai) ⊙ M o 2
+
+,
+
+Lmsg ( ˆA, A i, Mo) = 
+
+> L
+
+X
+
+> l=1
+
+(∇ ˆAl − ∇ Ali) ⊙ M o 2
+
+,
+
+(7) Table 1. Quantitative evaluation on the Interiorverse dataset.                                                                                                           
+
+> Method Roughness MSE ↓
+> Normal MAE ↓
+> Albedo Novel View Synthesis Novel View Synthesis for PBR FPS PSNR ↑SSIM ↑LPIPS ↓PSNR ↑SSIM ↑LPIPS ↓PSNR ↑SSIM ↑LPIPS ↓
+> GSIR [24] 28.1 26.2 16.4 0.56 0.41 18.5 0.62 0.35 17.8 0.60 0.43 40.01
+> GIGS [7] 30.2 25.9 12.1 0.49 0.42 18.6 0.60 0.59 17.2 0.58 0.44 25.26 R3DG [13] 25.6 24.3 15.1 0.68 0.36 19.8 0.75 0.30 19.13 0.68 0.43 9.5 IRGS [14] 26.2 23.2 14.4 0.61 0.35 18.9 0.68 0.34 19.3 0.71 0.32 0.20 SVGIR [37] 22.3 20.1 16.6 0.70 0.33 19.0 0.76 0.29 18.73 0.74 0.31 11.83 GeoSplat [50] 17.3 18.4 13.1 0.52 0.41 20.6 0.71 0.44 19.40 0.67 0.41 10.1 Ours 16.1 17.0 17.7 0.76 0.29 21.7 0.76 0.43 20.90 0.73 0.31 15.05
+
+where Ai represents the material prior predicted by the pretrained RGBX model [52] under N sampled illumi-nation perturbations. Detailed sampling strategies for the perturbations are provided in the supplementary. To achieve precise elimination of specular highlights and cast shadows, we obtain an object-level mask Mo de-rived from the SAM model, with which we are able to achieve fine-grained, localized supervision, ensuring that the relighting constraints are applied specifically to the target object. The relighting objective consists of two components: a standard MSE loss Lmse and a multi-scale gradient loss Lmsg . ∇ denotes the spatial gradi-ent operator, while l denotes the specific level within a multi-scale image pyramid. Considering that the material priors from pretrained models often lack multi-view consistency, we devise a multi-view consistency constraint to regularize the disentanglement of illumination and material attributes, based on the observation that regions sharing similar se-mantics often have similar material properties. For each training view, we sample P additional view-points using the same pseudo-view strategy adopted in stage I and employ SAM to extract masks M and M∗
+
+> p
+
+for training and pseudo-views. Next, we formulate the following multi-view consistency loss: 
+
+Lcross semantic =
+
+> P
+
+X
+
+> p=1
+
+ ¯F ∗ 
+
+> p
+
+− ¯F 2 + ¯A∗ 
+
+> p
+
+− ¯A 2
+
+
+
+,
+
+(8) where ¯F and ¯A denote the mean semantic feature and mean rendered albedo derived from mask M of the train-ing view, defined as ¯F = ( ˆF ⊙M )P M and ¯A = ( ˆA⊙M )P M ,respectively. Similarly, ¯F ∗ 
+
+> p
+
+and ¯A∗ 
+
+> p
+
+represent the corre-sponding mean semantic feature and albedo rendered of the p-th pseudo view, respectively. Finally, we adopt a photometric constraint LPBR from [11] to enforce the physically-based rendering results to be close to the corresponding ground truths. The overall loss function for stage II is now defined as: 
+
+LS2 = LPBR + λ3Lcross semantic + λ4Lrelight , (9) where we empirically set λ3 = 0 .4 and λ4 = 0 .4.
+
+3.3. Implementation Details 
+
+We conduct all experiments on a single NVIDIA RTX 4090 GPU. For stage I, we set the total number of train-ing iterations as 7000. Virtual view sampling and the semantic consistency constraint between virtual and real views are activated after 2000 iterations. For stage II, the number of training iterations is set to 3000. We em-ploy CLIP ViT-B/16 [33] for semantic feature extrac-tion and SAM2 Hiera-L [34] for region mask generation. The entire training process consists of 10,000 iterations and takes approximately 40 minutes. For more details, please see the supplementary material. 
+
+## 4. Experiments 
+
+Datasets and metrics. We evaluate our method on two synthetic datasets including the scene-level Interiorverse dataset [56] and the object-level TensoIR [16] dataset, as well as three real-world datasets including the Mip-NeRF dataset [4], the FIPT [46], and the DL3DV [26] dataset involving complex lighting conditions. For syn-thetic datasets, we assess both geometric reconstruction and inverse rendering quality using standard metrics in-cluding PSNR, SSIM, and LPIPS [54]. Note, we provide evaluation on the TensoIR dataset in the supplemen-tary material. For real-world datasets without ground-truth inverse rendering results, we instead perform com-parison on novel view synthesis and also employ the MAE [1] metric to evaluate normal reconstruction ac-curacy, MSE [2] for roughness. For sparse-view selec-tion, we follow the standard protocol utilized by previ-ous methods [12, 25, 57]. For the Interiorverse and Ten-soIR datasets, we sample 12 and 8 input views for train-ing, while for the MipNeRF, DL3DV and FIPT datasets, we use 24 training views. 
+
+4.1. Comparison with State-of-the-Art Methods 
+
+Evaluation on the Interiorverse dataset. Table 1 and Figure 4 present comparison between our method and previous state-of-the-art approaches on the synthetic In-teriorverse indoor scene dataset. As can be seen, both the quantitative and qualitative results demonstrate that our method not only outperforms existing methods in Normal Albedo PBR Rendered Normal Albedo PBR Rendered       
+
+> GSIR [ 24 ]R3DG [ 13 ]IRGS [ 14 ]SVGIR [ 37 ]Ours GT Figure 4. Qualitative comparison of inverse rendering on the Interiorverse dataset [56].
+
+geometry and material reconstruction, but also produces better PBR rendering results under novel views. 
+
+Evaluation on the MipNeRF dataset. To further vali-date the generalizability of our method, we conduct eval-uation on the MipNeRF dataset. As this dataset does not contain ground truths, we thus provide only visual com-parison. As shown in Figure 5, our method exhibits clear advantage over the compared methods in handling com-plex real-world lighting and material interactions. 
+
+Evaluation on the DL3DV and FIPT datasets. Be-sides MipNeRF, we also evaluate our method on two additional real-world datasets, i.e ., DL3DV and FIPT, which contain complex real-world environments with large-area lights and extended luminaries. As shown in Table 2, our method reports better quantitative results on the two datasets, manifesting its effectiveness. 
+
+4.2. More Analysis 
+
+To examine the contribution of each component in our method, we conduct ablation studies on the following modules: (i) the geometry and semantic reconstruction, (ii) the hybrid illumination model and the deshadowing module, and (iii) the material constraints based on view and illumination invariance. In addition, we evaluate the expressiveness of our lighting model and the robustness of our method to unreliable pretrained model priors. 
+
+Effect of geometry and semantic reconstruction. To verify the effectiveness of our initialization strategy, we separately analyze the contribution of the normal prior and the semantic prior. Quantitative results are reported in Table 4, where we can see that both priors are bene-ficial to the success of our method. Please refer to the supplementary material for visual demonstrations. 
+
+Effect of hybrid illumination model and deshadow-ing module. We in Table 4 and Figure 6 validate the effectiveness of our hybrid illumination model and the deshadowing module. As shown, the SGM point lights enables our model to better capture high-frequency illu-mination effects, while the deshadowing module helps effectively remove cast shadows from the estimated ma-Normal Normal Normal Normal Normal                          
+
+> Albedo Albedo Albedo Albedo Albedo
+> PBR PBR PBR PBR PBR
+> Normal Normal Normal Normal Normal
+> Albedo Albedo Albedo Albedo Albedo
+> PBR PBR PBR PBR PBR
+> GT Novel View GSIR [ 24 ]R3DG [ 13 ]IRGS [ 14 ]SVGIR [ 37 ]Ours
+
+Figure 5. Qualitative comparison of inverse rendering on the MipNeRF dataset [4] .GT Novel View w/o Deshadowing w/o LSGM    
+
+> iw/o Mat-inv losses Full method GT albedo
+
+Figure 6. Qualitative ablation study on the Interiorverse dataset. Note, “Mat-inv losses” refer to Lrelight and Lcross semantic .
+
+terials, leading to cleaner albedo prediction. 
+
+Effect of material-invariant constraints . Table 4 and Figure 6 present both quantitative and qualitative results to demonstrate the effectiveness of the material-invariant constraints ( Lrelight and Lcross semantic ). As shown, these constraints allow to improve the fidelity of the recov-ered albedo, and help produce predictions closer to the ground-truth albedos. 
+
+Robustness to noisy pre-trained model priors. We also evaluate the robustness of our method to noisy pri-ors from pre-trained model as well as inaccurate camera parameters on the Interiorverse dataset. Table 3 sum-marizes the numerical results. As shown, introducing random positional perturbations to the Gaussian geo-metric field or noise to semantic labels and normal pri-ors results in only marginal performance degradation, Table 2. Quantitative comparison with previous methods in terms of novel view synthesis on real-world datasets. 
+
+Method DL3DV FIPT MipNeRF PSNR ↑ SSIM ↑ LPIPS ↓ PSNR ↑ SSIM ↑ LPIPS ↓ PSNR ↑ SSIM ↑ LPIPS ↓
+
+GSIR [24] 18.65 0.38 0.48 19.12 0.42 0.42 18.95 0.40 0.45 R3DG [13] 18.22 0.35 0.52 18.85 0.39 0.47 18.61 0.37 0.49 SVGIR [37] 17.96 0.31 0.59 18.53 0.36 0.54 18.42 0.35 0.56 GeoSplat [50] 18.98 0.40 0.44 19.75 0.45 0.38 19.44 0.43 0.41 IRGS [14] 18.34 0.36 0.51 18.96 0.40 0.45 18.72 0.38 0.48 Ours 19.31 0.42 0.41 20.10 0.48 0.35 19.73 0.46 0.38 
+
+Figure 7. Expressiveness of our SGM-based interior lighting model for complex emitters. 
+
+Figure 8. Application to lighting control. 
+
+Table 3. Robustness analysis on Interiorverse dataset. “w/ Geom noise” denotes introducing random positional perturba-tions to the Gaussian geometric field, while “w/ normal noise” and “w/ semantic noise” mean adding random noise to normal priors and semantic labels. “GT Cameras” refers to camera poses reconstructed from 200 views via VGGT.                                      
+
+> Method Albedo NVS For PBR PSNR ↑SSIM ↑LPIPS ↓PSNR ↑SSIM ↑LPIPS ↓
+> w/ Geom noise 17.5 0.73 0.31 21.6 0.75 0.45 w/ normal noise 17.5 0.73 0.31 21.4 0.74 0.46 w/ semantic noise 17.6 0.75 0.30 21.7 0.75 0.45 w/ GT Cameras 17.7 0.75 0.28 21.7 0.76 0.42 Ours 17.7 0.76 0.29 21.7 0.76 0.43
+
+demonstrating the robustness of our framework. More-over, our approach also has some tolerance to inaccurate camera poses. By refining Gaussian positions during the initial training stage, our method compensates for suboptimal initializations from sparse-view VGGT and achieves performance on par with the 200-view “gold standard” (referred to as GT Cameras). 
+
+Expressiveness of our lighting model. Figure 7 shows 
+
+Table 4. Ablation study on the Interiorverse dataset. “De-shadowing” refers to the deshadowing module.                                                       
+
+> Method Albedo NVS For PBR PSNR ↑SSIM ↑LPIPS ↓PSNR ↑SSIM ↑LPIPS ↓
+> w/o Lnormal 16.90 0.73 0.32 20.35 0.70 0.32 w/o Lcorresponding 16.80 0.71 0.32 19.78 0.70 0.30 w/o LSGM
+> i14.78 0.65 0.40 20.03 0.69 0.37 w/o Deshadowing 16.22 0.68 0.35 20.71 0.72 0.35 w/o Lrelight 17.20 0.73 0.34 20.30 0.73 0.34 w/o Lcross semantic 17.10 0.71 0.35 20.20 0.71 0.32 Ours 17.70 0.76 0.29 20.90 0.73 0.31
+
+that our SGM-based interior lighting model can effec-tively model complex indoor emitters, including large area lights and extended luminaries by increasing the number of the initial point lights. 
+
+Applications. As demonstrated in Figure 8, since our method allows to recover scene geometry, material prop-erties, and illumination, it enables complex lighting ed-its, including fine-grained control over light color, indi-vidual source toggling, and the seamless integration of virtual lights to modify global lighting. Please see the supplementary material for more results. 
+
+## 5. Conclusion 
+
+In this work, we propose SGS-Intrinsic, a method for in-door inverse rendering of sparse-view images. The core idea lies in constructing a robust geometric field and en-couraging illumination and material representations to remain as disentangled as possible within the optimiza-tion space. To achieve this, we develop an effective two-stage training strategy. Extensive experiments demon-strate the effectiveness of our approach. Acknowledgement. This work was partially supported by the National Natural Science Foundation of China (62471499), the Guangdong Basic and Applied Basic Research Foundation (2023A1515030002). 
+
+## References 
+
+[1] Gwangbin Bae and Andrew J Davison. Rethinking in-ductive biases for surface normal estimation. In CVPR ,2024. 5 [2] Shuai Bai, Yuxuan Cai, Ruizhe Chen, Keqin Chen, Xionghui Chen, Zesen Cheng, Lianghao Deng, Wei Ding, Chang Gao, Chunjiang Ge, et al. Qwen3-vl tech-nical report. arXiv preprint arXiv:2511.21631 , 2025. 3, 5[3] Chong Bao, Xiyu Zhang, Zehao Yu, Jiale Shi, Guofeng Zhang, Songyou Peng, and Zhaopeng Cui. Free360: Layered gaussian splatting for unbounded 360-degree view synthesis from extremely sparse and unposed views. In CVPR , 2025. 2 [4] Jonathan T Barron, Ben Mildenhall, Dor Verbin, Pratul P Srinivasan, and Peter Hedman. Mip-nerf 360: Un-bounded anti-aliased neural radiance fields. In ICCV ,2022. 5, 7 [5] Chris Careaga and Ya˘ gız Aksoy. Intrinsic image de-composition via ordinal shading. ACM Transactions on Graphics (ToG) , 2023. 2 [6] Chris Careaga and Ya˘ gız Aksoy. Colorful diffuse intrin-sic image decomposition in the wild. ACM Transactions on Graphics (ToG) , 43(6):1–12, 2024. 2, 4 [7] Hongze Chen, Zehong Lin, and Jun Zhang. Gi-gs: Global illumination decomposition on gaussian splatting for inverse rendering. arXiv preprint arXiv:2410.02619 ,2024. 2, 5 [8] Xi Chen, Sida Peng, Dongchen Yang, Yuan Liu, Bowen Pan, Chengfei Lv, and Xiaowei Zhou. Intrinsicanything: Learning diffusion priors for inverse rendering under un-known illumination. In ECCV , 2024. 2 [9] Jaeyoung Chung, Suyoung Lee, Hyeongjin Nam, Jaerin Lee, and Kyoung Mu Lee. Luciddreamer: Domain-free generation of 3d gaussian splatting scenes. arXiv preprint arXiv:2311.13384 , 2023. 1 [10] Jaeyoung Chung, Jeongtaek Oh, and Kyoung Mu Lee. Depth-regularized optimization for 3d gaussian splatting in few-shot images. In CVPR , 2024. 2 [11] Kang Du, Zhihao Liang, and Zeyu Wang. Gs-id: Illumi-nation decomposition on gaussian splatting via diffusion prior and parametric light source optimization. arXiv preprint arXiv:2408.08524 , 2024. 1, 2, 4, 5 [12] Zhiwen Fan, Wenyan Cong, Kairun Wen, Kevin Wang, Jian Zhang, Xinghao Ding, Danfei Xu, Boris Ivanovic, Marco Pavone, and Georgios Pavlakos. Instantsplat: Un-bounded sparse-view pose-free gaussian splatting in 40 seconds. arXiv preprint arXiv:2403.20309 , 2(3):4, 2024. 2, 5 [13] Jian Gao, Chun Gu, Youtian Lin, Zhihao Li, Hao Zhu, Xun Cao, Li Zhang, and Yao Yao. Relightable 3d gaus-sians: Realistic point cloud relighting with brdf decom-position and ray tracing. In ECCV , 2024. 1, 2, 5, 8, 12 [14] Chun Gu, Xiaofei Wei, Zixuan Zeng, Yuxuan Yao, and Li Zhang. Irgs: Inter-reflective gaussian splatting with 2d gaussian ray tracing. In CVPR , 2025. 1, 2, 5, 8, 12 [15] Liang Han, Junsheng Zhou, Yu-Shen Liu, and Zhizhong Han. Binocular-guided 3d gaussian splatting with view consistency for sparse view synthesis. NeurIPS , 2024. 2 [16] Haian Jin, Isabella Liu, Peijia Xu, Xiaoshuai Zhang, Songfang Han, Sai Bi, Xiaowei Zhou, Zexiang Xu, and Hao Su. Tensoir: Tensorial inverse rendering. In CVPR ,2023. 5 [17] Bernhard Kerbl, Georgios Kopanas, Thomas Leimk¨ uhler, and George Drettakis. 3d gaussian splatting for real-time radiance field rendering. ACM Trans. Graph. , 2023. 2 [18] Peter Kocsis, Vincent Sitzmann, and Matthias Nießner. Intrinsic image diffusion for indoor single-view material estimation. In CVPR , 2024. 2 [19] Shuichang Lai, Letian Huang, Jie Guo, Kai Cheng, Bowen Pan, Xiaoxiao Long, Jiangjing Lyu, Chengfei Lv, and Yanwen Guo. Glossygs: Inverse rendering of glossy objects with 3d gaussian splatting. IEEE Transactions on Visualization and Computer Graphics , 2025. 1, 2 [20] Vincent Leroy, Yohann Cabon, and J´ erˆ ome Revaud. Grounding image matching in 3d with mast3r. In ECCV ,2024. 2 [21] Boyi Li, Kilian Q Weinberger, Serge Belongie, Vladlen Koltun, and Ren´ e Ranftl. Language-driven semantic seg-mentation. arXiv preprint arXiv:2201.03546 , 2022. 3 [22] Jiahe Li, Jiawei Zhang, Xiao Bai, Jin Zheng, Xin Ning, Jun Zhou, and Lin Gu. Dngaussian: Optimizing sparse-view 3d gaussian radiance fields with global-local depth normalization. In CVPR , 2024. 2 [23] Ruofan Liang, Zan Gojcic, Huan Ling, Jacob Munkberg, Jon Hasselgren, Chih-Hao Lin, Jun Gao, Alexander Keller, Nandita Vijaykumar, and Sanja Fidler. Diffu-sion renderer: Neural inverse and forward rendering with video diffusion models. In CVPR , 2025. 2 [24] Zhihao Liang, Qi Zhang, Ying Feng, Ying Shan, and Kui Jia. Gs-ir: 3d gaussian splatting for inverse rendering. In 
+
+CVPR , 2024. 1, 2, 4, 5, 8, 11, 12 [25] Guibiao Liao, Qing Li, Zhenyu Bao, Guoping Qiu, and Kanglin Liu. Spc-gs: Gaussian splatting with semantic-prompt consistency for indoor open-world free-view syn-thesis from sparse inputs. In CVPR , 2025. 1, 2, 3, 5 [26] Lu Ling, Yichen Sheng, Zhi Tu, Wentian Zhao, Cheng Xin, Kun Wan, Lantao Yu, Qianyu Guo, Zixun Yu, Yawen Lu, et al. Dl3dv-10k: A large-scale scene dataset for deep learning-based 3d vision. In CVPR , 2024. 5 [27] Xi Liu, Chaoyi Zhou, and Siyu Huang. 3dgs-enhancer: Enhancing unbounded 3d gaussian splatting with view-consistent 2d diffusion priors. NeurIPS , 2024. 2 [28] Thomas M¨ uller, Alex Evans, Christoph Schied, and Alexander Keller. Instant neural graphics primitives with a multiresolution hash encoding. ACM Transactions on Graphics (ToG) , 2022. 4 [29] Junfeng Ni, Yu Liu, Ruijie Lu, Zirui Zhou, Song-Chun Zhu, Yixin Chen, and Siyuan Huang. Decompositional neural scene reconstruction with generative diffusion prior. In CVPR , 2025. 2 [30] Soumava Paul, Christopher Wewer, Bernt Schiele, and Jan Eric Lenssen. Sp2360: Sparse-view 360 scene recon-struction using cascaded 2d diffusion priors. In ECCV ,2024. 2 [31] Rui Peng, Wangze Xu, Luyang Tang, Liwei Liao, Jianbo Jiao, and Ronggang Wang. Structure consistent gaussian splatting with matching prior for few-shot novel view synthesis. NeurIPS , 2024. [32] Ben Poole, Ajay Jain, Jonathan T. Barron, and Ben Mildenhall. DreamFusion: Text-to-3D using 2D Diffu-sion, 2022. 2 [33] Alec Radford, Jong Wook Kim, Chris Hallacy, Aditya Ramesh, Gabriel Goh, Sandhini Agarwal, Girish Sas-try, Amanda Askell, Pamela Mishkin, Jack Clark, et al. Learning transferable visual models from natural lan-guage supervision. In ICML , 2021. 3, 5, 12 [34] Nikhila Ravi, Valentin Gabeur, Yuan-Ting Hu, Ronghang Hu, Chaitanya Ryali, Tengyu Ma, Haitham Khedr, Ro-man R¨ adle, Chloe Rolland, and Laura Gustafson. Sam 2: Segment anything in images and videos. arXiv preprint arXiv:2408.00714 , 2024. 3, 5, 12 [35] Johannes L Schonberger and Jan-Michael Frahm. Structure-from-motion revisited. In CVPR , 2016. 2 [36] Yahao Shi, Yanmin Wu, Chenming Wu, Xing Liu, Chen Zhao, Haocheng Feng, Jian Zhang, Bin Zhou, Errui Ding, and Jingdong Wang. Gir: 3d gaussian inverse ren-dering for relightable scene factorization. IEEE Trans-actions on Pattern Analysis and Machine Intelligence ,2025. 2 [37] Hanxiao Sun, Yupeng Gao, Jin Xie, Jian Yang, and Beibei Wang. Svg-ir: Spatially-varying gaussian splat-ting for inverse rendering. In CVPR , pages 16143–16152, 2025. 1, 2, 5, 8, 12 [38] Jiaping Wang, Peiran Ren, Minmin Gong, John Snyder, and Baining Guo. All-frequency rendering of dynamic, spatially-varying reflectance. In ACM SIGGRAPH Asia 2009 papers . 2009. 2 [39] Jianyuan Wang, Minghao Chen, Nikita Karaev, Andrea Vedaldi, Christian Rupprecht, and David Novotny. Vggt: Visual geometry grounded transformer. In CVPR , 2025. 2[40] Qisen Wang, Yifan Zhao, Jiawei Ma, and Jia Li. How to use diffusion priors under sparse views? NeurIPS , 2024. 2[41] Shuzhe Wang, Vincent Leroy, Yohann Cabon, Boris Chidlovskii, and Jerome Revaud. Dust3r: Geometric 3d vision made easy. In CVPR , 2024. 2 [42] Yunsong Wang, Tianxin Huang, Hanlin Chen, and Gim Hee Lee. Freesplat: Generalizable 3d gaussian splatting towards free view synthesis of indoor scenes. 
+
+NeurIPS , 2024. 2 [43] Zhengyi Wang, Cheng Lu, Yikai Wang, Fan Bao, Chongxuan Li, Hang Su, and Jun Zhu. Prolificdreamer: High-fidelity and diverse text-to-3d generation with vari-ational score distillation. NeurIPS , 2023. 1 [44] Jiang Wu, Rui Li, Yu Zhu, Rong Guo, Jinqiu Sun, and Yanning Zhang. Sparse2dgs: Geometry-prioritized gaussian splatting for surface reconstruction from sparse views. In CVPR , 2025. 1, 2 [45] Jay Zhangjie Wu, Yuxuan Zhang, Haithem Turki, Xu-anchi Ren, Jun Gao, Mike Zheng Shou, Sanja Fidler, Zan Gojcic, and Huan Ling. Difix3d+: Improving 3d recon-structions with single-step diffusion models. In CVPR ,2025. 2 [46] Liwen Wu, Rui Zhu, Mustafa B Yaldiz, Yinhao Zhu, Hong Cai, Janarbek Matai, Fatih Porikli, Tzu-Mao Li, Manmohan Chandraker, and Ravi Ramamoorthi. Fac-torized inverse path tracing for efficient and accurate material-lighting estimation. In ICCV , 2023. 5 [47] Rundi Wu, Ben Mildenhall, Philipp Henzler, Keunhong Park, Ruiqi Gao, Daniel Watson, Pratul P Srinivasan, Dor Verbin, Jonathan T Barron, Ben Poole, et al. Reconfu-sion: 3d reconstruction with diffusion priors. In CVPR ,2024. 2 [48] Jamie Wynn and Daniyar Turmukhambetov. Diffusion-erf: Regularizing neural radiance fields with denoising diffusion models. In CVPR , 2023. 2 [49] Chongjie Ye, Lingteng Qiu, Xiaodong Gu, Qi Zuo, Yushuang Wu, Zilong Dong, Liefeng Bo, Yuliang Xiu, and Xiaoguang Han. Stablenormal: Reducing diffusion variance for stable and sharp normal. ACM Transactions on Graphics (ToG) , 2024. 3 [50] Kai Ye, Chong Gao, Guanbin Li, Wenzheng Chen, and Baoquan Chen. Geosplatting: Towards geometry guided gaussian splatting for physically-based inverse render-ing. In ICCV , 2025. 1, 2, 5, 8, 12 [51] Chong Zeng, Yue Dong, Pieter Peers, Youkang Kong, Hongzhi Wu, and Xin Tong. Dilightnet: Fine-grained lighting control for diffusion-based image generation. In 
+
+ACM SIGGRAPH , 2024. 2 [52] Zheng Zeng, Valentin Deschaintre, Iliyan Georgiev, Yan-nick Hold-Geoffroy, Yiwei Hu, Fujun Luan, Ling-Qi Yan, and Miloˇ s Haˇ san. Rgbx: Image decomposition and synthesis using material- and lighting-aware diffu-sion models. In ACM SIGGRAPH 2024 Conference Pa-pers , 2024. 2, 5 [53] Jiawei Zhang, Jiahe Li, Xiaohan Yu, Lei Huang, Lin Gu, Jin Zheng, and Xiao Bai. Cor-gs: sparse-view 3d gaus-sian splatting via co-regularization. In ECCV , 2024. 2 [54] Richard Zhang, Phillip Isola, Alexei A Efros, Eli Shecht-man, and Oliver Wang. The unreasonable effectiveness of deep features as a perceptual metric. In CVPR , 2018. 5[55] Rongjia Zheng, Qing Zhang, Chengjiang Long, and Wei-Shi Zheng. Dnf-intrinsic: Deterministic noise-free diffu-sion for indoor inverse rendering. In ICCV , 2025. 1 [56] Jingsen Zhu, Fujun Luan, Yuchi Huo, Zihao Lin, Zhi-hua Zhong, Dianbing Xi, Rui Wang, Hujun Bao, Jiaxiang Zheng, and Rui Tang. Learning-based inverse rendering of complex indoor scenes with differentiable monte carlo raytracing. In SIGGRAPH , 2022. 1, 5, 6 [57] Zehao Zhu, Zhiwen Fan, Yifan Jiang, and Zhangyang Wang. Fsgs: Real-time few-shot view synthesis using gaussian splatting. In ECCV , 2024. 2, 5 SGS-Intrinsic: Semantic-Invariant Gaussian Splatting for Sparse-View Indoor Inverse Rendering 
+
+# Supplementary Material 
+
+This supplementary material provides a detailed de-scription of our method’s implementation and more vi-sual comparison results. 
+
+## 1. Representation 
+
+In the vanilla 3DGS, each 3D Gaussian utilizes learn-able parameters T = {p, s, q} and C = {α, fc} to describe its geometric properties and volumetric appear-ance, respectively. Here, p denotes the position vec-tor, s denotes the scaling vector, q denotes the unit quaternion for rotation, α denotes the opacity, and f c
+
+denotes the spherical harmonics (SH) coefficients for view-dependent color. In SGS-Intrinsic, we extend C to 
+
+{α, fc, fs, n, a, r} to describe the material and seman-tic properties of the 3D Gaussian, where a and r denote the albedo and roughness values, n denotes the Normal, and fs denotes the semantic feature. 
+
+## 2. Implementation Details and Constraints of Hybrid Illumination Models 
+
+We employ physically-based rendering (PBR) to model the view-dependent appearance. Specifically, we utilize the CookTorrance model to formulate the bidirectional reflectance distribution function (BRDF) fr: 
+
+fr (ωi, ω o) = (1 − M ) Aπ| {z }
+
+> diffuse component
+
++ DF G 
+
+4( n · ωi)( n · ωo)
+
+| {z }
+
+> specular component
+
+,h = normalize (ωo + ωi),F0 = (1 − M ) · 0.04 + M · A, D(n, h ) = R4
+
+π (n · h (R4 − 1) + 1) 2 ,F (ωi, n ) = F0 + (1 − F0) (1 − n · ωi)5 ,G(ωo, ω i, h ) = G1(ωo, h ) · G1(ωi, h ),G1(n, h ) = 11 + n · h√R4 + n · h − R4 · n · h ,
+
+(10) where A, R, and M denote the albedo, roughness, and metallicity, respectively. The normal distribution func-tion (NDF) D, fresnel function F , and geometry func-tion G are derived from physical materials. We employ a mixture model of a set of spherical Gaussians (SGMs) to represent the localized highlight 
+
+Algorithm 1 Pseudo view sampling algorithm 
+
+Require: Training views Vtrain , test views Vtest ; interpo-lation counts Ntrain , N test ; distance weights λt, λ r 
+
+> 1:
+
+function POSE DIST ((q1, t 1), (q2, t 2)) 
+
+> 2:
+
+D ← λt∥t1 − t2∥2 + λr arccos  2( q⊤ 
+
+> 1
+
+q2)2 − 1 
+
+> 3:
+
+return D 
+
+> 4:
+
+end function  
+
+> 5:
+
+for each input view (q, t ) in Vtrain do  
+
+> 6:
+
+Find nearest training view (qnn tr , t nn tr ) in Vtrain us-ing P OSE DIST 7: Generate Ntrain spline-interpolated pseudo-views 
+
+Strain ← CubicSpline  (q, t ), (qnn tr , t nn tr ) 
+
+> 8:
+
+Find nearest test view (qnn te , t nn te ) in Vtest using POSE DIST 9: Generate Ntest spline-interpolated pseudo-views 
+
+Stest ← CubicSpline  (q, t ), (qnn te , t nn te ) 
+
+> 10:
+
+Randomly sample vtr ∼ S train , v te ∼ S test  
+
+> 11:
+
+Construct view-sequence V ← { vtr , (q, t ), v te } 
+
+> 12:
+
+Feed sequence V into the SAM2 model  
+
+> 13:
+
+end for 
+
+illumination as LSGMs  
+
+> o
+
+(x, ωo):
+
+LSGMs  
+
+> o
+
+(x, ωo) = 
+
+> Nlight
+
+X
+
+> i
+
+fr SGM  
+
+> i
+
+(n · ωi) ∗ Vi
+
+d2
+
+> iNsg
+
+X
+
+> j
+
+Wi,j SG (j),
+
+(11) where di denotes the distance from the i-th spherical Gaussian mixture to the surface point x. fr SGM  
+
+> i
+
+de-notes the BRDF function, and SG denotes the spherical Gaussian Function, respectively. Each spherical Gaus-sian mixture contains Nsg spherical Gaussians. Following [24], we represent environment lighting as a learnable cubemap with size 6 × 512 × 512 × 3. Using split-sum approximation, the environment radiance can be decomposed as: 
+
+Lenv  
+
+> o
+
+(x, ωo) = Lenv  
+
+> o-diff
+
++ Lenv 
+
+> o-spec
+
+,Lenv  
+
+> o-diff
+
+≈ Kenv diff Ienv diff , Kenv diff = (1 − M ) Aπ ,Lenv  
+
+> o-spec
+
+≈
+
+Z
+
+> Ω
+
+DF G 
+
+4( n · ωo) dl
+
+| {z } 
+
+> Environment BRDF (Kenv spec )
+
+·
+
+Z
+
+> Ω
+
+DL i(l)( l · n) dl.
+
+| {z } 
+
+> Pre-Fil. Env. Map (Ienv spec )
+
+(12) 
+
+We further introduce two regularization terms to en-Normal Albedo PBR     
+
+> GSIR [ 24 ]R3DG [ 13 ]SVGIR [ 37 ]Ours GT
+
+Figure 9. Qualitative evaluation on the TensoIR dataset. 
+
+courage compact and stable light representations: 
+
+Lpos =
+
+> Nlight
+
+X
+
+> i
+
+1
+
+di, near 
+
+, (13) 
+
+Lval =
+
+> Nlight
+
+X
+
+> iNsg
+
+X
+
+> j
+
+wi,j . (14) 
+
+## 3. Pseudo Views Sampling Algorithm 
+
+Please refer to the pseudocode in Algorithm 1 for further details. 
+
+## 4. Deshaowing Module design 
+
+The deshadowing module incorporates a hash encoder to perform multi-resolution encoding of the 3D Gaussian field, along with a lightweight MLP decoder that pre-dicts the occlusion relationship of a given spatial point relative to a point light source. The specific details of this module are presented in Table 5. 
+
+Table 5. Architecture of Deshadowing Module 
+
+Module Parameter Value 
+
+HashEnc Number of levels 16 Max. entries per level 219 
+
+feature dimensions 2Coarsest resolution 32 Finest resolution 4096 MLP MLP layers 36 × 32 × 32 × 1
+
+Initialization Kaiming-uniform Final activation Sigmoid 
+
+## 5. Training Details 
+
+We implement our method and conduct all experiments on a single NVIDIA RTX 4090 GPU. For the first-stage geometric reconstruction, we set the total number of training iterations to 7000. Virtual view sampling and the semantic consistency constraint between virtual and real views are activated after 2000 
+
+Table 6. Quantitative comparison on the TensoIR dataset.                                            
+
+> Method Albedo NVS For PBR PSNR ↑SSIM ↑LIPPS ↓PSNR ↑SSIM ↑LIPPS ↓
+> GSIR [24] 23.67 0.90 0.11 23.98 0.82 0.14 R3DG [13] 22.46 0.89 0.12 25.11 0.85 0.12 SVGIR [37] 24.98 0.90 0.13 21.05 0.68 0.19 GeoSplat [50] 24.31 0.89 0.13 25.45 0.87 0.12 IRGS [14] 22.57 0.86 0.14 25.32 0.85 0.13 Ours 25.65 0.93 0.10 26.02 0.87 0.11
+
+Table 7. Training time breakdown          
+
+> VGGT LSeg StableNorm RGBX Training Time ∼20s ∼2min ∼10s ∼30s ∼40min
+
+iterations. The learnable semantic feature dimension at-tached to each Gaussian is set to 32. We employ CLIP ViT-B/16 [33] for semantic feature extraction and SAM2 Hiera-L [34] for region mask generation. For the second stage, corresponding to the inverse rendering phase, the number of training iterations is set to 3000. At the beginning of this stage, we initialize the point light sources represented by Spherical Gaussian Mixtures (SGMs) uniformly within the scene’s axis-aligned bounding box (AABB) of range [−1.5, 1.5] . To balance representational expressiveness and computa-tional cost, we place [4 , 4, 4] point lights in total, result-ing in 64 point light sources. Each point light source contains nSG = 12 spherical Gaussians. The illumina-tion invariance constraint is introduced after 8000 itera-tions, and both the self-view invariance and multi-view invariance constraints are applied every three iterations. 
+
+## 6. Evaluation on the TensoIR dataset 
+
+We also evaluate our approach on the TensoIR dataset. The quantitative and qualitative results are presented in Table 6 and Figure 9, respectively. As shown, our method achieves leading performance on object-level data, further validating its robustness and generalization capability. 
+
+## 7. Qualitative Results of Geometry and Se-mantic Reconstruction 
+
+Figure 10 demonstrates the respective impacts of the normal prior and the semantic prior on the reconstruc-tion results. The normal priors provide smoother geo-metric surfaces, significantly improving the quality of geometry reconstruction. The semantic priors, together with multi-view semantic consistency supervision, ef-fectively alleviate the geometric reconstruction issues of 3D Gaussians in textureless regions. ours w/o ℒ𝑛𝑜𝑟𝑚𝑎𝑙 ours w/o ℒ𝑐𝑜𝑟𝑟𝑒𝑠𝑝𝑜𝑛𝑑𝑖𝑛𝑔 Figure 10. Effect of normal and semantic priors. 
+
+## 8. Breakdown of the total time 
+
+The total duration of the preprocessing workflow is sum-marized in Table 7, amounting to a cumulative process-ing time of about 3 minutes. 
+
+## 9. Visualizing multi-resolution features 
+
+As shown in Figure 11, the multi-resolution features are highly correlated with the scene geometry. 
+
+Figure 11. Multi-resolution feature visualization and com-parison with GT view 
+
+## 10. More Visual Comparison 
+
+Figure 12, 13, 14 provide more visual comparison on material estimation and Novel View PBR Rendering re-sult. Figure 15 presents the detailed decomposition re-sults of our hybrid illumination model, while Figure 16 provides additional application results. GT Novel View GSIR GIGS R3DG 
+
+IRGS SVGIR Ours GT 
+
+GT Novel View GSIR GIGS R3DG 
+
+IRGS SVGIR Ours GT 
+
+GT Novel View GSIR GIGS R3DG 
+
+IRGS SVGIR Ours GT Figure 12. More qualitative comparison of albedo estimation on the synthetic InteriorVerse dataset. GSIR GIGS R3DG IRGS 
+
+SVGIR GeoSplat Ours GT 
+
+GSIR GIGS R3DG IRGS 
+
+SVGIR GeoSplat Ours GT 
+
+GSIR GIGS R3DG IRGS 
+
+SVGIR GeoSplat Ours GT Figure 13. More qualitative comparison of PBR Rendered Novel View on the synthetic InteriorVerse dataset. GT Novel View GSIR GIGS R3DG 
+
+IRGS SVGIR Ours GT 
+
+GT Novel View GSIR GIGS R3DG 
+
+IRGS SVGIR Ours GT 
+
+GT Novel View GSIR GIGS R3DG 
+
+IRGS SVGIR Ours GT Figure 14. More qualitative comparison of albedo estimation on the synthetic InteriorVerse dataset. GT Novel View Local Light Local Light Shading Env.Shading Figure 15. More illumination decomposition results on the synthetic InteriorVerse dataset. PBR under Novel View Material Editing Object Insertion Relighting 
+
+Figure 16. More results of object insertion, material and light editing

@@ -1,0 +1,1479 @@
+Title: Mean Masked Autoencoder with Flow-Mixing for Encrypted Traffic Classification
+
+URL Source: https://arxiv.org/pdf/2603.29537v1
+
+Published Time: Wed, 01 Apr 2026 00:51:03 GMT
+
+Number of Pages: 13
+
+Markdown Content:
+> JOURNAL OF L ATEX CLASS FILES, VOL. 14, NO. 8, AUGUST 2021 1
+
+# Mean Masked Autoencoder with Flow-Mixing for Encrypted Traffic Classification 
+
+Xiao Liu, Xiaowei Fu, Fuxiang Huang, and Lei Zhang, Senior Member, IEEE 
+
+Abstract —Network traffic classification using self-supervised pre-training models based on Masked Autoencoders (MAE) has demonstrated a huge potential. However, existing methods are confined to isolated byte-level reconstruction of individual flows, lacking adequate perception of the multi-granularity contextual relationship in traffic. To address this limitation, we propose Mean MAE (MMAE), a teacher-student MAE paradigm with flow mixing strategy for building encrypted traffic pre-training model. MMAE employs a self-distillation mechanism for teacher-student interaction, where the teacher provides unmasked flow-level semantic supervision to advance the student from local byte reconstruction to multi-granularity comprehension. To break the information bottleneck in individual flows, we introduce a dynamic Flow Mixing (FlowMix) strategy to replace traditional random masking mechanism. By constructing challenging cross-flow mixed samples with interferences, it compels the model to learn discriminative representations from distorted tokens. Fur-thermore, we design a Packet-importance aware Mask Predictor (PMP) equipped with an attention bias mechanism that leverages packet-level side-channel statistics to dynamically mask tokens with high semantic density. Numerous experiments on a number of datasets covering encrypted applications, malware, and attack traffic demonstrate that MMAE achieves state-of-the-art perfor-mance. The code is available at https://github.com/lx6c78/MMAE 
+
+Index Terms —Encrypted Traffic Classification, Masked Au-toencoder, Pre-training, Self-Distillation. 
+
+I. I NTRODUCTION 
+
+# WITH the rapid development of the Internet, network traffic classification has become a key challenge. Traf-fic data streams provide critical insights into network behavior through payloads and metadata. Effective traffic monitoring and analysis are crucial for network management and security, ensuring Quality of Service (QoS) and detecting malicious ac-tivities [27], [14]. Consequently, network traffic classification has emerged as a vital research area. The main objective is to identify potential threats, various applications and services. However, the encryption protocols (e.g., TLS) and anonymity networks (e.g., VPNs, Tor) imposes further challenge. Recently, pre-training methods [21], [45], [39], [46], [23] towards network traffic classification have shown immense 
+
+This work was partially supported by National Natural Science Fund of China under Grants 92570110 and 62271090, Chongqing Natural Science Fund under Grant CSTB2024NSCQ-JQX0038, and National Youth Talent Project. (Corresponding author: Lei Zhang) 
+
+X. Liu, X. Fu and L. Zhang are with the School of Microelectronics and Communication Engineering, Chongqing University, Chongqing 400044, China. (E-mail: liuxiao@stu.cqu.edu.cn, xwfu@cqu.edu.cn, leizhang@cqu.edu.cn,) Fuxiang Huang is with the School of Data Science, Lingnan University, Hong Kong, China. (E-mail: fxhuang1995@gmail.com) Manuscript received April 19, 2021; revised August 16, 2021. Transcending local byte-guessing to master global semantics!     
+
+> What are the key flow-level semantics?
+> model
+> (as a student )
+> model
+> Trapped in local byte reconstruction
+> model
+> (as a teacher )
+> Self Distillation
+> (a) MAE (b) MAE + SD (c) loss comparision
+
+Fig. 1. Comparison of reconstruction loss during pre-training between MAE and its variant with Self-Distillation strategy (i.e., MAE+SD). By introducing flow-level semantics via SD, the loss is consistently lower. 
+
+promise and superior performance. Based on learned general-izable representations from massive unlabeled data, these mod-els can be effectively fine-tuned on limited labeled datasets. These pre-training methods typically employ a strategy of 
+
+mask-then-reconstruct . For instance, ET-BERT [21], Flowlet-Former [23] and Trafficformer [46] adopt masking strategies derived from language modeling. YaTC [45] treats each traffic flow as an image to perform masked flow reconstruction, whereas NetMamba [39] employs a 1D sequence-specific masking strategy for pre-training objectives. Despite the above progress, such Masked Autoencoder (MAE) pre-training paradigms for network traffic classifica-tion still face critical challenges. These limitations can be summarized in two aspects. 1) Current MAE methods are restricted to isolated byte-level reconstruction of individual flows , failing to capture the inherent multi-granularity structure of network traffic from packet or flow. 2) The random masking strategy in MAE focuses only on byte-level but ignores traffic-specific attributes (e.g., packet-level and flow-level) , struggling to construct sufficiently challenging pretext tasks and hinder-ing the model from learning discriminative semantics. The rational behind the first limitation is that accurate classification requires moving beyond the perception of local regions within a single flow [44], [34]. For example, different applications often contain similar local traffic patterns, which means that relying solely on local byte-level information can only pro-vide limited application-specific semantics and low-confidence classification results [8], [38]. The rational behind the second point is that since not all tokens possess equal information density, random masking often leads to targeting less infor-mative tokens for reconstruction. Such trivial pretext tasks hinder learning useful representations. Therefore, exploring, harnessing and improving MAE is challenging but critical for encrypted traffic classification .To validate the above suspicions that the conventional MAE inadequately captures traffic information, we conduct a pilot experiment. Specifically, we deploy a self-distillation (SD)      
+
+> arXiv:2603.29537v1 [cs.CR] 31 Mar 2026 JOURNAL OF L ATEX CLASS FILES, VOL. 14, NO. 8, AUGUST 2021 2Decoder
+> Encoder
+> Masked Network Traffic
+> Masking
+> Network Traffic
+> Lrec
+> Teacher
+> Decoder
+> Teacher
+> Encoder
+> Student
+> Decoder
+> Student
+> Encoder
+> Lalign
+> EMA
+> Mixed Network Traffic
+> Flow Mixing
+> Unmasking
+> Network Traffic
+> Lrec
+> (a) MAE (b) MMAE (Ours)
+> Fig. 2. Comparison of pre-training paradigms. (a) Standard MAE with a random masking strategy in an isolated single flow. (b) MMAE (ours): A novel teacher-student pre-training architecture with a flow-mixing strategy, where the teacher is a copy of student and interacted via self-distillation strategy under the unmasked flow-level semantic supervision from the teacher.
+
+strategy into the MAE framework. In this setup, a copy of MAE without masking is deployed as a teacher to extract flow-level global semantics to provide richer supervision, while the student model still performs standard masked token reconstruction but under an extra supervision from the teacher. As shown in Fig. 1, we find that the reconstruction loss of the student model continues to decrease by deploying the SD strategy. This indicates that standard MAE pre-training strategy fails to fully explore useful information of traffic. To better represent traffic in multi-granularity, we rethink the pre-training paradigm and propose a Mean Masked Au-toencoder (MMAE) with flow mixing mechanism. This frame-work extracts rich representations from unlabeled traffic data, achieving a comprehensive understanding of multi-granularity semantic features. Specifically, MMAE consists of a MAE (i.e., student) and its copy (i.e., teacher), which interacts via a self-distillation strategy based on EMA (Exponential Moving Average). This is the basic connotation of Mean MAE. Fig. 2 illustrates the key distinctions between MAE and our MMAE. Conventional MAE is limited to single-flow reconstruction with random masking mechanism, which tends to local byte guessing, failing to capture inter-flow class boundaries and discriminative semantics. To break the single-flow information bottleneck, MMAE allows the teacher (a copy of MAE without masking) to extract complete semantics from the unmasked input and provide flow-level supervision. Distinct encrypted traffic often exhibit similarities when viewed as isolated byte fragments. But in fact, their differences are reflected through multi-granularity contexts. Consequently, conventional random masking strategy of MAE in only byte-level is passive and trivial. To construct more challenging traffic-aware pretext tasks beneficial to discriminative semantic learning, we propose dynamic flow mixing (FlowMix). The core idea is to inject cross-flow interference and replace the conventional random masking strategy . To ensure this inter-ference is challenging rather than trivially distinguishable, in FlowMix, we introduce a Statistics-based Flow Matcher (SFM) leveraging statistical priors to pair physically similar flows. After selecting the paired flows through SFM, we deploy a Packet-importance aware Mask Predictor (PMP) to determine where to inject interference. Specifically, PMP dynamically identifies regions of high semantic density, and then perform Dynamic Mixed Masking (DMM) to replace these critical regions with the matched distorted tokens. Thus the student is compelling to learn highly discriminative representations. This above design inherently guarantees multi-granularity perception. 1) Byte-level details are captured by reconstructing from the challenging flow mixed tokens. 2) Packet-level depen-dencies are learned through a Packet-importance aware Mask Predictor (PMP), which is guided by packet-level physical priors and subsequently fed back to dynamically construct mixed inputs for the next training iteration. 3) Flow-level 
+
+global semantics are established by aligning the student’s representation with the teacher. Fig. 3 indicates the key differ-ences in hierarchical representational capacity, in which MAE only captures byte-level information, while MMAE covers byte-level, packet-level as well as flow-level details .The main contributions are summarized as follows:  
+
+> •
+
+We propose Mean Masked Autoencoder ( MMAE ), a novel self-supervised pre-training paradigm for encrypted traffic classification. The framework leverages a twin architecture (teacher-student) of MAE, interacted via self-distillation under the supervision of unmasked flow-level semantics from teacher to enable the student learning multi-granular representations.  
+
+> •
+
+We propose a dynamic Flow Mixing ( FlowMix ) strat-egy beyond the conventional random masking in MAE to fully explore byte-level, packet-level and flow-level information. The strategy actively injects cross-flow in-terference to construct highly challenging pretext tasks, enabling the model to effectively delineate true traffic boundaries through multi-granularity contexts and learn discriminative semantics.  
+
+> •
+
+We further design a Statistics-based Flow Matcher (SFM) and a Packet-importance aware Mask Predictor (PMP) to implement cross-flow interference in FlowMix . SFM leverages statistical priors to pair physically similar flows. PMP identifies semantically dense regions that are subse-quently replaced via Dynamic Mixed Masking (DMM). II. R ELATED WORK 
+
+A. Traditional Methods 
+
+Driven by the increasing complexity of network environ-ments and the escalating demands of network management, traffic classification methods have undergone significant evo-lution over the past decade. Earlier approaches primarily relied on port numbers and simple rule matching [31], [47]. However, the widespread adoption of encryption and traffic obfuscation techniques has rendered these plaintext- and rule-based methods largely ineffective. Early machine learning approaches [25], [4], [26], [1], [35] explored classifiers such as decision trees, random forests, and SVMs for traffic classification. These techniques primar-ily utilized expert-designed, flow-level statistical summaries and protocol-specific features as model inputs. Although lightweight, fast, and interpretable, their performance heav-ily depends on time-consuming manual feature engineering, which limits their adaptability to new protocols. Consequently, JOURNAL OF L ATEX CLASS FILES, VOL. 14, NO. 8, AUGUST 2021 3MAE Trapped in byte level reconstruction  
+
+> MMAE(Ours) ······
+> ······
+> ······
+> Packet Level
+> ······
+> ···
+> ···
+> ···
+> Packet Level
+> ···
+> ···
+> ···
+> ···
+> Packet Level
+> ···
+> Flow Level
+> ······
+> ······
+> ······
+> Flow Level
+> ···
+> ···
+> ···
+> Flow Level
+> ···
+> ···
+> ···
+> 0x45 0x00 · ··0x0f 0x8e
+> 0x64 0xba · ··0x00 0x00
+> 0x10 0x00 · ··0x51 0x01
+> 0x0d 0x01 · ··0x03 0x82
+> Byte Level
+> 0x45 0x00 · ··0x0f 0x8e
+> 0x64 0xba · ··0x00 0x00
+> 0x10 0x00 · ··0x51 0x01
+> 0x0d 0x01 · ··0x03 0x82
+> Byte Level
+> 0x45 0x00 · ··0x0f 0x8e
+> 0x64 0xba · ··0x00 0x00
+> 0x10 0x00 · ··0x51 0x01
+> 0x0d 0x01 · ··0x03 0x82
+> Byte Level
+> Multi -granularity perception
+> Model
+> (random mask)
+> Teacher Model
+> (unmasking)
+> PMP & Packet -level
+> Statistical Features
+> Student Model
+> (cross -flow mixing )
+> align
+> mask predict
+
+Fig. 3. Comparison of hierarchical semantic extraction capabilities between MAE and the proposed MMAE. MAE relies solely on a single flow and random masking for reconstruction. Our MMAE incorporates cross-flow mixing and packet-level side-channel statistical features. Within the self-distillation teacher-student architecture, flow-level reference features are used as supervision for reconstruction and mask prediction tasks. 
+
+such approaches struggle to flexibly adapt rapidly evolving network protocols. Despite these limitations, ML-based meth-ods retain significant value in modern contexts. Handcrafted feature, such as traffic statistics, are relatively stable and frequently utilized to complement other methods in traffic classification [36], [20], [43]. Deep learning (DL) models (e.g., CNNs, RNNs, and GNNs) have significantly improved the performance by automatically extracting representations from raw packets, such as raw bytes or key packet attributes [34], [33], [32], [42], [22]. How-ever, these conventional neural architectures exhibit limitations in capturing long-range sequential dependencies, which are prone to inductive biases and suffer from low computational efficiency. Transformer-based methods [41], [7], [24] offer powerful sequence modeling capabilities compared to CNNs by leveraging self-attention. However, their high performance typically relies on large-scale labeled datasets, which are costly to obtain in practical applications. 
+
+B. Pre-training based Methods 
+
+Pre-training methods significantly reduce the demand of labeled training data. This paradigm typically consists of two distinct phases: pre-training stage based on unlabeled traffic data via self-supervised learning and fine-tuning stage based on a few labeled downstream traffic data. With the success of large models such as BERT [11] and GPT [30], pre-training methodologies have rapidly emerged as the dominant approach for sequence modeling. Recent studies focus on Transformer-based pre-training paradigms for network traffic classification. For example, PERT [14] directly feeds raw packet sequences into a Transformer for feature extraction. Conversely, YaTC [45] transforms traffic into two-dimensional images and trains a visual masked autoencoder. Additionally, frameworks such as ET-BERT [21] and TrafficFormer [46] partition traffic into bursts by analyzing packet transmission directions. These bursts are subsequently serialized into hex-adecimal strings, and the subword tokenization techniques are applied to construct a fixed-size vocabulary. Although these methods have achieved notable success, directly adopting local reconstruction strategies from natural language processing or computer vision often breaks the inherent properties of network traffic. Consequently, such designs fail to adequately capture the unique semantic characteristics of network traffic. 
+
+C. Knowledge Distillation 
+
+Knowledge Distillation (KD) is a classic knowledge transfer and model compression technique [15]. The core objective is to train a compact student model to approximate the targets generated by a complex teacher model, which enables the model to inherit the strong generalization capabilities. Self-distillation deploys the same underlying architecture for teacher and student, utilizing its own outputs rather than relying on posterior distributions. As a result, it is often considered a discriminative self-supervised objective [2], [12], [16], [18]. Under this mechanism, the network learns from its historical iterations or differently perturbed views, pro-gressively refining its high-dimensional representations. By eliminating the prerequisite to pre-train and freeze a massive external teacher network, self-distillation significantly reduces the memory and time overhead. More importantly, it typically enhances the model’s robustness [3], [6], [9], [19]. Motivated by the self-distillation, in the proposed MMAE framework, we seamlessly integrate the self-distillation mechanism between a twin of MAEs to achieve interactive pre-training. III. T HE PROPOSED MEAN MASKED AUTO ENCODER 
+
+An overview of our MMAE is illustrated in Fig. 4, which contains a traffic preprocessing unit (d), a FlowMix unit (a), a student MAE (b), a teacher MAE (c), and a Statistics-based Flow Matcher (e) for constructing flow pairs. 
+
+A. Traffic Preprocessing 
+
+To transform the heterogeneous and variable-length raw network packets into representations suitable for models, Fig. 4 (d) illustrates the complete preprocessing workflow. First, we use the SplitCap tool to segment the PCAP files captured from network interfaces into independent session flows based on the five-tuple rule. To eliminate potential model bias towards spe-cific hosts, the IP addresses and port details information within the flows are anonymized. Subsequently, we apply uniform truncation and padding to the packets, fixing each packet to 320 bytes (80 bytes of protocol header features and 240 bytes of payload). This specific allocation preserves critical initial information from both the control and application layers while avoiding interference from excessive zero-padding. We extract the first 5 packets from each standardized session. If a session contains fewer than 5 packets, appropriate zero-padding is applied. These extracted packets are then concatenated to form a one-dimensional integer array with a fixed length of L = 1600 bytes. Finally, to improve the model’s convergence and numerical stability, each byte value is normalized from the original [0 , 255] to [0 , 1] interval. 
+
+B. FlowMix Mechanism 
+
+To overcome the limited contextual information within a single flow, we introduce a dynamic Flow Mixing strategy to enhance the model’s flow-level discriminative capabilities JOURNAL OF L ATEX CLASS FILES, VOL. 14, NO. 8, AUGUST 2021 4Support Flow embedding   
+
+> Packet -level embedding
+
+Pn      
+
+> Packet -level embedding
+> ...
+> Packet -level embedding
+> P1
+> Packet -level embedding
+> P1
+
+Support Flow embedding   
+
+> Packet -level embedding
+
+Pn    
+
+> Packet -level embedding
+> ...
+> Packet -level embedding
+> P1
+
+Main Flow embedding   
+
+> Packet -level embedding
+
+Pn  
+
+> Packet -level embedding
+
+...   
+
+> Packet -level embedding
+
+P1  
+
+> Packet -level embedding
+
+P1
+
+Main Flow embedding   
+
+> Packet -level embedding
+
+Pn  
+
+> Packet -level embedding
+
+...   
+
+> Packet -level embedding
+
+P1
+
+Mixe d Pair 
+
+Dynamic Mixed 
+
+Masking 
+
+Original Flow Pair 
+
+... ... 
+
+... ... 
+
+Mixed Tokens 
+
+Support Flow embedding   
+
+> Packet -level embedding
+
+Pn      
+
+> Packet -level embedding
+> ...
+> Packet -level embedding
+> P1
+> Packet -level embedding
+> P1
+
+Support Flow embedding   
+
+> Packet -level embedding
+
+Pn    
+
+> Packet -level embedding
+> ...
+> Packet -level embedding
+> P1
+
+Main Flow embedding   
+
+> Packet -level embedding
+
+Pn  
+
+> Packet -level embedding
+
+...   
+
+> Packet -level embedding
+
+P1  
+
+> Packet -level embedding
+
+P1
+
+Main Flow embedding   
+
+> Packet -level embedding
+
+Pn  
+
+> Packet -level embedding
+
+...   
+
+> Packet -level embedding
+
+P1
+
+Original Tokens 
+
+Student Encoder(MAE) 
+
+... ... 
+
+> + [Mask] token
+
+Student Decoder 
+
+... ... 
+
+Prediction Head 
+
+Student 
+
+Teacher Encoder 
+
+Teacher Decoder 
+
+... ... 
+
+... ... 
+
+Main Flow 
+
+Support Flow 
+
+(no input) 
+
+> Token
+> Replace
+> Aligned View
+
+... ... 
+
+... ... 
+
+Unmxing 
+
+> Main Flow View
+
+Packet -importance 
+
+aware Mask Predictor 
+
+Mpred 
+
+Lrec 
+
+Lpred 
+
+> Generate d
+> Mask
+
+Lalign 
+
+Teacher 
+
+... ... ...  
+
+> Support Flow
+> View
+> (812, 574, 1460, ...)
+
+Packet 
+
+Lengths 
+
+Embedding 
+
+> (T1, T2, T3, ...)
+
+Temproal 
+
+Seqs 
+
+Embedding 
+
+CC
+
+Feature Alignment 
+
+... ... ... 
+
+Traffic 
+
+Processing 
+
+Internet Encrypted 
+
+Traffic 
+
+Split 
+
+Sessions 
+
+Segment Splitcap 
+
+Flows Package Flows Side -channel 
+
+Features 
+
+> ...
+
+B ×27 
+
+> ...
+> ...
+> ...
+
+B× 91 
+
+> ...
+> ...
+> ...
+> ...
+
+Statistical 
+
+Features 
+
+> Encoder
+
+Flows 
+
+Similarity 
+
+Similarity 
+
+Judgement 
+
+Flow Pair 
+
+(d) Traffic Preprocessing (e) Statistics -based Flow Matcher  
+
+> Tokens from
+> different Flows
+> CC
+> [MASK] tokens
+> Concatenation
+
+EMA: 
+
+> IP Header
+> Transport
+> Layer
+> Header
+> Packet
+> Payload
+> 0x45 · ··0x8e
+> 0x64 · ··0x00
+> 0xa1 · ··0x61
+
+... 
+
+> Packet 1
+> Packet 2
+> Packet N
+
+... 
+
+> Packet 1
+> Packet 2
+> Packet N
+
+... 
+
+> Packet 1
+> Packet 2
+> Packet N
+
+... 
+
+> Packet 1
+> Packet 2
+> Packet N
+
+... 
+
+> Packet 1
+> Packet 2
+> Packet 5
+
+... 
+
+> Packet 1
+> Packet 2
+> Packet 5
+
+... 
+
+> Packet 1
+> Packet 2
+> Packet N
+
+... 
+
+> Packet 1
+> Packet 2
+> Packet N
+
+... 
+
+> Packet 1
+> Packet 2
+> Packet 5
+> IP Header
+> Transport
+> Layer
+> Header
+> Packet
+> Payload
+> 0x45 · ··0x8e
+> 0x64 · ··0x00
+> 0xa1 · ··0x61
+
+... 
+
+> Packet 1
+> Packet 2
+> Packet N
+
+... 
+
+> Packet 1
+> Packet 2
+> Packet N
+
+... 
+
+> Packet 1
+> Packet 2
+> Packet 5
+
+... 
+
+> Packet 1
+> Packet 2
+> Packet N
+
+... 
+
+> Packet 1
+> Packet 2
+> Packet N
+
+... 
+
+> Packet 1
+> Packet 2
+> Packet 5
+
+... 
+
+> Packet 1
+> Packet 2
+> Packet 5
+
+... 
+
+> Packet 1
+> Packet 2
+> Packet N
+
+... 
+
+> Packet 1
+> Packet 2
+> Packet 5
+
+... 
+
+> Packet 1
+> Packet 2
+> Packet N
+
+... 
+
+> Packet 1
+> Packet 2
+> Packet N
+
+... 
+
+> Packet 1
+> Packet 2
+> Packet N
+
+... 
+
+> Packet 1
+> Packet 2
+> Packet N
+
+... 
+
+> Packet 1
+> Packet 2
+> Packet 5
+
+... 
+
+> Packet 1
+> Packet 2
+> Packet 5
+
+... 
+
+> Packet 1
+> Packet 2
+> Packet N
+
+... 
+
+> Packet 1
+> Packet 2
+> Packet N
+
+... 
+
+> Packet 1
+> Packet 2
+> Packet 5
+
+Statistics -based 
+
+Flow Matcher 
+
+Encrypted 
+
+Traffic 
+
+(a) FlowMix (b) Student (c) Teacher (EMA) 
+
+Padding 
+
+Fig. 4. Flowchar of the proposed MMAE, which mainly includes FlowMix and teacher-student based twin MAEs. MMAE incorporates a traffic pre-processing unit, a statistics-based flow matcher and a cross-flow mixing unit (i.e., FlowMix). Within the self-distillation teacher-student twin MAE architecture, flow-level reference features are exploited as supervision for reconstruction and mask prediction tasks. 
+
+with perturbation tokens. However, random pairwise mixing of traffic flows have drastically different behavioral patterns. In such cases, the resulting reconstruction task becomes simple, as the model can easily distinguish them, failing to learn deep semantics. Therefore, effective cross-flow mixing requires identifying traffic pairs with similar patterns. Side-channel statistical features are inherent physical at-tributes of network traffic, which remain unaffected by en-cryption and can therefore intuitively reflect flow-level pat-terns, packet-level dynamics, and the overall communication environment. Statistics-based Flow Matcher (SFM) leverages these statistical priors as anchors to reliably estimate the phys-ical similarity between flows, which establishes a principled foundation for the mixing process. 
+
+1) Statistics-based Flow Matcher: As illustrated in Fig. 4 (e), SFM extracts 27 highly expressive side-channel statistical features from flow-level PCAP files. These features encompass packet-level behaviors, temporal patterns, and protocol inter-action modes. Based on their primary physical implications, we categorize these attributes into three principal groups: Time 
+
+Features, Size Features, and Flag & Protocol Features. 
+
+• Time Features: These features describe the temporal patterns of packet arrivals and session persistence. For example, real-time communication applications typically exhibit stable and frequent inter-arrival times, while non-real-time applications show bursty time intervals. 
+
+• Size Features: These attributes capture the distributional patterns of data volume transmission across the network flow, including the statistical regularity of overall packet length, payload size, and downlink traffic distribution. 
+
+• Flag & Protocol Features: These features record the trigger frequency of control flags (e.g., SYN, FIN, PSH), which provide intuitive insights into the connection man-agement strategies. For example, applications that fre-quently establish connections generate a large number of SYN/FIN flags, while persistent connection applications rarely generate such flags. The specific names and physical meanings of the 27 side-channel statistical features are shown in Table I. Subsequently, an encoder maps the raw features to a higher-order abstract representation. We denote the input raw sta-tistical feature matrix as Xstat ∈ R1×27 . The entire feature encoding process can be represented as follows: 
+
+Xnorm = BatchNorm( Xstat )
+
+Fcnn = MaxPool (CNN1D( Xnorm )) 
+
+Fdeep = MLP( Fcnn )
+
+Fout = Concat( Xnorm , F deep )
+
+(1) where Xnorm ∈ R1×27 denotes the features processed via 1D Batch Normalization. CNN1D( ·) represents a deep network comprising two 1D convolutional layers. Subsequently, an adaptive max-pooling layer MaxPool( ·) is used for feature compression to extract the most salient sequence features 
+
+Fcnn . Finally, the pooled features are mapped to a high-order deep representation Fdeep ∈ R1×64 . To avoid losing JOURNAL OF L ATEX CLASS FILES, VOL. 14, NO. 8, AUGUST 2021 5                                 
+
+> TABLE I SUMMARY OF EXTRACTED SIDE -C HANNEL STATISTICAL FEATURES
+> Category Feature Name Description Time
+> (6 dims) F-Duration Total time of a flow from start to end F-Time Timestamp of the first packet in a flow P-inter-min Shortest time interval between packets P-inter-max longest time interval between packets P-inter-avg Average deviation of packet intervals P-inter-std Standard deviation of packet intervals
+> Size
+> (11 dims) P-total Total number of packets in a flow Downlink-Bytes Total bytes transmitted downlink Downlink-Count Total packets count transmitted downlink Payload-P-Count Number of packets with payload data Payload-P-min Smallest payload sizes Payload-P-max Largest payload sizes Payload-P-std Standard deviation of payload sizes P-Length-min Smallest and largest packet lengths P-Length-max Smallest and largest packet lengths P-Length-avg Average deviation of packet lengths P-Length-std Standard deviation of packet lengths
+> Flag
+> (10 dims) TCP Count Number of TCP packets in a flow UDP Count Number of UDP packets in a flow DNS Count Number of DNS packets in a flow ICMP Count Number of ICMP packets in a flow SYN Count Number of SYN flags in a flow FIN Count Number of FIN flags in a flow ACK Count Number of ACK flags in a flow PSH Count Number of PSH flags in a flow URG Count Number of URG flags in a flow RST Count Number of RST flags in a flow
+
+the explicit semantics of the original physical properties, the encoder employs a residual concatenation operation, resulting in a 91 -dimensional fused feature Fout .Next, we must precisely pair each main flow with acorresponding support flow to construct the mixing input. To this end, we construct symmetric pairs using a greedy matching [29] strategy within a mini-batch, which is detailed in Algorithm 1. The final output of this algorithm is an index vector P , which encapsulates the symmetric pairing assignments for the entire batch. 
+
+2) Dynamic Mixed Masking: After selecting the paired flows through SFM, executing an effective mixing strategy is crucial. To avoid the triviality of blindly swapping random tokens with varying information densities, we design the Dynamic Mixed Masking (DMM) module. Instead of the conventional random masking in standard MAE, we guide the selection process using the prediction loss Lpred from the student model, which is elaborated as the Packet-importance aware Mask Predictor (PMP) in Section III-D. Regions with higher prediction errors indicate dense semantics that the model struggles to learn. Therefore, we prioritize masking and replacing these challenging regions with interfering features from paired flows indexed by P from SFM module. Specifically, we partition the input traffic sequence into 
+
+Nx = 400 patches with a step size of 4, and linearly project them into D = 256 dimensions. This yields the main flow’s token sequence, denoted as Xmain ∈ RNx×D . Given masking ratio rmask , the number of tokens to be replaced by support flow features Xsupp corresponding to paired flows chosen by SFM is Nmask = ⌊Nx · rmask ⌋, leaving Nkeep = Nx − Nmask 
+
+tokens retained, where ⌊·⌋ represents the operation of rounding down. To progressively increase the difficulty of the pretext task, the total masked tokens Nmask are divided into replaced parts with the hard mask ratio of rhard and random mask parts with a ratio of rrand , respectively. Based on the predicted loss Lpred ∈ RNx from PMP, we identify the indices Ωhard of the Khard most challenging patches via the T opK Indices operation: 
+
+Ωhard = TopK Indices (Lpred , K hard ) (2) To efficiently execute both random and targeted masking si-multaneously, we first generate uniform noise N ∼ U (0 , 1) Nx ,and reformulate each value Ni,j as: 
+
+ˆN =
+
+(
+
+Ni,j + η, if j ∈ Ωhard 
+
+Ni,j , otherwise (3) given that η ≫ 1, the values of selected challenging patches in ˆN become significantly larger than the uniform noise. By sorting ˆN in ascending order along the sequence dimension, we construct the binary mask matrix M ∈ { 0, 1}Nx :
+
+Mj =
+
+(
+
+0, if j < N keep (Keep )1, if j ≥ Nkeep (Replace ) (4) where j is the index in the sorted sequence, and Nkeep is the target number of retained tokens. However, during the early stages of training, the model has not yet extracted meaningful feature representations, and 
+
+Lpred is highly uncertain. Therefore, we formulate the ratio of 
+
+Lpred -guided hard patches as a dynamic scaling function that evolves with the training epoch. This design fundamentally incorporates the paradigm of Curriculum Learning. For the current training epoch t, the definition is as follows: 
+
+rhard (t) = Rmax ·
+
+ tTtotal 
+
+
+
+(5) as t increases from 0 to Ttotal , the ratio rhard (t) scales linearly up to its maximum threshold Rmax .Finally, utilizing the pairing index vector P generated by Algorithm 1, we extract the corresponding support flow token sequences Xsupp within the batch. The final flow mixing sequence Xmix is: 
+
+Xmix = Xmain ⊙ (1 − M ) + Xsupp ⊙ M (6) where ⊙ denotes the Hadamard product. When a value in 
+
+M is 0, the token retains the main flow feature Xmain .Otherwise, it is replaced by a feature from the support flow 
+
+Xsupp . Notably, the support flow serves only as a repository of distorted features. It is not fed into the network as an independent sequence as indicated by the “no input” state in Fig. 4 (a). Thus, the core entity of the pre-training task is always based on the main flow. To preserve the positional relationships of packets and bytes in traffic, we add positional encoding Epos ∈ RN ×D to the sequence, where N = Nx + 1 is the total sequence length. Following the standard Transformer architecture, we also prepend a learnable class token xcls ∈ R1×D . Finally, the mixed feature embedding fed into the student model is JOURNAL OF L ATEX CLASS FILES, VOL. 14, NO. 8, AUGUST 2021 6
+
+Algorithm 1 Symmetric Pairing Construction 
+
+Require: Batch side-channel statistical feature matrix Fout ∈
+
+RB×D (Batch size B, Feature dimension D = 91 )
+
+Ensure: Symmetric pairing index vector P ∈ ZB 
+
+> 1:
+
+Fnorm ← Fout  
+
+> ∥Fout ∥2
+
+▷ Row-wise L2 normalization  
+
+> 2:
+
+S ← Fnorm · F ⊤ 
+
+> norm
+> 3:
+
+for i = 1 to B do  
+
+> 4:
+
+S[i, i ] ← −∞ ▷ Prevent self-pairing  
+
+> 5:
+
+end for  
+
+> 6:
+
+P ← [1 , 2, . . . , B ] ▷ Initialize indices  
+
+> 7:
+
+Scurrent ← S  
+
+> 8:
+
+for step = 1 to ⌊B/ 2⌋ do  
+
+> 9:
+
+row, col ← argmax i,j (Scurrent ) ▷ Maximum co-ordinates  
+
+> 10:
+
+if Scurrent [row, col ] = −∞ then  
+
+> 11:
+
+break ▷ Terminate if all elements are masked  
+
+> 12:
+
+end if  
+
+> 13:
+
+P [row ] ← col  
+
+> 14:
+
+P [col ] ← row ▷ Symmetric bi-directional mapping 
+
+▷ Exclude paired rows and columns  
+
+> 15:
+
+Scurrent [row, :] ← −∞ ; Scurrent [: , row ] ← −∞  
+
+> 16:
+
+Scurrent [col, :] ← −∞ ; Scurrent [: , col ] ← −∞  
+
+> 17:
+
+end for  
+
+> 18:
+
+return P
+
+formulated as: 
+
+Xstudent = [ xcls ; Xmix ] + Epos (7) where Xmix ∈ RNx×D represents the cross-flow mixed feature and [; ] represents the concatenation operation. The unmasked raw feature fed into teacher model is: 
+
+Xteacher = [ xcls ; Xmain ] + Epos (8) 
+
+C. Student Branch 
+
+The core objective of the student branch is to extract representative features from the cross-flow mixed sequence 
+
+Xstudent by reconstructing the main flow feature. First, the student encoder ES processes the mixed token sequence Xstudent . Through multi-layer self-attention, the features of the main and support flows are deeply integrated: 
+
+Zstudent = ES (Xstudent ) (9) were Zstudent ∈ RN ×D represents the hidden-layer feature. This representation is then fed into its decoder and another parallel branch, i.e., PMP. In the following, we first detail the decoder and its reconstruction mechanism. 
+
+1) Dual-view Construction and Decoding: To separately recover the semantics of the main and support flows from the mixed tokens Zstudent , we construct dual views before the decoder. Using the binary mask M ∈ { 0, 1}Nx generated in the DMM, we obtain the main flow view Vmain and its symmetric support flow view Vsupp . Specifically, Vmain retains the main flow tokens and replaces the positions of the support flow with learnable mask token E[M ASK ]:
+
+Vmain = Zstudent ⊙ (1 − M ) + E[M ASK ] ⊙ M (10) Conversely, Vsupp is represented as: 
+
+Vsupp = Zstudent ⊙ M + E[M ASK ] ⊙ (1 − M ) (11) These two views are concatenated along the batch dimen-sion and fed into the decoder DS for reconstruction: 
+
+Hmain = DS (Vmain + Edec pos )
+
+Hsupp = DS (Vsupp + Edec pos ) (12) where Hmain ∈ RNx×D and Hsupp ∈ RNx×D represent the reconstructed main and support view tokens, respectively. For brevity, the class token in the output sequence is omitted here. 
+
+2) Unmixing and Reconstruction: Hmain and Hsupp con-tain the predictions for the masked regions. To recover the complete semantics of the main flow, we perform unmixing and reconstruction. First, we remap the index of support view token Hsupp back to their original batch positions according to the index vector P from SFM in Algorithm 1, obtaining the aligned token: 
+
+Haligned = Hsupp [P ] (13) The unmixing process is then formulated as: 
+
+Hunmix = Hmain ⊙ M + Haligned ⊙ (1 − M ) (14) Notably, Hunmix restores the original structure of the main flow, utilized for global semantic alignment with the recon-structed full tokens by the teacher network. Following unmix-ing, the model performs fine-grained byte-level reconstruction and computes the reconstruction loss: 
+
+Lrec = M SE (Hunmix , X main ) (15) where M SE (·) indicates Mean Squared Error. Since the model predicts masks from dual views simultaneously in a single forward pass, the MSE can be directly calculated across all tokens to fully optimize the network. 
+
+D. Packet-importance aware Mask Predictor 
+
+To effectively identify the most informative patches, we introduce a Packet-importance aware Mask Predictor (PMP). Packet-level side-channel features are natural indicators of reconstruction difficulty. Inter-arrival time (Stime ) reflects macroscopic burstiness, while payload length ( Slen ) deter-mines microscopic information capacity. Leveraging these multi-granularity priors, PMP dynamically allocates attention to accurately predict reconstruction difficulty. As shown in Fig. 5, this is achieved by generating an attention bias. We first broadcast the packet-level statistical signal Stime 
+
+and Slen along the byte dimension to match the original sequence length. Then, respective 1D convolutions are applied to map them into the token latent space. The resulting em-beddings Et and El, are concatenated and fused to form the statistical context feature Zstat ∈ RNx×Dstat :
+
+Et = Conv1D (Broadcast (Stime )) + PE t
+
+El = Conv1D (Broadcast (Slen )) + PE l
+
+Zstat = LayerNorm (Wf use [Et; El]) 
+
+(16) where PE t and PE l denote the respective positional encodings, and Wf use is a learnable weight matrix used for feature fusion. JOURNAL OF L ATEX CLASS FILES, VOL. 14, NO. 8, AUGUST 2021 7... 
+
+... 
+
+Main Flow 
+
+Features 
+
+Time & Length 
+
+Features 
+
+> Similarity
+
+Statistic al Low -rank 
+
+Projector 
+
+Learnable Scalar 
+
+Projector 
+
+1-1-
+
+Linear 
+
+Norm 
+
+CC 𝜎 𝜎 
+
+> Add&Clamp
+> Relative Time
+
+-1-1
+
+Gate Low -rank 
+
+Projector        
+
+> Pkt 1
+> Pkt 2
+> Pkt 3
+> Pkt 4
+> Pkt 5
+> Header Payload
+> Suppresses useless
+> padding tokens
+> （Handshake /Control Packet ）
+> （App Data Packet ）
+> （ACK Packet ）
+> Packet
+> Attention Bias Map
+> Enchance large payload
+> dense semantic tokens
+> Enhance control/protocol
+> tokens on header
+> Strucured Token -level Attention Grid
+> Attention
+> Modulation :
+> L2 Normalization
+> Concatenation CC
+
+𝜎 𝜎 Sigmoid   
+
+> Element -wise Multiplication
+> 1-1-One minus
+> Norm -1-1Negation operation
+> Concatenation C
+
+𝜎 Sigmoid    
+
+> Element -wise Multiplication
+> 1-One minus
+> Norm -1Negation operation L2 Normalization
+> Concatenation C
+
+𝜎 Sigmoid     
+
+> Element -wise Multiplication
+> 1-One minus
+> Norm -1Negation operation
+> （Handshake /Control Packet ）
+> Attention
+> Modulation
+> Attention
+> Modulation
+> （Bulk /Burst Packet ）
+
+Fig. 5. Architecture of the Packet-importance aware Mask Predictor (PMP). PMP leverages packet-level side-channel priors to generate a low-rank attention bias via a token-aware gating mechanism. This bias dynamically modulates self-attention to identify and mask challenging, semantically dense regions. 
+
+To modulate the attention distribution, PMP generates sup-pressive and enhancing matrices, defined by a policy indicator 
+
+k ∈ { sup, enh }. For each policy, the statistical feature Zstat 
+
+is projected into a rank-r space via learnable matrices W kU and 
+
+W kY ∈ RDstat ×r , producing low-rank factors. 
+
+Uk = Zstat W kU , Yk = Zstat W kY (17) The dense bias matrix Zk ∈ RNx×Nx is then computed via inner product: 
+
+Zk = 1
+
+√r (Uk)( Yk)⊤ (18) Since different tokens play varying roles in traffic contexts, a gating mechanism dynamically decides whether to suppress or enhance each position. We extract three metrics for the i-th token: a similarity feature F isim , a saliency feature F isal , and a statistical context feature F ictx :
+
+F isim = 1
+
+Nx
+
+X
+
+j
+
+ReLU (cos( vi, v j )) 
+
+F isal = Linear (∥vi∥2)
+
+F ictx = Linear (Zstat,i )
+
+(19) where vi ∈ RD denotes the i-th token in the main flow view Vmain . These metrics are concatenated to form the comprehensive gated features F igate = [F isim ; F isal ; F ictx ].Subsequently, gating logits Lgate are generated using a similar matrix low-rank projection parameterized by learnable weight matrices Wa and Wb. These logits are then used to calculate the suppression probability psup and enhancement probability 
+
+penh for each position: 
+
+Lgate = ( Fgate Wa)( Fgate Wb)⊤
+
+psup = Sigmoid (Lgate )
+
+penh = 1 − psup 
+
+(20) Finally, the suppressive and enhancing bias matrices are weighted by the calculated gating probabilities. To ensure numerical stability, the final attention bias matrix Battn is clamped to the interval [−5, 5] :
+
+Battn = Clamp 
+
+
+
+psup ⊙ (−Softplus (γsup ) · Zsup )+penh ⊙ (Softplus (γenh ) · Zenh ), −5, 5
+
+ (21) where γsup and γenh are learnable scalars controlling the bias magnitudes. In the implementation, PMP processes Zstudent 
+
+through a dedicated prediction network FP M P to output the patch-wise reconstruction difficulty prediction: 
+
+Mpred = FP M P (Zstudent ) (22) where Mpred ∈ RNx×D , and FP M P is implemented in the structure of a 2-layer Transformer block. Within FP M P ,the generated bias matrix Battn is injected directly into the attention score computation: Attention (Q, K, V ) = softmax 
+
+ QK ⊤
+
+√dk
+
++ Battn 
+
+
+
+V (23) The prediction Mpred is subsequently fed back to the module described in Section III-B to guide the dynamic mask generation of cross-flow samples for the next training iteration. PMP is supervised by the reconstruction loss Lrec . How-ever, as pre-training progresses, the absolute reconstruction loss undergoes drastic decay and becomes noisy. To circum-vent this instability, we adopt a pairwise ranking loss inspired by RankNet [5]. For any two patches i and j, we construct binary ranking labels based on Lrec :
+
+I+
+
+i,j =
+
+(
+
+1, if L(i)
+
+rec > L(j)
+
+rec 
+
+0, otherwise 
+
+I−
+
+i,j =
+
+(
+
+1, if L(i)
+
+rec < L(j)
+
+rec 
+
+0, otherwise (24) We then compute the prediction difference ∆i,j = M (i)
+
+pred −
+
+M (j)
+
+pred and optimize this relative ranking using binary cross-entropy (BCE): 
+
+Lpred = BCE  σ(∆ i,j ), I+
+
+i,j 
+
+ + BCE  1 − σ(∆ i,j ), I−
+
+i,j 
+
+ (25) where σ(·) is the Sigmoid activation function. 
+
+E. Teacher Branch with Self-Distillation 
+
+During the reconstruction phase, the student model inputs only severely disrupted mixed fragments. In contrast, the teacher model processes the complete global flow, extracting high-level semantic representations as supervision signals. The teacher branch takes the original feature embedding 
+
+Xteacher constructed in Section III-B as input to extract the JOURNAL OF L ATEX CLASS FILES, VOL. 14, NO. 8, AUGUST 2021 8
+
+Algorithm 2 Training Pipeline of MMAE 
+
+Require: Unlabeled traffic data Dunlabel , labeled traffic data Dlabel ,total pre-training epochs Ttotal , fine-tuning epochs Ef ine , initial student parameters θS , EMA momentum m. 
+
+> 1:
+
+Initialize Teacher parameters θT using θS 
+
+> 2:
+
+Phase 1: Pre-training  
+
+> 3:
+
+for t = 1 to Ttotal do  
+
+> 4:
+
+for each mini-batch in Dunlabel do  
+
+> 5:
+
+# Flow Mixing  
+
+> 6:
+
+Extract and encode side-channel statistical features (Eq. 1)  
+
+> 7:
+
+Construct symmetric pairing index P (Algorithm 1)  
+
+> 8:
+
+Generate dynamic mixed mask M (Eq. 2-5)  
+
+> 9:
+
+Construct cross-flow mixed input Xstudent (Eq. 6, 7)  
+
+> 10:
+
+Construct unmasked input Xteacher (Eq. 8)  
+
+> 11:
+
+# Student Branch  
+
+> 12:
+
+Construct and decode dual views Vmain , V supp (Eq. 9-12)  
+
+> 13:
+
+Unmix features to obtain Hunmix (Eq. 13, 14)  
+
+> 14:
+
+Compute reconstruction loss Lrec (Eq. 15)  
+
+> 15:
+
+# Packet-importance aware Mask Predictor  
+
+> 16:
+
+Generate attention bias Battn (Eq. 16-23)  
+
+> 17:
+
+Compute mask prediction loss Lpred (Eq.24, 25)  
+
+> 18:
+
+# Teacher Branch with Self-Distillation  
+
+> 19:
+
+Extract global contextual features Hteacher (Eq. 26)  
+
+> 20:
+
+Compute semantic alignment loss Lalign (Eq. 27)  
+
+> 21:
+
+# Model Optimization  
+
+> 22:
+
+Compute total pre-training loss Lpre (Eq. 30)  
+
+> 23:
+
+Update Student parameters θS ← θS − η∇θS Lpre  
+
+> 24:
+
+Update Teacher parameters θT via EMA (Eq. 28)  
+
+> 25:
+
+end for  
+
+> 26:
+
+end for  
+
+> 27:
+
+Phase 2: Fine-tuning  
+
+> 28:
+
+# Downstream Initialization  
+
+> 29:
+
+Retain pre-trained student encoder θS and initialize downstream classification head  
+
+> 30:
+
+for epoch = 1 to Ef ine do  
+
+> 31:
+
+for each batch (X, y ) in Dlabel do  
+
+> 32:
+
+# Supervised Optimization  
+
+> 33:
+
+Extract features using student encoder and predict prob-ability distribution ˆy 
+
+> 34:
+
+Compute fine-tuning loss LCE (Eq. 31)  
+
+> 35:
+
+Update student encoder and classification head parameters by minimizing LCE  
+
+> 36:
+
+end for  
+
+> 37:
+
+end for  
+
+> 38:
+
+return Fine-tuned model parameters 
+
+full contextual feature Hteacher :
+
+Hteacher = DT
+
+ ET (Xteacher ) (26) where ET and DT denote the encoder and decoder of the teacher, respectively. To guide the student in learning global traffic seman-tics within the latent space, we introduce a feature align-ment mechanism. Specifically, we align the unmixed feature 
+
+Hunmix from the student with the Hteacher from the teacher using the alignment loss Lalign :
+
+Lalign = 1 − sim (Hunmix , H teacher ) (27) where sim (·) denotes the cosine similarity. By minimizing 
+
+Lalign , the student network is subjected to a strict constraint: 
+
+even when the student’s input is heavily contaminated by other flow, its unmixed representation must align with the teacher’s view of the uncorrupted context . This semantic distillation improves model’s robustness against traffic obfuscation. Notably, the teacher’s weights are updated using an Expo-nential Moving Average (EMA) strategy: 
+
+θT ← m · θT + (1 − m) · θS (28) where θT and θS denote the parameters of the teacher and student models, respectively. m ∈ [0 , 1] is the momentum coefficient controlling the update rate. In this paper, the momentum m is scheduled via cosine annealing: 
+
+mt = mf inal + 12 (mbase − mf inal )
+
+
+
+1 + cos 
+
+ πt T
+
+ 
+
+(29) where t and T denote the current and total training steps, respectively. m is smoothly increased from the base value 
+
+mbase to the final value mf inal , ensuring model stability. Since the teacher and student are a twin of MAE, and the teacher is updated through EMA strategy, we therefore call the model Mean MAE .
+
+F. Model Optimization 
+
+Pre-training phase. The overall pre-training objective is formulated as: 
+
+Lpre = Lrec + λ1Lpred + λ2Lalign (30) where λ1 and λ2 are balancing hyperparameters. 
+
+Fine-tuning phase. For downstream tasks, we fine-tune the full model by retaining only the pre-trained student encoder as the backbone. The extracted features are fed into a classifica-tion head to predict the probability distribution ˆy ∈ Rc, where 
+
+c is the number of traffic categories. The model is optimized using the Cross-Entropy loss between the ground-truth labels 
+
+y and predictions ˆy:
+
+LCE = CrossEntropy (y, ˆy) (31) To provide a comprehensive overview, the training pipeline of the proposed MMAE is detailed in Algorithm 2. IV. E XPERIMENTS 
+
+A. Experimental Setup 1) Datasets and Preprocessing: For the encrypted traffic classification task, the model is pre-trained using six public real-world datasets: ISCXVPN 2016 [13], ISCXTor 2016 [13], CrossPlatform (Android) [37], CrossPlatform (iOS) [37], USTC-TFC [40], and CICIoT2022 [10]. During the fine-tuning phase, we evaluate the model on these six datasets and the CSTNET-TLS 1.3 dataset [21]. Each dataset is split into training, validation, and test sets at an 8:1:1 ratio.  
+
+> •
+
+ISCXVPN2016: This dataset comprises communication application traffic captured by the Canadian Institute for Cybersecurity, which contains VPN and non-VPN traffic from 16 applications categorized into 7 types, yielding 16,048 processed samples.  
+
+> •
+
+ISCXTor2016: This dataset contains application traffic using Tor for encrypted communication, which includes traffic data from 8 communication categories and totally 14,569 samples.  
+
+> •
+
+USTC-TFC2016: This dataset consists of encrypted traf-fic from 20 application types, evenly split between 10 JOURNAL OF L ATEX CLASS FILES, VOL. 14, NO. 8, AUGUST 2021 9      
+
+> TABLE II COMPARISONS WITH PREVIOUS SOTA METHODS ON CROSS PLATFORM (A NDROID ), C ROSS PLATFORM (IOS), AND CICI OT2022 DATASETS
+
+Method CrossPlatform(Android) CrossPlatform(iOS) CICIoT2022 AC PR RC F1 AC PR RC F1 AC PR RC F1 AppScanner 0.1626 0.1646 0.1456 0.1413 0.1718 0.1400 0.1440 0.1283 0.7556 0.8093 0.7244 0.6938 FlowPrint 0.8739 0.8941 0.8739 0.8700 0.8712 0.8687 0.8712 0.8603 0.5820 0.4164 0.5820 0.4643 FS-Net 0.0147 0.0023 0.0147 0.0034 0.0293 0.0014 0.0293 0.0025 0.5747 0.3800 0.5747 0.4216 ET-BERT 0.9386 0.9451 0.9386 0.9401 0.9105 0.8809 0.9105 0.8850 0.9937 0.9938 0.9937 0.9937 YaTC 0.9042 0.9081 0.9042 0.9042 0.9310 0.9307 0.9310 0.9295 0.9959 0.9959 0.9959 0.9959 TrafficFormer 0.7664 0.6435 0.6204 0.6167 0.5679 0.4966 0.4697 0.4689 0.8725 0.8487 0.8343 0.8288 FlowletFormer - - - - - - - - 0.9109 0.8905 0.8866 0.8859 NetMamba 0.9869 0.9871 0.9869 0.9864 0.9881 0.9885 0.9881 0.9881 0.9985 0.9985 0.9985 0.9985 MMAE 0.9897 0.9898 0.9897 0.9893 0.9900 0.9872 0.9900 0.9881 0.9990 0.9990 0.9990 0.9990 
+
+benign and 10 malicious categories, comprising 50,677 processed samples.  
+
+> •
+
+CrossPlatform (Android & iOS): These datasets include encrypted traffic from the top 100 Android and iOS apps in the US, China, and India. To prevent long-tail classes from degrading model performance, we discarded categories with fewer than 50 samples, resulting in 181 and 124 categories, which comprise 54,011 and 48,787 processed samples, respectively.  
+
+> •
+
+CICIoT2022: This dataset is collected from a laboratory network, designed for IoT vulnerability testing, encom-passing six mainstream IoT malicious attack categories, yielding 22,634 samples.  
+
+> •
+
+CSTNET-TLS 1.3: This dataset contains encrypted traf-fic data over the encryption protocol TLS 1.3, which is one of the most cutting-edge, widely used, and thoroughly encrypted transport protocol standards on the internet. This data was captured from the China Science and Technology Network backbone across 120 applications, closely reflecting actual ISP traffic distributions, con-tributing 46,356 processed samples. 
+
+2) Implementation Details: The teacher model and the student model have the same network architecture, which comprises an encoder consisting of 7 Transformer blocks and a decoder consisting of 2 Transformer blocks. During the pre-training phase, we train the model for 150,000 iterations with a batch size of 128 using the AdamW optimizer. A linear learning rate scaling rule is applied with a base learning rate of 1 × 10 −3. For the teacher’s EMA momentum parameters, mbase and mf inal are set to 0.96 and 0.99, respectively. For the objective function, λ1 and λ2 are set to 1.0 and 0.1, respectively. Furthermore, the random masking ratio rrand is set to 0.7, supplemented by a dynamic hard masking ratio rhard of 0.2. During the fine-tuning phase, the model is optimized over 120 epochs using the AdamW, with the base learning rate adjusted to 2 × 10 −3 and the batch size set to 64. Our framework is implemented in PyTorch 2.0.0 and trained on a single NVIDIA GeForce RTX 4080 GPU. 
+
+3) Evaluation Metrics: To evaluate the classification per-formance of our model, we employ four standard metrics: Accuracy (AC), Precision (PR), Recall (RC), and Weighted F1-Score (F1), formulated as: Weighted F1 =
+
+> K
+
+X
+
+> i=1
+
+ ni
+
+Ntotal 
+
+× 2 × Precision i × Recall i
+
+Precision i + Recall i
+
+
+
+(32) where ni is the number of samples in the i-th class, Ntotal is the total number of samples, and K is class number. 
+
+4) Comparison Methods: We comprehensively evaluate and compare MMAE against diverse state-of-the-art methods, specifically including the following paradigms:  
+
+> •
+
+Traditional Machine Learning: AppScanner [35] and FlowPrint [37], which rely on hand-crafted statistical features for classification.  
+
+> •
+
+CNN-based Models: FS-Net [22], which performs su-pervised learning directly on the raw network packets.  
+
+> •
+
+Transformer-based Models: ET-BERT [21], YaTC [45], TrafficFormer [46], FlowletFormer [23], and MLETC [28]. These architectures capture latent representations by treating traffic as either 2D visual images or 1D language sequences before downstream fine-tuning.  
+
+> •
+
+Mamba-based Models: NetMamba [39], a pure Mamba architecture that processes network traffic as block-wise 1D sequences. Aside from the supervised baselines (AppScanner, Flow-Print, and FS-Net), all methods utilize a pre-training paradigm. Regarding the pre-training corpora, TrafficFormer and Flowlet-Former are pre-trained on the ISCX-VPN2016, CICIDS2017, and WIDE datasets [17], whereas MLETC employs a propri-etary dataset encompassing diverse real-world protocols. 
+
+B. Main Results 
+
+The comprehensive results are summarized in Tables II, III, and IV. MMAE consistently achieves state-of-the-art performance across all seven datasets, delivering F1-scores ranging from 0.9434 to 1.0000. While traditional machine learning and early deep learning methods capture primary statistical features, they exhibit pronounced limitations in complex scenarios. In contrast, MMAE sustains remarkable accuracy across all tasks. Although large Transformer-based architectures (e.g., ET-BERT, TrafficFormer, FlowletFormer, JOURNAL OF L ATEX CLASS FILES, VOL. 14, NO. 8, AUGUST 2021 10       
+
+> TABLE III COMPARISON WITH PREVIOUS SOTA METHODS ON ISCXT OR 2016, ISCXVPN2016, AND USTC-TFC2016 DATASETS
+
+Method ISCXTor2016 ISCXVPN2016 USTC-TFC2016 AC PR RC F1 AC PR RC F1 AC PR RC F1 AppScanner 0.4034 0.2850 0.2149 0.2113 0.7643 0.8047 0.7045 0.7256 0.6998 0.8591 0.6062 0.6633 FlowPrint 0.1316 0.0173 0.1316 0.0306 0.9666 0.9733 0.9666 0.9681 0.7992 0.7745 0.7992 0.7755 FS-Net 0.7020 0.7010 0.7020 0.6999 0.7023 0.7487 0.7023 0.6660 0.4381 0.2011 0.4381 0.2672 ET-BERT 0.9980 0.9981 0.9980 0.9980 0.9566 0.9566 0.9566 0.9565 0.9910 0.9911 0.9910 0.9910 YaTC 0.9959 0.9959 0.9959 0.9959 0.9819 0.9820 0.9819 0.9819 0.9947 0.9749 0.9747 0.9734 TrafficFormer 0.8669 0.7545 0.7460 0.7472 0.8533 0.8445 0.8348 0.8279 0.9750 0.9789 0.9750 0.9746 FlowletFormer 0.9215 0.9263 0.9043 0.9116 0.9400 0.9471 0.9277 0.9364 0.9650 0.9689 0.9650 0.9648 MLETC 0.9948 0.9778 0.9954 0.9865 0.9875 0.9847 0.9847 0.9880 0.9902 0.9935 0.9918 0.9926 NetMamba 0.9993 0.9993 0.9993 0.9993 0.9899 0.9899 0.9899 0.9899 0.9990 0.9991 0.9990 0.9990 MMAE 1.0000 1.0000 1.0000 1.0000 0.9957 0.9957 0.9957 0.9957 0.9995 0.9995 0.9995 0.9995     
+
+> TABLE IV COMPARISON WITH SOTA METHODS ON THE CSTNET-TLS DATASET
+
+Method CSTNET-TLS AC PR RC F1 AppScanner 0.7441 0.7232 0.6963 0.7023 FS-Net 0.7814 0.7670 0.7316 0.7311 ET-BERT 0.7993 0.7832 0.7689 0.7700 YaTC 0.8391 0.8364 0.8101 0.8140 TrafficFormer 0.7982 0.7883 0.7736 0.7704 FlowletFormer 0.8605 0.8578 0.8445 0.8473 NetMamba 0.9258 0.9271 0.9258 0.9249 MMAE 0.9435 0.9459 0.9435 0.9434 
+
+and MLETC) demonstrate baseline applicability, they suffer from adaptability and stability issues in traffic classification. For instance, TrafficFormer experiences severe performance degradation on cross-platform datasets (yielding F1-scores of merely 0.6167 and 0.4689) in Table II. Similarly, image-based YaTC introduces unnecessary spatial interference. Standing apart from these NLP- or CV-inspired approaches, MMAE aligns intrinsically with the essence of network traffic. 
+
+Performance on cross-platform and IoT traffic datasets .MMAE achieves substantial improvements on cross-platform datasets. As shown in Table II, MMAE reaches an accuracy of 0.9897 and an F1-score of 0.9893, delivering a significant 5.11% accuracy improvement over ET-BERT on the CrossPlat-form (Android) dataset. On the CrossPlatform (iOS) dataset, MMAE surpasses all baselines with an accuracy of 0.9900, outperforming YaTC by 5.90%. Furthermore, on the IoT traffic dataset CICIoT2022, MMAE attains an accuracy of 0.9990. 
+
+Performance on highly encrypted and malicious traffic datasets . As shown in Table III, MMAE demonstrates ex-ceptional analytical efficacy. On the ISCXTor2016 dataset, all evaluation metrics achieve a perfect score of 1.0000. On the ISCXVPN2016 and USTC-TFC datasets, the accuracies reach 0.9957 and 0.9995, respectively. These results indicate that our designed architecture (a twin of MAE) and masking strat-egy (FlowMix) better capture complex dependencies within multi-layer encrypted packets, maintaining higher stability in encrypted environments. 
+
+Performance under TLS 1.3 protocol . Table IV highlights the limitations of existing models under the highly secure TLS 1.3 protocol. As shown in the Table IV, most baseline models witness significant performance degradation. In such restrictive scenarios, FS-Net leverages the packet-size sequence feature. By contrast, MMAE explicitly utilizes these key discriminant features by employing a multi-granularity modeling paradigm. As a result, it achieves an optimal accuracy of 0.9435 and an F1-score of 0.9434, outperforming the second-best method (NetMamba) by 1.77% and 1.85%, respectively. The overall capacity of MMAE is validated. 
+
+C. Ablation Study 
+
+To show the effect of each component in MMAE, we conduct an ablation study on the proposed method using a standard masked autoencoder with a random masking strategy as a baseline. We incrementally integrate Self-Distillation (+SD), Dynamic Mixed Masking (+DMM), Statistics-based Flow Matcher (+SFM), and the Packet-importance aware Mask Predictor (+PMP). Table V details the results on the Cross-Platform (Android and iOS), which has the largest number of categories and the highly challenging CSTNET-TLS dataset. Notably, the performance gains are most pronounced on CSTNET-TLS dataset, highlighting the superiority of the teacher-student based twin architecture in decoding complex modern encryption protocols. Specifically, adding the un-masked teacher (+SD) yields consistent improvements under multiple metrics, and introducing DMM brings a further per-formance improvement. For instance, on CSTNET-TLS, DMM boosts F1-score from 0.9280 to 0.9332. This confirms that breaking single-flow boundaries to construct cross-flow mixed pretext tasks effectively forces the encoder to extract discrim-inative features under severe interference. Subsequently, the addition of SFM provides a modest but crucial enhancement by ensuring that the paired flows constitute meaningful hard samples. Finally, equipped with PMP yields a much positive impact. On the heavily encrypted CSTNET-TLS dataset, PMP increases accuracy from 0.9353 to 0.9435. By dynamically al-locating masking probabilities based on semantic density, PMP JOURNAL OF L ATEX CLASS FILES, VOL. 14, NO. 8, AUGUST 2021 11  
+
+> TABLE V ABLATION EXPERIMENTS OF EACH COMPONENT IN MMAE
+
+Method CrossPlatform(Android) CrossPlatform(iOS) CSTNET-TLS AC PR RC F1 AC PR RC F1 AC PR RC F1 Baseline 0.9852 0.9855 0.9852 0.9850 0.9838 0.9836 0.9836 0.9829 0.9271 0.9284 0.9271 0.9267 + SD 0.9856 0.9858 0.9856 0.9854 0.9843 0.9855 0.9848 0.9840 0.9284 0.9302 0.9284 0.9280 + DMM 0.9878 0.9876 0.9878 0.9873 0.9881 0.9872 0.9881 0.9866 0.9336 0.9356 0.9336 0.9332 + SFM 0.9882 0.9882 0.9882 0.9880 0.9883 0.9857 0.9883 0.9866 0.9353 0.9361 0.9353 0.9346 + PMP 0.9897 0.9898 0.9897 0.9893 0.9900 0.9872 0.9900 0.9881 0.9435 0.9459 0.9435 0.9434 0   
+
+> 126
+> 44
+> 160
+> 138
+> 47
+> 125
+> 145
+> 144
+> 66
+> Class ID
+> 0.0
+> 0.2
+> 0.4
+> 0.6
+> 0.8
+> 1.0
+> F1 Score
+> Baseline (MAE)
+> Improvement (+SD)
+> (a) CrossPlatform(Android) 25
+> 12
+> 37
+> 50
+> 84
+> 26
+> 18
+> 105
+> 102
+> 40
+> Class ID
+> 0.0
+> 0.2
+> 0.4
+> 0.6
+> 0.8
+> 1.0
+> F1 Score
+> Baseline (MAE)
+> Improvement (+SD) (b) CrossPlatform(iOS) 54
+> 35
+> 74
+> 60
+> 36
+> 26
+> 84
+> 109
+> 90
+> 22
+> Class ID
+> 0.0
+> 0.2
+> 0.4
+> 0.6
+> 0.8
+> 1.0
+> F1 Score
+> Baseline (MAE)
+> Improvement (+SD) (c) CSTNET-TLS 1.3
+> Fig. 6. Comparison between MAE and MAE+SD on three datasets. The charts show 10 classes exhibiting prominent F1-score enhancements.
+
+resolves the flaw of random masking, thereby maximizing the efficacy of the multi-granularity pre-training paradigm. 
+
+D. Visualization Results 
+
+F1-score visualization. To demonstrate the effectiveness of our pre-training paradigm, Fig. 6 compares the F1-scores of standard MAE against MAE with Self-Distillation (MAE+SD) across three datasets. We highlight 10 representative traffic classes with the most significant performance gains for each dataset. In the challenging CSTNET-TLS1.3 dataset, standard MAE struggles with many F1-scores falling below 0.80. Similarly, despite the overall better baseline performance, the two cross-platform datasets still suffer from severe bottleneck classes (e.g., Class 0 in Android and Class 25 in iOS). This highlights that relying solely on localized byte-level reconstruction is inadequate for capturing the discriminative semantics required for such complex traffic. By integrating self-distillation, the teacher branch provides flow-level global supervision, driving substantial enhancements across these difficult scenarios. For instance, the F1-score for Class 54 in CSTNET-TLS1.3 surges from 0.55 to 0.82. Meanwhile, the bottleneck classes in the cross-platform datasets have remarkable improvement. For instance, Class 25 in iOS is largely improved from 0.22 to over 0.70. These results com-prehensively prove that multi-granularity semantic guidance effectively overcomes the limitations of standard MAE, sig-nificantly enhancing the model’s discriminative capability. 
+
+Visualization of feature distribution. Fig. 7 visualizes the t-SNE projections of the hidden state representations on the CSTNET-TLS 1.3 dataset, where different colors de-note distinct categories. As observed, features from the pre-trained MAE are heavily entangled, while MAE+SD exhibits slightly better clustering. After fine-tuning via supervised cross-entropy loss, the separability of MAE in the feature space improves significantly. However, a large number of classes overlap in the central region. In contrast, the proposed MMAE yields highly discriminative representations, achieving distinguishable boundaries in the feature space. 
+
+E. Computational Efficiency 
+
+To evaluate the efficiency of MMAE, we compare its inference throughput and GPU memory consumption across batch sizes ranging from 24 to 210 .
+
+Throughput comparison. As illustrated in Fig. 8 (a), MMAE sustains a stable throughput of approximately 5,000 samples per second. It significantly outpaces large Transformer-based architectures, operating over 10 × faster than ET-BERT and nearly 1.6× faster than YaTC. Although the pure state-space model NetMamba achieves the highest speed, MMAE remains highly competitive. 
+
+Memory comparison. Fig. 8 (b) delineates the GPU memory footprint. MMAE demonstrates controlled memory growth, avoiding the steep memory overhead exhibited by YaTC and ET-BERT at larger batch sizes. Specifically, at a batch size of 64 ( 26), MMAE consumes approximately 50% 
+
+of the memory required by ET-BERT. While utilizing slightly more resources than the lightweight FS-Net and NetMamba, MMAE consumes substantially less memory than standard Transformer models. JOURNAL OF L ATEX CLASS FILES, VOL. 14, NO. 8, AUGUST 2021 12    
+
+> (a) Pre-trained MAE (b) Pre-trained MAE+SD (c) Fine-tuned MAE (d) Fine-tuned MMAE (Ours)
+
+Fig. 7. t-SNE visualization of hidden state representations across different training stages on the CSTNET-TLS 1.3 dataset. Distinct colors denote different traffic categories. MMAE effectively learns highly discriminative representations, exhibiting significantly clearer class boundaries compared to the baseline. 4 5 6 7 8 9 10                      
+
+> 0
+> 2000
+> 4000
+> 6000
+> 8000
+> Throughput (sample per second)
+> Batch Size (w/ log₂ scale)
+> MMAE YaTC ET-BERT FS-Net NetMamba
+> (a) Throughput Comparison 45678910
+> 0
+> 5000
+> 10000
+> 15000
+> GPU Memory (MB)
+> Batch Size (w/ log₂ scale)
+> MMAE YaTC ET-BERT FS-Net NetMamba (b) Memory Comparison 0500 1000 1500 2000
+> 0
+> 2000
+> 4000
+> 6000
+> 8000 NetMamba
+> YaTC
+> ET-BERT
+> FS-Net
+> MMAE
+> Throughput (sample per second)
+> GPU Memory (MB)
+> 0.70
+> 0.75
+> 0.80
+> 0.85
+> 0.90
+> 0.95
+> F1 score on the CSTNET-TLS dataset (c) Inference Efficiency Comparison
+
+Fig. 8. Efficiency evaluation of MMAE and baseline models. (a) Inference throughput, (b) GPU memory consumption across varying batch sizes, and (c) Comprehensive cost-effectiveness comparison at a batch size of 64. TABLE VI COMPUTATIONAL EFFICIENCY ACROSS DIFFERENT PHASES 
+
+Phase GPUs Time Unit/Granularity Params GPU Memory 
+
+Pre-training 1 24.66 h 5.918 s/100 steps 8.65 M 18GB Fine-tuning 1 4.6 h 137.87 s / epoch 7.72 M 3.6GB Inference 1 - 5343 samples/sec - 787MB 
+
+Inference efficiency comparison. To illustrate the cost-effectiveness, Fig. 8 (c) presents a multi-dimensional com-parison at a fixed batch size of 64. Ultimately, MMAE achieves the highest classification performance with moderate computational overhead. 
+
+Efficiency and memory comparison of different phases. 
+
+Table VI summarizes the computational overhead of MMAE across different phases. Despite its strong representational capabilities, the model maintains a lightweight parameter footprint and low GPU memory consumption. 
+
+F. Limitation Analysis 
+
+PMP utilizes packet sizes and inter-arrival times to guide the masking process, which makes it susceptible to sophisticated adversarial traffic obfuscation. Advanced defense mechanisms may intentionally destroy these temporal and volumetric pat-terns, which may degrade PMP’s masking efficacy. Further-more, the pre-training phase incurs considerable computational overhead, although this is unavoidable for pre-training based paradigms. The optimization of teacher-student branches and the reliance on large batch sizes for cross-flow mixing require substantial GPU memory. Consequently, while inference re-mains lightweight, online pre-training on resource-constrained edge devices is currently impractical. V. C ONCLUSION AND FUTURE WORK 
+
+In this paper, we propose MMAE, a teacher-student based twin MAE paradigm with flow mixing strategy (FlowMix), to overcome the limitations of standard MAE in isolated byte-level reconstruction for encrypted traffic classification. By cou-pling a FlowMix strategy with the PMP, our framework learns robust, multi-granularity semantic representations. Extensive evaluations confirm that MMAE establishes a new state-of-the-art pipeline across seven diverse datasets, demonstrating particular effectiveness in handling complex encryption proto-cols such as TLS 1.3. Despite these promising results, several issues are still re-mained for future work. First, it is challenging to explore more robust feature extraction strategies that minimize susceptibility to adversarial obfuscation. Second, it is valuable to develop memory-efficient training pipeline to reduce computational overhead during the pre-training phase, enabling seamless deployment and online learning on resource-constrained edge devices. Finally, we intend to extend MMAE beyond standard classification to broader network management tasks, such as QoS prediction and malicious traffic detection. REFERENCES [1] K. Al-Naami, S. Chandra, A. Mustafa, L. Khan, Z. Lin, K. Hamlen, and B. Thuraisingham, “Adaptive encrypted traffic fingerprinting with bi-JOURNAL OF L ATEX CLASS FILES, VOL. 14, NO. 8, AUGUST 2021 13 
+
+directional dependence,” in Proceedings of the 32nd Annual Conference on Computer Security Applications , 2016, pp. 177–188. [2] A. Andonian, S. Chen, and R. Hamid, “Robust cross-modal represen-tation learning with progressive self-distillation,” in CVPR , 2022, pp. 16 430–16 441. [3] A. Baevski, W.-N. Hsu, Q. Xu, A. Babu, J. Gu, and M. Auli, “Data2vec: A general framework for self-supervised learning in speech, vision and language,” in ICML , 2022, pp. 1298–1312. [4] L. Bernaille, R. Teixeira, I. Akodkenou, A. Soule, and K. Salamatian, “Traffic classification on the fly,” ACM SIGCOMM Computer Commu-nication Review , vol. 36, no. 2, pp. 23–26, 2006. [5] C. Burges, T. Shaked, E. Renshaw, A. Lazier, M. Deeds, N. Hamilton, and G. Hullender, “Learning to rank using gradient descent,” in ICML ,2005, pp. 89–96. [6] M. Caron, H. Touvron, I. Misra, H. J´ egou, J. Mairal, P. Bojanowski, and A. Joulin, “Emerging properties in self-supervised vision transformers,” in ICCV , 2021, pp. 9650–9660. [7] X.-Y. Chen, L. Han, D.-C. Zhan, and H.-J. Ye, “Miett: Multi-instance encrypted traffic transformer for encrypted traffic classification,” in 
+
+AAAI , vol. 39, no. 15, 2025, pp. 15 922–15 929. [8] Z. Chen, G. Cheng, Z. Wei, D. Niu, and N. Fu, “Classify traffic rather than flow: Versatile multi-flow encrypted traffic classification with flow clustering,” IEEE Transactions on network and service management ,vol. 21, no. 2, pp. 1446–1466, 2023. [9] R. Cheng, B. Wu, P. Zhang, P. Vajda, and J. E. Gonzalez, “Data-efficient language-supervised zero-shot learning with self-distillation,” in CVPR ,2021, pp. 3119–3124. [10] S. Dadkhah, H. Mahdikhani, P. K. Danso, A. Zohourian, K. A. Truong, and A. A. Ghorbani, “Towards the development of a realistic multi-dimensional iot profiling dataset,” in 2022 19th Annual International Conference on Privacy, Security & Trust (PST) . IEEE, 2022, pp. 1–11. [11] J. Devlin, M.-W. Chang, K. Lee, and K. Toutanova, “Bert: Pre-training of deep bidirectional transformers for language understanding,” in ACL: human language technologies, volume 1 , 2019, pp. 4171–4186. [12] X. Dong, J. Bao, Y. Zheng, T. Zhang, D. Chen, H. Yang, M. Zeng, W. Zhang, L. Yuan, D. Chen et al. , “Maskclip: Masked self-distillation advances contrastive language-image pretraining,” in Proceedings of the IEEE/CVF conference on computer vision and pattern recognition , 2023, pp. 10 995–11 005. [13] G. Draper-Gil, A. H. Lashkari, M. S. I. Mamun, and A. A. Ghorbani, “Characterization of encrypted and vpn traffic using time-related,” in 
+
+ICISSP , 2016, pp. 407–414. [14] H. Y. He, Z. G. Yang, and X. N. Chen, “Pert: Payload encoding representation from transformer for encrypted traffic classification,” in 
+
+2020 ITU Kaleidoscope: Industry-Driven Digital Transformation (ITU K) , 2020, pp. 1–8. [15] G. Hinton, O. Vinyals, and J. Dean, “Distilling the knowledge in a neural network,” arXiv preprint arXiv:1503.02531 , 2015. [16] M. Ji, S. Shin, S. Hwang, G. Park, and I.-C. Moon, “Refine myself by teaching myself: Feature refinement via self-knowledge distillation,” in Proceedings of the IEEE/CVF conference on computer vision and pattern recognition , 2021, pp. 10 664–10 673. [17] C. Kenjiro, “Traffic data repository at the wide project,” in Proc. USENIX 2000 Annual Technical Conference: FREENIX Track, San Diego, CA , 2000. [18] K. Kim, B. Ji, D. Yoon, and S. Hwang, “Self-knowledge distillation with progressive refinement of targets,” in Proceedings of the IEEE/CVF international conference on computer vision , 2021, pp. 6567–6576. [19] J. Li, R. Selvaraju, A. Gotmare, S. Joty, C. Xiong, and S. C. H. Hoi, “Align before fuse: Vision and language representation learning with momentum distillation,” Advances in neural information processing systems , vol. 34, pp. 9694–9705, 2021. [20] L. Li, Y. Zhao, D. Jiang, Y. Zhang, F. Wang, I. Gonzalez, E. Valentin, and H. Sahli, “Hybrid deep neural network–hidden markov model (dnn-hmm) based speech emotion recognition,” in 2013 Humaine association conference on affective computing and intelligent interaction , 2013, pp. 312–317. [21] X. Lin, G. Xiong, G. Gou, Z. Li, J. Shi, and J. Yu, “Et-bert: A contextualized datagram representation with pre-training transformers for encrypted traffic classification,” in Proceedings of the ACM Web Conference 2022 , 2022, pp. 633–642. [22] C. Liu, L. He, G. Xiong, Z. Cao, and Z. Li, “Fs-net: A flow sequence network for encrypted traffic classification,” in IEEE INFOCOM 2019-IEEE Conference On Computer Communications , 2019, pp. 1171–1179. [23] L. Liu, R. Li, Q. Li, M. Hou, Y. Jiang, and M. Xu, “Flowletformer: Network behavioral semantic aware pre-training model for traffic clas-sification,” arXiv preprint arXiv:2508.19924 , 2025. [24] Z. Liu, Y. Xie, Y. Luo, Y. Wang, and X. Ji, “Transeca-net: A transformer-based model for encrypted traffic classification,” Applied Sciences ,vol. 15, no. 6, p. 2977, 2025. [25] A. W. Moore and D. Zuev, “Internet traffic classification using bayesian analysis techniques,” in Proceedings of the 2005 ACM SIGMETRICS international conference on Measurement and modeling of computer systems , 2005, pp. 50–60. [26] A. Panchenko, F. Lanze, J. Pennekamp, T. Engel, A. Zinnen, M. Henze, and K. Wehrle, “Website fingerprinting at internet scale.” in NDSS ,vol. 1, 2016, p. 23477. [27] E. Papadogiannaki and S. Ioannidis, “A survey on encrypted network traffic analysis applications, techniques, and countermeasures,” ACM Computing Surveys (CSUR) , vol. 54, no. 6, pp. 1–35, 2021. [28] J.-T. Park, Y.-S. Choi, B.-S. Cho, S.-H. Kim, and M.-S. Kim, “Multi-level pre-training for encrypted network traffic classification,” IEEE Access , 2025. [29] R. Preis, “Linear time 1/2-approximation algorithm for maximum weighted matching in general graphs,” in Annual Symposium on Theo-retical Aspects of Computer Science , 1999, pp. 259–269. [30] A. Radford, K. Narasimhan, T. Salimans, I. Sutskever et al. , “Improving language understanding by generative pre-training,” 2018. [31] M. Roesch et al. , “Snort: Lightweight intrusion detection for networks.” in Lisa , vol. 99, no. 1, 1999, pp. 229–238. [32] R. Schuster, V. Shmatikov, and E. Tromer, “Beauty and the burst: Remote identification of encrypted video streams,” in 26th USENIX Security Symposium (USENIX Security 17) , 2017, pp. 1357–1374. [33] M. Shen, J. Zhang, L. Zhu, K. Xu, and X. Du, “Accurate decentralized application identification via encrypted traffic analysis using graph neural networks,” IEEE Transactions on Information Forensics and Security , vol. 16, pp. 2367–2380, 2021. [34] P. Sirinam, M. Imani, M. Juarez, and M. Wright, “Deep fingerprinting: Undermining website fingerprinting defenses with deep learning,” in 
+
+Proceedings of the 2018 ACM SIGSAC conference on computer and communications security , 2018, pp. 1928–1943. [35] V. F. Taylor, R. Spolaor, M. Conti, and I. Martinovic, “Robust smart-phone app identification via encrypted network traffic analysis,” IEEE Transactions on Information Forensics and Security , vol. 13, no. 1, pp. 63–78, 2017. [36] M. B. Umair, Z. Iqbal, M. Bilal, T. A. Almohamad, J. Nebhen, and R. M. Mehmood, “An efficient internet traffic classification system using deep learning for iot,” arXiv preprint arXiv:2107.12193 , 2021. [37] T. Van Ede, R. Bortolameotti, A. Continella, J. Ren, D. J. Dubois, M. Lindorfer, D. Choffnes, M. Van Steen, and A. Peter, “Flowprint: Semi-supervised mobile-app fingerprinting on encrypted network traf-fic,” in NDSS , vol. 27, 2020. [38] B. Wang, B. Wang, Z. Wei, S. Zhao, S. Chen, Z. Li, and M. Wang, “Mfsi: Multi-flow based service identification for encrypted network traffic,” 
+
+Computer Networks , vol. 265, p. 111283, 2025. [39] T. Wang, X. Xie, W. Wang, C. Wang, Y. Zhao, and Y. Cui, “Netmamba: Efficient network traffic classification via pre-training unidirectional mamba,” in ICNP , 2024, pp. 1–11. [40] W. Wang, M. Zhu, X. Zeng, X. Ye, and Y. Sheng, “Malware traffic classification using convolutional neural network for representation learning,” in ICOIN , 2017, pp. 712–717. [41] J. Zhang, H. Zhao, Y. Feng, Z. Cai, and L. Zhu, “Netst: Network encrypted traffic classification based on swin transformer.” Computers, Materials & Continua , vol. 84, no. 3, 2025. [42] J. Zhang, F. Li, F. Ye, and H. Wu, “Autonomous unknown-application filtering and labeling for dl-based traffic classifier update,” in IEEE INFOCOM , 2020, pp. 397–405. [43] X. Zhang and J. Yin, “Optimized extreme learning machines with deep learning for high-performance network traffic classification,” Scientific Reports , vol. 15, no. 1, p. 33199, 2025. [44] R. Zhao, M. Zhan, X. Deng, F. Li, Y. Wang, Y. Wang, G. Gui, and Z. Xue, “A novel self-supervised framework based on masked autoen-coder for traffic classification,” IEEE/ACM Transactions on Networking ,vol. 32, no. 3, pp. 2012–2025, 2024. [45] R. Zhao, M. Zhan, X. Deng, Y. Wang, Y. Wang, G. Gui, and Z. Xue, “Yet another traffic classifier: A masked autoencoder based traffic transformer with multi-level flow representation,” in AAAI , vol. 37, no. 4, 2023, pp. 5420–5427. [46] G. Zhou, X. Guo, Z. Liu, T. Li, Q. Li, and K. Xu, “Trafficformer: an efficient pre-trained model for traffic data,” in 2025 IEEE symposium on security and privacy (SP) , 2025, pp. 1844–1860. [47] D. Zuev and A. W. Moore, “Traffic classification using a statistical approach,” in International workshop on passive and active network measurement , 2005, pp. 321–324.
