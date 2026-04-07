@@ -1,0 +1,574 @@
+Title: Aligning Multimodal Sequential Recommendations via Robust Direct Preference Optimization with Sparse MoE
+
+URL Source: https://arxiv.org/pdf/2603.29259v1
+
+Published Time: Wed, 01 Apr 2026 00:35:19 GMT
+
+Number of Pages: 11
+
+Markdown Content:
+# Aligning Multimodal Sequential Recommendations via Robust Direct Preference Optimization with Sparse MoE 
+
+Hejin Huang 1, Jusheng Zhang 1, Kaitong Cai 1, Jian Wang 2, Rong Pan 1* 1Sun Yat-sen University 2Snap Inc 
+
+huanghj96@mail2.sysu.edu.cn 
+
+Abstract 
+
+Preference-based alignment objectives have been widely adopted, from RLHF-style pair-wise learning in large language models to emerging applications in recommender sys-tems. Yet, existing work rarely examines how Direct Preference Optimization (DPO) be-haves under implicit feedback, where unob-served items are not reliable negatives. We conduct systematic experiments on multimodal sequential recommendation to compare com-mon negative-selection strategies and their in-teraction with DPO training. Our central find-ing is that a simple modification— replacing deterministic hard negatives with stochastic sampling from a dynamic top-K candidate pool —consistently improves ranking perfor-mance. We attribute its effectiveness to two fac-tors: (1) reducing erroneous suppressive gradi-ents caused by false negatives, and (2) retaining informative hard signals while smoothing opti-mization via controlled stochasticity. With an optional sparse Mixture-of-Experts encoder for efficient capacity scaling, RoDPO achieves up to +5.25% NDCG@5 on three Amazon bench-marks, with nearly unchanged inference cost. 
+
+1 Introduction 
+
+Multimodal Sequential Recommendation (MSR) has become a pivotal component of modern per-sonalized systems, leveraging rich side informa-tion (e.g., product images and textual descriptions) to model evolving user interests, especially under sparse interaction signals (Zhang et al., 2019; Zhou et al., 2020). Most MSR methods follow the next-item prediction paradigm and are trained with point-wise objectives such as Cross-Entropy (CE) (Kang and McAuley, 2018). While effective, pointwise training primarily optimizes likelihood estimation and does not explicitly enforce relative preference rankings: it implicitly treats all non-target items  
+
+> *Corresponding author.
+
+as equally negative, thereby overlooking nuanced “better-than” relations that are essential for decod-ing complex user intent, often leading to subopti-mal ranking boundaries. In parallel, preference optimization has re-shaped alignment in NLP. Reinforcement Learn-ing from Human Feedback (RLHF) (Ouyang et al., 2022) and Direct Preference Optimization (DPO) (Rafailov et al., 2023) demonstrate that di-rectly optimizing pairwise preference objectives can align models with human intent more effec-tively than likelihood-based training. This success naturally raises a question for recommendation: 
+
+Can we adapt DPO to align multimodal sequential recommenders with users’ implicit preferences? Anaïve transfer, however, breaks in recommender systems due to a domain-specific challenge: the 
+
+false negative dilemma, as illustrated in Figure 1. In NLP (Figure 1, Left), negative samples are typi-cally incorrect model-generated responses, which are strictly undesirable. In implicit-feedback rec-ommendation, by contrast, an unclicked item is not necessarily disliked—it may simply be unob-served. Consequently, standard DPO practices such as mining hard negatives (Figure 1, Middle) can mistakenly choose unobserved positives and then 
+
+aggressively suppress them. This introduces erro-neous preference gradients, distorts ranking space, and leads to severe performance degradation. Importantly, existing attempts to import pref-erence optimization into recommendation are often confounded by multiple design choices— backbone capacity, auxiliary objectives, and train-ing schedules—obscuring the critical factors that govern DPO’s efficacy under implicit feedback. This motivates a careful disentanglement: Do per-formance gains stem from architectural com-plexity, or from rectifying DPO’s negative sam-pling mechanism amid false negatives? 
+
+In this work, we answer this question by sys-tematically examining negative-selection strategies 1                  
+
+> arXiv:2603.29259v1 [cs.IR] 31 Mar 2026 Solve 2x = 8
+> Answer: 3
+> Question
+> Question yw
+> yl
+> yw(Positive)
+> yl(Negative)
+> Strictly Incorrect
+> NLP Scenario (Ideal DPO)
+> (True Negative)
+> RecSys + Hard Negative DPO (The Problem)
+> Bought iPhone 15 Answer: 4
+> Model Predicted
+> High Score :
+> “iPhone Case”
+> User could also like
+> This (Unobserved
+> Positive)
+> User
+> User Context
+> AirPods
+> iPhone Case
+> Hard
+> Penalty
+> High Risk of False Negative (Misalignment)
+> RecSys + Top -K Sampling DPO (Our Solution)
+> Bought iPhone 15
+> User
+> User Context
+> AirPods
+> Balanced Exploration (Robustness)
+> Bought
+> “AirPods”
+> yw(Positive) yl(Negative)
+> “AirPods”
+> yw(Positive)
+> Top -K
+> Top -KCandidate pool
+> Android Cable
+> yl: ”Android Cable”
+> (True Negative)
+> yl: ”iPhone Case”
+> (False Negative)
+> Random
+> Selection 1
+> Random
+> Selection 2
+> FN TN
+
+Figure 1: The “False Negative” Dilemma in RecSys DPO. Left: In NLP, negatives are strictly incorrect, making DPO effective. Middle: In RecSys, hard negatives may include unobserved positives, causing mis-penalization and embedding drift. Right: Top-K sampling adds randomness among candidates, balancing positives. 
+
+for DPO in MSR, including random negatives, argmax hard negatives, and stochastic sampling from a top-K candidate pool. Our central finding is that the effectiveness of DPO in recommen-dation hinges critically on the negative selec-tion strategy. Specifically, we identify a simple modification— Stochastic Top-K Negative Sam-pling (Figure 1, Right)—as the optimal strategy. Instead of deterministically penalizing the single argmax negative, we sample negatives from a dy-namic top-K pool of the model’s highest-scoring candidates. This approach retains the gradient in-tensity of hard negatives while introducing con-trolled stochasticity to substantially reduce the risk of colliding with false negatives. Based on this finding, we propose RoDPO 
+
+(Ro bust Direct Preference Optimization), a frame-work tailored for multimodal sequential recom-mendation. RoDPO is plug-and-play: it pre-serves the DPO objective and backbone architec-ture, while replacing only the negative-selection rule to handle the implicit-feedback regime. To further ensure sufficient capacity for resolving fine-grained preference conflicts, we optionally incor-porate a sparse Mixture-of-Experts (MoE) en-coder (Shazeer et al., 2017) for efficient scaling, and adopt a two-stage warm-up protocol to stabi-lize optimization by anchoring the reference policy on a reliable latent space. Our contributions are summarized as follows: • We identify false negatives as the key source of DPO brittleness under implicit feedback, and show that negative selection is critical. • We propose Stochastic Top-K Negative Sampling , a simple plug-and-play modifica-tion to DPO that balances hardness and false-negative tolerance. • Experiments on three Amazon benchmarks show consistent gains over strong multimodal baselines, achieving up to +5.25% NDCG@5 with negligible inference overhead. 
+
+2 Related Work 
+
+2.1 Multimodal Sequential Recommendation 
+
+Sequential Recommendation (SR) predicts future interactions based on historical behaviors. While early methods like SASRec (Kang and McAuley, 2018) and BERT4Rec (Sun et al., 2019) relied on ID embeddings, Multimodal SR (MSR) incorpo-rates side information to alleviate sparsity. Repre-sentative works focus on sophisticated fusion mech-anisms: FDSA (Zhang et al., 2019) uses feature-level self-attention, NOVA (Liu et al., 2021) pro-poses non-invasive fusion, and HM4SR (Zhang et al., 2025) employs heuristic alignment tasks. However, these methods primarily rely on point-wise (e.g., Cross-Entropy) or simple pairwise losses (e.g., BPR (Rendle et al., 2009)). They prior-itize feature representation over the explicit align-ment of the output distribution with user preference 2rankings, which is the core focus of our DPO-based framework. 
+
+2.2 Preference Alignment via DPO 
+
+Aligning generative models with human intent has evolved from Reinforcement Learning from Hu-man Feedback (RLHF) (Ouyang et al., 2022) to Direct Preference Optimization (DPO) (Rafailov et al., 2023), which derives a closed-form objec-tive to optimize policies without an explicit reward model. While DPO is standard in NLP, its appli-cation in recommendation is nascent. Recent at-tempts like DPO4Rec (Sun et al., 2025) explore DPO for explanation generation or re-ranking. In contrast, we adapt DPO for the core ranking task in multimodal sequential recommendation, specifi-cally designing a robust negative sampling strategy to mitigate the false negative dilemma inherent in implicit feedback. 
+
+2.3 Negative Sampling in Recommendation 
+
+Negative sampling is critical for implicit feedback. Standard approaches sample uniformly from non-interacted items (Rendle et al., 2009), while Hard Negative Mining (e.g., DNS (Zhang et al., 2013), MixGCF (Huang et al., 2021)) accelerates conver-gence by selecting indistinguishable items. How-ever, we argue traditional hard mining is perilous for DPO. Unlike metric learning where hard neg-atives define decision boundaries, DPO actively suppresses the “losing” item yl. In sparse datasets, “hard” items are often False Negatives (unobserved positives) (He et al., 2017). Penalizing them intro-duces erroneous gradients. Our work identifies this conflict and proposes Stochastic Top-K Sampling to reconcile gradient intensity with false-negative robustness. 
+
+3 Methodology 
+
+In this section, we elaborate on the proposed 
+
+RoDPO framework. We first formalize Multi-modal Sequential Recommendation (MSR) in §3.1 and describe our multimodal sequential encoder in §3.2 (Fig. 2a). We then analyze why naïve DPO is brittle under implicit feedback in §3.3. Based on this analysis, we introduce our core contribution— 
+
+Stochastic Top-K Negative Sampling —in §3.4 (Fig. 2b). Finally, we present the overall training objective and a robust two-stage protocol. The overall workflow is summarized in Algorithm 1. 
+
+3.1 Problem Setup 
+
+In MSR, a training instance consists of a user in-teraction sequence x augmented with multimodal attributes: 
+
+x = {(i1, m 1, t 1), . . . , (iL, m L, t L)},
+
+where iℓ ∈ I is the item ID from the universe I,
+
+mℓ represents multimodal attributes (e.g., visual and textual features), and tℓ denotes the timestamp. The goal is to predict the next item y+ ∈ I given context x. The model parameterizes a scoring func-tion (logit) for ranking: 
+
+sθ(x, i ) ∈ R, ∀i ∈ I . (1) 
+
+3.2 Multimodal Sequential Encoder 
+
+As illustrated in Figure 2(a), RoDPO encodes item IDs and multimodal signals with modality-specific Transformers, optionally refined by a sparse MoE layer and a temporal module. Our framework is backbone-agnostic; without loss of generality, we adopt a Transformer-based architecture for se-quential modeling. Multimodal Embeddings. 
+
+We project discrete IDs and pre-extracted multi-modal features into a shared d-dimensional space. Specifically, eid  
+
+> ℓ
+
+= Emb( iℓ), etxt  
+
+> ℓ
+
+= Wtxt vtxt  
+
+> ℓ
+
+, and 
+
+eimg  
+
+> ℓ
+
+= Wimg vimg  
+
+> ℓ
+
+, where vtxt  
+
+> ℓ
+
+and vimg  
+
+> ℓ
+
+are pre-extracted text/image features and Wtxt , Wimg are learnable projections. Absolute positional embed-dings are added to preserve sequential order. 
+
+(Optional) Sparse Noisy MoE Refinement. To optionally scale model capacity for multimodal fusion with limited inference overhead, we incor-porate a Sparse Noisy Mixture-of-Experts (MoE) 
+
+layer (Fig. 2a). Given an input representation h,a router selects top-k experts and aggregates their outputs: MoE (h) = X
+
+> j∈S (h)
+
+G(h)j · Ej (h), |S (h)| = k, 
+
+(2) where Ej (·) denotes the j-th expert network (MLP), S(h) is the selected expert set, and G(h)
+
+is a sparse gating function. Following common practice, we inject Gaussian noise into gating log-its during training to improve load balancing. This component is orthogonal to our core contribution in §3.4 and can be enabled when additional capacity is desired. 3+                     
+
+> Expert 1Expert 2
+> (b) Sparse Mixture -of -experts (a) Input Multi -modal Embeddings
+> Expert 3Expert 4
+> FFN
+> Softmax
+> Router
+> Add Gaussian noise
+> Bert
+> Projection Projection
+> ViT
+> Text Emb Image Emb ID Emb
+> Text Sequence Image Sequence
+> Item ID Sequence
+> Timestamp
+> Sequence
+> Temporal MoE
+> Gate
+> Transformer Prediction Output Logits
+> Time Emb
+> Text Feature Image Feature ID Feature
+
+ℒtotal = ℒCE + 𝓛 𝑫𝑷𝑶 Figure 2: Overall framework of RoDPO . (a) Multimodal Encoder : Item IDs and text/image features are embedded into a shared space, refined by a sparse MoE, and modeled by modality-specific Transformers with a temporal MoE for next-item prediction. (b) Robust DPO : Preference pairs are formed by the observed item yw and a sampled negative yl from a dynamic top-K pool (excluding yw), optimized against a frozen reference policy. 
+
+Temporal Fusion and Logits. We obtain modality-specific sequence representations via modality-specific Transformer encoders and a timestamp-conditioned temporal module (Fig. 2a). The final score for candidate item i is computed by a weighted fusion: 
+
+sθ(x, i ) = sid  
+
+> θ
+
+(x, i )+ αtxt stxt  
+
+> θ
+
+(x, i )+ αimg simg  
+
+> θ
+
+(x, i ),
+
+(3) where αtxt and αimg are learnable scalars. 
+
+3.3 The Challenge: Naïve DPO and False Negatives 
+
+Direct Preference Optimization (DPO) aligns a pol-icy πθ with a reference policy πref by optimizing pairwise preferences. While effective in NLP, stan-dard DPO strategies become brittle in recommen-dation due to the False Negative dilemma under implicit feedback. In this setting, an unobserved item is not necessarily disliked; it may simply be unexposed. Consequently, hard negative mining 
+
+(e.g., selecting the argmax non-target item) can frequently select unobserved positives . Penalizing such false negatives introduces erroneous prefer-ence gradients, causing overly suppressive updates and distorting the learned ranking space. 
+
+3.4 RoDPO: Robust DPO with Stochastic Top-K Negatives 
+
+Figure 2(b) summarizes RoDPO’s preference con-struction and robust DPO alignment. 
+
+Preference Construction. For a context x, the ground-truth next item is treated as the positive (winning) item yw = y+. The key challenge is to construct a losing item yl that is informative yet robust to false negatives. 
+
+Stochastic Top-K Negative Sampling (Core Fix). 
+
+Instead of deterministically setting yl as the single hardest negative, we construct a dynamic candidate pool from the model’s top-K predictions excluding 
+
+yw:
+
+CK (x) = TopK ( {sθ(x, i ) | i ∈ I \ { yw}} , K ) .
+
+(4) We then sample the losing item uniformly: yl ∼U(CK (x)) .This minimal modification preserves in-formative “hard” signals (since CK (x) contains high-scoring candidates) while reducing repeated collisions with a specific false negative, thereby stabilizing preference optimization under implicit feedback. 4Mechanism, Objective, and Optimization. 
+
+Stochastic Top-K sampling induces a principled trade-off: (i) Informative hardness —restricting candidates to the top-K maintains non-vanishing gradients and avoids the inefficiency of purely ran-dom negatives; and (ii) False-negative tolerance —stochasticity reduces overly suppressive updates caused by repeatedly penalizing the same unob-served positive, smoothing optimization and im-proving robustness. Moreover, RoDPO only re-quires the logits of (yw, y l) to form the preference margin, since the softmax partition function cancels in the log-ratio. We therefore write DPO directly with logit margins: 
+
+LDPO (x, y w, y l) = − log σ
+
+
+
+β∆sθ(x, y w, y l)
+
+−∆sref (x, y w, y l)
+
+,
+
+(5) where ∆s(x, y w, y l) = s(x, y w) − s(x, y l) and 
+
+β controls the strength of preference enforcement relative to the frozen reference policy. In practice, we adopt a simple two-stage optimization: we first warm up the backbone with standard CE next-item prediction to obtain πsft , then set the frozen refer-ence πref ← πsft and optimize the joint objective: 
+
+Ltotal = LCE + λ LDPO . (6) Algorithm 1 summarizes the Stage-2 RoDPO optimization with stochastic Top-K negatives. 
+
+4 Experiments 
+
+In this section, we conduct extensive experiments to evaluate the effectiveness of RoDPO. We aim to answer the following research questions: RQ1 :Does RoDPO outperform state-of-the-art multi-modal sequential recommendation methods? RQ2 :How do different negative sampling strategies (e.g., Random vs. Hard vs. Top-K) impact the preference alignment process? RQ3 : What is the contribution of each component (e.g., Sparse MoE, DPO) to the final performance? 
+
+4.1 Experimental Settings Datasets. We evaluate our method on three widely used benchmarks from the Amazon re-view dataset (He and McAuley, 2016): Toys and Games , Beauty , and Home and Kitchen . These datasets contain user interaction sequences with rich multimodal information (product images and descriptions). Following standard preprocessing 
+
+Algorithm 1 RoDPO (Stage 2) Training with Stochastic Top-K Sampling 
+
+Require: Training dataset D, item set I, hyperpa-rameters K, β, λ .
+
+Require: Warmed-up model πsft from Stage 1.  
+
+> 1:
+
+Initialize: policy πθ ← πsft , reference πref ←
+
+πsft . 
+
+> 2:
+
+Freeze: parameters of πref . 
+
+> 3:
+
+while not converged do  
+
+> 4:
+
+for each batch B = {(x, y w)} sampled from D do  
+
+> 5:
+
+// 1. Forward pass (Fig. 2a)  
+
+> 6:
+
+Compute logits sθ(x, ·) using the en-coder in Fig. 2(a) and fusion in Eq. (3).  
+
+> 7:
+
+Compute reference logits sref (x, ·)
+
+with πref (no grad).  
+
+> 8:
+
+// 2. Stochastic Top-K negative sam-pling (Fig. 2b)  
+
+> 9:
+
+CK (x) ←
+
+TopK( {sθ(x, i ) | i̸ = yw}, K ). 
+
+> 10:
+
+yl ∼ U (CK (x)) . 
+
+> 11:
+
+// 3. Compute losses  
+
+> 12:
+
+∆sθ ← sθ(x, y w) − sθ(x, y l);
+
+∆sref ← sref (x, y w) − sref (x, y l). 
+
+> 13:
+
+LDPO ← − log σ(β(∆ sθ − ∆sref )) ▷
+
+Eq. (5)  
+
+> 14:
+
+LCE ← CrossEntropy (sθ(x, ·), y w). 
+
+> 15:
+
+// 4. Update  
+
+> 16:
+
+Ltotal ← L CE + λLDPO ▷ Eq. (6)  
+
+> 17:
+
+Update θ via gradient descent on Ltotal . 
+
+> 18:
+
+end for  
+
+> 19:
+
+end while 
+
+protocols (Zhou et al., 2020), we filter out users and items with fewer than 5 interactions and treat the last item in the sequence as the test target, the second-to-last as validation, and the rest for train-ing. The statistics of the processed datasets are shown in Appendix A.1. 
+
+Baselines. To evaluate the effectiveness of RoDPO, we compare it against competitive base-lines from three categories: (1) Traditional Non-Time-Aware Models: GRU4Rec (Hidasi et al., 2016), SASRec (Kang and McAuley, 2018), and LRURec (Yue et al., 2024). (2) Traditional Time-Aware Models: TiSASRec (Li et al., 2020), FEARec (Du et al., 2023), and TiCoSeRec (Dang et al., 2024). (3) Multimodal Models: NOVA (Liu et al., 2021), DIF-SR (Xie et al., 2022), UniS-Rec (Hou et al., 2022), MISSRec (Wang et al., 5Method Toys and Games Beauty Home and Kitchen                                                                                                                                                                                                                 
+
+> NDCG MRR NDCG MRR NDCG MRR @5 @10 @5 @10 @5 @10 @5 @10 @5 @10 @5 @10
+> Traditional Non-time-aware Methods
+> GRU4Rec 0.0236 0.0289 0.0201 0.0222 0.0271 0.0337 0.0223 0.0260 0.0067 0.0087 0.0056 0.0064 SASRec 0.0348 0.0411 0.0257 0.0295 0.0325 0.0415 0.0246 0.0283 0.0118 0.0148 0.0089 0.0100 LRURec 0.0362 0.0446 0.0278 0.0312 0.0323 0.0412 0.0250 0.0286 0.0112 0.0141 0.0084 0.0096
+> Traditional Time-aware Methods
+> TiSASRec 0.0372 0.0467 0.0278 0.0317 0.0340 0.0432 0.0264 0.0302 0.0117 0.0146 0.0088 0.0100 FEARec 0.0354 0.0442 0.0266 0.0302 0.0342 0.0434 0.0265 0.0304 0.0121 0.0152 0.0092 0.0105 TiCoSeRec 0.0336 0.0404 0.0280 0.0311 0.0335 0.0413 0.0285 0.0317 0.0108 0.0134 0.0091 0.0102
+> Multi-modal Methods
+> NOVA 0.0381 0.0478 0.0288 0.0328 0.0347 0.0442 0.0273 0.0312 0.0120 0.0147 0.0092 0.0102 DIF-SR 0.0359 0.0444 0.0284 0.0318 0.0340 0.0436 0.0262 0.0302 0.0092 0.0112 0.0078 0.0086 UniSRec 0.0276 0.0384 0.0194 0.0239 0.0287 0.0398 0.0212 0.0288 0.0121 0.0160 0.0092 0.0108 MISSRec 0.0323 0.0414 0.0235 0.0270 0.0315 0.0397 0.0240 0.0271 0.0140 0.0174 0.0107 0.0119 M3SRec 0.0416 0.0486 0.0363 0.0391 0.0345 0.0428 0.0294 0.0328 0.0122 0.0144 0.0105 0.0115 IISAN 0.0395 0.0489 0.0354 0.0393 0.0372 0.0464 0.0309 0.0347 0.0152 0.0187 0.0129 0.0142 TedRec 0.0318 0.0397 0.0265 0.0297 0.0330 0.0419 0.0275 0.0311 0.0113 0.0140 0.0094 0.0105 HM4SR †0.0495 0.0572 0.0430 0.0462 0.0413 0.0489 0.0356 0.0388 0.0162 0.0187 0.0142 0.0153
+> Our Methods RoDPO 0.0521 0.0589 0.0463 0.0491 0.0436 0.0508 0.0379 0.0409 0.0165 0.0191 0.0146 0.0157
+> Improv. +5.25% +2.97% +7.67% +6.28% +5.57% +3.89% +6.46% +5.41% +1.85% +2.14% +2.82% +2.61%
+
+Table 1: Overall performance comparison. The best results are bolded, and the second best are underlined. Improvements are calculated against the best baseline. † denotes that the corresponding method is reproduced by ourselves. 
+
+2023), M3SRec (Bian et al., 2023), IISAN (Fu et al., 2024), TedRec (Xu et al., 2024), and the state-of-the-art HM4SR (Zhang et al., 2025). De-tailed descriptions of these baselines are provided in Appendix A.2. 
+
+Implementation Details. We implement RoDPO using PyTorch, leveraging the widely adopted open-source library RecBole 1 (Zhao et al., 2021). The embedding dimension is set to 64, and the maxi-mum sequence length is 50. The Sparse MoE layer consists of 4 experts with K = 2 active experts. We adopt a Two-Stage Training protocol: In the first stage, we warm up the model using LSFT for 15 epochs to ensure a stable reference model. In the second stage, we fine-tune with the DPO objec-tive using β = 1 .0 and a learning rate of 1e-3. For our proposed Stochastic Top-K Sampling , we set 
+
+K = 50 . Evaluation metrics include NDCG@K 
+
+and MRR@K with K = {5, 10 }. For more details, please refer to the Appendix A.3. 
+
+> 1
+
+https://github.com/RUCAIBox/RecBole 
+
+4.2 Overall Performance (RQ1) 
+
+Table 1 presents the performance comparison on three Amazon benchmarks. RoDPO consistently outperforms all baselines across all metrics. Specif-ically: • Compared to the strongest baseline HM4SR, RoDPO achieves a significant improvement of 
+
+5.25% in NDCG@5 and 7.67% in MRR@5 on the T OYS AND GAMES dataset. This indi-cates that explicitly aligning user preferences via DPO provides a substantial advantage over purely pointwise training objectives. • The improvement is consistent across differ-ent cutoff values ( K), demonstrating the ro-bustness of our ranking capability. 
+
+4.3 Analysis of Negative Sampling (RQ2) 
+
+A core contribution of this work is the Stochastic Top-K Negative Sampling . To validate its effective-ness, we compare it with two variants: (1) Ran-dom Sampling : Uniformly sampling from non-interacted items. (2) Hard Sampling (Argmax) :Selecting the non-target item with the highest pre-dicted probability. 6As shown in Table 2, Hard Sampling (Argmax) 
+
+only marginally outperforms Random Sampling .This limited gain confirms that aggressive hard mining can introduce “false negatives” in sparse datasets, leading to sub-optimal training. In con-trast, our Top-K Sampling achieves the best re-sults (e.g., 0.0521 in NDCG@5), significantly sur-passing the argmax baseline. By sampling from a top-K pool rather than a single point, our method strikes a superior balance: it provides strong gra-dient signals while mitigating false-negative risks through stochasticity. 
+
+Sampling Strategy NDCG@5 MRR@5 
+
+Random Sampling 0.0491 0.0437 Hard Sampling (Argmax) 0.0497 0.0438 
+
+Top-K Sampling (Ours) 0.0521 0.0463 
+
+Table 2: Ablation study on negative sampling strategies. 
+
+4.4 Ablation Study (RQ3) 
+
+We further investigate the impact of the Sparse MoE module and the DPO objective itself. Table 3 shows that: (1) Removing DPO (i.e., using only SFT) results in a noticeable performance drop, con-firming the necessity of preference alignment. (2) Replacing Sparse MoE with a standard MLP (Base + DPO) yields a score of 0.0516, which is lower than the full model (0.0521). This suggests that the increased capacity from Sparse MoE helps the model better fit the complex preference boundaries defined by DPO. 
+
+Variant NDCG@5 MRR@5 
+
+Full Model (RoDPO) 0.0521 0.0463 
+
+w/o Sparse MoE 0.0516 0.0459 w/o DPO (Baseline) 0.0495 0.0430 
+
+Table 3: Ablation on model components. 
+
+5 Analysis 
+
+In this section, we provide a comprehensive anal-ysis to understand the robustness and efficiency of RoDPO. We focus on hyperparameter sensitiv-ity, training efficiency, the visualization of learned preference distributions, and case study. 
+
+5.1 Hyperparameter Sensitivity Impact of Negative Sampling Size K. The pa-rameter K in our Stochastic Top-K Sampling strat-10 20 50 100      
+
+> Top-k
+> 0.041
+> 0.042
+> 0.043
+> NDCG@5
+> NDCG MRR
+> 0.037
+> 0.038
+> 0.039
+> MRR@5 0.1 0.5 1.0 2.0
+> beta
+> 0.0450
+> 0.0475
+> 0.0500
+> 0.0525
+> NDCG@5
+> NDCG MRR
+> 0.0450
+> 0.0475
+> 0.0500
+> MRR@5
+
+Figure 3: Effect of Top-k Negative Sampling and DPO Coefficient β on NDCG@5 and MRR@5. 
+
+egy controls the trade-off between gradient inten-sity (hardness) and exploration (randomness). We vary K in {10 , 20 , 50 , 100 } on the Amazon T OYS AND GAMES dataset. As illustrated in Figure 3 (left), the performance initially improves as K in-creases, peaking at K = 50 .• When K is small (e.g., K = 10 ), the sampling approaches Hard Negative Sampling , leading to overfitting on false negatives and a drop in NDCG. • When K is too large (approaching random sampling), the difficulty of negative samples decreases, resulting in vanishing gradients and slower convergence. This observation validates our hypothesis that a moderate K optimally balances the alignment ob-jective. 
+
+Impact of DPO Coefficient β. The coefficient 
+
+β controls the strength of the KL-divergence con-straint towards the reference model. We test β ∈{0.1, 0.5, 1.0, 2.0}. Results show that β = 1 .0
+
+yields the best performance. Unlike NLP tasks where a smaller β (e.g., 0.1) is often preferred to prevent language degeneration, in RecSys, a larger β forces the model to distinguish items more aggressively. Since our reference model is well-initialized (via the Two-Stage protocol), a stronger constraint ensures more stable alignment. 
+
+5.2 Efficiency Analysis 
+
+A common concern with DPO and MoE architec-tures is the potential increase in computational cost. We compare RoDPO with the strongest baseline HM4SR in terms of trainable model parameters, training time per epoch, and inference latency. The statistics are recorded on a single NVIDIA 4090 GPU. Table 4 reveals two key insights: (1) Compara-ble Training Cost : Despite the DPO framework involving a reference model, RoDPO incurs negli-gible training overhead ( 9.84 s vs. 9.81 s per epoch). 7Model Trainable Params Training Inference NDCG@5 (M) (s/epoch) (s/batch) 
+
+HM4SR 1.59 9.81 0.42 0.0495 
+
+RoDPO 1.60 9.84 0.45 0.0521 
+
+Table 4: Efficiency comparison. “Inference Latency” denotes the time to process a batch of size 2048. 
+
+This is because the reference model remains frozen and shares the same backbone architecture, ensur-ing the training remains highly efficient. (2) Infer-ence Efficiency : Crucially, the inference latency of 
+
+RoDPO is nearly identical to the baseline ( 0.45 svs. 0.42 s per batch). Since the reference model is discarded during deployment and the Sparse MoE only activates a subset of experts, RoDPO signifi-cantly improves performance (NDCG@5: 0.0521 
+
+vs. 0.0495 ) with almost no additional deployment cost. 10 0 10 20     
+
+> Predicted Logits
+> 0.00
+> 0.05
+> 0.10
+> 0.15
+> 0.20
+> Density
+> (a) Baseline (SFT only)
+> Positive
+> Hard Negative
+> 10 010 20 30
+> Predicted Logits
+> (b) RoDPO (Ours)
+> Positive ( yw)
+> Hard Negative ( yl)
+
+Figure 4: Kernel Density Estimation (KDE) of predicted logit distributions for positive items ( yw) and hard nega-tive items ( yl) on the Amazon Toys and Games dataset. 
+
+5.3 Visualization of Preference Alignment 
+
+To intuitively assess preference alignment, we vi-sualize the predicted logit distributions for positive (yw) and hard negative ( yl) items in Figure 4. 
+
+Analysis of Overconfidence in Baseline: As shown in Figure 4(a), the SFT baseline exhibits a sharp, high-density peak for hard negatives (red) with higher logits than the positives (Green). This confirms our hypothesis regarding the False Nega-tive problem: the model is excessively confident in ranking unobserved items higher than the ground truth, suggesting severe overfitting on noisy nega-tive signals. 
+
+Effectiveness of RoDPO: In contrast, Fig-ure 4(b) shows that RoDPO effectively flattens the negative distribution and reduces the peak density. The more dispersed negative logits in-dicate that our stochastic sampling mitigates rigid ① Spider -Man Figure  ② Spider Web Blaster  ③ Dual Defenders Blasters      
+
+> Sky Gliderz Iron Man Figure Turnbuckle Takedown Ring Cyber Hoop Set
+> User Behavior Context Ground Truth
+> ②Dinobot Slug Figure ③Dual Defenders Blasters ①Sky Gliderz
+> RoDPO Top -3 Prediction
+> HM4SR Top -3 Prediction
+
+Figure 5: A qualitative case study on the Amazon Toys and Games dataset. 
+
+overconfidence in specific false negatives. By “soft-ening” these competitive negative signals, RoDPO creates a more robust probabilistic margin, allow-ing true preferences to emerge more effectively in the top-K rankings. 
+
+5.4 Case Study 
+
+Figure 5 illustrates a representative case. The user shows diverse interests in active sports ( Cy-ber Hoop ) and action figures ( Iron Man ). How-ever, the baseline HM4SR falls into a similarity trap , over-emphasizing the recent Iron Man inter-action to recommend a semantically similar Spider-Man figure. In contrast, RoDPO effectively sup-presses this hard negative to identify the ground truth Sky Gliderz . By prioritizing preference rank-ing, RoDPO captures latent “projectile/flight” in-tents from earlier history (e.g., Cyber Hoop ), vali-dating that our Stochastic Top-K Sampling effec-tively distinguishes true user interests from mis-leading semantic matches. 
+
+6 Conclusion 
+
+In this paper, we explored the potential of align-ing multimodal sequential recommendation models with user preferences via Direct Preference Op-timization (DPO). We identify the “False Nega-tive” dilemma as a critical barrier when transferring NLP-based alignment strategies to RecSys. To ad-dress this, we propose RoDPO , which incorporates a Stochastic Top-K Negative Sampling strategy and a Sparse Mixture-of-Experts backbone to balance optimization stability with model capacity. Em-pirical results on three real-world datasets demon-strate that RoDPO significantly outperforms state-of-the-art baselines while maintaining inference efficiency. Our findings provide a robust methodol-8ogy for aligning recommendation models with user preferences, paving the way for future research on larger-scale foundation models and diverse feed-back signals. 
+
+7 Limitations 
+
+While RoDPO achieves robust performance, there are limitations. First, our evaluation is primarily conducted on e-commerce datasets (Amazon), and the generalization to other multimodal domains (e.g., short-video recommendation) remains to be verified. Second, although the Sparse MoE reduces inference latency, the training cost is still higher than lightweight ID-based models due to the addi-tional reference model forward pass. Future work will address efficiency in larger-scale foundation model adaptation. 
+
+References 
+
+Shuqing Bian, Xingyu Pan, Wayne Xin Zhao, Jin-peng Wang, Chuyuan Wang, and Ji-Rong Wen. 2023. Multi-modal mixture of experts represetation learn-ing for sequential recommendation. In Proceedings of the 32nd ACM International Conference on Infor-mation and Knowledge Management , pages 110–119. Yizhou Dang, Enneng Yang, Guibing Guo, Linying Jiang, Xingwei Wang, Xiaoxiao Xu, Qinghui Sun, and Hong Liu. 2024. Ticoserec: Augmenting data to uniform sequences by time intervals for effective recommendation. IEEE Transactions on Knowledge and Data Engineering , 36(6):2686–2700. Xinyu Du, Huanhuan Yuan, Pengpeng Zhao, Jianfeng Qu, Fuzhen Zhuang, Guanfeng Liu, Yanchi Liu, and Victor S Sheng. 2023. Frequency enhanced hybrid attention network for sequential recommendation. In 
+
+Proceedings of the 46th International ACM SIGIR Conference on Research and Development in Infor-mation Retrieval , pages 78–88. Junchen Fu, Xuri Ge, Xin Xin, Alexandros Karatzoglou, Ioannis Arapakis, Jie Wang, and Joemon M Jose. 2024. Iisan: Efficiently adapting multimodal repre-sentation for sequential recommendation with decou-pled peft. In Proceedings of the 47th International ACM SIGIR Conference on Research and Develop-ment in Information Retrieval , pages 687–697. Ruining He and Julian McAuley. 2016. Ups and downs: Modeling the visual evolution of fashion trends with one-class collaborative filtering. In WWW .Xiangnan He, Lizi Liao, Hanwang Zhang, Liqiang Nie, Xia Hu, and Tat-Seng Chua. 2017. Neural collabora-tive filtering. In WWW .Balázs Hidasi, Alexandros Karatzoglou, Linas Bal-trunas, and Domonkos Tikk. 2016. Session-based recommendations with recurrent neural networks. 
+
+ICLR .Yupeng Hou, Shanlei Mu, Wayne Xin Zhao, Yaliang Li, Bolin Ding, and Ji-Rong Wen. 2022. Towards universal sequence representation learning for recom-mender systems. In Proceedings of the 28th ACM SIGKDD Conference on Knowledge Discovery and Data Mining , pages 585–593. Tinglin Huang, Yuxiao Dong, Ming Ding, Zhen Yang, Wenzheng Feng, Xinyu Wang, and Jie Tang. 2021. Mixgcf: An improved training method for graph neu-ral networks for collaborative filtering. In KDD .Wang-Cheng Kang and Julian McAuley. 2018. Self-attentive sequential recommendation. In 2018 IEEE international conference on data mining (ICDM) ,pages 197–206. IEEE. Jiacheng Li, Yujie Wang, and Julian McAuley. 2020. Time interval aware self-attention for sequential rec-ommendation. In Proceedings of the 13th interna-tional conference on web search and data mining ,pages 322–330. Chang Liu, Xiaoguang Li, Guohao Cai, Zhenhua Dong, Hong Zhu, and Lifeng Shang. 2021. Noninva-sive self-attention for side information fusion in se-quential recommendation. In Proceedings of the AAAI conference on artificial intelligence , volume 35, pages 4249–4256. Long Ouyang, Jeffrey Wu, Xu Jiang, Diogo Almeida, Carroll Wainwright, Pamela Mishkin, Chong Zhang, Sandhini Agarwal, Katarina Slama, Alex Ray, John Schulman, Jacob Hilton, Fraser Kelton, Luke Miller, Maddie Simens, Amanda Askell, Peter Welinder, Paul F Christiano, Jan Leike, and Ryan Lowe. 2022. Training language models to follow instructions with human feedback. In Advances in Neural Information Processing Systems .Rafael Rafailov, Archit Sharma, Eric Mitchell, Christo-pher D Manning, Stefano Ermon, and Chelsea Finn. 2023. Direct preference optimization: Your language model is secretly a reward model. In Advances in Neural Information Processing Systems .Steffen Rendle, Christoph Freudenthaler, Zeno Gantner, and Lars Schmidt-Thieme. 2009. Bpr: Bayesian personalized ranking from implicit feedback. In UAI .Noam Shazeer, Azalia Mirhoseini, Krzysztof Maziarz, Andy Davis, Quoc Le, Geoffrey Hinton, and Jeff Dean. 2017. Outrageously large neural networks: The sparsely-gated mixture-of-experts layer. In Inter-national Conference on Learning Representations .Chao Sun, Yaobo Liang, Yaming Yang, Shilin Xu, Tian-meng Yang, and Yunhai Tong. 2025. Direct prefer-ence optimization for llm-enhanced recommendation systems. In IEEE International Conference on Multi-media and Expo (ICME) .
+
+9Fei Sun, Jun Liu, Jian Wu, Changhua Pei, Xiao Lin, Wenwu Ou, and Peng Jiang. 2019. Bert4rec: Se-quential recommendation with bidirectional encoder representations from transformer. In CIKM .Jinpeng Wang, Ziyun Zeng, Yunxiao Wang, Yuting Wang, Xingyu Lu, Tianxiang Li, Jun Yuan, Rui Zhang, Hai-Tao Zheng, and Shu-Tao Xia. 2023. Missrec: Pre-training and transferring multi-modal interest-aware sequence representation for recom-mendation. In Proceedings of the 31st ACM Interna-tional Conference on Multimedia , pages 6548–6557. Yueqi Xie, Peilin Zhou, and Sunghun Kim. 2022. De-coupled side information fusion for sequential recom-mendation. In Proceedings of the 45th international ACM SIGIR conference on research and development in information retrieval , pages 1611–1621. Lanling Xu, Zhen Tian, Bingqian Li, Junjie Zhang, Jin-peng Wang, Mingchen Cai, and Wayne Xin Zhao. 2024. Sequence-level semantic representation fu-sion for recommender systems. arXiv preprint arXiv:2402.18166 .Zhenrui Yue, Yueqi Wang, Zhankui He, Huimin Zeng, Julian McAuley, and Dong Wang. 2024. Linear re-current units for sequential recommendation. In Pro-ceedings of the 17th ACM International Conference on Web Search and Data Mining , pages 930–938. Shengzhe Zhang, Liyi Chen, Dazhong Shen, Chao Wang, and Hui Xiong. 2025. Hierarchical time-aware mixture of experts for multi-modal sequential rec-ommendation. In Proceedings of the ACM on Web Conference 2025 .Tingting Zhang, Pengpeng Zhao, Yanchi Liu, Victor S. Sheng, Jiajie Xu, Deqing Wang, Guanfeng Liu, and Xiaofang Zhou. 2019. Feature-level deeper self-attention network for sequential recommendation. In 
+
+IJCAI .Weinan Zhang, Tianqi Chen, Jun Wang, and Yong Yu. 2013. Optimizing top-n collaborative filtering via dynamic negative item sampling. In SIGIR .Wayne Xin Zhao, Shanlei Mu, Yupeng Hou, Zihan Lin, Yushuo Chen, Xingyu Pan, Kaiyuan Li, Yujie Lu, Hui Wang, Changxin Tian, Yingqian Min, Zhichao Feng, Xinyan Fan, Xu Chen, Pengfei Wang, Wendi Ji, Yaliang Li, Xiaoling Wang, and Ji-Rong Wen. 2021. Recbole: Towards a unified, comprehensive and ef-ficient framework for recommendation algorithms. In proceedings of the 30th acm international con-ference on information & knowledge management ,pages 4653–4664. Kun Zhou, Hui Wang, Wayne Xin Zhao, Yutao Zhu, Sirui Wang, Fuzheng Zhang, Zhongyuan Wang, and Ji-Rong Wen. 2020. S3-rec: Self-supervised learning for sequential recommendation with mutual informa-tion maximization. In CIKM .
+
+10 A Appendix 
+
+A.1 Statistics of Datasets 
+
+We present the statistics of processed Toys and games , Beauty and Home and Kitchen datasets in Table 5.                      
+
+> Datasets Toys and Games Beauty Home and Kitchen
+> # Users 19,412 22,363 66,520 # Items 11,924 12,101 28,238 # Actions 167,597 198,502 551,682 Avg. Actions/User 8.63 8.88 8.29 Avg. Actions/Item 14.06 16.40 19.54 # Sparsity 99.93% 99.93% 99.97%
+> Table 5: Statistics of processed datasets.
+
+A.2 Baseline Methods 
+
+We compare our proposed method with represen-tative baselines from three categories: (1) Tradi-tional Non-Time-Aware Models : GRU4Rec (Hi-dasi et al., 2016) and SASRec (Kang and McAuley, 2018), which adopt GRUs and self-attention mecha-nisms respectively; and LRURec (Yue et al., 2024), utilizing linear recurrent units for long sequence encoding. (2) Traditional Time-Aware Mod-els : TiSASRec (Li et al., 2020), designing time interval-aware self-attention; FEARec (Du et al., 2023), analyzing frequency-level sequences with a ramp structure; and TiCoSeRec (Dang et al., 2024), which applies contrastive learning on time-augmented sequences. (3) Multimodal Models :
+
+NOVA (Liu et al., 2021) and DIF-SR (Xie et al., 2022), employing non-invasive attention and de-coupled fusion respectively; UniSRec (Hou et al., 2022), transferring textual semantics via MoE; 
+
+MISSRec (Wang et al., 2023), featuring an Interest Discovery Module; M3SRec (Bian et al., 2023), utilizing cross-modal MoE transformers; IISAN 
+
+(Fu et al., 2024), leveraging parameter-efficient fine-tuning for intra- and inter-modal adaption; 
+
+TedRec (Xu et al., 2024), performing semantic fusion via Fast Fourier Transform; and HM4SR 
+
+(Zhang et al., 2025), a state-of-the-art baseline em-ploying a hierarchical time-aware MoE framework. 
+
+A.3 Evaluation Metrics 
+
+To evaluate the performance of our model, we em-ploy two widely used ranking metrics: Normal-ized Discounted Cumulative Gain ( NDCG@K )and Mean Reciprocal Rank ( MRR@K ). The for-mal definitions are as follows: • NDCG@K : This metric measures the rank-ing quality by considering the position of the ground-truth item in the top-K list. It is de-fined as: NDCG@ K = 1
+
+|U |
+
+X
+
+> u∈U
+
+1log 2(rank u + 1) 
+
+(7) where rank u is the rank position of the target item for user u, provided that rank u ≤ K;otherwise, the score is 0. • MRR@K : This metric assesses the average of the reciprocal ranks of the target items. It is calculated as: MRR@ K = 1
+
+|U |
+
+X
+
+> u∈U
+
+1
+
+rank u
+
+(8) Similarly, if the rank position rank u > K , the reciprocal rank is set to 0. For both metrics, higher values indicate better rank-ing performance. 11

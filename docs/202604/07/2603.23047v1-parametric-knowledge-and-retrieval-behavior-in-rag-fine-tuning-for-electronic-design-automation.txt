@@ -1,0 +1,412 @@
+Title: Parametric Knowledge and Retrieval Behavior in RAG Fine-Tuning for Electronic Design Automation
+
+URL Source: https://arxiv.org/pdf/2603.23047v1
+
+Published Time: Wed, 25 Mar 2026 01:13:24 GMT
+
+Number of Pages: 16
+
+Markdown Content:
+## Parametric Knowledge and Retrieval Behavior in RAG Fine-Tuning for Electronic Design Automation 
+
+Julian Oestreich 1*, Maximilian Bley 1*, Frank Binder 1, Lydia Müller 1
+
+Maksym Sydorenko 2 André Alcalde 2,
+
+> 1
+
+Institute for Applied Informatics (InfAI) at Leipzig University 
+
+> 2
+
+CELUS GmbH, Munich 
+
+{oestreich, maximilian.bley, binder, lydia.mueller}@infai.org {andre.alcalde, max.sydorenko}@celus.io 
+
+Abstract 
+
+Retrieval-Augmented Generation (RAG) fine-tuning has shown substantial improvements over vanilla RAG, yet most studies target document question answering and often rely on standard NLP metrics that can obscure factual differences. We evaluate RAG fine-tuning for long-form text generation in elec-tronic design automation, adapting a 7B model under five context augmentation strategies with varying retrieval conditions. We intro-duce T RI FEX, a human-validated, triple-based evaluation pipeline that attributes generated claims to their origin—user query, context and reference—and propose Parametric Knowl-edge Precision (PKP), which isolates internal-ized knowledge by filtering out claims leaked in the prompt. We show that ROUGE and BERTScore fail to detect factual differences that our triple-based evaluation reveals. Addi-tionally, we demonstrate that an existing met-ric for knowledge internalization is retrieval-sensitive, with ∼75% of its cross-condition variance driven by changes in the rate at which internal knowledge is expressed (PR), rather than by changes in its actual correctness (PKP). The fine-tuned 7B variants outperform a 72B baseline on most metrics, further showing gen-eralization across conditions and on a related benchmark. These results underscore the limi-tations of available metrics in RAG evaluation and show that smaller models could be rea-sonably well adapted to specialized tasks for cost-efficient, on-premises deployment. 
+
+1 Introduction 
+
+Retrieval-Augmented Generation (RAG) has emerged as a popular training-free adaptation ap-proach by enhancing language models with exter-nal knowledge (Gao et al., 2023). Concurrently, fine-tuning in RAG settings has led to substan-tial improvements over vanilla RAG, including 
+
+> *Equal contribution.
+
+better task solving capabilities and increased ro-bustness to retrieval errors (Wang et al., 2024; Liu et al., 2024; Yoran et al., 2024; Zhang et al., 2024; Bhushan et al., 2025; Xu et al., 2025). Although considerable research on RAG fine-tuning has been published, most of the studies often focus on ar-guably the most common RAG application: ques-tion answering over document corpora. Further-more, answers in Q&A are often evaluated us-ing standard NLP metrics, which are well known to exhibit shortcomings in detecting hallucina-tions (Honovich et al., 2022; Jiang et al., 2025), par-ticularly for longer text (Wei et al., 2024; Samarinas et al., 2025). Recent metrics address these issues by transforming text into structured formats and leveraging LLMs as judges (Min et al., 2023; Ru et al., 2024; Hu et al., 2024; Pradeep et al., 2025). In this work, we evaluate RAG fine-tuning for a requirements engineering task in electronic design automation. Using a synthetic dataset, we compare a 7B base model and multiple adapters trained on different retrieval scenarios to analyze parametric knowledge and retrieval robustness. These variants cover four production-relevant scenarios: failed retrieval (query only), and retrieval with relevant, irrelevant, or noisy context. Since our RAG re-sponses are long text generations, we transform them alongside their corresponding sources (ref-erence response, context, and user queries) into a triple-based format, where each triple captures a unique claim; this allows us to trace back each response triple to its origin to compute reference-backed metrics (e.g. Precision and Recall) as well as RAG-specific metrics. Additionally, we build on Ru et al. (2024)’s self-knowledge (SK) metric and propose Parametric Knowledge Precision (PKP) as an extension that better captures internalized knowledge by filtering out response triples leaked from the user query and context (Figure 1). This allows us to attribute training gains to internalized domain knowledge without any retrieval bias. 1
+
+> arXiv:2603.23047v1 [cs.CL] 24 Mar 2026
+
+(A) Extraction      
+
+> Generated: “The regulator supports up to 5 A output. [...]”
+> Reference: “Regulator module: Max output cur-rent = 5 A. [...]”
+> Context: “Designed for automotive loads. [...]”
+> User Query: “Need a 5 A power supply. [...]”
+> LLM
+> Extracted Triples:
+> G: { (regulator, max current, 5 A) , ... }
+> R: { (regulator, max current, 5 A) , ... }
+> C: { (regulator, domain, automotive) , ... }
+> U: { (power supply, current, 5 A) , ... }
+
+(B) Attribution                     
+
+> RCU
+> Similarity-Based Candidates
+> Top-kfrom {R,C,U}for each gi∈G
+> LLM-as-a-Judge
+> each giagainst candidates
+> Attributed Triple: (gi,Ai)
+> where Ai⊆ { R,C,U}.
+
+(C) Metrics                          
+
+> All Attributed Triples
+> {(g1,a1), ( g2,a2), . . . }
+> PKP =|Rparam ||Rparam |+|N one |
+> Rparam = ( G∩R)\(C∪U)
+> N one =G\(R∪C∪U)
+> extracted triples attributed triples
+
+Figure 1: T RI FEX Triple Extraction + Validation Pipeline. (A) Extraction: Triples are extracted from all sources (generated response G, reference response R, context C, and user query U). (B) Attribution: Each generated triple 
+
+gi is attributed to a source by matching against candidate triples from R, C, and U. (C) Metrics: E.g. Excluding information attributed to user query or context allows computation of Parametric Knowledge Precision (PKP) .
+
+We investigate the following research questions: 
+
+RQ1 How do triple-based metrics compare to stan-dard NLP metrics, when evaluating differently adapted models on our use case? 
+
+RQ2 How does retrieval affect the measurement of internalized domain knowledge in RAG mod-els, and how can this effect be disentangled? 
+
+Contributions (1) We introduce a human-validated pipeline comprising several measures for comprehensive RAG evaluation beyond standard NLP metrics. 1 (2) We propose a metric to provide more robust, context-insensitive measurement of internalized domain-knowledge in RAG settings. 
+
+2 Related Work 
+
+Adapting pretrained LLMs to new domains is well studied (Cheng et al., 2024; Tian et al., 2024; Kujanpää et al., 2025), though often framed as a choice between retrieval-augmented generation and fine-tuning (Ovadia et al., 2024). Separately, substantial research has explored fine-tuning for RAG in open-domain settings, e.g., enhancing ca-pabilities such as reading comprehension and long-context understanding (Liu et al., 2024; Xu et al., 2025), or improving robustness through training on mixed relevant and irrelevant context (Yoran et al., 2024). Most related to our work are ap-proaches which unify these directions by training 
+
+> 1
+
+Code will be published upon acceptance. 
+
+for domain-specific RAG. For example, Zhang et al. (2024) (RAFT) fine-tune on Q&A pairs combined with distracting context, demonstrating higher ro-bustness than vanilla RAG across three domains. Bhushan et al. (2025) (PA-RAG) build on RAFT by generating novel, synthetic Q&As maximizing document coverage and fine-tuning on those pairs augmented with relevant and irrelevant context. Notably, the aforementioned research frames RAG almost exclusively as question answering over documents. This work addresses a different setting: a specialized domain with task-specific out-puts beyond conventional Q&A, where user queries must be integrated with retrieved context to pro-duce comprehensive responses. Related work on evaluating long-form text gen-eration, motivated by the goal of better assess-ing factuality, structures outputs into fine-grained units such as sentences, subsentences or subject-predicate-object triples and compares them against a knowledge source, e.g., a reference text or Wikipedia (Thorne et al., 2018; Honovich et al., 2022; Hu et al., 2024; Jiang et al., 2025). In that regard, Min et al. (2023) propose a precision-based metric using subsentences evaluated against a given knowledge source, while Samarinas et al. (2025) argue that precision alone is insufficient in special-ized domains and propose a recall-based metric to assess omitted information. In RAG settings with long-form responses, Pradeep et al. (2025) create must-have response information given a query and 2Dataset n/a relevant irrelevant noisy                     
+
+> w/o context ✓–––
+> w/ relevant –✓––PA-RAG –✓✓–RAFT ––✓✓
+> w/ all ✓✓✓✓
+> Table 1: Overview of fine-tuning dataset variants and the retrieval context types (e.g. noisy) included in each.
+
+context, then use an LLM to judge whether it ap-pears in the response, similar to the RAGAS frame-work (Es et al., 2024), which also uses LLMs for reference-free evaluation. Since we have gold references, most related to our work is Ru et al. (2024)’s approach, which ap-plies automatic triple-based evaluation comparing structured RAG answers to various sources. Our work differs not only in implementation but also extends their Self-Knowledge metric to better eval-uate domain knowledge in RAG fine-tuning. 
+
+3 Methodology 
+
+We study factuality in domain-specific RAG sys-tems by (i) fine-tuning LLMs under controlled con-text augmentation strategies and (ii) evaluating gen-erated outputs using both standard NLP metrics and a structured triple-based pipeline (T RI FEX). 
+
+3.1 Data 
+
+The dataset models a requirements engineering workflow in the electronics domain, targeting an electronic design automation setting where an LLM responds to project descriptions from users with full descriptions using retrieved information (Ex-amples in Appendix A). The dataset is derived from real manufacturer descriptions and synthetic texts generated from them. We extract ∼14K textual descriptions from publicly available reference de-signs. Using them as truth seeds, we prompt GPT-4o to generate manufacturer-independent project descriptions ( references ) preserving the same func-tionalities and specifications. Each reference is summarized into an underspecified user query . To-gether with the original seed, this yields a triple per datapoint: user query , reference , and context . All three entries encode the same underlying technical facts but differ in granularity, detail, and phras-ing. The final dataset comprises ∼12K entries (avg. 170 tokens per query, 848 per reference, 228 per context). We construct five fine-tuning variants differing only in context (Table 1): w/o context ,
+
+w/ relevant context, RAFT (Zhang et al., 2024), PA-RAG (Bhushan et al., 2025), and w/ all . RAFT and PA-RAG duplicate each (query, reference) pair with two context variants (noisy/irrelevant and rel-evant/irrelevant, respectively), while the w/ all vari-ant includes four versions per pair (no context, rel-evant, irrelevant, and noisy). We define relevant 
+
+context as the truth seed used for data synthesis, which we split into up to three chunks of 128 tokens each. Irrelevant context refers to three randomly selected chunks, while noisy context denotes a mix-ture of three chunks with one to two chunks that may be either relevant or random. 
+
+3.2 Finetuning 
+
+We select Qwen2.5-7B-Instruct as the base model and employ LoRA (Hu et al., 2022) (De-tails in Appendix B). We train for two epochs on the datasets w/o context and w/ relevant and for one epoch on the RAFT and PA-RAG variants. Because RAFT and PA-RAG each contain two versions of every prompt, a single epoch effectively exposes each underlying sample twice. Additionally, we perform a follow-up run w/ all ; here a single epoch exposes each sample four times, doubling the steps trained in comparison to the other models. 
+
+3.3 Evaluation 
+
+We use a single unified test set of 4K instances, cre-ated by applying our four context conditions—n/a context, relevant, irrelevant, and noisy context—to the same 1K test prompts, that were held out from the training process. This allows a controlled com-parison across adapted models, including ablations (e.g., w/ relevant vs. PA-RAG) and generalization to unseen scenarios. 
+
+Inference For each test prompt, we generate one completion using greedy decoding rather than sam-pling, to best reflect the adapted token distribution. 
+
+Standard NLP metrics We compare generated and reference responses using ROUGE (Lin, 2004) and BERTScore (Zhang et al., 2020). 
+
+Triple-based evaluation pipeline TRI FEX (Fact Triple Extraction + Evaluation) (Figure 1) extracts triples from four sources (user query, context, reference, generated response) and nor-malizes subjects and predicates to reduce lexical variability using an 80B LLM 2. For each generated 
+
+> 2Qwen3-Next-80B-A3B-Instruct
+
+3triple m, we compute dense embeddings 3 and retrieve a fixed top-k set of candidate evidence triples via cosine similarity ( k = 7 : 2 user, 2 context, 3 reference). An LLM judge 4 then verifies support by grounding each generated triple against its candidate subset and records the supporting sources. A triple is called a fact if it is attributed to the reference. The calculation of a candidate set reduces grounding complexity to 
+
+O(mk ) (for constant k), instead of comparing against all n candidate triples. Due to the high computational cost of LLM-based pipelines, we evaluate a subsample of 512 examples (128 per test condition) rather than the full test set, still consuming ∼100 H100 (94GB) GPUh. 
+
+Triple-based metrics Let ˆTG , ˆTR, ˆTC , and ˆTU
+
+denote the normalized triples from the generated re-sponse, reference, retrieved context, and user query. We define SR ⊆ ˆTG , SC ⊆ ˆTG , and SU ⊆ ˆTG as the subsets of generated triples judged by the LLM to be supported by the reference, context, and user query, respectively. We report: • Reference-Backed Precision and Recall :Prec ref = |S R|| ˆTG | and Rec ref = |S R|| ˆTR|
+
+• Parametric Knowledge Precision (PKP ): Proportion of correct generated triples not grounded in the user query or context: PKP = |S R \ (SC ∪ S U )|| ˆTG \ (SC ∪ S U )|
+
+• Parametric Rate (PR) : Proportion of gener-ated triples originating from the model: PR =
+
+ˆTG \ (SU ∪ S C )
+
+ˆTG
+
+We also evaluate Self-Knowledge (SK) as a baseline metric, following prior work by Ru et al. (2024). SK measures the proportion of generated triples that are both parametric and correct. As it is normalized by the total number of generated triples | ˆTG |, including those attributable to context or user query, it combines parametric correctness (quality) with parametric usage (quantity), making it inherently retrieval-sensitive. 
+
+> 3all-MiniLM-L6-v2
+> 4Qwen3-Coder-30B-A3B-Instruct
+
+Therefore, we decompose SK into two compo-nents: SK = PKP × PR ; with PR measuring the proportion of generated triples that require paramet-ric knowledge, and PKP measuring the correctness of those triples with respect to the reference. Addi-tionally, we report User Utilization (UU) and Con-text Utilization (CU), i.e., the proportions of gener-ated triples supported by user input and retrieved context. As attribution is not mutually exclusive, UU + CU ̸ = 1 − PR. 
+
+Human Evaluation We evaluate the LLM-based extraction and attribution stages with human anno-tation. Triple Extraction Precision, i.e. faithfulness to sources, is assessed by manually validating 128 random examples with 8 triples and their extraction sources, yielding n = 1024 evaluated triples. For attribution n = 256 response triples and their can-didates (top-7) are presented to judge whether each candidate triple is a source of the response triple (e.g. candidate X from user query is a source? Yes. 
+
+→ Label: user query). Attribution Accuracy is then computed per label against human judgments. Four authors (two computer scientists, an electron-ics engineer, an ML engineer) split the examples, scoring high Triple Extraction Precision ( 97.19 %) and reasonable Attribution Accuracy ( 80.13% ). 
+
+4 Results and Discussion 
+
+4.1 Standard NLP vs. Triple-based Precision and Recall (RQ1) 
+
+Figure 2 shows differences across metrics, models, and test conditions—before and after fine-tuning. BERTScore F1, ROUGE-1, and ROUGE-L remain nearly unchanged across both model adaptations (rows) and context conditions (columns), making it hard to assess how the training methods differ. In contrast, our F1 ref score shows greater varia-tion and produces a substantially different ranking across both rows and columns. All metrics detect one hard outlier in cell 
+
+w/ relevant × Irrelevant. ROUGE-1, ROUGE-L and BERTScore F1 still claim training progress (+3.8, +0.6) or stagnation (0.0), but F1 ref shows a stark decline of -27.5. This is invisible to ROUGE, likely because the responses remain lexically similar to the learned references in large parts, concealing hallucinations behind plausibly formulated text. 5
+
+Additionally, in cell w/ relevant × Noisy F1 ref 
+
+detects a new outlier, a test condition related to  
+
+> 5We see an astonishing Rec ref decline of 39.51, which ROUGE misses, a metric measuring recall through n-grams.
+
+4Figure 2: Absolute differences (×100, percentage points) between LoRA and baseline metrics. 
+
+Irrelevant but less harsh, since some chunks may be relevant (Rec ref -11.2 in Table 2). In this case, our metric clearly differs from BERTScore and ROUGE, as both show definite gains. 
+
+4.2 Retrieval Sensitivity and Decomposition of Self-Knowledge (RQ2) 
+
+As shown in Table 2, Self-Knowledge (SK) varies substantially across retrieval scenarios—higher un-der relevant and noisy context, lower under irrel-evant or no-context settings—suggesting that it reflects not only parametric knowledge but also retrieval-dependent behavior. To analyze this be-havior, we decompose SK = PKP × PR , as ex-plained in 3.3. Variance analysis shows that cross-retrieval-scenario differences in SK are primarily driven by PR rather than PKP: while PR varies strongly across retrieval conditions, PKP remains comparatively stable, with PKP exhibiting lower coefficient of variation (CV = std/mean = 0.058) than SK (0.239) and PR (0.209). A log-space vari-ance decomposition further supports our interpreta-tion. Since log SK = log P KP +log P R , approx-imately 75% of cross-retrieval variance in log SK 
+
+is attributable to log P R , whereas only 19% is at-tributable to log P KP (with a small covariance term). One exception occurs at w/ relevant × Ir-relevant , where PKP decreases, suggesting that misleading context during training interferes with parametric knowledge rather than merely shifting usage, as expressed by a shifted PR. 
+
+4.3 Fine-Tuning Effects on Parametric Knowledge and Context Usage 
+
+Table 2 shows LoRA fine-tuning improves Prec ref 
+
+and PKP, but lowers Rec ref . The latter is explained by responses becoming much shorter compared to the base model ( ≈ 30–40% fewer triples). The increase in PKP shows that the models correctly learned use-case specific domain knowledge. To investigate how well this finding generalizes to broader domain knowledge acquisition, we con-ducted a cross-dataset evaluation with MMLU-Electrical-Engineering (Hendrycks et al., 2021), us-ing LM-Eval-Harness (Gao et al., 2024). Inter-estingly, all five variants improved over the base model, showing clear signals of domain adaption (53.79% → 64.14% –68.97% , Table 3). Further-more, most of the trained models outperform the 72B variant in F1 ref and PKP; on MMLU, their accuracies exceed the 72B baseline, although the gaps are largely within standard error. 6
+
+The proportion of response triples grounded in 
+
+any source (user query, context, reference) is very high with 85.78–89.75% for fine-tuned models av-eraged across all test scenarios, surpassing both baselines ( 72.53 and 78.29 %). We focus on the stricter reference-backed metrics, since claims orig-inating from user query and context generally can-not be assumed correct without external validation. We report standard deviations of ∼0.38 –1.46% 
+
+on average over all triple-based metrics of Table 2, measured in five runs of the 7B baseline. 
+
+N/A Context Training on standard train-test splits performs best ( w/o context and w/ all ), but PA-RAG still stands out: it has considerably high PKP and F1 ref , despite being trained solely on prompts with non-empty context. Its exposure to irrelevant context during fine-tuning leads to the strongest query conditioning (evident from the in-crease in UU over w/ relevant ). RAFT shows the same behavior but with lower F1 ref and PKP. 
+
+Relevant Context PA-RAG outperforms all mod-els, including w/ relevant the standard training for this scenario, with the highest CU, PKP, and F1 ref .Again, RAFT mirrors this but with lower scores.    
+
+> 6The exception is w/ relevant × Irrelevant, which appears to be an outlier that learned to rely solely on context (highest CU), underpinned by the degradation of F1 ref and PKP.
+
+5(a) N/A and Relevant Context Model / Context N/A Relevant F1 ref Prec ref Rec ref SK PKP ↑ PR CU UU F1 ref Prec ref Rec ref SK PKP ↑ PR CU ↑ UU                                                                                                                 
+
+> Qwen2.5-7B-Instruct 61.28 51.64 75.33 32.86 54.07 60.77 n/a 39.23 62.59 54.09 74.25 21.98 51.48 42.70 30.77 37.01 + LoRA w/o context 68.26 68.51 68.02 43.52 76.69 56.75 n/a 43.25 63.95 64.00 63.90 28.06 74.14 37.85 36.43 35.83 w/ relevant 64.86 62.90 66.94 41.33 73.24 56.43 n/a 43.57 66.12 66.07 66.18 26.61 74.85 35.56 37.40 39.40 PA-RAG (w/ rel. + irr.) 67.47 66.83 68.13 41.59 76.34 54.47 n/a 45.53 68.79 68.48 69.11 24.26 75.29 32.22 41.31 38.14 RAFT (w/ noisy + irr.) 64.80 64.63 64.98 39.85 72.92 54.64 n/a 45.36 66.59 66.79 66.40 23.43 73.71 31.79 41.13 39.92 w/ all 69.56 67.12 72.15 43.54 75.75 57.47 n/a 42.53 68.30 66.36 70.36 28.21 73.56 38.35 36.56 36.10 Qwen2.5-72B-Instruct 65.75 50.21 91.75 33.54 51.48 65.15 n/a 34.85 67.59 53.61 91.42 25.25 50.61 49.89 27.16 31.39
+
+(b) Irrelevant and Noisy Context Model / Context Irrelevant Noisy F1 ref Prec ref Rec ref SK PKP ↑ PR CU ↓ UU F1 ref Prec ref Rec ref SK PKP ↑ PR CU UU                                                                                                                 
+
+> Qwen2.5-7B-Instruct 59.14 50.63 71.09 29.61 57.71 51.31 9.46 39.88 62.05 53.25 74.33 21.87 57.00 38.40 33.49 38.34 + LoRA w/o context 65.78 66.14 65.42 40.45 77.50 52.20 6.15 42.26 68.87 68.10 69.65 28.08 75.79 37.05 35.08 38.59 w/ relevant 31.68 31.49 31.87 18.03 43.58 41.36 38.79 20.82 61.86 60.84 62.92 27.98 74.65 37.48 40.21 30.87 PA-RAG (w/ rel. + irr) 67.60 68.51 66.72 40.75 78.60 51.84 2.95 45.76 68.12 67.47 68.78 27.10 74.96 36.16 34.82 42.23 RAFT (w/ noisy + irr) 67.31 68.48 66.18 45.00 79.62 56.52 3.26 40.56 68.57 68.74 68.40 28.48 78.26 36.39 36.33 38.03 w/ all 70.07 68.65 71.55 42.29 76.75 55.10 3.75 41.98 69.76 67.76 71.88 27.58 75.81 36.39 33.67 40.33 Qwen2.5-72B-Instruct 62.90 48.34 90.01 29.74 49.40 60.20 7.67 32.86 64.78 51.15 88.33 24.21 51.09 47.38 30.24 30.93
+
+Table 2: Evaluation of baseline and LoRA-adapted models across retrieval conditions (values in percentage points). 
+
+Model Accuracy (in p.p.) Qwen2.5-7B-Instruct 53.79 (±4.15 )
+
++ LoRA w/o context 68.97 (±3.83 )
+
+w/ relevant 64.14 (±4.00 )
+
+RAFT 68.28 (±3.88 )
+
+PA-RAG 66.21 (±3.94 )
+
+w/ all 67.59 (±3.90 )
+
+Qwen2.5-72B-Instruct 64.83 (±3.98 )
+
+Table 3: Accuracy (+ standard error) on MMLU-EE. 
+
+Irrelevant Context Clearly w/ relevant collapses as seen before, worsening on all metrics, while 
+
+w/ all wins in terms of F1 ref . PA-RAG and RAFT perform comparably (reasonable F1 ref , high PKP, very low CU), yet show opposite patterns: training with irrelevant paired with relevant context leads to lower PR but higher UU, whereas pairing with noisy context results in higher PR but lower UU relative to w/o context . This explains their slight F1 ref and PKP differences: higher UU may im-prove integration of user information, while higher PR may lead to more correct knowledge. 
+
+Noisy Context Overall, w/ all performs quite well (F1 ref , PKP), closely followed by w/o context ,suggesting that adding context does not necessarily improve performance for this scenario. Comparing PA-RAG and RAFT, the latter shows higher F1 and PKP; the opposite PR / UU behavior remains but is less distinct than under the irrelevant scenario. 
+
+5 Conclusions 
+
+Our evaluation reveals three key findings. First, ROUGE and BERTScore do not provide a clear picture of factual differences; in some test scenar-ios, they are even misleading. Second, decom-posing Self-Knowledge into PKP and PR shows that cross-retrieval SK variance is overly driven by usage patterns rather than by leveraging domain knowledge. Third, most fine-tuned models outper-form the 7B and 72B (vanilla RAG) baselines on our test scenarios, with PA-RAG generalizing most robustly across retrieval conditions. The resulting models could be deployed on-premises, avoiding third-party LLM providers while reducing costs and maintaining control over sensitive data. 
+
+6 Limitations 
+
+The LLM attribution achieves ∼80% accuracy rel-ative to human judgments, introducing evaluation noise. Attribution is further restricted to a fixed top-k candidate set based on embedding similarity, which may omit valid supporting evidence. Triples classified as unsupported may nevertheless be exter-nally valid, yet remain unverifiable within the given evidence sources. Considering the standard devi-ations mentioned before, only findings with clear signals can be considered reliable, while smaller differences should be interpreted with caution. 6Ethical Considerations 
+
+Using an LLM-based pipeline involves a trade-off between cost (monetary and ecological foot-print) and accuracy, as larger models or commercial APIs are generally better suited for off-the-shelf us-age and therefore produce less noisy results. This dilemma of allocating more resources and raising the ecological footprint, without certainty about the clarity of the resulting signals, should not be neglected when using this system. 
+
+References 
+
+Kushagra Bhushan, Yatin Nandwani, Dinesh Khandel-wal, Sonam Gupta, Gaurav Pandey, Dinesh Raghu, and Sachindra Joshi. 2025. Systematic knowledge injection into large language models via diverse aug-mentation for domain-specific RAG. In Findings of the Association for Computational Linguistics: NAACL 2025 , pages 5922–5943, Albuquerque, New Mexico. Association for Computational Linguistics. Daixuan Cheng, Shaohan Huang, and Furu Wei. 2024. Adapting large language models via reading compre-hension. In The Twelfth International Conference on Learning Representations .Shahul Es, Jithin James, Luis Espinosa Anke, and Steven Schockaert. 2024. RAGAs: Automated evalu-ation of retrieval augmented generation. In Proceed-ings of the 18th Conference of the European Chap-ter of the Association for Computational Linguistics: System Demonstrations , pages 150–158, St. Julians, Malta. Association for Computational Linguistics. Leo Gao, Jonathan Tow, Baber Abbasi, Stella Bider-man, Sid Black, Anthony DiPofi, Charles Foster, Laurence Golding, Jeffrey Hsu, Alain Le Noac’h, Haonan Li, Kyle McDonell, Niklas Muennighoff, Chris Ociepa, Jason Phang, Laria Reynolds, Hailey Schoelkopf, Aviya Skowron, Lintang Sutawika, and 5 others. 2024. The language model evaluation har-ness. Yunfan Gao, Yun Xiong, Xinyu Gao, Kangxiang Jia, Jinliu Pan, Yuxi Bi, Yixin Dai, Jiawei Sun, Haofen Wang, and Haofen Wang. 2023. Retrieval-augmented generation for large language models: A survey. 
+
+arXiv preprint arXiv:2312.10997 .Dan Hendrycks, Collin Burns, Steven Basart, Andy Zou, Mantas Mazeika, Dawn Song, and Jacob Steinhardt. 2021. Measuring massive multitask language under-standing. In International Conference on Learning Representations .Or Honovich, Roee Aharoni, Jonathan Herzig, Hagai Taitelbaum, Doron Kukliansy, Vered Cohen, Thomas Scialom, Idan Szpektor, Avinatan Hassidim, and Yossi Matias. 2022. TRUE: Re-evaluating factual consistency evaluation. In Proceedings of the 2022 Conference of the North American Chapter of the Association for Computational Linguistics: Human Language Technologies , pages 3905–3920, Seattle, United States. Association for Computational Lin-guistics. Edward J Hu, yelong shen, Phillip Wallis, Zeyuan Allen-Zhu, Yuanzhi Li, Shean Wang, Lu Wang, and Weizhu Chen. 2022. LoRA: Low-rank adaptation of large language models. In International Conference on Learning Representations .Xiangkun Hu, Dongyu Ru, Lin Qiu, Qipeng Guo, Tian-hang Zhang, Yang Xu, Yun Luo, Pengfei Liu, Yue Zhang, and Zheng Zhang. 2024. Knowledge-centric hallucination detection. In Proceedings of the 2024 Conference on Empirical Methods in Natural Lan-guage Processing , pages 6953–6975, Miami, Florida, USA. Association for Computational Linguistics. Lekang Jiang, Pascal A. Scherz, and Stefan Goetz. 2025. Towards better evaluation for generated patent claims. In Proceedings of the 63rd Annual Meeting of the Association for Computational Linguistics (Volume 1: Long Papers) , pages 3775–3788, Vienna, Austria. Association for Computational Linguistics. Omar Khattab, Arnav Singhvi, Paridhi Maheshwari, Zhiyuan Zhang, Keshav Santhanam, Sri Vard-hamanan, Saiful Haq, Ashutosh Sharma, Thomas T. Joshi, Hanna Moazam, Heather Miller, Matei Za-haria, and Christopher Potts. 2024. Dspy: Compiling declarative language model calls into self-improving pipelines. Kalle Kujanpää, Pekka Marttinen, Harri Valpola, and Alexander Ilin. 2025. Efficient knowledge injection in LLMs via self-distillation. Transactions on Ma-chine Learning Research .Woosuk Kwon, Zhuohan Li, Siyuan Zhuang, Ying Sheng, Lianmin Zheng, Cody Hao Yu, Joseph Gon-zalez, Hao Zhang, and Ion Stoica. 2023. Efficient memory management for large language model serv-ing with pagedattention. In Proceedings of the 29th Symposium on Operating Systems Principles , SOSP ’23, page 611–626, New York, NY, USA. Association for Computing Machinery. Chin-Yew Lin. 2004. ROUGE: A package for auto-matic evaluation of summaries. In Text Summariza-tion Branches Out , pages 74–81, Barcelona, Spain. Association for Computational Linguistics. Zihan Liu, Wei Ping, Rajarshi Roy, Peng Xu, Chankyu Lee, Mohammad Shoeybi, and Bryan Catanzaro. 2024. Chatqa: Surpassing gpt-4 on conversational qa and rag. Advances in Neural Information Processing Systems , 37:15416–15459. Sewon Min, Kalpesh Krishna, Xinxi Lyu, Mike Lewis, Wen-tau Yih, Pang Koh, Mohit Iyyer, Luke Zettle-moyer, and Hannaneh Hajishirzi. 2023. FActScore: Fine-grained atomic evaluation of factual precision in long form text generation. In Proceedings of the 2023 Conference on Empirical Methods in Natural 
+
+7Language Processing , pages 12076–12100, Singa-pore. Association for Computational Linguistics. Oded Ovadia, Menachem Brief, Moshik Mishaeli, and Oren Elisha. 2024. Fine-tuning or retrieval? compar-ing knowledge injection in LLMs. In Proceedings of the 2024 Conference on Empirical Methods in Natural Language Processing , pages 237–250, Mi-ami, Florida, USA. Association for Computational Linguistics. Ronak Pradeep, Nandan Thakur, Shivani Upadhyay, Daniel Campos, Nick Craswell, Ian Soboroff, Hoa Trang Dang, and Jimmy Lin. 2025. The great nugget recall: Automating fact extraction and rag evaluation with large language models. In Proceed-ings of the 48th International ACM SIGIR Confer-ence on Research and Development in Information Retrieval , SIGIR ’25, page 180–190, New York, NY, USA. Association for Computing Machinery. Dongyu Ru, Lin Qiu, Xiangkun Hu, Tianhang Zhang, Peng Shi, Shuaichen Chang, Cheng Jiayang, Cunx-iang Wang, Shichao Sun, Huanyu Li, and 1 others. 2024. Ragchecker: A fine-grained framework for di-agnosing retrieval-augmented generation. Advances in Neural Information Processing Systems , 37:21999– 22027. Chris Samarinas, Alexander Krubner, Alireza Salemi, Youngwoo Kim, and Hamed Zamani. 2025. Beyond factual accuracy: Evaluating coverage of diverse fac-tual information in long-form text generation. In 
+
+Findings of the Association for Computational Lin-guistics: ACL 2025 , pages 13468–13482, Vienna, Austria. Association for Computational Linguistics. James Thorne, Andreas Vlachos, Christos Christodoulopoulos, and Arpit Mittal. 2018. FEVER: a large-scale dataset for fact extraction and VERification. In Proceedings of the 2018 Conference of the North American Chapter of the Association for Computational Linguistics: Human Language Technologies, Volume 1 (Long Papers) , pages 809–819, New Orleans, Louisiana. Association for Computational Linguistics. Katherine Tian, Eric Mitchell, Huaxiu Yao, Christo-pher D Manning, and Chelsea Finn. 2024. Fine-tuning language models for factuality. In The Twelfth International Conference on Learning Representa-tions .Xiaohua Wang, Zhenghua Wang, Xuan Gao, Feiran Zhang, Yixin Wu, Zhibo Xu, Tianyuan Shi, Zhengyuan Wang, Shizheng Li, Qi Qian, Ruicheng Yin, Changze Lv, Xiaoqing Zheng, and Xuanjing Huang. 2024. Searching for best practices in retrieval-augmented generation. In Proceedings of the 2024 Conference on Empirical Methods in Natu-ral Language Processing , pages 17716–17736, Mi-ami, Florida, USA. Association for Computational Linguistics. Jerry Wei, Chengrun Yang, Xinying Song, Yifeng Lu, Nathan Hu, Jie Huang, Dustin Tran, Daiyi Peng, Ruibo Liu, Da Huang, and 1 others. 2024. Long-form factuality in large language models. Advances in Neural Information Processing Systems , 37:80756– 80827. Peng Xu, Wei Ping, Xianchao Wu, Chejian Xu, Zi-han Liu, Mohammad Shoeybi, and Bryan Catanzaro. 2025. Chatqa 2: Bridging the gap to proprietary llms in long context and rag capabilities. In The Thir-teenth International Conference on Learning Repre-sentations .Ori Yoran, Tomer Wolfson, Ori Ram, and Jonathan Be-rant. 2024. Making retrieval-augmented language models robust to irrelevant context. In The Twelfth International Conference on Learning Representa-tions .Tianjun Zhang, Shishir G Patil, Naman Jain, Sheng Shen, Matei Zaharia, Ion Stoica, and Joseph E. Gon-zalez. 2024. RAFT: Adapting language model to domain specific RAG. In First Conference on Lan-guage Modeling .Tianyi Zhang, Varsha Kishore, Felix Wu, Kilian Q Wein-berger, and Yoav Artzi. 2020. Bertscore: Evaluating text generation with bert. In International Confer-ence on Learning Representations .
+
+8A Dataset Examples 
+
+Exemplary dataset triple of our EDA use case. • User Query: Figure 3 • Context: Figure 4 • Reference: Figure 5 
+
+B Experimental Details 
+
+In preliminary experiments, we empirically iden-tified the following hyperparameters as effective: 
+
+r = 16 with scaling factor α = 32 for LoRA, an (effective) batch size of 32 , a constant learning rate of 4×10 −4, and dropout 0.2 . Training is performed using the HuggingFace trl library 7 and inference used vLLM (Kwon et al., 2023). All experiments are conducted using Nvidias H100 GPUs (94 GB) and consumed ∼46 GPUh for training and ∼100 GPUh for the whole evaluation pipeline. 
+
+C Prompts 
+
+C.1 Extraction 
+
+We took inspiration from the prompts of Ru et al. (2024) and adapted them to our use case, using DSPy (Khattab et al., 2024) for orchestration. The prompts are displayed in Figure 6, Figure 7, Fig-ure 8, Figure 9, Figure 10. 
+
+C.2 Attribution 
+
+For the attribution judgement, we leveraged guided decoding with vLLM (Kwon et al., 2023) (Prompt: Figure 11). 
+
+D Evidence Attribution 
+
+To complement scalar metrics, we analyze how fac-tual support is distributed across available informa-tion sources using the attribution signals produced by T RI FEX. Each generated claim is assigned the set of supporting sources among reference ( R), re-trieved context ( C), user query ( U ), or None if no supporting evidence is identified. 
+
+Aggregated attribution rates. Figure 12 reports aggregated attribution proportions across models, training variants, and retrieval conditions. These scores summarize how often generated claims are grounded in reference knowledge, retrieved con-text, user input or remain unsupported. It also 
+
+> 7https://huggingface.co/docs/trl/main/en/index
+
+provides a more detailed perspective on context utilization under different retrieval regimes. In particular, variation in attribution to C across retrieval settings reflects how selectively models utilize retrieved information. We see e.g. that the 
+
+w/relevant x irrelevant shows a huge proportion of context utilization even though the context is irrelevant. At the same time claims, that are sup-ported by NONE raise to the maximum. PA-RAG and RAFT on the other minimize the utilization of irrelevant context, while attribution to NONE is low. 
+
+Intersection analysis. Figure 13 visualizes the detailed set of intersections between R, C, and 
+
+U in Venn diagrams. It shows how evidence sources overlap and to what extent reference-supported claims are simultaneously recoverable from inference-time inputs. Notably, overlaps between R and inference-time sources ( C, U ) imply relatively big proportions of claims counted as reference-supported may also be derivable from prompt inputs. Even though context-settings change, huge proportions are still recover-able by user inputs. Consequently, reference-based precision and recall cannot always isolate purely parametric knowledge. We also see clearly here, that even if irrelevant context is utilized, a small proportion of claims still show overlaps with the reference. 9The AquaDigital Spectrum Analyzer must integrate a quad-channel, 12-bit ADC with a sufficient sampling rate of 1.6 GSPS to ensure efficient analog-to-digital signal conversion for various applications. It shall include an analog input module designed for a wide array of input sources, ensuring transformer coupling for enhanced signal integrity. The clock generation module shall provide ultra-low-jitter clock signals, crucial for optimal ADC performance, while compliant with JESD204B/C interfaces. The data capture module must support high-speed data collection, and the user interface shall provide intuitive access to control and configure system settings via a USB connection. A stable power supply that adheres to voltage and current requirements for all modules, with options for both AC and battery sources, is essential for maximizing operational efficiency and minimizing noise interference in signal processing. Overall, the system architecture must allow seamless interaction among all functional components to optimize performance and facilitate high-speed data analytics. 
+
+Figure 3: Simulated user description of an spectrum analyzer. 
+
+The ADC12QJ1600 evaluation module (EVM) allows for the evaluation of the ADC12QJ1600-Q1 product. ADC12QJ1600-Q1 is a low-power, 12-bit, quad-channel, 1.6-GSPS analog-to-digital converter (ADC) with a buffered analog input and integrated digital down converter with on-chip PLL, which features a JESD204B/C interface. The EVM has transformer-coupled analog inputs to accommodate a wide range of signal sources and frequencies. An LMK04828 JESD204B/C clock generator is included on the EVM and can be configured to provide an ultra-low-jitter ADC device clock and SYSREF for a complete JESD204B/C subclass 1 clocking solution. ADC12QJ1600-Q1 and LMK04828 are controlled through an easy-to-use software GUI to enable quick configuration for a variety of uses. ADC12QJ1600EVM connects directly to TSW14J57EVM data-capture hardware via the high-speed FMC+ connector. High-speed data converter pro software (DATACONVERTERPRO-SW) is also available for data capture and analysis support when using TSW14J57EVM. Features: [’Flexible transformer-coupled analog input allows for a variety of sources and frequencies’, ’Easy-to-use software GUI to configure ADC12QJ1600-Q1 and LMK04828 devices for a variety of configurations through a USB interface’, ’Quickly evaluate ADC performance through high-speed data converter pro software (DATACONVERTERPRO-SW)’, ’Simple connection to TSW14J57EVM data capture card (sold separately)’] 
+
+Figure 4: Gold context. 
+
+10 Project Name: AquaDigital Spectrum Analyzer Functional Goals 
+
+The AquaDigital Spectrum Analyzer aims to provide a robust platform for evaluating high-performance analog-to-digital conversion across various applications, including telecommunications, medical imaging, and industrial sensor networks. At its core, the project seeks to harness the capabilities of a low-power, 12-bit, quad-channel ADC that can handle sampling rates as high as 1.6 Giga Samples Per Second (GSPS). By integrating features such as buffered analog inputs, digital down converters, and a sophisticated clocking solution, the AquaDigital Spectrum Analyzer empowers users to effectively assess the performance of high-speed signal processing systems. The project will significantly benefit engineers and researchers who require precise data conversion and signal integrity, enabling streamlined workflows for development and testing. 
+
+Project Architecture 
+
+The architecture of the AquaDigital Spectrum Analyzer is modular and highly adaptable, primarily structured to support a high-speed signal chain with a focus on precision and flexibility. At its foundation, the system comprises multiple functional modules that facilitate the conversion of analog signals to digital formats in real-time. Key components in the architecture include: • Analog Input Module: Featuring transformer-coupled inputs that allow the system to adapt to a wide array of signal sources and frequencies, enhancing versatility for varying application demands. • Analog-to-Digital Conversion Module: The core module leverages a high-performance ADC capable of fast, precise 12-bit conversions, ensuring exceptional signal fidelity, even at elevated sample rates. • Clock Generation Module: A dedicated clock generator module provides ultra-low-jitter clock signals necessary for optimal ADC performance, along with synchronization signals for the efficient operation of interconnected components. • Data Capture and Processing Module: This module facilitates high-speed data collection and analysis, enabling users to visualize and interpret the results of their evaluations in real-time. • Software Interface Module: An intuitive software GUI serves to streamline device control and configuration processes through a USB interface, further enhancing user experience and interactivity. 
+
+Functional Modules and Their Specifications 
+
+• Analog Input Module: This module is designed to accommodate a variety of input sources and signal frequencies. It includes transformer coupling for improved signal integrity and is engineered to handle diverse applications ranging from low-frequency to RF signals. • Analog-to-Digital Conversion Module: The heart of this system is a 12-bit, quad-channel ADC that operates with a sampling rate of up to 1.6 GSPS, ensuring that high-frequency signals are captured with accuracy. • Clock Generation Module: The clock generator module (configured for JESD204B/C interfacing) features ultra-low-jitter capabilities. It’s adaptable for various sampling conditions, thus ensuring that the ADC operates efficiently under different application scenarios. • Data Capture and Processing Module: Capable of supporting high-speed data feeds, this module facilitates interfacing with external data capture environments and ensures accurate analysis via advanced analytical software. • Software Interface Module: The software GUI allows for user-friendly control over module configurations and performance evaluations. It is designed to simplify operations, enhance usability, and expedite testing cycles. 
+
+Interactions Between Functional Modules 
+
+The AquaDigital Spectrum Analyzer leverages a seamless interaction between its functional modules. The analog input module feeds signals directly to the ADC module for real-time conversion. The clock generation module synchronizes the operations across both the ADC and data capture modules, ensuring that the signal processing occurs without latency. Meanwhile, the software interface module communicates with these components, providing updates and configuration settings while processing the captured data in an easily interpretable format. Data transfer is optimized through high-speed connections, enabling efficient data throughput and minimizing delays. By using standardized interfaces, the modules can be configured in various applications and interoperate smoothly, adapting quickly to the dynamic needs of various test scenarios. 
+
+Power Supply Description 
+
+The AquaDigital Spectrum Analyzer’s power supply is engineered to meet the rigorous performance demands of high-speed data acquisition systems. It requires a stable power source capable of delivering the necessary voltage and current to each module, with special attention to power integrity and noise reduction. The design allows for options to use either standard AC-to-DC converters or battery alternatives for mobile applications, ensuring broad usability. The supply system incorporates voltage regulation and filtering to mitigate any potential power noise, significantly enhancing the overall signal fidelity during data acquisition. 
+
+Project Summary and Conclusions 
+
+In summary, the AquaDigital Spectrum Analyzer is poised to become an indispensable tool for evaluating high-performance analog-to-digital conversion and signal processing capabilities. By integrating modular designs that prioritize adaptability and efficiency, this project is structured to meet the diverse needs of engineers and researchers across various fields. With features such as transformer-coupled inputs, advanced clock generation, and a user-friendly interface, users can expect a streamlined evaluation process that maximizes performance insights. As the demand for high-speed data analytics continues to grow, the AquaDigital Spectrum Analyzer stands at the forefront of innovative solutions, facilitating advancements in signal processing methodologies and enhancing practical applications across industries. 
+
+Figure 5: Simulated reference description of an spectrum analyzer. 
+
+11 Claim: a single, testable requirement-level statement that describes one concrete property, behavior, or constraint of a system element in the Electronics Engineering domain. A Claim must reflect only what is **explicitly** stated in the input text, without inferred values, conditions, or requirements. Properties: – Atomic: contains exactly one requirement-level fact (don’t bundle independent requirements). – Self-contained: supplies all context needed to interpret and verify it (scope, component, operating conditions, units, version/time if relevant). – Verifiable: specifies measurable acceptance criteria (numbers, ranges, test procedures, pass/fail conditions, protocols, or concrete behaviors). – Unambiguous & complete: uses explicit nouns (no pronouns/implicit references) and includes thresholds, units, or dates when required. – Domain-appropriate: is a functional/non-functional requirement, interface spec, constraint, or design obligation — not an opinion or vague goal. – Traceable: when possible, includes a pointer to its source (document/section/stakeholder) and the system element it references (mod-ule/interface/component). Canonical fields: – subject: the entity the claim applies to — component, module, subsystem, or stakeholder. – predicate: the action, property, constraint, or obligation (expressed generically). – object: the operand (value, range, interface, condition, or success criteria). 
+
+Figure 6: Claim Description. 
+
+Core rules – One requirement per claim. Each claim must express exactly one requirement/constraint/measurement as a single subject, predicate, object triple. If the source contains multiple independent constraints, create separate claims. – Preserve literals and modality. Do not change numeric literals, units, or modality words (shall, must, measured, targets, anticipated, should, etc.). – Do not invent facts. Only infer a subject or detail when the text supports it. – Normalization is mandatory. Subjects, predicates and object must follow the normal forms below. 
+
+Figure 7: Extraction Prompt — Core Rules. 
+
+Subject rules (who owns the requirement) – Purpose: choose and normalize the Subject so downstream tooling can group/route requirements. – Selection priority (choose the most precise, supported subject). Apply in this order until one fits: 1. Explicit component/module name in the sentence (e.g., "IAMP175, a instrumentation amplifier") → use normalized general term (e.g., "instrumentation amplifier (IAMP175)"). 2. Explicit functional module (e.g., "Signal Amplification Module", "Reference Voltage Supply Module") → use normalized module token (e.g., "signal amplification module", "reference voltage module"). 3. Explicit project/system phrasing (e.g., "The system", "the design", project name) → use "System" or the project name normalized (e.g., "System (Strain Sense Pro)"). 4. No explicit subject → infer the most accurate scope: 
+
+– Prefer a module-level subject if the described responsibility is an implementation detail (amplifying, supplying a voltage, implementing protection). 
+
+– Prefer System when the statement describes overall capabilities, guarantees, or cross-module behavior (e.g., "guarantee 20 W delivery", "operate across 100–425 VDC"). 
+
+– If both are plausible, choose the subject that best matches the predicate’s ownership (e.g., shall maintain efficiency → System; shall amplify differential voltage → signal amplification module). – Canonical form: 
+
+– Canonical category tokens: Map free text to a small set of canonical categories. Examples: power stage module, power management module, signal amplification module, protection module, output regulation module, reference voltage module, strain gauge bridge, System. 
+
+– Format: lowercase, singular, no articles. E.g., power stage module not the Power Stage Modules. 
+
+– Component names: keep vendor/part names as parenthetical qualifiers: instrumentation amplifier (IAMP175) or reference regulator (RG7444). 
+
+– Plural/group ownership: if sentence attributes behavior to multiple modules, use modules grouping normalized as modules (power management, output regulation, protection). 
+
+Figure 8: Extraction Prompt — Subject Rules. 
+
+12 Predicate rules (what kind of relation) – Purpose: make predicates canonical, carry modality and comparator. – Canonical form: 
+
+– Use a small set of normalized predicate templates that include modality and comparator when relevant: E.g., * shall deliver * shall maintain ≥
+
+* shall maintain ≤
+
+* must limit ≤
+
+* shall support communication at * has measured = * targets = / targets ≤ / etc. * should / may for non-normative 
+
+– Map source verbs to canonical verbs: E.g., * shall/must/will → shall * measured/observed → has measured * targets/anticipates/aims → targets * should/may → should/may (lower confidence) – Comparator placement. Put comparison operators in the predicate, not in the object: 
+
+– Good: P: shall maintain ≥ | O: 85% 
+
+– Bad: P: shall maintain | O: ≥ 85% – Atomicity & ambiguity: 
+
+– One predicate per claim. If the source lists multiple actions (e.g., "monitor and adapt"), pick the dominant predicate for this claim and create another claim for the other action. 
+
+Figure 9: Extraction Prompt — Predicate Rules. 
+
+Object rules (what value/condition) – Purpose: keep object concrete, unambiguous, and machine-readable. – No prose, no justification: 
+
+– Objects must not contain explanations, rationale, or ambiguous free text beyond concise structured values or clear conditions. All disambiguation should be resolved by predicate choice or claim splitting. – Preserve exact literals and units: 
+
+– Do not round or reformat numeric values. Use number + space + unit (e.g., 4.72 V, 225 mV, 40 mm x 40 mm). Keep % for percentages and preserve precision. Practical normalization mappings (examples) • "shall deliver peak power conversion efficiency greater than 85% across 100–425 VDC" → Subject: System, Predicate: shall maintain ≥ Object: 85% across 100 to 425 VDC • "IAMP175 amplifies the bridge differential voltage" → Subject: instrumentation amplifier (IAMP175), Predicate: shall amplify, Object: bridge differential voltage • "Measured Calibrated Error = 0.0154%" → Subject: System (or error analysis module if explicit), Predicate: has measured =, Object: 0.0154% 
+
+Figure 10: Extraction Prompt — Object Rules and Examples. 
+
+13 Role: You are a fact-checking assistant for extracted requirement triples. 
+
+Task: For each GENERATED triple below, decide whether it is supported by ANY of the provided SOURCE candidates. If supported, return evidence as a list of candidate indices (0-based) that support it. If not supported, return an empty evidence list. 
+
+Rules: 
+
+– Evidence indices must refer to the candidate list shown for that GENERATED triple (0-based; i.e., the displayed enumerate index). – Choose the minimal set of evidence candidates needed to support the claim. – If no candidate supports it, evidence must be [] .– Do not infer facts beyond what is explicitly stated in the candidates. 
+
+=== MICRO-BATCH === 
+
+Generated triple indices in this batch: {<idx_1>, <idx_2>, ...} 
+
+— GENERATED index: <idx> — 
+
+GENERATED: s=’<...>’, p=’<...>’, o=’<...>’ 
+
+CANDIDATES: 
+
+• [0] (<source>#<rank>, s=’<...>’, p=’<...>’, o=’<...>’) 
+
+• [1] (<source>#<rank>, s=’<...>’, p=’<...>’, o=’<...>’) 
+
+• [2] (<source>#<rank>, s=’<...>’, p=’<...>’, o=’<...>’) 
+
+• ... 
+
+=== OUTPUT FORMAT === 
+
+Return a JSON array, one object per GENERATED triple in this batch, with fields: • "index" : the GENERATED index (must match one of the batch indices) • "evidence" : a list of candidate indices supporting it (0-based), or [] 
+
+Example: 
+
+["index": 12, "evidence": [0, 2], "index": 13, "evidence": []] 
+
+Figure 11: Prompt template for structured grounding of generated triples against candidate sources. 
+
+14 Figure 12: Aggregated evidence attribution matrix (LoRA vs. base). For each training variant (rows) and retrieval condition (columns), each panel shows a Venn diagram over evidence sources (reference, user input, context), while labels report aggregated support rates: the percentage of generated triples supported by at least one triple from the reference, the user input, or the context (aggregated across all intersections), together with the change relative to the base model in percentage points ( ∆ pp). Overlaps are visualized but not labeled. NONE denotes triples not supported by any source, and |Tg | is the number of generated triples in the respective setting. 
+
+15 Figure 13: Evidence attribution Venn matrix (LoRA vs. base). For each training variant (rows) and retrieval condition (columns), cells show the fraction of generated triples attributed to reference, user input, and context (including overlaps). Numbers report the LoRA percentage and the change relative to the base model in percentage points ( ∆ pp). For small regions where labels would overlap, values are placed outside the diagram and connected via leader lines. NONE denotes unsupported triples, and |Tg | indicates the total number of generated triples in the respective setting. 
+
+16
