@@ -6,69 +6,69 @@
 </div>
 
 ## 每次日报
-- 最新运行日期：2026-04-07
-- 运行时间：<span class="dpr-runtime" data-beijing="04-08 05:01 (UTC+8)" data-utc="04-07 21:01 UTC">04-08 05:01 (UTC+8) / 04-07 21:01 UTC</span>
+- 最新运行日期：2026-04-08
+- 运行时间：<span class="dpr-runtime" data-beijing="04-09 05:02 (UTC+8)" data-utc="04-08 21:02 UTC">04-09 05:02 (UTC+8) / 04-08 21:02 UTC</span>
 - 运行状态：成功
 - 本次总论文数：17
 - 精读区：6
 - 速读区：11
 
 ### 今日简报（AI）
-今日精读6篇、速读11篇AI前沿论文，聚焦RAG微调、软件测试认证、高效文本到SQL及32K图像生成等领域。RAG在电子设计自动化中的参数化知识与检索行为研究，以及大模型通过软件测试认证的能力验证最具参考价值。建议关注AI在专业领域应用的实际效果，特别是如何通过微调提升模型在特定任务中的表现。
-- 详情：[/202604/07/README](/202604/07/README)
+今日聚焦图像修复与AI安全领域，精读6篇高价值论文，速读11篇前沿研究。图像修复领域统一框架与AI安全中的提示注入攻击研究值得关注，均获高分评价。普通读者可关注图像修复技术在文化遗产保护中的应用，以及AI系统安全防护新方法。
+- 详情：[/202604/08/README](/202604/08/README)
 
 ### 精读区论文标签
-1. [Parametric Knowledge and Retrieval Behavior in RAG Fine-Tuning for Electronic Design Automation](/202604/07/2603.23047v1-parametric-knowledge-and-retrieval-behavior-in-rag-fine-tuning-for-electronic-design-automation)  
+1. [Task-Guided Prompting for Unified Remote Sensing Image Restoration](/202604/08/2604.02742v1-task-guided-prompting-for-unified-remote-sensing-image-restoration)  
+   标签：评分：9.0/10、query:dl-cv
+   evidence：统一图像修复框架
+2. [High-Fidelity Mural Restoration via a Unified Hybrid Mask-Aware Transformer](/202604/08/2604.03984v1-high-fidelity-mural-restoration-via-a-unified-hybrid-mask-aware-transformer)  
+   标签：评分：9.0/10、query:dl-cv
+   evidence：壁画图像修复
+3. [A Unified Foundation Model for All-in-One Multi-Modal Remote Sensing Image Restoration and Fusion with Language Prompting](/202604/08/2604.05629v1-a-unified-foundation-model-for-all-in-one-multi-modal-remote-sensing-image-restoration-and-fusion-with-language-prompting)  
+   标签：评分：9.0/10、query:dl-cv
+   evidence：带语言提示的统一图像修复模型
+4. [GraphER: An Efficient Graph-Based Enrichment and Reranking Method for Retrieval-Augmented Generation](/202604/08/2603.24925v1-grapher-an-efficient-graph-based-enrichment-and-reranking-method-for-retrieval-augmented-generation)  
    标签：评分：8.0/10、query:dl-cv
-   evidence：用于电子设计的RAG微调
-2. [Can Language Models Pass Software Testing Certification Exams? a case study](/202604/07/2603.23142v1-can-language-models-pass-software-testing-certification-exams-a-case-study)  
+   evidence：基于图的RAG增强方法
+5. [GenSmoke-GS: A Multi-Stage Method for Novel View Synthesis from Smoke-Degraded Images Using a Generative Model](/202604/08/2604.03039v2-gensmoke-gs-a-multi-stage-method-for-novel-view-synthesis-from-smoke-degraded-images-using-a-generative-model)  
    标签：评分：8.0/10、query:dl-cv
-   evidence：评估语言模型在软件测试认证中的表现
-3. [DA-Flow: Degradation-Aware Optical Flow Estimation with Diffusion Models](/202604/07/2603.23499v1-da-flow-degradation-aware-optical-flow-estimation-with-diffusion-models)  
+   evidence：烟雾退化图像修复
+6. [Many Preferences, Few Policies: Towards Scalable Language Model Personalization](/202604/08/2604.04144v1-many-preferences-few-policies-towards-scalable-language-model-personalization)  
    标签：评分：8.0/10、query:dl-cv
-   evidence：用于图像修复的扩散模型
-4. [Rethinking Structure Preservation in Text-Guided Image Editing with Visual Autoregressive Models](/202604/07/2603.28367v1-rethinking-structure-preservation-in-text-guided-image-editing-with-visual-autoregressive-models)  
-   标签：评分：8.0/10、query:dl-cv
-   evidence：文本引导图像编辑
-5. [MemRerank: Preference Memory for Personalized Product Reranking](/202604/07/2603.29247v1-memrerank-preference-memory-for-personalized-product-reranking)  
-   标签：评分：8.0/10、query:dl-cv
-   evidence：LLM重排的偏好记忆
-6. [MacTok: Robust Continuous Tokenization for Image Generation](/202604/07/2603.29634v1-mactok-robust-continuous-tokenization-for-image-generation)  
-   标签：评分：8.0/10、query:dl-cv
-   evidence：带正则化的掩码增强令牌化器
+   evidence：大模型个性化方法
 
 ### 速读区论文标签
-1. [Schema on the Inside: A Two-Phase Fine-Tuning Method for High-Efficiency Text-to-SQL at Scale](/202604/07/2603.24023v1-schema-on-the-inside-a-two-phase-fine-tuning-method-for-high-efficiency-text-to-sql-at-scale)  
+1. [BiFM: Bidirectional Flow Matching for Few-Step Image Editing and Generation](/202604/08/2603.24942v1-bifm-bidirectional-flow-matching-for-few-step-image-editing-and-generation)  
    标签：评分：8.0/10、query:dl-cv
-   evidence：大模型用于文本到SQL的内部化
-2. [Sequence-aware Large Language Models for Explainable Recommendation](/202604/07/2603.24136v1-sequence-aware-large-language-models-for-explainable-recommendation)  
+   evidence：双向流匹配图像编辑
+2. [Shopping with a Platform AI Assistant: Who Adopts, When in the Journey, and What For](/202604/08/2603.24947v1-shopping-with-a-platform-ai-assistant-who-adopts-when-in-the-journey-and-what-for)  
    标签：评分：8.0/10、query:dl-cv
-   evidence：大模型用于可解释推荐
-3. [ScrollScape: Unlocking 32K Image Generation With Video Diffusion Priors](/202604/07/2603.24270v2-scrollscape-unlocking-32k-image-generation-with-video-diffusion-priors)  
+   evidence：大模型购物助手采用研究
+3. [PIDP-Attack: Combining Prompt Injection with Database Poisoning Attacks on Retrieval-Augmented Generation Systems](/202604/08/2603.25164v1-pidp-attack-combining-prompt-injection-with-database-poisoning-attacks-on-retrieval-augmented-generation-systems)  
    标签：评分：8.0/10、query:dl-cv
-   evidence：利用扩散模型生成超高清图像
-4. [Video-Only ToM: Enhancing Theory of Mind in Multimodal Large Language Models](/202604/07/2603.24484v1-video-only-tom-enhancing-theory-of-mind-in-multimodal-large-language-models)  
+   evidence：利用大语言模型检索系统的漏洞
+4. [Probing the Lack of Stable Internal Beliefs in LLMs](/202604/08/2603.25187v1-probing-the-lack-of-stable-internal-beliefs-in-llms)  
    标签：评分：8.0/10、query:dl-cv
-   evidence：具有视觉ToM的多模态LLM
-5. [HISA: Efficient Hierarchical Indexing for Fine-Grained Sparse Attention](/202604/07/2603.28458v3-hisa-efficient-hierarchical-indexing-for-fine-grained-sparse-attention)  
+   evidence：研究人格驱动型LLM的一致性
+5. [Webscraper: Leverage Multimodal Large Language Models for Index-Content Web Scraping](/202604/08/2603.29161v1-webscraper-leverage-multimodal-large-language-models-for-index-content-web-scraping)  
    标签：评分：7.0/10、query:dl-cv
-   evidence：稀疏注意力机制
-6. [Tiered Super-Moore's Law: Price Evolution, Production Frontiers, and Market Competition in Large Language Model Inference Services](/202604/07/2603.28576v1-tiered-super-moores-law-price-evolution-production-frontiers-and-market-competition-in-large-language-model-inference-services)  
+   evidence：多模态语言模型用于网页抓取
+6. [Extend3D: Town-Scale 3D Generation](/202604/08/2603.29387v1-extend3d-town-scale-3d-generation)  
    标签：评分：7.0/10、query:dl-cv
-   evidence：LLM市场分析
-7. [MemRerank: Preference Memory for Personalized Product Reranking](/202604/07/2603.29247v2-memrerank-preference-memory-for-personalized-product-reranking)  
+   evidence：3D场景生成
+7. [FlowPIE: Test-Time Scientific Idea Evolution with Flow-Guided Literature Exploration](/202604/08/2603.29557v1-flowpie-test-time-scientific-idea-evolution-with-flow-guided-literature-exploration)  
    标签：评分：7.0/10、query:dl-cv
-   evidence：个性化产品重排序
-8. [Storing Less, Finding More: How Novelty Filtering Improves Cross-Modal Retrieval on Edge Cameras](/202604/07/2603.29631v1-storing-less-finding-more-how-novelty-filtering-improves-cross-modal-retrieval-on-edge-cameras)  
+   evidence：新颖科学想法生成框架
+8. [Self-Supervised Federated Learning under Data Heterogeneity for Label-Scarce Diatom Classification](/202604/08/2603.29633v1-self-supervised-federated-learning-under-data-heterogeneity-for-label-scarce-diatom-classification)  
    标签：评分：7.0/10、query:dl-cv
-   evidence：新颖性过滤检索
-9. [Towards a Medical AI Scientist](/202604/07/2603.28589v1-towards-a-medical-ai-scientist)  
+   evidence：自监督联邦学习
+9. [CT-to-X-ray Distillation Under Tiny Paired Cohorts: An Evidence-Bounded Reproducible Pilot Study](/202604/08/2603.29167v1-ct-to-x-ray-distillation-under-tiny-paired-cohorts-an-evidence-bounded-reproducible-pilot-study)  
    标签：评分：6.0/10、query:dl-cv
-   evidence：临床医学自主研究框架
-10. [Aligning Multimodal Sequential Recommendations via Robust Direct Preference Optimization with Sparse MoE](/202604/07/2603.29259v1-aligning-multimodal-sequential-recommendations-via-robust-direct-preference-optimization-with-sparse-moe)  
+   evidence：有限数据下的跨模态蒸馏
+10. [Variational Graph Neural Networks for Uncertainty Quantification in Inverse Problems](/202604/08/2603.29515v1-variational-graph-neural-networks-for-uncertainty-quantification-in-inverse-problems)  
    标签：评分：6.0/10、query:dl-cv
-   evidence：使用DPO的多模态顺序推荐
-11. [Nomad: Autonomous Exploration and Discovery](/202604/07/2603.29353v1-nomad-autonomous-exploration-and-discovery)  
+   evidence：深度学习不确定性量化
+11. [Can LLM Agents Identify Spoken Dialects like a Linguist?](/202604/08/2603.29541v1-can-llm-agents-identify-spoken-dialects-like-a-linguist)  
    标签：评分：6.0/10、query:dl-cv
-   evidence：自主数据探索系统
+   evidence：语言模型用于方言分类
 

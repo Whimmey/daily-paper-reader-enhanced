@@ -1,0 +1,1235 @@
+Title: A Unified Foundation Model for All-in-One Multi-Modal Remote Sensing Image Restoration and Fusion with Language Prompting
+
+URL Source: https://arxiv.org/pdf/2604.05629v1
+
+Published Time: Wed, 08 Apr 2026 00:57:59 GMT
+
+Number of Pages: 20
+
+Markdown Content:
+## A Unified Foundation Model for All-in-One Multi-Modal Remote Sensing Image Restoration and Fusion with Language Prompting 
+
+Yongchuan Cui 1,2 Peng Liu 1,2,** 
+
+> 1
+
+Aerospace Information Research Institute, Chinese Academy of Sciences, Beijing, China  
+
+> 2
+
+School of Electronic, Electrical and Communication Engineering, University of Chinese Academy of Sciences, Beijing, China 
+
+yongchuancui@gmail.com, liupeng202303@aircas.ac.cn 
+
+Abstract 
+
+Remote sensing imagery suffers from clouds, haze, noise, res-olution limits, and sensor heterogeneity. Existing restoration and fusion approaches train separate models per degrada-tion type. In this work, we present Language-conditioned 
+
+La rge-scale Remote Sensing restoration model ( LLaRS ), the first unified foundation model for multi-modal and multi-task remote sensing low-level vision. LLaRS employs Sinkhorn-Knopp optimal transport to align heterogeneous bands into semantically matched slots, routes features through three complementary mixture-of-experts layers (convolutional ex-perts for spatial patterns, channel-mixing experts for spec-tral fidelity, and attention experts with low-rank adapters for global context), and stabilizes joint training via step-level dynamic weight adjustment. To train LLaRS, we con-struct LLaRS1M, a million-scale multi-task dataset spanning eleven restoration and enhancement tasks, integrating real paired observations and controlled synthetic degradations with diverse natural language prompts. Experiments show LLaRS consistently outperforms seven competitive models, and parameter-efficient finetuning experiments demonstrate strong transfer capability and adaptation efficiency on un-seen data. 
+
+Repo : https://github.com/yc-cui/LLaRS .
+
+1. Introduction 
+
+Remote sensing images support environmental monitoring, resource management, agriculture, and urban planning. How-ever, image acquisition and transmission introduce multiple types of degradation that severely limit their practical util-ity. These degradations constitute fundamental low-level vision problems: restoring clean, high-quality images from degraded observations [ 21 ]. Existing approaches to remote sensing image restoration train separate specialist models for 
+
+> *Corresponding author
+
+LLaRS   
+
+> "This remote sensing image looks
+> a bit blurry .Remove the blur."
+
+Figure 1. LLaRS takes a degraded remote sensing image and a natural-language prompt as input, and produces the restored image. 
+
+each degradation type. This fragmented paradigm scatters research effort across isolated datasets and codebases, ignor-ing the substantial shared structure among restoration tasks. Each new degradation requires collecting task-specific data, designing custom architectures, and training from scratch, leading to inefficient resource utilization and limited gener-alization [10]. In contrast, large-scale pretraining and unified modeling have fundamentally reshaped natural language processing and general computer vision, where foundation models learn transferable representations from diverse data and adapt ef-ficiently to downstream tasks. Recent studies document the emergence of geospatial foundation models [ 37 , 69 ], yet remote sensing low-level vision remains underexplored. The field still lacks large-scale unified datasets spanning multiple restoration tasks, architectures capable of processing hetero-geneous multi-sensor inputs in a single forward pass, and systematic studies of parameter-efficient adaptation strate-gies. Bridging this gap requires rethinking the restoration pipeline from a unified, multi-task perspective. To this end, this paper presents LLaRS (see Fig. 1), a language-conditioned [ 8] foundation model that unifies eleven restoration and enhancement tasks under natural-1
+
+> arXiv:2604.05629v1 [cs.CV] 7 Apr 2026
+
+language guidance. Users specify the desired operation through intuitive text prompts such as remove the blur or 
+
+enhance resolution , and the model routes the input through task-appropriate processing pathways. We also construct LLaRS1M, a million-scale multi-task dataset integrating real paired observations and controlled synthetic degradations across dehazing, denoising, cloud removal, super-resolution, pansharpening, spatiotemporal fusion, and five additional tasks, each annotated with diverse natural-language prompts. The LLaRS architecture addresses three core technical chal-lenges. First, heterogeneous sensor inputs with varying chan-nel counts and spectral meanings are aligned into semanti-cally matched slots via entropy-regularized optimal trans-port solved with Sinkhorn iterations [ 11 , 50 ], ensuring con-sistent feature semantics across modalities. Such entropi-cally regularized transport couplings are now widely used as differentiable modules in vision and language model de-sign [ 3 , 20 , 26 , 27 , 48 , 59 , 61 ]. To our knowledge, we are the first to adopt this transport-based band alignment for se-mantic correspondence across heterogeneous remote-sensing spectral bands within a unified low-level restoration founda-tion model. Second, three complementary mixture-of-experts layers process spatial patterns, spectral fidelity, and global context, enabling specialized yet coordinated feature trans-formations. Third, step-level dynamic weight adjustment stabilizes joint training across tasks with heterogeneous loss scales and convergence rates. We conduct comprehensive experiments comparing LLaRS against strong image restoration baselines under a unified training protocol, evaluating both pixel-level metrics and spectral fidelity metrics. Ablation studies quantify the contribution of each architectural component. Finally, we investigate parameter-efficient finetuning of LLaRS on held-out downstream benchmarks, demonstrating that adapting a small fraction of parameters achieves competitive perfor-mance with full finetuning while drastically reducing com-putational cost. 
+
+2. Related Work 
+
+Remote Sensing Foundation Models Recent advance-ments in remote sensing foundation models have been pri-marily driven by the proliferation of large-scale datasets and the evolution of network architectures. With the continuous expansion of Earth observation data, researchers have con-structed massive benchmark datasets encompassing diverse sensors, spatial scales, and modalities. Datasets such as Sat-Las [ 1] and SkySense [ 19 ] provide extensive multi-source imagery, while vision-language datasets like RS5M [ 68 ] and ChatEarthNet [ 64 ] introduce textual descriptions to facili-tate cross-modal learning. Architecturally, there is a distinct paradigm shift from convolutional neural networks to vision Transformers (ViTs) [ 15 , 55 ]. ViTs have become the domi-nant backbone for remote sensing foundation models due to their exceptional capability in modeling long-range spatial correlations and global contextual dependencies. In terms of training paradigms, Masked Image Modeling (MIM) and Contrastive Learning (CLR) have emerged as the standard strategies for self-supervised pre-training. Mod-els including SatMAE [9], TerraFM [12], and RingMo [52] utilize MIM to extract universal visual representations from unannotated imagery by predicting masked patches. While these foundation models have achieved remarkable success in high-level semantic tasks such as scene classification and semantic segmentation, their pre-training objectives are fun-damentally designed to capture global semantics. MIM in-herently discards substantial pixel information during the masking process, which directly conflicts with the dense reconstruction requirements of low-level vision tasks. Conse-quently, the applicability and effectiveness of current remote sensing foundation models for pixel-level image restoration remain unverified and present a significant research gap. 
+
+Low-level Vision in Remote Sensing Low-level vision in remote sensing focuses on pixel-level image restoration and enhancement, encompassing critical processes such as super-resolution, denoising, declouding, and spatiotemporal fusion. These operations are essential for mitigating quality degradation caused by atmospheric disturbances and sen-sor limitations, ultimately delivering high-quality data for subsequent semantic interpretation. Early approaches typi-cally designed task-specific models or utilized multi-branch networks with decoupled encoding and decoding heads to handle different degradations [ 31 , 44 ]. Recently, the field has gravitated towards unified multi-task architectures. Meth-ods like AirNet [ 29 ] and TransWeather [ 53 ] employ single-encoder single-decoder structures to process diverse degra-dations simultaneously without requiring prior task knowl-edge. Furthermore, prompt-driven and instruction-guided frameworks, such as PromptIR [ 45 ] and InstructIR [ 8], have demonstrated remarkable cross-scenario adaptability by dy-namically modulating network features based on implicit condition vectors or natural language instructions. Other works like DA-CLIP [ 38 ] leverage vision-language pre-training to achieve cross-modal alignment for generalized image restoration. Despite these innovations, pre-training foundation models specifically for remote sensing low-level vision faces severe bottlenecks. Current low-level pre-training frameworks, such as IPT [ 4 ] and DegAE [ 36 ], heavily rely on synthesizing degradations on natural image datasets like ImageNet [ 13 ]. These methods fail to capture the multi-spectral, multi-scale, and multi-sensor complexities inherent to remote sensing imagery. Additionally, there is a critical scarcity of large-scale multi-task sample libraries dedicated to remote sensing image restoration, forcing models to overfit to limited in-domain datasets. When handling multi-source data, existing 2Text          
+
+> Encoder
+> I m p r o v e t h e
+> i m a g e ‘ s c l a r i t y
+> b y e l i m i n a t i n g
+> t h e n o i s e .
+> Head
+> 1 x 1 Conv
+> 3x3  Conv
+> ConvMoE
+> X
+> T
+> 1x1Conv
+> SoftMax
+> T
+> TX
+> T
+> 1 x 1 Conv
+> MoRA
+> 3x3  Conv
+> 1 x 1 Conv
+> MoRA
+> 3x3  Conv
+> K
+> Q
+> V
+> MoRA Attention
+> Linear
+> GELU
+> Gate Weight Top  K
+> SoftMax
+> Linear
+> Linear Linear Linear
+> X
+> C
+> GAP
+> X
+> Cls .Loss
+> Noise
+> Weight
+> +
+> Load Balance Loss
+> Expert Weight
+
+…      
+
+> ep
+> f(l)
+> Etext
+> Eimage
+> Softplus
+> Noise
+> !∼N(0,I)
+> Routing Network
+> Linear
+> GAP
+> Sigmoid
+> Conv  1 x 1
+
+…
+
+> +
+
+……
+
+> F
+> β1
+> β2
+> βn
+> Mixture of Channel Experts
+
+…         
+
+> +
+> 3x3Conv
+> 3x3Conv
+> 3x3Conv
+
+…F
+
+> ConvMoE
+
+…             
+
+> +
+> BA
+> W
+> Shared Weights MoRA
+> Low -rank Matrix
+> MoRA
+> Attention
+> Add &Norm
+> FFN
+> Add &Norm
+> F
+> MoT
+> T
+> X
+> C
+> +
+> F
+> F
+> F
+> Transpose
+> Matrix Multi .
+> Concatenation
+> Element -wise
+> Addition
+> Dot Product
+> Output
+> p
+> F(l)
+> Degraded
+> F
+> MoCE
+> Expert Weight Expert Weight
+> Expert Weight
+> Down
+> Skip
+> Up
+> MoT
+> Text
+> embedding
+> Semantic
+> matching
+> Bands
+> Slots
+> Prediction
+> Output
+> Output
+
+Figure 2. Overall architecture of LLaRS. 
+
+models often struggle with input misalignment across dif-ferent spectral channel configurations and spatial sampling intervals, leading to semantic ambiguity. Developing uni-fied architectures that inherently align heterogeneous multi-modal inputs and designing novel training paradigms specif-ically for pixel-level dense prediction remain unresolved challenges in this domain. 
+
+3. Methodology 
+
+To address the profound differences in degradation mecha-nisms, feature hierarchies, and restoration strategies across diverse remote sensing low-level vision tasks, we propose LLaRS (Fig. 2), a multi-task foundation model based on the mixture-of-experts (MoE) [ 28 ] architecture. LLaRS resolves the core contradiction between multi-task commonality and specificity by embedding heterogeneous expert modules into a shared backbone [ 46 ]. Given a degraded remote sensing im-age x ∈ RC×H×W and a task description text p, the model learns a mapping F : ( x, p ) 7 → ˆy, where ˆy ∈ RC×H×W
+
+represents the restored high-quality image. Here C is a fixed unified channel count: heterogeneous inputs are padded to 
+
+C before the backbone so batches share a common layout and parameters. The shared backbone captures universal im-age restoration priors, while the dynamically routed experts learn task-specific strategies without introducing prohibitive computational overhead. 
+
+3.1. Band Semantic Matching 
+
+We propose a band alignment mechanism (Fig. 3) using opti-mal transport (OT) [ 11 , 50 ] before the restoration backbone so multi-sensor inputs are routed from their native channel ordering into a fixed bank of S learnable band prototypes. The downstream network thus sees a channel axis with con-sistent roles instead of raw sensor indices. Across tasks and sensors, both band counts and physical meanings differ; even when all inputs share the same tensor width C, the stacks remain semantically heterogeneous. The core difficulty is in-dex semantics: the same band index can correspond to green R     
+
+> G
+> B
+> NIR
+> Learnable Slot Prototypes
+> Proj .
+> Proj .
+> Sinkhorn -Knopp Iteration Transport Plan
+> MLP
+> …
+
+Figure 3. Entropy-regularized channel-to-slot matching. 
+
+in one pipeline and a short-wave band in another, so shared early layers cannot treat a band as a stable physical quantity. The same tensor position can also be broadband and texture-rich in one acquisition setting yet a narrow spectral band in another (e.g., pansharpening versus multispectral products), so matching must be driven by per-channel appearance from a shared embedder, not by index alone. Learnable slot prototypes S differentiate during train-ing to represent distinct spectral or sensor modes. Turn-ing similarities into a valid coupling requires constraints on both sides: slot-side-only normalization, i.e ., including attention that softmaxes over slots, does not impose a chan-nel marginal, so some channels could be oversubscribed by multiple slots while others receive negligible mass. Entropy-regularized optimal transport with Sinkhorn iterations en-forces dual marginals so mass is not ignored on either chan-nels or slots and no slot degenerates, which purely slot-wise renormalization does not guarantee [ 11 , 50 ]. This semantic standardization module is fully differentiable and feeds a shared restoration backbone. Let x ∈ RC×H×W be the channel-first input tensor. A shared lightweight network femb maps x to channel embeddings; slot prototypes S ∈ RS×de and projections 
+
+WS , WE ∈ Rde×dp define matching scores: 
+
+E = femb (x) ∈ RC×de , (1) 
+
+L = (SW S )( EW E )⊤
+
+pdp
+
+∈ RS×C . (2) We formulate an entropic OT problem with uniform 3marginals as = 1 /S on slots and bc = 1 /C on channels so mass spreads evenly across both sides. Temperature τ
+
+controls the sharpness of the Gibbs kernel: smaller τ con-centrates mass on high-similarity slot–channel pairs, while larger τ yields smoother assignments. The entropic kernel 
+
+K ∈ RS×C is 
+
+K = exp( L/τ ). (3) We solve it by iterative Sinkhorn scaling [11, 50], i.e ., alter-nating row and column normalizations of K:
+
+u(t+1) = a ⊘ (K v (t) + ϵ),
+
+v(t+1) = b ⊘ (K⊤u(t+1) + ϵ). (4) Here ⊘ is element-wise division; we set v(0) = 1C . In prac-tice, we run the iteration in the log space to avoid numerical instability. After convergence, with dual potentials u ∈ RS
+
+and v ∈ RC , the soft assignment matrix is 
+
+P = diag( u) K diag( v) ∈ RS×C . (5) This alternating scheme generalizes the classical Sinkhorn– Knopp procedure: in the square uniform-marginal case it converges to a doubly stochastic matrix, whereas here it matches the prescribed slot and channel marginals on K.Applying P along the channel mode of the same x yields slot-aligned maps 
+
+Z = P x ∈ RS×H×W . (6) This differentiable channel–slot coupling learns a data-dependent mapping and projects heterogeneous inputs into a standardized representation for the downstream restoration network. 
+
+3.2. Task-Conditioned Mixture-of-Experts 
+
+The quality of the routing mechanism directly determines the model’s ability to activate the most appropriate expert combination for specific degradations. We design a task-conditioned dynamic routing generator that aggregates mul-tisource information. The text prompt p and degraded image 
+
+x are encoded as 
+
+ep = Etext (p) ∈ Rdtext , ex = Eimage (x) ∈ Rdimage . (7) For the current feature map F(l) ∈ RHl×Wl×Cl , we apply global average pooling and a linear map to obtain a con-text vector f (l), then linearly project ep, ex, and f (l) to a common width d, yielding zp, zx, and zf , respectively. We concatenate these route tokens as 
+
+z = [ zp ; zx ; zf ] ∈ R3d, (8) and pass z through a two-layer MLP with activation ϕ to obtain a fused vector h. Top-k sparse gating on followed by softmax yields routing weights α ∈ RE over experts e ∈ K .The Convolutional Mixture-of-Experts (ConvMoE) pro-vides diverse spatial kernels. By linearity of convolution, weighted kernels merge into a single convolution [5, 60]: 
+
+X
+
+> e∈K
+
+αe(F ∗ We) = F ∗
+
+X 
+
+> e∈K
+
+αeWe
+
+
+
+. (9) Expert biases combine in the same way as P 
+
+> e∈K
+
+αebe.Similarly, the Mixture-of-Channel-Experts (MoCE) ap-plies expert channel attention weights βe and merges them with the same α:
+
+X
+
+> e∈K
+
+αe(βe ⊙ F) = 
+
+X 
+
+> e∈K
+
+αeβe
+
+
+
+⊙ F. (10) For global dependency modeling, we use Mixture-of-LoRA-Attention (MoRA), which is placed in the Mixture-of-Transformer (MoT) block. Standard multi-expert attention repeats the O(N 2d) attention cost for every expert, where N
+
+is the number of spatial positions, resulting in O(2 |K| N 2d)
+
+total complexity. MoRA reduces this to O(2 Nd 2 +|K| NCr )
+
+by aggregating expert-specific value projections and LoRA query/key adapters with the routing weights α into tensors 
+
+V, ∆Q, and ∆K, where r ≪ d is the low-rank dimension. We use base maps Q0 = FW Q and K0 = FW K . A single attention pass yields 
+
+YMoT = Softmax 
+
+ (Q0 + ∆ Q)( K0 + ∆ K)⊤
+
+√dk
+
+
+
+V.
+
+(11) The supplementary material also gives the exact per-expert mixture, sums over e ∈ K , a first-order softmax expansion, and remainder terms. 
+
+3.3. Multi-Task Optimization Strategy 
+
+Remote sensing restoration tasks exhibit severe imbalance in difficulty and convergence speeds, leading to gradient dominance and inconsistent learning paces during joint opti-mization. Traditional gradient manipulation methods, e.g ., PCGrad, CAGrad, and NashMTL [ 34 , 43 , 63 ], calculate in-dependent gradients for each task, which incurs prohibitive computational and memory costs for large models handling numerous tasks simultaneously. To overcome this, we pro-pose a step-level Dynamic Weight Adjustment (DWA) strat-egy that operates entirely within the forward pass without generating additional gradient graphs. For M task categories present in a minibatch at step t,we track the exponential moving average of the loss ℓ(t) 
+
+> m
+
+for each task m using a decay coefficient γ:
+
+¯ℓ(t) 
+
+> m
+
+= γ · ¯ℓ(t−1)  
+
+> m
+
++ (1 − γ) · ℓ(t) 
+
+> m
+
+. (12) The descent rate compares the current loss to its EMA: 
+
+r(t) 
+
+> m
+
+= ℓ(t) 
+
+> m
+
+/¯ℓ(t) 
+
+> m
+
+. (13) 4A larger r(t) 
+
+> m
+
+suggests stagnation and receives higher weight. Normalized task weights use a temperature-scaled softmax: 
+
+w(t) 
+
+> m
+
+= M · exp( r(t) 
+
+> m
+
+/T w)
+
+PMj=1 exp( r(t) 
+
+> j
+
+/T w) . (14) For a minibatch of N samples, let mi denote the task cate-gory of sample i, and let yi denote its aligned ground-truth clean image. The DWA-weighted mean reconstruction loss is 
+
+Ldwa = 1
+
+N
+
+> N
+
+X
+
+> i=1
+
+w(t) 
+
+> mi
+
+Li. (15) Auxiliary classification on degradation labels c uses the rout-ing token z:
+
+Lcls = CrossEntropy( Wcls z, c ) . (16) To prevent routing collapse we add load balancing 
+
+Lbalance [28], scaled by the stop-gradient of Ldwa :
+
+Ltotal = Ldwa + 0 .01 · sg( Ldwa ) · L balance + Lcls , (17) where sg( ·) stops gradients. This balances tasks with negli-gible extra cost versus equal static weights. 
+
+4. Experiments 
+
+4.1. Data 
+
+To train the model, we construct LLaRS1M, a million-scale dataset that aggregates public multispectral, panchromatic, and SAR imagery across eleven low-level restoration and enhancement tasks. Samples combine real registered pairs (cloud removal, pansharpening, super-resolution, spatiotem-poral fusion, speckle-related denoising) with on-the-fly sim-ulated degradations (denoising, deblurring, destriping, his-togram and linear-stretch reversal, brightness adjustment) built from high-quality references. Each training tuple pairs a degraded patch with its target and a natural-language prompt drawn from a large per-task pool; training uses task-balanced minibatch construction. See the supplementary material for more construction details. Fig. 4 shows georeferenced tiles spanning continents and major climate belts; wide-area cloud-removal corpora drive much of the footprint. Subsets without geographic meta-data (including some synthetic haze imagery and certain downscaled products) do not appear as points, so coverage in practice is broader than the map. Clean patches used to synthesize degradations are drawn from the same paired multisensor pool, inheriting diverse land cover and imaging geometry. Fig. 5 ( left ) lists per-task sample totals and prompt counts. The magnitudes follow how each corpus is built: large cropped synthetic dehazing sets and multi-site super-resolution archives contribute high counts, whereas paired 180°      
+
+> 180°
+> 120°W
+> 120°W
+> 60°W
+> 60°W
+> 0°
+> 0°
+> 60°E
+> 60°E
+> 120°E
+> 120°E
+> 180°
+> 180°
+> 60°S 60°S
+> 30°S 30°S
+> 0° 0°
+> 30°N 30°N
+> 60°N 60°N
+
+Figure 4. Geographic distribution of LLaRS1M sampling locations. HR SR DN DB DS EQ LS BE CR PS STF 0            
+
+> 50
+> 100
+> 150
+> 200
+> Samples (K)
+> 186
+> 121
+> 100 100 100 100 100 100 92
+> 52
+> 4
+> Samples Prompts
+> -50 -25 025 50
+> t-SNE 1
+> -40
+> -20
+> 0
+> 20
+> 40
+> 60
+> t-SNE 2
+> HR
+> SR
+> DN
+> DB
+> DS
+> EQ
+> LS
+> BE
+> CR
+> PS
+> STF
+> 0
+> 50
+> 100
+> 150
+> 200
+> Prompts
+> 90
+> 129
+> 80
+> 171
+> 74 70
+> 83
+> 199
+> 214
+> 170
+> 80
+
+Figure 5. ( Left ) Per-task sample counts and number of prompts per task in LLaRS1M. ( Right ) T-SNE of embedded prompts. 
+
+Figure 6. Word cloud of all prompts in LLaRS1M. 
+
+Landsat–MODIS series for spatiotemporal fusion are com-paratively few; six simulation pipelines each draw a fixed budget from shared clean references. Prompt pool sizes track how richly a task can be verbalized, for instance, cloud re-moval spans thin versus thick clouds and auxiliary cues, whereas dehaze wording stays closer to a shared lexical core. ( Right ) We encode every prompt and project them with t-SNE [ 39 ]. Within-task paraphrases collapse to compact clusters, indicating semantic consistency. Cloud and dehaze clusters abut but remain separable; super-resolution neigh-bors pansharpening through shared resolution language; spa-tiotemporal fusion drifts toward temporal and fusion vo-cabulary; embeddings for global radiometry and contrast-style tasks separate from appearance-corruption tasks, i.e ., patterns that support language-conditioned routing without collapsing tasks in embedding space. Fig. 6 highlights tiered vocabulary: high-frequency to-kens anchor core degradations ( e.g ., haze , blur , cloud , noise ,
+
+brightness , clarity ); mid-frequency terms name operations such as sharpening , fusion , stripes , and histogram -related wording; rarer words add scene context and intensity nu-5Table 1. Experimental results: pixel fidelity and structural similarity. Best result. Second-best result. 
+
+Method CR PS SR HR STF DN PSNR SSIM PSNR SSIM PSNR SSIM PSNR SSIM PSNR SSIM PSNR SSIM MPRNet [40] 29.06 0.8303 32.31 0.8928 43.89 0.9835 19.57 0.7032 32.13 0.8962 42.38 0.9609 Restormer [66] 27.24 0.7601 34.32 0.9346 43.96 0.9840 22.58 0.7269 32.52 0.8969 43.66 0.9688 GridFormer [57] 26.60 0.6762 33.26 0.9207 43.63 0.9831 22.07 0.7220 32.49 0.8973 43.05 0.9656 PromptIR [45] 26.88 0.7636 34.46 0.9367 43.91 0.9840 22.34 0.7218 32.21 0.8973 43.82 0.9695 AMIR [62] 28.63 0.7628 32.90 0.9119 43.60 0.9822 21.56 0.7154 31.91 0.8945 43.28 0.9665 HOGformer [58] 28.95 0.8407 32.93 0.9086 44.02 0.9841 21.07 0.7167 32.43 0.8987 43.22 0.9662 MoCE-IR [65] 26.98 0.7566 33.38 0.9200 43.70 0.9836 22.16 0.7270 32.44 0.8933 42.57 0.9633 LLaRS 31.18 0.8766 34.76 0.9396 44.10 0.9844 22.81 0.7298 32.73 0.8970 43.84 0.9699 Method DB DS LS EQ BE Avg. PSNR SSIM PSNR SSIM PSNR SSIM PSNR SSIM PSNR SSIM PSNR SSIM MPRNet [40] 38.25 0.9639 41.82 0.9906 18.68 0.7927 17.78 0.7542 41.46 0.9850 32.49 0.8867 Restormer [66] 40.94 0.9766 47.31 0.9965 24.92 0.8923 18.30 0.7627 61.02 0.9885 36.07 0.8989 GridFormer [57] 43.06 0.9844 45.29 0.9951 23.34 0.8721 18.56 0.7688 56.24 0.9885 35.24 0.8885 PromptIR [45] 44.33 0.9879 49.43 0.9974 23.96 0.8900 19.16 0.7931 58.23 0.9881 36.25 0.9027 AMIR [62] 41.61 0.9792 45.76 0.9948 22.51 0.8458 18.56 0.7630 45.35 0.9837 34.15 0.8909 HOGformer [58] 42.56 0.9834 43.55 0.9937 20.89 0.8519 18.23 0.7838 60.78 0.9886 35.33 0.9015 MoCE-IR [65] 41.84 0.9802 43.83 0.9930 25.03 0.8724 19.26 0.7850 57.15 0.9885 35.31 0.8966 LLaRS 45.26 0.9896 49.62 0.9976 25.29 0.8811 19.69 0.8352 64.27 0.9885 37.60 0.9172 
+
+Table 2. Experimental results: spectral and radiometric fidelity. Best result. Second-best result. 
+
+Method CR PS SR HR STF DN SAM ERGAS SAM ERGAS SAM ERGAS SAM ERGAS SAM ERGAS SAM ERGAS MPRNet [40] 0.1635 45.4368 0.0902 5.9270 0.0186 1.4666 0.0493 6.6063 0.0747 4.4056 0.0394 1.9584 Restormer [66] 0.1943 87.9132 0.0742 4.5972 0.0183 1.4408 0.0452 5.0565 0.0719 4.2993 0.0343 1.6787 GridFormer [57] 0.2519 44.1388 0.0894 5.1833 0.0211 1.5481 0.0458 5.3097 0.0725 4.2417 0.0362 1.8049 PromptIR [45] 0.2000 26.2611 0.0754 4.4878 0.0192 1.5149 0.0457 5.1578 0.0705 4.3680 0.0336 1.6458 AMIR [62] 0.1833 98.1772 0.0937 5.3990 0.0198 1.5169 0.0498 5.4899 0.0752 4.4343 0.0367 1.7509 HOGformer [58] 0.1627 18.9648 0.0837 5.4350 0.0179 1.4333 0.0454 5.7576 0.0728 4.3117 0.0358 1.7682 MoCE-IR [65] 0.2173 36.0301 0.0884 5.0966 0.0186 1.4927 0.0453 5.3006 0.0745 4.3262 0.0408 1.9069 LLaRS 0.1215 18.9049 0.0721 4.3447 0.0176 1.4174 0.0442 4.9752 0.0731 4.1268 0.0323 1.6478 Method DB DS LS EQ BE Avg. SAM ERGAS SAM ERGAS SAM ERGAS SAM ERGAS SAM ERGAS SAM ERGAS MPRNet [40] 0.0454 2.7054 0.0195 1.9176 0.1925 9.5733 0.2162 7.5153 0.0118 1.5525 0.0837 8.0968 Restormer [66] 0.0403 2.0639 0.0112 1.0421 0.1315 5.0338 0.2052 7.2706 0.0045 0.1571 0.0755 10.9594 GridFormer [57] 0.0323 1.5723 0.0155 1.2708 0.1405 5.6150 0.1997 6.9678 0.0091 0.3268 0.0831 7.0890 PromptIR [45] 0.0273 1.3852 0.0107 0.8082 0.1288 5.5081 0.1948 6.7402 0.0056 0.2334 0.0738 5.2828 AMIR [62] 0.0369 1.8765 0.0178 1.2428 0.1857 6.4062 0.2043 6.9821 0.0188 1.0011 0.0838 12.2070 HOGformer [58] 0.0306 1.5560 0.0151 1.6000 0.1585 7.3069 0.2030 7.2328 0.0013 0.1533 0.0752 5.0472 MoCE-IR [65] 0.0377 1.8041 0.0246 1.5262 0.1395 5.0269 0.1971 6.5127 0.0075 0.2810 0.0810 6.3004 LLaRS 0.0246 1.1425 0.0081 0.8089 0.1369 4.6598 0.1745 6.3356 0.0032 0.1120 0.0644 4.4069 
+
+ance. Prompts mix imperatives, symptom-then-request phras-ing, questions, and application-grounded descriptions, which broadens instruction styles seen at inference. See Sec. C for representative LLaRS1M tuples showing visible diversity across all eleven tasks. Training and evalua-tion details are also provided in Sec. C. 
+
+4.2. Main Results 
+
+Tabs. 1 and 2 report quantitative results across all eleven restoration tasks. Our approach achieves the highest average performance on PSNR, SSIM, SAM, and ERGAS, demon-strating that the proposed mixture-of-experts architecture with language-conditioned routing effectively handles di-verse degradation types within a unified framework. The gains vary by task category, reflecting how different degra-dation physics interact with the model’s architectural com-ponents. Figs. 7 to 9 show qualitative results on denoising, destriping, and spatiotemporal fusion. See Sec. C.7 for addi-tional results. Expert routing helps most on structured spatial tasks: brightness and destriping see the largest gains (global radiom-Input Ground truth MPRNet Restormer GridFormer 
+
+PromptIR AMIR HOGformer MoCE-IR LLaRS 
+
+0
+
+1
+
+Figure 7. Model predictions and error maps for denoising. Input Ground truth MPRNet Restormer GridFormer 
+
+PromptIR AMIR HOGformer MoCE-IR LLaRS 
+
+0
+
+1
+
+Figure 8. Model predictions and error maps for destriping. 
+
+etry vs. stripe suppression), while super-resolution, denois-ing, and deblurring improve by separating frequency- and texture-oriented pathways. Denoising retains more boundary detail than MPRNet [ 40 ] and PromptIR [ 45 ], which over-smooths. On real paired settings, including cloud removal, pansharpening, and spatiotemporal fusion, text prompts and statistical conditioning disentangle heterogeneous sensors, and channel-mixing experts improve spectral fidelity. Targets such as histogram equalization reversal, dehazing, and linear stretch reversal remain difficult for all methods, as saturation, clipping, and range compression discard in-formation and cap reconstruction quality; accordingly, per-formance gaps narrow even though our method remains best overall. Destriping benefits from stripe-specific suppres-6Input Ground truth MPRNet Restormer GridFormer     
+
+> PromptIR AMIR HOGformer MoCE-IR LLaRS
+> 0
+> 1
+
+Figure 9. Model predictions and error maps for spatiotemporal fusion. -75 -50 -25 0 25 50 75                       
+
+> t-SNE 1
+> -60
+> -40
+> -20
+> 0
+> 20
+> 40
+> 60
+> t-SNE 2
+> (a) Restormer
+> -75 -50 -25 025 50 75
+> t-SNE 1
+> -60
+> -40
+> -20
+> 0
+> 20
+> 40
+> 60
+> t-SNE 2
+> (b) PromptIR
+> -75 -50 -25 025 50 75
+> t-SNE 1
+> -60
+> -40
+> -20
+> 0
+> 20
+> 40
+> 60
+> t-SNE 2
+> (c) LLaRS
+> CR SR PS HR DN DB DS EQ LS BE STF
+
+Figure 10. Comparison of t-SNE task feature separability across different models. 
+
+sion without erasing orthogonal structure; for spatiotemporal fusion, we reduce ghosting where AMIR [ 62 ] and MoCE-IR [65] average temporally inconsistent pixels. Beyond pixel-level reconstruction quality, we examine whether the learned representations exhibit task-specific structure in feature space. Extracting encoder features from the final layer and projecting them via t-SNE reveals dis-tinct clustering patterns across methods (See Fig. 10). Restormer [ 66 ] produces heavily mixed embeddings where different tasks occupy overlapping regions, indicating that the shared backbone learns generic features without strong task specialization. PromptIR [ 45 ] achieves partial separa-tion, successfully distinguishing dehazing from pansharpen-ing but confusing tasks with similar visual characteristics like different noise types or blur kernels. Our method forms compact, well-separated clusters for each task, with minimal overlap even between visually similar degradations. This sep-aration confirms that the combination of text conditioning and expert routing drives the network toward task-specific feature representations, where different degradation types activate distinct computational pathways through the model. The clear clustering suggests that the gating mechanism has 10 1 10 0 10 1 10 2                      
+
+> Trainable parameter (%)
+> 29
+> 30
+> 31
+> PSNR (dB)
+> 10 110 010 110 2
+> Trainable parameter (%)
+> 0.80
+> 0.82
+> 0.84
+> SSIM
+> 10 110 010 110 2
+> Trainable parameter (%)
+> 0.055
+> 0.060
+> 0.065
+> 0.070
+> 0.075
+> SAM
+> 10 110 010 110 2
+> Trainable parameter (%)
+> 13
+> 14
+> 15
+> ERGAS
+> PromptIR Restormer MoCE-IR LLaRS Full LoRA Adapter DoRA SSF BitFit Scratch
+
+Figure 11. Relationship between trainable parameter ratio and aver-age task performance for different fine-tuning methods. Table 3. Ablation study on mixture-of-experts modules.                               
+
+> Config PSNR ↑SSIM ↑SAM ↓ERGAS ↓Params(M) FLOPs(G) Baseline 32.76 0.8371 0.1399 14.6733 11.85 96.1 + ConvMoE 34.92 0.8900 0.0882 9.4069 75.43 96.3 + ConvMoE + MoCE 35.08 0.8942 0.0770 5.7072 77.15 96.8 + ConvMoE + MoCE + MoT 37.60 0.9172 0.0644 4.4069 83.64 109.6
+
+learned meaningful task boundaries rather than arbitrary partitions, providing evidence that the architectural design successfully encourages specialization. 
+
+Parameter efficient fine-tuning. For PromptIR [ 45 ], Restormer [ 66 ], MoCE-IR [ 65 ], and LLaRS, we compare BitFit [ 2 ], LoRA [ 24 ], DoRA [ 35 ], Adapter [ 23 ], SSF [ 32 ], and full finetuning. Fig. 11 plots metrics versus trainable-parameter ratio on a log scale with dashed from-scratch baselines per model. All curves rise with more trainable pa-rameters and sit above their scratch lines, showing pretrain-ing matters. Slopes are steepest from BitFit to LoRA/DoRA and flatten toward full finetuning, indicating diminishing returns after a few percent of weights. 
+
+4.3. Ablations 
+
+We conduct a series of ablation studies to validate the contri-bution of each architectural component and training strategy. 
+
+Expert types. To understand how different expert types contribute to the overall system, we progressively add Con-vMoE, MoCE, and MoT modules on top of a plain U-Net baseline, as shown in Tab. 3. The spatial convolution ex-perts in ConvMoE deliver the most substantial initial im-provement, raising PSNR and reducing ERGAS significantly. This confirms that learning task-specific spatial filters is cru-cial for handling diverse degradation patterns, from periodic stripes to localized blur kernels. Adding the channel-mixing experts in MoCE further reduces ERGAS and SAM, partic-ularly benefiting tasks that require preserving spectral cor-relations across bands. The transformer-based MoT module provides additional gains through global context aggregation, bringing the full model to 37.60 PSNR and 4.41 ERGAS. Im-portantly, the fused expert implementation prevents FLOPs from scaling linearly with expert count, maintaining com-putational efficiency even as we increase model capacity through specialization. 711 21 24 15 18 20 29 0 7 6                                                   
+
+> Slot id (sorted)
+> 0.0
+> 0.2
+> Proportion  Epoch 100
+> Top5 slot (normalized)
+> Band Slot
+> CR
+> Band Slot
+> HR
+> Band Slot
+> PS
+> Band Slot
+> BE
+> Band Slot
+> DB
+> Band Slot
+> DN
+> Band Slot
+> DS
+> Band Slot
+> EQ
+> Band Slot
+> LS
+> Band Slot
+> SR
+> Band Slot
+> STF
+> 12 11 629 921 2375
+> Slot id (sorted)
+> 0.0
+> 0.2
+> Proportion  Epoch 200
+> Top5 slot (normalized)
+> Band Slot
+> CR
+> Band Slot
+> HR
+> Band Slot
+> PS
+> Band Slot
+> BE
+> Band Slot
+> DB
+> Band Slot
+> DN
+> Band Slot
+> DS
+> Band Slot
+> EQ
+> Band Slot
+> LS
+> Band Slot
+> SR
+> Band Slot
+> STF
+> 27 29 126 24 20 17 11 14 6
+> Slot id (sorted)
+> 0.0
+> 0.2
+> Proportion  Epoch 300
+> Top5 slot (normalized)
+> Band Slot
+> CR
+> Band Slot
+> HR
+> Band Slot
+> PS
+> Band Slot
+> BE
+> Band Slot
+> DB
+> Band Slot
+> DN
+> Band Slot
+> DS
+> Band Slot
+> EQ
+> Band Slot
+> LS
+> Band Slot
+> SR
+> Band Slot
+> STF
+
+Figure 12. Evolution of channel-to-slot transport for eleven tasks. ( Left ) Top-5 selected slots with the largest channel-to-slot transport mass. (Right ) The mass flow across channels to slots (the red, green, and blue bands are encoded with colors). 
+
+OT-based band alignment dynamics. Fig. 12 visualizes how the OT alignment front-end learns stable semantic map-pings during training [ 11 , 50 ]. For clarity, we visualize the top five slots with the largest channel-to-slot transport mass at each checkpoint (ranked by cumulative transported mass). Early in training, couplings remain relatively diffuse, with mass spread across multiple slot candidates per channel. In mid-training, routing preferences sharpen: tasks with simi-lar spectral structure increasingly share slot subsets, while tasks with distinct channel semantics tend to activate disjoint groups. Late in training, assignments stabilize into sharp, task-specific patterns. The utilization histograms (leftmost column), computed on this top-five subset, show that mass does not collapse onto a single slot among them, consis-tent with the dual-marginal constraint discouraging degen-erate routing. Note that several simulation-based tasks may share the same underlying clean references, which can par-tially couple their semantic content in these visualizations. Tasks with heterogeneous channel counts yield more intricate transport patterns than single-image tasks, yet the learned mappings settle to a consistent structure after convergence. Overall, this progressive specialization suggests that the dif-ferentiable entropic OT stage disentangles sensor-specific in-dexing from semantic content, letting the downstream model operate on a standardized channel representation. 
+
+Task weight dynamics. Fig. 13 reveals the temporal dy-namics of task weighting. The top panel shows the evolution of weight changing, while the bottom shows the evolution of loss descent rate. Early epochs exhibit substantial oscillation as the model explores different task combinations. As train-ing progresses, weights stabilize into a clear pattern where challenging tasks like cloud removal and linear stretch rever-sal maintain higher weights, while tasks that converge more readily such as denoising and brightness adjustment settle to lower weights. This behavior aligns with the design in-tent of dynamic weight averaging: tasks with slower relative improvement receive higher emphasis to prevent premature convergence on easy tasks at the expense of hard ones. Additional ablation studies on conditioning mechanisms, 0 50 100 150 200 250 300         
+
+> Epoch
+> 0.4
+> 0.6
+> 0.8
+> 1.0
+> 1.2
+> 1.4
+> 1.6
+> 1.8
+> DWA task weight
+> 01
+> Mean weight
+> CR
+> LS
+> DB
+> HR
+> DS
+> PS
+> BE
+> SR
+> EQ
+> STF
+> DN
+> 1.4774
+> 1.4354
+> 1.2115
+> 1.1688
+> 1.0012
+> 0.8857
+> 0.8759
+> 0.7853
+> 0.7834
+> 0.7278
+> 0.6472
+> 050 100 150 200 250 300
+> Epoch
+> 0.95
+> 0.96
+> 0.97
+> 0.98
+> 0.99
+> 1.00
+> 1.01
+> Loss descent rate (loss / EMA)
+> DB
+> BE
+> CR
+> DN
+> DS
+> HR
+> EQ
+> LS
+> PS
+> SR
+> STF
+> 0.98 1.00
+> Mean descent rate
+> CR
+> LS
+> DB
+> HR
+> DS
+> PS
+> BE
+> SR
+> EQ
+> STF
+> DN
+> 0.9710
+> 0.9846
+> 0.9874
+> 0.9890
+> 0.9904
+> 0.9932
+> 0.9934
+> 0.9941
+> 0.9952
+> 0.9958
+> 0.9961
+
+Figure 13. Evolution of per-task weight changing. 
+
+the number of experts, multi-task optimization strategies, and model efficiency are provided in Sec. C. 
+
+5. Conclusion 
+
+This work presents LLaRS, a multi-task foundation model for remote sensing low-level vision. We built LLaRS1M, a large-scale dataset with real pairs and synthetic degradations across eleven restoration tasks, paired with diverse language prompts. Experiments show consistent improvements over strong baselines in pixel and spectral metrics. Parameter-efficient fine-tuning achieves comparable performance to full fine-tuning while the mixture-of-experts architecture degrades gracefully under limited training budgets. Future work can explore comparing against task-specific small models to better understand the advantages of large multi-task models, and investigating how tasks interact with each other, whether they mutually reinforce or inhibit perfor-mance. Additional directions include expanding task cover-age toward a unified restoration model, exploring generative approaches for missing information recovery, and joint opti-mization with downstream semantic tasks to align restoration with application-level objectives. 8References 
+
+[1] Favyen Bastani, Piper Wolters, Ritwik Gupta, Joe Ferdinando, and Aniruddha Kembhavi. SatlasPretrain: A large-scale dataset for remote sensing image understanding. In ICCV ,pages 16726–16736, 2023. 2 [2] Elad Ben Zaken, Yoav Goldberg, and Shauli Ravfogel. BitFit: Simple parameter-efficient fine-tuning for transformer-based masked language-models. In ACL , pages 1–9, Dublin, Ireland, 2022. Association for Computational Linguistics. 7 [3] Mathilde Caron, Ishan Misra, Julien Mairal, Priya Goyal, Piotr Bojanowski, and Armand Joulin. Unsupervised learn-ing of visual features by contrasting cluster assignments. In 
+
+NeurIPS , pages 9912–9924, 2020. 2 [4] Hanting Chen, Yunhe Wang, Tianyu Guo, Chang Xu, Yiping Deng, Zhenhua Liu, Siwei Ma, Chunjing Xu, Chao Xu, and Wen Gao. Pre-trained image processing transformer. In 
+
+CVPR , pages 12294–12305, 2021. 2 [5] Yinpeng Chen, Xiyang Dai, Mengchen Liu, Dongdong Chen, Lu Yuan, and Zicheng Liu. Dynamic convolution: Attention over convolution kernels. In CVPR , pages 11030–11039, 2020. 4 [6] Zhao Chen, Vijay Badrinarayanan, Chen-Yu Lee, and Andrew Rabinovich. GradNorm: Gradient normalization for adaptive loss balancing in deep multitask networks. In ICML , pages 794–803. PMLR, 2018. 15 [7] Kaichen Chi, Yuan Yuan, and Qi Wang. Trinity-Net: Gradient-guided swin transformer-based remote sensing image dehaz-ing and beyond. IEEE Trans. Geosci. Remote Sens. , 61:1–14, 2023. 12, 13, 14 [8] Marcos V. Conde, Gregor Geigle, and Radu Timofte. In-structIR: High-quality image restoration following human instructions. In ECCV , page 1–21, Berlin, Heidelberg, 2024. Springer-Verlag. 1, 2 [9] Yezhen Cong, Samar Khanna, Chenlin Meng, Patrick Liu, Erik Rozi, Yutong He, Marshall Burke, David B. Lobell, and Stefano Ermon. SatMAE: Pre-training transformers for tem-poral and multi-spectral satellite imagery. In NeurIPS , Red Hook, NY, USA, 2022. Curran Associates Inc. 2 [10] Yongchuan Cui, Peng Liu, and Hui Zhang. Enpowering your pansharpening models with generalizability: Unified distri-bution is all you need. In ICCV , pages 11850–11860, 2025. 1[11] Marco Cuturi. Sinkhorn distances: Lightspeed computation of optimal transport. In NeurIPS , pages 2292–2300, 2013. 2, 3, 4, 8, 14 [12] Muhammad Sohail Danish, Muhammad Akhtar Munir, Syed Roshaan Ali Shah, Muhammad Haris Khan, Rao Muhammad Anwer, Jorma Laaksonen, Fahad Shahbaz Khan, and Salman Khan. TerraFM: A scalable foundation model for unified multisensor earth observation. arXiv , 2025. 2 [13] Jia Deng, Wei Dong, Richard Socher, Li-Jia Li, Kai Li, and Li Fei-Fei. ImageNet: A large-scale hierarchical image database . In CVPR , pages 248–255, Los Alamitos, CA, USA, 2009. IEEE Computer Society. 2 [14] Liang-Jian Deng, Gemine Vivone, Mercedes E Paoletti, Giuseppe Scarpa, Jiang He, Yongjun Zhang, Jocelyn Chanus-sot, and Antonio Plaza. Machine learning in pansharpening: A benchmark, from shallow to deep networks. IEEE Geosci. Remote Sens. Mag. , 10(3):279–315, 2022. 12, 13, 14 [15] Alexey Dosovitskiy, Lucas Beyer, Alexander Kolesnikov, Dirk Weissenborn, Xiaohua Zhai, Thomas Unterthiner, Mostafa Dehghani, Matthias Minderer, Georg Heigold, Syl-vain Gelly, Jakob Uszkoreit, and Neil Houlsby. An image is worth 16x16 words: Transformers for image recognition at scale. In ICLR , 2021. 2 [16] Patrick Ebel, Andrea Meraner, Michael Schmitt, and Xiao Xi-ang Zhu. Multisensor Data Fusion for Cloud Removal in Global and All-Season Sentinel-2 Imagery. IEEE Trans. Geosci. Remote Sens. , 59(7):5866–5878, 2021. 12, 13, 14 [17] Irina V. Emelyanova, Tim R. McVicar, Thomas G. Van Niel, Ling Tao Li, and Albert I.J.M. van Dijk. Assessing the accu-racy of blending landsat–modis surface reflectances in two landscapes with contrasting spatial and temporal dynamics: A framework for algorithm selection. Remote Sens. Environ. ,133:193–209, 2013. 12, 13, 14 [18] Jianjun Guan, Ping Zhong, Fan Zhang, and Yuhan Liu. Ro-bust SAR image despeckling by deep learning from near-real datasets. IEEE J. Sel. Top. Appl. Earth Obs. Remote Sens. ,17:3475–3487, 2024. 12, 13, 14 [19] Xin Guo, Jiangwei Lao, Bo Dang, Yingying Zhang, Lei Yu, Lixiang Ru, Liheng Zhong, Ziyuan Huang, Kang Wu, Dingx-iang Hu, Huimei He, Jian Wang, Jingdong Chen, Ming Yang, Yongjun Zhang, and Yansheng Li. SkySense: A multi-modal remote sensing foundation model towards universal inter-pretation for earth observation imagery. In CVPR , pages 27662–27673, 2024. 2 [20] Doron Haviv, Russell Zhang Kunes, Thomas Dougherty, Cas-sandra Burdziak, Tal Nawy, Anna Gilbert, and Dana Pe’er. Wasserstein wormhole: Scalable optimal transport distance with transformer. In ICML , pages 17697–17718. PMLR, 2024. 2[21] Chunming He, Yuqi Shen, Chengyu Fang, Fengyang Xiao, Longxiang Tang, Yulun Zhang, Wangmeng Zuo, Zhenhua Guo, and Xiu Li. Diffusion models in low-level vision: A survey, 2024. 1 [22] Kaiming He, Xiangyu Zhang, Shaoqing Ren, and Jian Sun. Deep residual learning for image recognition. In CVPR , pages 770–778, 2016. 13 [23] Neil Houlsby, Andrei Giurgiu, Stanislaw Jastrzebski, Bruna Morrone, Quentin De Laroussilhe, Andrea Gesmundo, Mona Attariyan, and Sylvain Gelly. Parameter-efficient transfer learning for NLP. In ICML , pages 2790–2799. PMLR, 2019. 7[24] Edward J Hu, Yelong Shen, Phillip Wallis, Zeyuan Allen-Zhu, Yuanzhi Li, Shean Wang, Lu Wang, and Weizhu Chen. LoRA: Low-rank adaptation of large language models. In ICLR ,2022. 7 [25] Binghui Huang, Li Zhi, Chao Yang, Fuchun Sun, and Yixu Song. Single satellite optical imagery dehazing using sar image prior based on conditional generative adversarial net-works. In WACV , pages 1806–1813, 2020. 12, 13, 14 [26] Moritz Imfeld, Jacopo Graldi, Marco Giordano, Thomas Hof-mann, Sotiris Anagnostidis, and Sidak Pal Singh. Transformer fusion with optimal transport. In ICLR , 2024. 2 
+
+9[27] Sergio Izquierdo and Javier Civera. Optimal transport aggre-gation for visual place recognition. In CVPR , pages 17658– 17668, 2024. 2 [28] Robert A. Jacobs, Michael I. Jordan, Steven J. Nowlan, and Geoffrey E. Hinton. Adaptive mixtures of local experts. Neu-ral Comput. , 3(1):79–87, 1991. 3, 5 [29] Boyun Li, Xiao Liu, Peng Hu, Zhongqin Wu, Jiancheng Lv, and Xi Peng. All-In-One Image Restoration for Unknown Corruption . In CVPR , pages 17431–17441, Los Alamitos, CA, USA, 2022. IEEE Computer Society. 2 [30] Jun Li, Yunfei Li, Lin He, Jin Chen, and Antonio Plaza. Spatio-temporal fusion for remote sensing data: An overview and new benchmark. Sci. China Inf. Sci. , 63(4):140301, 2020. 12, 13, 14 [31] Ruoteng Li, Robby T. Tan, and Loong-Fah Cheong. All in one bad weather removal using architectural search. In CVPR ,pages 3172–3182, 2020. 2 [32] Dongze Lian, Daquan Zhou, Jiashi Feng, and Xinchao Wang. Scaling & shifting your features: a new baseline for efficient model tuning. In NeurIPS , Red Hook, NY, USA, 2022. Curran Associates Inc. 7 [33] Daoyu Lin, Guangluan Xu, Xiaoke Wang, Yang Wang, Xian Sun, and Kun Fu. A remote sensing image dataset for cloud removal, 2019. 12, 13, 14 [34] Bo Liu, Xingchao Liu, Xiaojie Jin, Peter Stone, and Qiang Liu. Conflict-averse gradient descent for multi-task learning. In NeurIPS , Red Hook, NY, USA, 2021. Curran Associates Inc. 4, 15 [35] Shih-Yang Liu, Chien-Yi Wang, Hongxu Yin, Pavlo Molchanov, Yu-Chiang Frank Wang, Kwang-Ting Cheng, and Min-Hung Chen. Dora: weight-decomposed low-rank adaptation. In ICML . JMLR.org, 2024. 7 [36] Yihao Liu, Jingwen He, Jinjin Gu, Xiangtao Kong, Yu Qiao, and Chao Dong. Degae: A new pretraining paradigm for low-level vision. In CVPR , pages 23292–23303, 2023. 2 [37] Siqi Lu, Junlin Guo, James R Zimmer-Dauphinee, Jordan M Nieusma, Xiao Wang, Parker VanValkenburgh, Steven A Wernke, and Yuankai Huo. Ai foundation models in remote sensing: A survey, 2024. 1 [38] Ziwei Luo, Fredrik K. Gustafsson, Zheng Zhao, Jens Sj ¨olund, and Thomas B. Sch ¨on. Controlling vision-language models for multi-task image restoration. In ICLR , 2024. 2 [39] Laurens van der Maaten and Geoffrey Hinton. Visualizing data using t-SNE. J. Mach. Learn. Res. , 9(86):2579–2605, 2008. 5 [40] Armin Mehri, Parichehr B. Ardakani, and Angel D. Sappa. MPRNet: Multi-path residual network for lightweight image super resolution. In WACV , pages 2703–2712, 2021. 6, 13, 16 [41] Xiangchao Meng, Yiming Xiong, Feng Shao, Huanfeng Shen, Weiwei Sun, Gang Yang, Qiangqiang Yuan, Randi Fu, and Hongyan Zhang. A large-scale benchmark data set for evalu-ating pansharpening performance: Overview and implementa-tion. IEEE Geosci. Remote Sens. Mag. , 9(1):18–52, 2021. 12, 13, 14 [42] Julien Michel, Juan Vinasco-Salinas, Jordi Inglada, and Olivier Hagolle. Sen2ven μs, a dataset for the training of sentinel-2 super-resolution algorithms. Data , 7(7):96, 2022. 12, 13, 14 [43] Aviv Navon, Aviv Shamsian, Idan Achituve, Haggai Maron, Kenji Kawaguchi, Gal Chechik, and Ethan Fetaya. Multi-task learning as a bargaining game. In ICML , pages 16428–16446. PMLR, 2022. 4, 15 [44] Jinshan Pan, Sifei Liu, Deqing Sun, Jiawei Zhang, Yang Liu, Jimmy Ren, Zechao Li, Jinhui Tang, Huchuan Lu, Yu-Wing Tai, and Ming-Hsuan Yang. Learning dual convolutional neural networks for low-level vision. In CVPR , pages 3070– 3079, 2018. 2 [45] Vaishnav Potlapalli, Syed Waqas Zamir, Salman Khan, and Fahad Shahbaz Khan. PromptIR: prompting for all-in-one blind image restoration. In NeurIPS , Red Hook, NY, USA, 2023. Curran Associates Inc. 2, 6, 7, 13, 16 [46] Olaf Ronneberger, Philipp Fischer, and Thomas Brox. U-Net: Convolutional networks for biomedical image segmentation. In MICCAI , pages 234–241, Cham, 2015. Springer Interna-tional Publishing. 3, 13 [47] Victor Sanh, Lysandre Debut, Julien Chaumond, and Thomas Wolf. DistilBERT, a distilled version of BERT: smaller, faster, cheaper and lighter, 2019. 13 [48] Paul-Edouard Sarlin, Daniel DeTone, Tomasz Malisiewicz, and Andrew Rabinovich. SuperGlue: Learning feature match-ing with graph neural networks. In CVPR , pages 4938–4947, 2020. 2 [49] Ozan Sener and Vladlen Koltun. Multi-task learning as multi-objective optimization. In NeurIPS , page 525–536, Red Hook, NY, USA, 2018. Curran Associates Inc. 15 [50] Richard Sinkhorn and Paul Knopp. Concerning nonnegative matrices and doubly stochastic matrices. Pac. J. Math. , 21(2): 343–348, 1967. 2, 3, 4, 8, 14 [51] Jialu Sui, Yiyang Ma, Wenhan Yang, Xiaokang Zhang, Man-On Pun, and Jiaying Liu. Diffusion enhancement for cloud removal in ultra-resolution remote sensing imagery. IEEE Trans. Geosci. Remote Sens. , 62:1–14, 2024. 12, 13, 14 [52] Xian Sun, Peijin Wang, Wanxuan Lu, Zicong Zhu, Xiao-nan Lu, Qibin He, Junxi Li, Xuee Rong, Zhujun Yang, Hao Chang, Qinglin He, Guang Yang, Ruiping Wang, Jiwen Lu, and Kun Fu. RingMo: A remote sensing foundation model with masked image modeling. IEEE Trans. Geosci. Remote Sens. , 61:1–22, 2023. 2 [53] Jeya Maria Jose Valanarasu, Rajeev Yasarla, and Vishal M. Patel. Transweather: Transformer-based restoration of images degraded by adverse weather conditions. In CVPR , pages 2353–2363, 2022. 2 [54] Rub ´en Dar ´ıo V ´asquez-Salazar, Ahmed Alejandro Cardona-Mesa, Luis G ´omez, Carlos M Travieso-Gonz ´alez, Andr ´es F Garavito-Gonz ´alez, and Esteban V ´asquez-Cano. Labeled dataset for training despeckling filters for SAR imagery. Data Brief. , 53:110065, 2024. 12, 13, 14 [55] Ashish Vaswani, Noam Shazeer, Niki Parmar, Jakob Uszko-reit, Llion Jones, Aidan N. Gomez, Łukasz Kaiser, and Illia Polosukhin. Attention is all you need. In NeurIPS , pages 6000–6010, Red Hook, NY, USA, 2017. Curran Associates Inc. 2 [56] Junwei Wang, Kun Gao, Zhenzhou Zhang, Chong Ni, Zibo Hu, Dayu Chen, and Qiong Wu. Multisensor remote sensing 
+
+10 imagery super-resolution with conditional gan. J. Remote Sens. , 2021, 2021. 12, 13, 14 [57] Tao Wang, Kaihao Zhang, Ziqian Shao, Wenhan Luo, Bjorn Stenger, Tong Lu, Tae-Kyun Kim, Wei Liu, and Hongdong Li. GridFormer: Residual dense transformer with grid structure for image restoration in adverse weather conditions. IJCV ,132(10):4541–4563, 2024. 6, 13, 16 [58] Jiawei Wu, Zhifei Yang, Zhe Wang, and Zhi Jin. Gradient as conditions: Rethinking HOG for all-in-one image restoration. 
+
+AAAI , 40(13):10682–10690, 2026. 6, 13, 16 [59] Zhenda Xie, Yixuan Wei, Huanqi Cao, Chenggang Zhao, Chengqi Deng, Jiashi Li, Damai Dai, Huazuo Gao, Jiang Chang, Kuai Yu, Liang Zhao, Shangyan Zhou, Zhean Xu, Zhengyan Zhang, Wangding Zeng, Shengding Hu, Yuqing Wang, Jingyang Yuan, Lean Wang, and Wenfeng Liang. mHC: Manifold-constrained hyper-connections. arXiv , 2025. 2 [60] Brandon Yang, Gabriel Bender, Quoc V Le, and Jiquan Ngiam. Condconv: Conditionally parameterized convolutions for efficient inference. In NeurIPS , 2019. 4 [61] Yongyi Yang and Jianyang Gao. mHC-lite: You Don’t Need 20 Sinkhorn-Knopp Iterations. arXiv , 2026. 2 [62] Zhiwen Yang, Haowei Chen, Ziniu Qian, Yang Yi, Hui Zhang, Dan Zhao, Bingzheng Wei, and Yan Xu. All-In-One Medical Image Restoration via Task-Adaptive Routing . In MICCAI .Springer Nature Switzerland, 2024. 6, 7, 13, 16 [63] Tianhe Yu, Saurabh Kumar, Abhishek Gupta, Sergey Levine, Karol Hausman, and Chelsea Finn. Gradient surgery for multi-task learning. In NeurIPS , Red Hook, NY, USA, 2020. Curran Associates Inc. 4, 15 [64] Z. Yuan, Z. Xiong, L. Mou, and X. X. Zhu. Chatearthnet: a global-scale image–text dataset empowering vision–language geo-foundation models. Earth Syst. Sci. Data , 17(3):1245– 1263, 2025. 2 [65] Eduard Zamfir, Zongwei Wu, Nancy Mehta, Yuedong Tan, Danda Pani Paudel, Yulun Zhang, and Radu Timofte. Com-plexity experts are task-discriminative learners for any image restoration. In CVPR , pages 12753–12763, 2025. 6, 7, 13, 16 [66] Syed Waqas Zamir, Aditya Arora, Salman Khan, Mu-nawar Hayat, Fahad Shahbaz Khan, and Ming-Hsuan Yang. Restormer: Efficient transformer for high-resolution image restoration. In CVPR , pages 5728–5739, 2022. 6, 7, 13, 16 [67] Libao Zhang and Shan Wang. Dense haze removal based on dynamic collaborative inference learning for remote sensing images. IEEE Trans. Geosci. Remote Sens. , 60:1–16, 2022. 12, 13, 14 [68] Zilun Zhang, Tiancheng Zhao, Yulong Guo, and Jianwei Yin. RS5M and GeoRSCLIP: A large scale vision-language dataset and a large vision-language model for remote sensing. IEEE Trans. Geosci. Remote Sens. , 62:1–23, 2024. 2 [69] Yue Zhou, Litong Feng, Yiping Ke, Xue Jiang, Junchi Yan, Xue Yang, and Wayne Zhang. Towards vision-language geo-foundation model: A survey, 2024. 1 [70] Zeng-Hui Zhu, Wei Lu, Si-Bao Chen, Chris H. Q. Ding, Jin Tang, and Bin Luo. Real-world remote sensing image dehaz-ing: Benchmark and baseline. IEEE Trans. Geosci. Remote Sens. , 63:1–14, 2025. 12, 13, 14 
+
+11 A . MoRA and softmax mixture approximation 
+
+This section gives the full tensor definitions behind the com-pact MoT/MoRA update in the main paper. With routing weights α (components αe), expert value projections are fused and low-rank adapters supply query/key increments: 
+
+V = F X
+
+> e∈K
+
+αeWV,e ,
+
+∆Q = X
+
+> e∈K
+
+αeF A Q,e B⊤
+
+> Q,e
+
+,
+
+∆K = X
+
+> e∈K
+
+αeF A K,e B⊤
+
+> K,e
+
+.
+
+(18) With Q0 = FW Q and K0 = FW K , the single-pass output in the main text is 
+
+YMoT = Softmax 
+
+ (Q0 + ∆ Q)( K0 + ∆ K)⊤
+
+√dk
+
+
+
+V.
+
+(19) The forward pass (19) approximates the following exact 
+
+mixture of per-expert attentions: 
+
+Ymulti = X
+
+> e∈K
+
+αe·Softmax 
+
+ (Q0 + ∆ Qe)( K0 + ∆ Ke)⊤
+
+√dk
+
+
+
+Ve,
+
+(20) where ∆Qe = FA Q,e B⊤
+
+> Q,e
+
+, ∆Ke = FA K,e B⊤
+
+> K,e
+
+, and 
+
+Ve = FW V,e .Let A0 = Q0K⊤ 
+
+> 0
+
+/√dk and let ∆Ae denote the attention logit increment induced by expert e. A first-order Taylor expansion of softmax at A0 yields 
+
+Softmax( A0+∆ Ae) = Softmax( A0)+ J(A0) ∆ Ae+Re,
+
+(21) where J(A0) is the Jacobian of softmax at A0 and Re col-lects higher-order remainder terms. Because the first-order term J(A0) ∆ Ae is linear in ∆Ae,
+
+X
+
+> e∈K
+
+αe Softmax( A0+∆ Ae) ≈ Softmax A0 + X
+
+> e∈K
+
+αe ∆Ae
+
+!
+
+.
+
+(22) The mismatch between the two sides is captured by aggre-gated remainders; schematically, Rdiff = P 
+
+> e
+
+αeRe − R,where R is the remainder of the single fused softmax path. LoRA initialization (one factor random, the other zero) gives 
+
+∆Qe = ∆ Ke = 0 at initialization, matching the small-perturbation regime; low rank and sparse routing limit per-turbation growth during training. A single MoT pass thus cuts cost by roughly |K| relative to full per-expert attention while preserving diversity. 
+
+B. LLaRS1M dataset details 
+
+Sources. LLaRS1M merges public paired imagery for cloud removal, dehazing, pansharpening, super-resolution, SAR despeckling, and spatiotemporal fusion across optical multi-spectral, panchromatic, and SAR modalities. Cloud removal 
+
+combines SEN12MS-CR [ 16 ] (Sentinel-2/Sentinel-1 triplets worldwide), CUHK-CR [ 51 ] (Jilin-1 thin/thick cloud splits), and RICE [ 33 ] (cloudy/clear pairs with optional masks). De-hazing mixes SateHaze1k [ 25 ] (semi-synthetic GF-2/GF-3 RGB–SAR triplets), RRSHID [ 70 ] (real haze–clear pairs clustered by thickness), RSID [ 7] (non-uniform haze biased to ships and airports), and DHID/LHID [ 67 ] (physically inspired synthesis from Google Earth and MVAID). Pan-sharpening uses PansharpRSData [ 41 ] (IKONOS, Quick-Bird, GF-1, WorldView-2/3/4) and PanCollection [ 14 ](WorldView-3, QuickBird, GF-2 with Wald-protocol test splits). Super-resolution pairs Landsat-8 OLI with Sentinel-2 MSI in OLI2MSI [ 56 ] and aligns Sentinel-2 with VEN μS in SEN2VEN μS [ 42 ]. SAR despeckling draws from SAR-despeckle-Dataset [ 18 ] (multitemporal Sentinel-1 fusion) and SAR-despeckling-filter [ 54 ] (Toronto VV stacks). Spatiotemporal fusion covers CIA and LGC [ 17 ](Landsat–MODIS over irrigated fields and heterogeneous forest/pasture) and AHB, TJ, and DX [ 30 ] (Inner Mongo-lia phenology, Tianjin urban–crop mix, and Beijing Daxing airport growth). Together these sources span dense urban, cropland, forest, mountain, coast, and desert across climates and seasons. Tabs. 4 and 5 summarize per-source basic in-formation and pixel statistics, respectively. 
+
+Simulated degradations. Clean references for the six syn-thetic families are drawn uniformly from the training splits of the real paired sources above. Six tasks use on-the-fly corruption of high-quality references: deblurring (Gaussian, motion, mean, and disk-out-of-focus kernels with random size and strength), denoising (mixtures of Gaussian, uni-form, Poisson, Rayleigh, gamma, salt-and-pepper, impulse, and multiplicative speckle noise), destriping (periodic, non-uniform, and rotated stripe patterns), global brightness rescal-ing with random gain, histogram equalization and CLAHE-style mappings as synthetic inputs, and 2–98% per-channel linear stretch. Each family samples severity at random per step for robustness. 
+
+Unification. Raw tiles arrive in heterogeneous formats, bit depths, and channel counts. Loader pipelines cast tensors to floating point, apply dataset-wise percentile clipping and min–max scaling (or division by 255 for 8-bit data), random-crop to the training patch size when possible, re-peat or subset channels to the model width, and emit tuples 
+
+(˜ x, ˜y, task id , prompt ) with spatially aligned degraded and clean patches. 
+
+Prompts. Natural-language instructions are generated with multiple commercial large language models under task-specific system prompts; paraphrases and style variants are deduplicated and pooled per task so each minibatch samples a diverse instruction. 12 Table 4. Basic information of LLaRS1M sources.                                                                                                                                                                                                                      
+
+> Task Dataset Source Input GSD Size Bands Samples SR OLI2MSI[56] Landsat-8 / Sentinel-2 MS 30 m / 10 m 160 ×160 35,325 SEN2VEN μS[42] Sentinel-2 / VEN μSMS 10–20 m / 5 m 128 ×128 /256 ×256 4132,955 Pan PansharpRSData[41] GF-1 / IKONOS / QB / WV-2/3/4 MS 1–4 m 256 ×256 4/8 2,270 PAN 0.3–1 m 1024 ×1024 1PanCollection[14] GF-2 / QB / WV-2/3 PAN 0.3–0.8 m 64 ×64 /256 ×256 151,928 MS 1.2–3.2 m 64 ×64 /256 ×256 4/8 Cloud CUHK-CR[51] Jilin-1 RGB 0.5 m 512 ×512 31,227 RICE[33] –RGB –512 ×512 31,236 SEN12MS-CR[16] Sentinel-2 / Sentinel-1 MS 10 m 256 ×256 13 122,218 SAR 10 m 256 ×256 2Haze SateHaze1k[25] GF-2 / GF-3 RGB ∼1 m 512 ×512 31,200 RRSHID[70] GF PMS RGB ≤2 m 256 ×256 33,053 RSID[7] –RGB –256 ×256 31,000 DHID[67] Google Earth / MVAID RGB 0.2–153 m 512 ×512 314,990 LHID[67] Google Earth RGB 0.2–153 m 512 ×512 331,517 STF CIA[17] Landsat / MODIS Landsat MS 30 m 1280 ×1792 621 MODIS MS 500 m 1280 ×1792 6AHB[30] Landsat-8 / MODIS Landsat MS 30 m 2800 ×2480 633 MODIS MS 500 m 2800 ×2480 6DX[30] Landsat-8 / MODIS Landsat MS 30 m 1640 ×1640 637 MODIS MS 500 m 1640 ×1640 6LGC[17] Landsat / MODIS Landsat MS 30 m 3072 ×2560 617 MODIS MS 500 m 3072 ×2560 6TJ[30] Landsat-8 / MODIS Landsat MS 30 m 1970 ×2100 634 MODIS MS 500 m 1970 ×2100 6SAR SAR-despeckling-filter[54] Sentinel-1 SAR 10 m 512 ×512 11,600 SAR-despeckle-Dataset[18] Sentinel-1 SAR 10 m 256 ×256 1936
+
+C. Additional Experimental Results 
+
+C.1. Training and Evaluation Setup 
+
+Training uses two NVIDIA A100 80 GB GPUs, Python 3.12, and PyTorch 2.6. We take a stratified 5% subset of LLaRS1M so all eleven tasks stay balanced. Optimization is AdamW with base learning rate 10 −4, weight decay 0.01 , batch size 48, and 300 epochs. Patches are 128 × 128 with random flips; each sample draws one prompt from its task family. Spatiotemporal fusion uses oversampling to balance counts. The text tower is DistilBERT [ 47 ] (768-D); the image tower is ResNet-18 [ 22 ] features projected to 768-D. Unified chan-nel dimension C = 20 , alignment slots S = 32 , Sinkhorn iterations T = 8 . The U-Net [ 46 ] follows Restormer [ 66 ]blocks with base width 32, stage depths [2 , 4, 6, 8] , two re-finement blocks, heads [1 , 2, 4, 8] , and FFN expansion 2.66. Every MoE stage uses eight experts with Top-2 activation. Step-level DWA uses γ = 0 .7 and temperature 0.1. At test time prompts are fixed. Simulated degradations match train-ing: Gaussian noise σ = 0 .05 ; 5 × 5 motion blur at 45 ◦;synthetic destriping with seeded parameters; 2–98% linear stretch reversal; standard histogram equalization reversal; brightness targets 1.2 × or 0.7 × inputs. Baselines are MPRNet [ 40 ], Restormer [ 66 ], Grid-Former [ 57 ], PromptIR [ 45 ], AMIR [ 62 ], HOGformer [ 58 ], and MoCE-IR [ 65 ], all multitask-trained on the same subset with identical dataloading and evaluation code. We report PSNR and SSIM for pixel fidelity, SAM and ERGAS for spectral and radiometric fidelity. Higher PSNR/SSIM and lower SAM/ERGAS are better. 
+
+C.2. Dataset Visualization 
+
+Fig. 14 stresses visible diversity: cloud occlusion, haze veils, blur and speckle-like noise, periodic stripes, globally dimmed radiometry, low-resolution optical inputs, multisen-sor pansharpening pairs, and multi-date stacks for fusion. The montage underscores that tuples pair heterogeneous sen-sors and degradation physics, giving multi-task training a wide visual and radiometric span. 13 Table 5. Pixel statistics of LLaRS1M sources. 
+
+Task Dataset Modality Format dtype Mean Std Min Max SR OLI2MSI[56] MS TIFF float32 0.0736 0.0150 0.0336 0.1492 SEN2VEN μS[42] MS PT int16 1049.70 398.02 91.57 4405.95 Pan PansharpRSData[41] MS MAT uint16 346.48 163.35 106.80 1127.70 PAN MAT uint16 335.57 159.21 145.75 1099.51 PanCollection[14] PAN H5 float64 295.78 149.00 124.87 951.15 MS H5 float64 308.43 129.09 67.73 935.95 Cloud CUHK-CR[51] RGB PNG uint8 147.34 29.11 122.19 213.15 RICE[33] RGB PNG uint8 113.43 43.85 81.55 159.20 SEN12MS-CR[16] MS TIFF uint16 2258.98 1516.04 101.61 5961.58 SAR TIFF float32 −14 .77 4.64 −29 .66 −2.03 
+
+Haze SateHaze1k[25] RGB PNG uint8 194.41 31.01 81.12 254.43 RRSHID[70] RGB PNG uint8 156.20 21.54 119.37 224.32 RSID[7] RGB PNG uint8 175.74 32.07 125.27 236.21 DHID[67] RGB JPG uint8 192.61 26.50 168.96 221.09 LHID[67] RGB JPG uint8 151.64 27.79 105.86 208.19 STF CIA[17] Landsat MS TIFF int16 1648.58 644.61 140.55 4818.55 MODIS MS TIFF int16 1723.64 499.21 338.59 3928.09 AHB[30] Landsat MS TIFF uint8 41.97 16.35 10.18 101.65 MODIS MS TIFF uint8 52.10 13.47 13.29 104.47 DX[30] Landsat MS TIFF uint8 44.70 18.57 2.79 166.37 MODIS MS TIFF uint8 45.51 13.77 12.95 92.76 LGC[17] Landsat MS TIFF int16 1404.21 536.49 180.78 4557.67 MODIS MS TIFF int16 1340.16 457.55 265.06 3015.61 TJ[30] Landsat MS TIFF uint8 47.38 27.19 2.61 220.17 MODIS MS TIFF uint8 46.66 21.42 13.42 93.94 SAR SAR-despeckling-filter[54] SAR TIFF uint8 81.50 50.04 22.76 189.46 SAR-despeckle-Dataset[18] SAR MAT float32 2.03e+05 2.77e+06 809.22 8.34e+07 
+
+C.3. Test-Time Prompts 
+
+Table 6. Fixed text prompts used at test time for each task. 
+
+Task Prompt CR Clear the clouds from this satellite image to reveal the ground. 
+
+SR Increase the image’s resolution for a more detailed view. 
+
+PS Combine panchromatic and multispectral images to produce a higher-resolution color image. 
+
+HR Dehaze this image to reveal the underlying surface features. 
+
+DN Enhance the image clarity by reducing the noise level. 
+
+DB Deblur the image to recover fine structure and detail. 
+
+DS Remove the banding effect to improve image appearance. 
+
+EQ Bring out details in shadows and highlights by equalizing the image’s histogram. 
+
+LS Balance the image by adjusting levels linearly. 
+
+BE The image is a bit dim; increase brightness slightly. 
+
+STF Predict a high-resolution image at the target date using spatiotemporal fusion. 
+
+C.4. Ablation Study Details 
+
+C.4.1. Conditioning Mechanisms 
+
+Fig. 15 compares the full model against variants that remove either text prompts or OT-based channel alignment. Remov-ing text prompts causes the most severe degradation across all metrics, because the routing network loses explicit task identity and must infer the intended operation solely from degraded image statistics. This ambiguity particularly hurts tasks with similar visual characteristics, such as dehazing versus cloud removal, or different noise types. Without tex-tual guidance, the gating network struggles to consistently activate the appropriate experts, leading to inconsistent rout-ing and reduced specialization. Removing band matching while retaining text prompts shows a different failure mode: PSNR and SSIM remain relatively stable, but SAM and ER-GAS increase substantially. This pattern indicates that naive zero-padding or channel replication fails to preserve the se-mantic relationships between spectral bands. The entropic OT formulation in this alignment stage [ 11 , 50 ] explicitly 14 CR 
+
+Degraded Ground truth 
+
+1) Remove the cloud layer to improve visibility of the surface. 
+
+2) Apply SAR technology to mitigate cloud interference. 
+
+3) The dense cloud cover is obstructing the view; remove it for clarity. 
+
+4) Can you enhance the clarity of this image by removing the clouds? 
+
+Prompt examples 
+
+> HR
+
+1) Apply haze removal techniques to reveal the landscape below. 
+
+2) The hazes are blocking the view; please remove them. 
+
+3) Remove the haze from this remote sensing image to improve visibility. 
+
+4) Apply dehazing to this remote sensing image for better interpretation. 
+
+> SR
+
+1) Apply super-resolution to improve image quality and clarity. 
+
+2) The image resolution is too low; please enhance it. 
+
+3) Apply a noticeable resolution boost so distant objects are easier to see. 
+
+4) Use a high super-resolution factor to heavily enhance clarity and detail. 
+
+> PS
+
+1) Apply a pan-sharpening technique to merge spectral and spatial information. 
+
+2) The image is too soft; enhance detail with pan-sharpening. 
+
+3) Combine high-resolution panchromatic data with multispectral data for sharper 
+
+imagery. 
+
+4) Process using pan-sharpening techniques. 
+
+> DN (SAR)
+
+1) Apply denoising to remove the pixelated grain from the image. 
+
+2) Improve the image's clarity by eliminating the noise. 
+
+3) The image has excessive noise; use a filter to decrease the graininess. 
+
+4) Apply a noise filter to reduce the random pixelated texture. 
+
+> STF
+
+1) Apply spatiotemporal fusion for enhanced temporal resolution. 
+
+2) The future image is unclear; use spatiotemporal fusion to predict it. 
+
+3) Combine multi-temporal and multi-resolution imagery through spatiotemporal 
+
+fusion. 
+
+4) Apply advanced temporal fusion. 
+
+> DN
+
+1) Apply denoising to remove the pixelated grain from the image. 
+
+2) Improve the image's clarity by eliminating the noise. 
+
+3) The image has excessive noise; use a filter to decrease the graininess. 
+
+4) Apply a noise filter to reduce the random pixelated texture. 
+
+> DB
+
+1) Deblur the image to bring back the sharpness. 
+
+2) Eliminate directional blur caused by camera shake. 
+
+3) The image is blurry; please deblur it for better clarity. 
+
+4) Remove the blur from this image to enhance clarity. 
+
+> DS
+
+1) Can you correct the stripe artifacts in this image? 
+
+2) Remove these horizontal stripe patterns from the image. 
+
+3) Destripe the image to get rid of the vertical line artifacts. 
+
+4) Apply processing to eliminate the visible stripe patterns. 
+
+> BE
+
+1) The image looks dark; enhance it by boosting brightness. 
+
+2) Adjust brightness to achieve optimal exposure. 
+
+3) Gently decrease the brightness of this photo. 
+
+4) Process with brightness adjustment. 
+
+> EQ
+
+1) The exposure is unbalanced; perform histogram equalization. 
+
+2) Use adaptive histogram equalization (CLAHE) for local contrast enhancement. 
+
+3) Improve the image by equalizing its histogram. 
+
+4) Adjust the image using histogram equalization for better contrast. 
+
+> LS
+
+1) Could you adjust the contrast linearly from 2% to 98%? 
+
+2) Do a linear contrast stretch with cutoff values at 2% and 98%. 
+
+3) Use linear contrast stretch (2% to 98%). 
+
+4) Achieve better image balance through linear level adjustment. Figure 14. LLaRS1M examples. 32 
+
+34 
+
+36 
+
+38 
+
+40 
+
+> PSNR  37.60
+> 35.76
+> 32.52
+
+0.8 
+
+0.9 
+
+1.0  
+
+> SSIM  0.9172 0.9046
+> 0.7562
+
+0.05 
+
+0.10 
+
+0.15  
+
+> SAM
+> 0.0644 0.0726
+> 0.1463
+
+5
+
+10 
+
+15 
+
+20  
+
+> ERGAS
+> 4.41 4.66
+> 17.08
+
+LLaRS w/o channel align w/o text prompt 
+
+Figure 15. Contribution analysis of text prompt and OT-based chan-nel alignment. Table 7. Effect of the number of experts E on model performance. 
+
+E PSNR ↑ SSIM ↑ SAM ↓ ERGAS ↓ Params(M) FLOPs(G) 
+
+0 32.76 0.8371 0.1399 14.6733 11.85 96.1 
+
+2 34.04 0.8894 0.0853 6.2959 42.31 109.2 
+
+4 35.00 0.8991 0.0763 4.9168 56.08 109.3 
+
+8 37.60 0.9172 0.0644 4.4069 83.64 109.6 
+
+16 35.75 0.9001 0.0752 7.2115 138.74 110.1 
+
+Table 8. Comparison of multi-task optimization strategies. 
+
+Strategy PSNR ↑ SSIM ↑ SAM ↓ ERGAS ↓ Time/step (ms) Extra mem Equal wgt 34.31 0.8696 0.1000 13.0818 542 –PCGrad [63] – – – – 2884 +18.7 GB MGDA [49] – – – – 2661 +21.4 GB CAGrad [34] – – – – 2773 +23.8 GB NashMTL [43] – – – – 2798 +13.9 GB GradNorm [6] 34.56 0.8338 0.0997 12.0695 2841 +29.0 GB 
+
+DWA 37.60 0.9172 0.0644 4.4069 536 –
+
+matches input channels to the model’s internal representation based on statistical similarity, ensuring that spectral corre-lations are maintained even when processing inputs with heterogeneous channel counts. Together, text prompts and the transport-based front-end address orthogonal challenges in unified multitask learning: task disambiguation and input standardization. 
+
+C.4.2. Number of Experts 
+
+Tab. 7 shows that performance improves steadily as we in-crease from zero experts to eight experts per MoE layer, but degrades when expanding to sixteen experts. This degra-dation likely stems from insufficient training data to fully utilize all experts, leading to redundant or underutilized path-ways. While the parameter count grows roughly linearly with expert count, the fused implementation keeps FLOPs growth modest, making eight experts a practical choice that balances quality and efficiency. 
+
+C.4.3. Multitask Optimization Strategies 
+
+Tab. 8 compares our step-level Dynamic Weight Adjustment (DWA) against equal weighting and gradient-based methods. Equal weighting underperforms because it cannot adapt to tasks that learn at different speeds, allowing fast-converging tasks to dominate the gradient signal. Gradient manipulation methods like PCGrad, CAGrad, and NashMTL offer theo-retical advantages but require one backward pass per task, multiplying both computation time and memory consump-tion by the number of tasks. With eleven tasks, this overhead becomes prohibitive, and NashMTL additionally solves a quadratic program at each step. GradNorm provides a mid-dle ground by dynamically adjusting task weights based on gradient norms, but requires tracking additional statistics and introduces extra hyperparameters. Our DWA approach achieves comparable wall-clock time to equal weighting while improving all four metrics, because task weights are 15 Table 9. Comparison of model efficiency.                                     
+
+> Method Params(M) FLOPs(G) Time (ms) Avg.PSNR ↑
+> MPRNet [40] 3.67 285.9 45 32.49 Restormer [66] 26.15 312.7 73 36.07 GridFormer [57] 34.18 742.1 390 35.24 PromptIR [45] 35.61 348.3 77 36.25 AMIR [62] 23.57 281.5 96 34.15 HOGformer [58] 30.00 426.9 308 35.33 MoCE-IR [65] 23.08 186.2 133 35.31
+> LLaRS 83.64 109.6 386 37.60
+
+computed in a forward pass from loss ratios and exponential moving averages without requiring gradient computation or backpropagation through the weighting mechanism. 
+
+C.5. Model Efficiency Comparison 
+
+Tab. 9 compares parameter counts, theoretical FLOPs at 
+
+256 × 256 resolution, measured latency on a single A100 GPU, and average PSNR across all tasks. Our model con-tains more parameters than Restormer due to the multiple expert pathways, but achieves lower FLOPs because the fused expert implementation avoids computing full dense attention repeatedly for each expert. The Top-2 gating mech-anism activates only a subset of experts per input, further reducing computation compared to a naive implementation that would evaluate all experts. However, wall-clock latency remains higher than both Restormer and PromptIR despite the lower FLOP count, reflecting the gap between theoreti-cal arithmetic operations and practical memory bandwidth constraints. The routing mechanism introduces additional memory traffic as activations flow through gating networks and expert selection logic, and the irregular computation pattern from dynamic expert selection prevents optimal GPU utilization. This latency overhead represents a trade-off be-tween quality and speed: the model achieves substantially higher PSNR per parameter and per FLOP than competing methods, but requires more time per image due to architec-tural complexity. 
+
+C.6. Fine-Tuning Parameter Statistics 
+
+Tab. 10 lists total parameters, trainable parameters, and train-able ratios for each model and method. 
+
+C.7. Qualitative Comparison Results 
+
+The following figures provide more comprehensive qualita-tive comparisons. 
+
+Table 10. Parameter statistics of different fine-tuning methods for each model.                                                                                     
+
+> Model FT method Total params Train params Train.Ratio PromptIR Full 35.61M 35.61M 100.00% LoRA 36.88M 1.27M 3.44% Adapter 56.90M 21.28M 37.41% DoRA 36.97M 1.36M 3.68% SSF 35.94M 329.7K 0.92% BitFit 35.61M 17.4K 0.05% Restormer Full 26.15M 26.15M 100.00% LoRA 27.21M 1.06M 3.89% Adapter 44.40M 18.25M 41.11% DoRA 27.28M 1.14M 4.16% SSF 26.43M 282.7K 1.07% BitFit 26.15M 15.0K 0.06% MoCE-IR Full 23.08M 23.08M 100.00% LoRA 24.21M 1.13M 4.69% Adapter 39.20M 16.12M 41.13% DoRA 24.29M 1.21M 4.98% SSF 23.33M 249.3K 1.07% BitFit 23.08M 99.9K 0.43%
+> LLaRS
+> Full 83.64M 83.64M 100.00% LoRA 87.44M 3.80M 4.35% Adapter 95.58M 11.94M 12.50% DoRA 87.52M 3.89M 4.44% SSF 83.82M 184.1K 0.22% BitFit 83.64M 71.1K 0.09% Input Ground truth MPRNet Restormer GridFormer
+> PromptIR AMIR HOGformer MoCE-IR LLaRS
+> 0
+> 1
+
+Figure 16. Model predictions and error maps for deblurring. 
+
+16 Input Ground truth MPRNet Restormer GridFormer 
+
+PromptIR AMIR HOGformer MoCE-IR LLaRS 
+
+0
+
+1Figure 17. Model predictions and error maps for cloud removal. Input Ground truth MPRNet Restormer GridFormer 
+
+PromptIR AMIR HOGformer MoCE-IR LLaRS 
+
+0
+
+1
+
+Figure 18. Model predictions and error maps for pansharpening. Input Ground truth MPRNet Restormer GridFormer 
+
+PromptIR AMIR HOGformer MoCE-IR LLaRS 
+
+0
+
+1
+
+Figure 19. Model predictions and error maps for histogram equal-ization. Input Ground truth MPRNet Restormer GridFormer 
+
+PromptIR AMIR HOGformer MoCE-IR LLaRS 
+
+0
+
+1
+
+Figure 20. Model predictions and error maps for brightness en-hancement. 
+
+17 Input Ground truth Scratch Full LoRA Adapter DoRA SSF BitFit 
+
+0
+
+1
+
+> Restormer PromptIR MoCE-IR LLaRS
+
+Figure 21. Fine-tuning qualitative comparison for dehazing. 
+
+18 Input Ground truth Scratch Full LoRA Adapter DoRA SSF BitFit 
+
+0
+
+1
+
+> Restormer PromptIR MoCE-IR LLaRS
+
+Figure 22. Fine-tuning qualitative comparison for super-resolution. 
+
+19 Input Ground truth Scratch Full LoRA Adapter DoRA SSF BitFit 
+
+0
+
+1
+
+> Restormer PromptIR MoCE-IR LLaRS
+
+Figure 23. Fine-tuning qualitative comparison for SAR despeckling. 
+
+20

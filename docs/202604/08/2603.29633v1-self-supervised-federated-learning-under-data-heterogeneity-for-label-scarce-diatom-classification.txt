@@ -1,0 +1,1609 @@
+Title: Self-Supervised Federated Learning under Data Heterogeneity for Label-Scarce Diatom Classification
+
+URL Source: https://arxiv.org/pdf/2603.29633v1
+
+Published Time: Wed, 01 Apr 2026 00:56:32 GMT
+
+Number of Pages: 22
+
+Markdown Content:
+# Self-Supervised Federated Learning under Data Heterogeneity for Label-Scarce Diatom Classification 
+
+## Mingkun Tan a,∗, Xilu Wang b, Michael Kloster c and Tim W. Nattkemper a,∗
+
+> a
+
+Biodata Mining Group, Faculty of Technology, University of Bielefeld, Germany 
+
+> b
+
+Computer Science Research Centre, University of Surrey, United Kingdom 
+
+> c
+
+Phycology Group, Faculty of Biology, University of Duisburg-Essen, Germany 
+
+A R T I C L E I N F O 
+
+Keywords :Self-supervised federated learning Data scarcity Data heterogeneity Label-space heterogeneity Personalized federated learning Taxonomic recognition 
+
+A B S T R A C T 
+
+Label-scarce visual classification under decentralized and heterogeneous data is a fundamental challenge in pattern recognition, especially when sites exhibit partially overlapping class sets. While self-supervised federated learning (SSFL) offers a promising solution, existing studies commonly assume the same data heterogeneity pattern throughout pre-training and fine-tuning. Moreover, current partitioning schemes often fail to generate pure partially class-disjoint data settings, limiting controllable simulation of real-world label-space heterogeneity. In this work, we introduce SSFL for diatom classification as a representative real-world instance and system-atically investigate stage-specific data heterogeneity. We study cross-site variation in unlabeled data volume during pre-training and label-space misalignment during downstream fine-tuning. To study the latter in a controllable setting, we propose PreDi , a partitioning scheme that disentangles label-space heterogeneity into two orthogonal dimensions, namely class Pre valence and class-set size Di sparity, enabling separate analysis of their effects. Guided by the resulting insights, we further propose PreP-WFL (Pre valence-based Personalized Weighted Federated 
+
+Learning) to adaptively strengthen rare-class representations in low-prevalence scenarios. Ex-tensive experiments show that SSFL consistently outperforms local-only training under both homogeneous and heterogeneous settings. The pronounced heterogeneity in unlabeled data volume is associated with improved representation pre-training, whereas under label-space heterogeneity, prevalence dominates performance and disparity has a smaller effect. PreP-WFL effectively mitigates this degradation, with gains increasing as prevalence decreases. These findings provide a mechanistic basis for characterizing label-space heterogeneity in decentralized recognition systems. 
+
+## 1. Introduction 
+
+Reliable visual classification remains difficult when data are distributed across isolated sites with raw-data sharing restrictions and significant data heterogeneity. Unlike large-scale natural image benchmarks such as ImageNet [1], expert-labeled domains, including medical imaging and biological taxonomy, impose restrictive annotation require-ments that demand specialized domain knowledge. Consequently, the high acquisition cost of reliable labels establishes label scarcity as a primary bottleneck. This difficulty is further amplified in decentralized settings, where distributed clients exhibit substantial cross-client heterogeneity. Diatom classification provides a representative real-world instance of this problem. Automated taxonomic identification in this domain is constrained by limited expert availability, while imagery collected by different institutions and at different sites (and/or times) naturally exhibit heterogeneous structure due to geographical and temporal variations (like seasonal patterns) in species distributions, differences in sampling protocols, and unequal resource availability [2]. As a result, client datasets often vary substantially in data volume and may contain only partially overlapping label spaces, reflecting a level of heterogeneity that exceeds the conventional federated learning assumption that clients share the same label space and differ only in label imbalance. As high-resolution bioindicators for environmental assessment and global monitoring, diatom communities exhibit remarkable sensitivity to ecological shifts, making their composition a critical metric for ecosystem health [3–5]. 
+
+> ∗
+
+Corresponding authors 
+
+mtan@cebitec.uni-bielefeld.de (M. Tan); tim.nattkemper@uni-bielefeld.de (T.W. Nattkemper) 
+
+> ORCID
+
+(s): 0000-0002-5997-9087 (M. Tan); 0000-0002-7986-1158 (T.W. Nattkemper) 
+
+Page 1 of 22 
+
+> arXiv:2603.29633v1 [cs.CV] 31 Mar 2026
+
+Recent advances in deep learning have significantly improved automated diatom classification [6–9]. However, most existing approaches are supervised and therefore depend on large, expertly annotated datasets. Various strategies have been explored to alleviate this label scarcity, including annotation-assistance and active learning frameworks [7, 10– 12], data augmentation [13–15], few-shot learning [16, 17], semi-supervised approaches [7, 18], and unsupervised clustering [19, 20], yet each introduces specific trade-offs in annotation cost, scalability, robustness [21], or domain transferability. Among these directions, self-supervised learning (SSL) has emerged as a particularly promising paradigm for label-efficient representation learning. By learning representations from large volumes of unlabeled data and transferring them to downstream fine-tuning with limited annotations, SSL substantially reduces reliance on expert labels [22, 23]. Recent studies in diatom and plankton classification provide strong evidence for the effectiveness of SSL under annotation-scarce conditions. Tan et al. [24] reported that SSL pre-trained models yield larger relative gains as labeled data diminish. Notably, fine-tuning with only 50 samples per class achieves accuracy comparable to fully supervised training, thereby reducing annotation requirements by approximately 96%. Similarly, Kareinen et al. [25] demonstrated that SSL pre-training on a large, diverse plankton corpus enables generalizable representations across different instruments and species distributions, revealing an inverse relationship between labeled data volume and the performance benefit of SSL. However, these SSL pipelines assume centralized access to all training data, which is a critical limitation given that valuable diatom and plankton imagery is inherently distributed across institutions, field stations, monitoring networks, and geographical regions [26]. Federated learning (FL) addresses this decentralization challenge by enabling collaborative training without sharing raw data [27, 28]. While the feasibility of FL has been demonstrated for specialized tasks such as phytoplankton classification [29], conventional supervised FL pipelines remain dependent on annotated datasets and therefore fail to fully exploit the large volume of unlabeled data distributed across collaborative networks. Self-supervised federated learning (SSFL), which naturally combines SSL with FL, offers a promising solution by enabling representation learning from decentralized unlabeled data. However, its effectiveness in the diatom domain has not been systematically studied. In addition, existing SSFL studies typically assume the same heterogeneity pattern across both self-supervised pre-training and downstream fine-tuning stages [30]. Such a design overlooks the fact that heterogeneity may arise in different forms at different stages and may affect performance in fundamentally different ways. During pre-training, the primary challenge often lies in unequal unlabeled data volume across institutions, whereas during fine-tuning, the critical issue may shift to label-space heterogeneity, with clients holding only partially overlapping taxonomic label sets. Assuming these stage-specific data heterogeneities are the same pattern obscures their individual effects and hinders principled SSFL system design. Moreover, conventional FL benchmarks typically characterize heterogeneity within a shared label space. In many real-world decentralized recognition problems, however, institutions observe only partially overlapping label spaces in addition to differing sample sizes. This form of heterogeneity is qualitatively more challenging, because the federation must integrate locally learned predictors over structurally misaligned class spaces rather than merely rebalancing class proportions. Recent FL studies have explored settings involving label-set mismatch and partially class-disjoint data (PCDD), and have proposed corresponding algorithmic solutions across diverse recognition tasks [31–35]. Nevertheless, the partitioning schemes used in these works, commonly based on Dirichlet sampling [35], pathological partitioning [32, 34], or task-specific masking [31], do not provide controllable and genuinely pure PCDD constructions [33]. Dirichlet-based schemes yield missing classes only indirectly through extreme label skew, while fixed-class-per-client designs conflate how widely a class is shared across clients with how many classes each client contains. As a result, the underlying factors of label-space heterogeneity remain entangled, making it difficult to provide controllable and realistic simulations of real-world label-space heterogeneity. To address these challenges, we introduce an SSFL framework for diatom classification under stage-specific data heterogeneity: cross-client variation in unlabeled data volume during pre-training and label-space misalignment during downstream fine-tuning. The proposed framework leverages distributed unlabeled data for representation learning without sharing raw images and requires only 50 labeled samples per class for fine-tuning. Beyond establishing the feasibility of SSFL in this application, this work seeks to provide a mechanistic understanding of how stage-specific data heterogeneity affects performance. To this end, we analyze the two forms of heterogeneity separately. To fill the methodological gap in controllable partitioning, we propose PreDi , a partitioning scheme that disentangles label-space heterogeneity into two orthogonal dimensions: Prevalence and Disparity. Guided by the resulting insights, we further develop PreP-WFL , a prevalence-based personalized strategy that adaptively strengthens rare-class representations during local fine-tuning while preserving data locality. The main contributions of this work are as follows: 
+
+> Page 2 of 22 PreP -weight
+
+𝑤 𝑐 = 1
+
+𝜌 𝑐 
+
+𝜌 𝑐 = ෍
+
+> 𝑘 =1
+> 𝐾
+
+𝟏 {𝑐 ∈ 𝒞 𝐾 }   
+
+> Server
+> Stage 1: Pre -training Stage 2: Fine -tuning
+> Client 1 Client K
+
+𝒟 1 
+
+> 𝑢
+
+𝒟 𝐾 
+
+> 𝑢
+
+𝑓 𝜃 1 𝑓 𝜃 𝐾 
+
+𝑓 𝜃 ∗ 𝑓 𝜃 ∗
+
+𝑔 𝜙 𝐾 
+
+𝑔 𝜙 1
+
+𝑔 𝜙 ∗ ℎ𝜓 ∗             
+
+> 𝜃 𝐾
+> 𝑡 ,𝜓 𝐾
+> 𝑡
+> 𝜃 𝑡 +1,𝜓 𝑡 +1
+> 𝜃 1
+> 𝑡 ,𝜓 1
+> 𝑡 𝜃 𝑡 +1,𝜓 𝑡 +1
+> 𝜃 1
+> 𝑡 ,𝜙 1
+> 𝑡 𝜃 𝑡 +1,𝜙 𝑡 +1𝜃 𝑡 +1,𝜙 𝑡 +1
+> 𝜃 𝐾
+> 𝑡 ,𝜙 𝐾
+> 𝑡
+> {𝑤 𝑐 }𝑐 =1
+> 𝐽
+> 𝒞 𝐾 (ID )𝒞 1(ID )
+> Client 1
+
+𝒟 1
+
+> ℓ
+
+𝑓 𝜃 1
+
+ℎ𝜓 1 
+
+> WCE loss
+> Client K
+
+𝒟 𝐾 
+
+> ℓ
+
+𝑓 𝜃 𝐾 
+
+ℎ𝜓 𝐾 
+
+> WCE loss
+
+Figure 1: Overview of the self-supervised federated learning framework with PreP-WFL. In the pre-training stage, masked image reconstruction is adopted as the self-supervised task: at each communication round 𝑡 , every client 𝑘 ∈ {1 , … , 𝐾 }
+
+updates its local encoder 𝑓 𝜃 𝑘 and decoder 𝑔 𝜙 𝑘 on the unlabeled dataset 𝑢 𝑘 , and uploads the parameters (𝜃 𝑡 𝑘 , 𝜙 𝑡 𝑘 ) to the server. The server performs FedAvg to obtain a global encoder (𝑓 𝜃 (∗) , 𝑔 𝜙 (∗) ) and broadcasts it to all clients. In the fine-tuning stage, the final global encoder 𝑓 𝜃 (∗) initializes the local encoders, and a classifier head ℎ𝜓 𝑘 is attached on each client and trained on its labeled dataset 𝓁  
+
+> 𝑘
+
+. The PreP-weight module (red box) performs a one-shot aggregation of the clients’ label sets 𝑘 (label IDs only, no images) to compute the global class prevalence 𝜌 𝑐 and the corresponding weights 𝑤 𝑐 .These weights are then broadcast to all clients and incorporated into a weighted cross-entropy loss during local fine-tuning, thereby emphasizing rare, site-specific taxa in the federated model. 
+
+• Systematic evaluation of SSFL under stage-specific heterogeneous multi-client data. We evaluate SSFL for diatom classification under independent and identically distributed (IID) settings and two non-IID settings: (i) heterogeneity in unlabeled data volume, where institutions possess different amounts of unlabeled data during self-supervised pre-training, and (ii) heterogeneity in labeled class space, where institutions exhibit distinct taxonomic class distributions during downstream fine-tuning. The results show that SSFL consistently outperforms local-only training under both homogeneous and heterogeneous settings. 
+
+• PreDi: a two-dimensional partitioning scheme for label-space heterogeneity. We propose PreDi , a partition-ing scheme that characterizes label-space heterogeneity along two complementary dimensions: class Pre valence, defined as the number of clients in which a given class appears, and class-set size Di sparity, defined as the variation in the number of classes across clients. This disentangled design enables controlled analysis of their individual effects and reveals prevalence as the primary factor affecting SSFL performance under label-space heterogeneity. 
+
+• PreP-WFL: prevalence-based personalized weighting for low-prevalence settings. We propose PreP-WFL ,a Pre valence-based Personalized Weighted Federated Learning scheme that adaptively adjusts class weights during local fine-tuning according to global cross-client prevalence. Extensive experiments show that PreP-WFL mitigates performance degradation in challenging low-prevalence regimes, with gains increasing as prevalence decreases. 
+
+Page 3 of 22 2. Related work 
+
+2.1. Self-supervised learning 
+
+Self-supervised learning (SSL) has become a major approach for label-efficient visual representation learning by exploiting supervisory signals derived from unlabeled data itself [36]. Existing SSL methods can be broadly divided into joint-embedding and self-prediction paradigms. Joint-embedding methods, including contrastive approaches such as SimCLR [22] and MoCo [37], learn representations by pulling closer positive pairs and pushing apart negative pairs, typically requiring large batch sizes or memory banks. Negative-free variants such as BYOL [38] and SimSiam [39] instead predict one augmented view from another of the same image without explicit negative samples. Self-prediction methods include earlier tasks such as innate relationship prediction [40] and more recent generative schemes that reconstruct masked or corrupted regions. Representative examples are BEiT [41] and masked autoencoder (MAE) [23], commonly referred to as masked image modeling methods, which have shown strong transferability across visual recognition tasks. Recent work on plankton and diatom imagery has shown that in-domain MAE pre-training consistently outperforms conventional ImageNet initialization, especially in low-label regimes [24, 25, 42]. In marine plankton recognition, Kareinen et al. [25] showed that in-domain MAE pre-training on large-scale unlabeled plankton imagery yields consistently higher classification accuracy than conventional ImageNet pre-training, particularly in the low-label regime, underscoring the advantage of domain-specific SSL under distribution shift. Ciranni et al. [42] further analyzed in-domain SSL under both computational and labeling constraints. They show that MAE-based pre-training can yield better representations for downstream classification than ImageNet pre-training even when the in-domain plankton dataset is smaller, and that competitive performance can be achieved with a lightweight classifier trained on top of frozen features. In the diatom domain, Tan et al. [24], building on the large-scale UDE diatoms in the Wild 2024 dataset [43], systematically evaluated MAE and found that it substantially improves data utilization efficiency. In particular, its relative gains increase as the available labeled dataset size decreases, and the pre-trained backbone can achieve accuracy comparable to fully supervised baselines with as few as 50 labeled samples per class, highlighting the annotation efficiency of MAE in specialized diatom image analysis. These studies establish SSL as a strong foundation for label-scarce diatom classification. However, existing studies assume centralized access to all unlabeled data and therefore do not address the decentralized multi-institution setting considered in this work. 
+
+2.2. Federated learning and data heterogeneity 
+
+Federated learning (FL) enables collaborative model training across distributed clients without sharing raw data [27, 44]. In the standard pipeline, each client performs local optimization on its own dataset and transmits model updates to a central server, which aggregates them into a global model, most commonly using Federated Averaging (FedAvg) [28]. A central challenge in FL is data heterogeneity. In practice, client datasets are rarely IID and often differ in sample size, class distribution, feature characteristics, and acquisition conditions [2, 27, 45]. Such non-IID structure can impair convergence, bias aggregation toward dominant clients, and reduce generalization of the global model [27, 46]. A broad range of methods has been proposed to address this [27, 47, 48], but these studies predominantly assume a homogeneous global label space in which every client can in principle observe any class. However, this assumption breaks down whenever clients operate in specialized or geographically constrained environments. In multi-institution ecological monitoring, for instance, geographically dispersed sites observe only site-specific subsets of species, naturally producing partially overlapping or even disjoint label sets across the federation. This form of heterogeneity poses a qualitatively harder problem than class-proportion imbalance within a shared label space. Rather than rebalancing sample frequencies, federated aggregation must integrate classifiers trained on structurally incompatible output spaces, causing locally missing classes to receive degraded or entirely absent representations. Zhang et al. [29] demonstrated the feasibility of FL for phytoplankton classification and observed performance degradation under non-IID data, but their setting remained within the conventional shared-label-space assumption and did not address this more severe form of structural mismatch. Recent works have proposed algorithmic solutions for label-space heterogeneity across diverse recognition settings [31–35]. However, a closer examination of how these works construct their experimental partitions, reveals a persistent methodological limitation. Fed-MENU [31] restricts each site to annotating only a predefined subset of target structures in a segmentation task, producing existential label gaps through a task-specific masking protocol. FedLSM [32] randomly distributes training samples across clients and then designates a fixed number of classes per 
+
+> Page 4 of 22
+
+client as locally known, treating the remainder as locally unknown. FedVLS [35] applies Dirichlet sampling Dir (𝛼 ) with a small concentration parameter 𝛼 , which probabilistically produces vacant classes at individual clients as a byproduct of strong label skew. FedGELA [34] and rely on pathological class assignment, randomly allocating a fixed subset of classes to each client to simulate disjointness. However, Dirichlet-based partitioning, as explicitly noted by FedMR [33], fails to produce a pure PCDD setting; FedMR therefore proposes a dedicated 𝑃 𝜌 𝐶 𝜍 protocol, which divides the dataset across 𝜌 clients and each client holds 𝜍 
+
+classes. This design indeed produces a purer PCDD construction than conventional Dirichlet partitioning. Nevertheless, a critical issue remains unresolved. Although the protocol controls how many classes each client contains, it does not explicitly disentangle this factor from how widely each class is shared across clients. Consequently, these two distinct dimensions of label-space heterogeneity are typically varied together, making it difficult to determine whether performance degradation, or any algorithmic gain, is primarily driven by one factor, the other, or their interaction. 
+
+2.3. Self-supervised federated learning 
+
+Self-supervised federated learning (SSFL) combines the annotation efficiency of SSL with the data-local and collaborative properties of FL. The standard pipeline typically proceeds in two sequential phases: self-supervised representation pre-training on distributed unlabeled data, followed by supervised fine-tuning on limited labeled samples. This paradigm has attracted growing interest in settings where annotation is costly and raw-data sharing is restricted. Preliminary SSFL frameworks have been applied within the medical imaging domain, establishing the paradigm’s efficacy for annotation-scarce recognition under conventional non-IID constraints. Yan et al. [30] proposed a Transformer-based federated masked image modeling framework and demonstrated that Fed-MAE achieves superior robustness over Fed-BEiT under heterogeneous data distributions, particularly in severely non-IID scenarios. Khowaja et al. [49] introduced SelfFed, which augments the federated pipeline with a contrastive network and a heterogeneity-aware aggregation strategy to further alleviate label scarcity during fine-tuning. However, a common implicit assumption of existing SSFL studies is that the same data heterogeneity pattern persists throughout pre-training and downstream fine-tuning. In most benchmarks, a dataset is partitioned once, and the same non-IID pattern is used in both stages. This design overlooks the fact that different forms of heterogeneity may arise at different stages of the SSFL pipeline and may affect performance in different ways. During pre-training, the relevant challenge is unlabeled data volume, since clients may differ substantially in how much unlabeled imagery they can contribute to self-supervised representation learning. Centralized SSL studies have established that pre-training quality is sensitive to data scale [24, 25], yet how unequal client contributions affect SSFL pre-training remains unexplored. During fine-tuning, the main challenge in our setting shifts to label-space heterogeneity, as clients may possess only partially overlapping or even disjoint taxonomic label sets. Conflating these stage-specific data heterogeneities may obscure their individual effects and impede principled system design. To the best of our knowledge, no existing SSFL study decouples unlabeled volume heterogeneity during pre-training from label-space heterogeneity during fine-tuning, nor systematically analyzes their individual effects on downstream recognition performance. Our work addresses these gaps by assessing stage-specific data heterogeneity sources independently, and introduces PreDi to further disentangle label-space heterogeneity into its constituent factors. Subsequently, we propose PreP-WFL to mitigate the dominant source of performance degradation identified through this analysis. 
+
+## 3. Methods 
+
+In this section, we first describe the reconstruction of the dataset used in our experiments (§3.1). We then present the SSFL paradigm adopted in this study (§3.2). Next, we introduce a controlled construction protocol for stage-specific data heterogeneity, including non-IID unlabeled data partitioning and non-IID labeled data partitioning based on PreDi (§3.3). Finally, we propose PreP-WFL, a prevalence-based personalized weighting strategy designed to improve robustness in low-prevalence regimes during local fine-tuning (§3.4). 
+
+3.1. Dataset reconstruction 
+
+We use the UDE diatoms in the Wild 2024 dataset [43], the largest real-world diatom image dataset to date, comprising |all | = 83 ,570 images from 611 taxa. An overview of the resulting construction is illustrated in Fig. 2. To ensure sufficient sample size for statistically reliable evaluation, we retain only taxa with at least 350 
+
+images. This yields a filtered labeled set 𝑓 ⊂ all with |𝑓 | = 55 ,542 images from 𝐶 = 36 classes: 𝑓 =
+
+> Page 5 of 22
+
+𝒟 𝑓 
+
+𝒟 train  𝒟 test 
+
+𝒟 𝑟 
+
+𝒟 𝑢 
+
+𝒟 1 
+
+> ℓ
+
+𝒟 2 
+
+> ℓ
+
+𝒟 3 
+
+> ℓ
+
+𝒟 4
+
+> ℓ
+
+Figure 2: Overview of the dataset reconstruction pipeline. From the original dataset, we first derive the filtered labeled set 𝑓 , which is partitioned into training and test sets train and test (80∕20 ). The remaining taxa form 𝑟 . From train ,we sample balanced (50 images per class) labeled subsets {𝓁  
+
+> 𝑘
+
+}4 
+
+> 𝑘 =1
+
+to serve as the labeled dataset on each client for downstream fine-tuning. The unlabeled pool 𝑢 is constructed by combining train with 𝑟 and discarding all labels. 
+
+{( 𝑥 𝑖 , 𝑦 𝑖 )} 55 ,542  
+
+> 𝑖 =1
+
+, 𝑦 𝑖 ∈ {1 , … , 𝐶 }. We then randomly split 𝑓 into training and test sets, train and test , using an 
+
+80∕20 ratio. Let 𝑟 = all ⧵ 𝑓 denote all images from taxa with fewer than 350 samples. The unlabeled pool 𝑢 is then constructed by merging train with 𝑟 and discarding all labels: 𝑢 = { 𝑥 ∣ ( 𝑥, 𝑦 ) ∈ train ∪ 𝑟 }.
+
+To simulate a real-world FL setting, we consider 𝐾 = 4 clients, each holding unlabeled and labeled data. Following Tan et al. [24], we create a label-scarce, balanced subset for downstream fine-tuning by sampling 𝑛 𝓁 = 50 distinct labeled images per class from train to form four labeled subsets {𝓁  
+
+> 𝑘
+
+}4
+
+> 𝑘 =1
+
+, each covering all 𝐶 = 36 classes with 
+
+|𝓁  
+
+> 𝑘
+
+}| = 𝐶 ⋅ 𝑛 𝓁 = 36 × 50 labeled images: 𝓁  
+
+> 𝑘
+
+= {( 𝑥 (𝑘 ) 
+
+> 𝑖
+
+, 𝑦 (𝑘 ) 
+
+> 𝑖
+
+)} 36×50  
+
+> 𝑖 =1
+
+, 𝑦 (𝑘 ) 
+
+> 𝑖
+
+∈ {1 , … , 36} . These labeled subsets and the unlabeled pool are subsequently partitioned to simulate various forms of data heterogeneity across clients; for each client 𝑘 , the local dataset is 𝑘 = 𝑢 𝑘 ∪ 𝓁  
+
+> 𝑘
+
+. We next formalize the proposed SSFL setting and then describe how the two forms of client heterogeneity are simulated. 
+
+3.2. SSFL Paradigm 
+
+We study label-scarce image classification in a decentralized multi-client setting, where raw data remain local to participating institutions. Following the Fed-MAE paradigm, we adopt a two-stage SSFL pipeline. In the first stage, clients collaboratively perform federated self-supervised pre-training on distributed unlabeled data to learn a shared encoder. In the second stage, the resulting global encoder is transferred to downstream supervised adaptation using limited labeled samples available at each client. Formally, let 𝐾 denote the number of clients, and let client 𝑘 ∈ {1 , … , 𝐾 } hold a local unlabeled dataset 
+
+𝑢 𝑘 = { 𝑥 (𝑘 ) 
+
+> 𝑖
+
+}𝑛 𝑘 
+
+> 𝑖 =1
+
+. During pre-training, a masking operator  randomly drops a large fraction of image patches, yielding the visible subset 
+
+𝑥 (𝑘 )vis ,𝑖 = (𝑥 (𝑘 )
+
+> 𝑖
+
+).
+
+A local encoder 𝑓 𝜃 𝑘 and decoder 𝑔 𝜙 𝑘 are then trained to reconstruct the masked regions. The local MAE objective is given by the reconstruction error over masked pixels: 
+
+MAE  
+
+> 𝑘
+
+(𝜃 𝑘 , 𝜙 𝑘 ) = 𝔼 𝑥 (𝑘 )∼𝑢 𝑘 
+
+[‖‖‖𝑔 𝜙 𝑘 
+
+(𝑓 𝜃 𝑘 (𝑥 (𝑘 )vis ,𝑖 ))
+
+> Ωmask
+
+− 𝑥 (𝑘 )
+
+> 𝑖, Ωmask
+
+‖‖‖
+
+> 22
+
+]
+
+.
+
+Page 6 of 22 After local optimization, clients upload model parameters to the server, which aggregates them using FedAvg: 
+
+𝜃 (𝑡 +1) =
+
+> 𝐾
+
+∑
+
+> 𝑘 =1
+
+𝑛 𝑘 
+
+∑𝐾 𝑗 =1 𝑛 𝑗 
+
+𝜃 (𝑡 ) 
+
+> 𝑘
+
+, 𝜙 (𝑡 +1) =
+
+> 𝐾
+
+∑
+
+> 𝑘 =1
+
+𝑛 𝑘 
+
+∑𝐾 𝑗 =1 𝑛 𝑗 
+
+𝜙 (𝑡 ) 
+
+> 𝑘
+
+.
+
+The final global encoder 𝑓 𝜃 (∗) is then used to initialize downstream fine-tuning with local labeled datasets. In the next subsection, we first simulate unlabeled-data-volume heterogeneity for pre-training, and then introduce PreDi to construct label-space heterogeneity data for the fine-tuning stage. 
+
+3.3. Stage-specific data heterogeneity construction 
+
+A key distinction between the setting considered here and conventional FL benchmarks lies in the structure of data heterogeneity. In many standard FL benchmarks, client-level non-IIDness is simulated primarily as label imbalance, i.e., differences in class proportions across clients, 𝑝 𝑘 (𝑦 ) ≠ 𝑝 𝑘 ′ (𝑦 ) for 𝑘 ≠ 𝑘 ′, while the label space remains shared, 
+
+𝑘 = 𝑘 ′ = . In such settings, heterogeneity mainly affects sample proportions within a common label space. By contrast, diatom classification involves rich taxonomic diversity with a large label space , and each institution 
+
+𝑘 may observe only a subset 𝑘 ⊆  determined by its geographic region and habitat. Overlap between 𝑘 and 
+
+𝑘 ′ can be limited, with some taxa exclusive to individual sites, leading to pronounced label-space heterogeneity. This poses fundamentally different optimization challenges: federated aggregation must integrate information across partially disjoint label spaces rather than merely rebalancing samples within a shared taxonomy. In addition, the amount of unlabeled data available for self-supervised pre-training can vary substantially across institutions, ranging from large automated laboratories to small field stations. To study these effects in a controlled manner, we construct two forms of heterogeneity: cross-client variation in unlabeled data volume during SSFL pre-training and label-space heterogeneity in labeled data during downstream fine-tuning. 
+
+3.3.1. Non-IID unlabeled data partitioning 
+
+The IID split for unlabeled data is obtained by uniformly partitioning all unlabeled data across the four clients, yielding the split denoted by Split 𝑢 
+
+> IID
+
+. To simulate quantity skew across clients, we adopt a standard Dirichlet-based sampling strategy. For 𝐾 clients and a total of 𝑁 unlabeled samples, we first draw a proportion vector 
+
+𝐫 = ( 𝑟 1, 𝑟 2, … , 𝑟 𝐾 ) ∼ Dir 𝐾 (𝛼 ),
+
+where 𝛼 is the concentration parameter controlling the degree of skew in client data volumes: smaller values of 𝛼 lead to more severe quantity skew. The number of unlabeled samples assigned to client 𝑖 is then given by 
+
+𝑛 𝑖 = 𝑁 ⋅ 𝑟 𝑖 , with 
+
+> 𝐾
+
+∑
+
+> 𝑖 =1
+
+𝑛 𝑖 = 𝑁. 
+
+As illustrated in Fig. 3 (and Table 1), we construct four non-IID unlabeled data splits with 𝛼 ∈ {1 .0, 0.5, 0.2, 0.1} for 
+
+𝐾 = 4 clients. These partitions are denoted by Split 𝑢 
+
+> 1
+
+, Split 𝑢 
+
+> 2
+
+, Split 𝑢 
+
+> 3
+
+, and Split 𝑢 
+
+> 4
+
+.                                
+
+> Table 1
+> Unlabeled data splits. Each cell reports the number of unlabeled samples held by a given client.
+> Splits Client 1 Client 2 Client 3 Client 4
+> Split 𝑢
+> IID 18,115 18,115 18,115 18,116
+> Split 𝑢
+> 1(𝛼 = 1 .0) 19,988 23,405 14,258 14,810
+> Split 𝑢
+> 2(𝛼 = 0 .5) 18,696 32,209 10,653 10,903
+> Split 𝑢
+> 3(𝛼 = 0 .2) 22,558 35,750 6,546 7,607
+> Split 𝑢
+> 4(𝛼 = 0 .1) 18,982 39,156 6,975 7,348 Page 7 of 22 Split u
+> IID
+> Split u
+> 1(= 1.0)
+> Split u
+> 2(= 0.5)
+> Split u
+> 3(= 0.2)
+> Split u
+> 4(= 0.1)
+> Unlabeled data splits
+> 0
+> 5
+> 10
+> 15
+> 20
+> 25
+> 30
+> 35
+> 40
+> 45
+> Number of samples (×10 3) Client 1
+> Client 2
+> Client 3
+> Client 4
+
+Figure 3: Heterogeneity in unlabeled data volume. Bars show the number of unlabeled samples per client for the IID Split 𝑢 
+
+> IID
+
+and the four non-IID partitions Split 𝑢 
+
+> 1
+
+–Split 𝑢  
+
+> 4
+
+(corresponding to 𝛼 ∈ {1 .0, 0.5, 0.2, 0.1} ). See also Table 1. 
+
+3.3.2. Non-IID labeled data partitioning based on PreDi 
+
+The IID split for labeled data corresponds to the case where each client holds all 𝐶 = 36 classes and is denoted by Split 𝓁 
+
+> IID
+
+. Dirichlet-based non-IID partitioning controls skewness via a single concentration parameter 𝛼 . However, this scheme implicitly entangles two conceptually distinct aspects of label heterogeneity: 
+
+• class prevalence: the number of clients in which a given class is present. 
+
+• class-set size disparity: the variation in the number of classes across clients. As illustrated in Fig. 4, the joint configuration of class prevalence and class-set size disparity gives rise to qualitatively different federation regimes. When prevalence is low, many classes are institution-specific, appearing in only one or a few clients; when prevalence is high, most classes are shared across institutions. Simultaneously, high disparity indicates that some institutions monitor a broad spectrum of classes while others observe only a small subset, whereas low disparity corresponds to clients exhibiting comparable numbers of classes. Different prevalence–disparity combinations correspond to distinct real-world monitoring scenarios, leading to different FL regimes. To explicitly disentangle these effects, we propose PreDi , a partitioning scheme that decouples and independently controls class 
+
+Pre valence and cross-client class-set size Di sparity, enabling a systematic analysis of how each component of label-space heterogeneity affects performance. Let  = {1 , … , 𝐶 } denote the set of classes and  = {1 , … , 𝐾 } the set of clients. We introduce a binary assignment matrix 𝐌 ∈ {0 , 1} 𝐶 ×𝐾 with entries 
+
+𝑀 𝑐,𝑘 =
+
+{
+
+1, if class 𝑐 is present at client 𝑘, 
+
+0, otherwise. Based on 𝐌 , we characterize label-space heterogeneity using two complementary statistics: 
+
+• average prevalence across classes :
+
+𝜌 𝑐 =
+
+> 𝐾
+
+∑
+
+> 𝑘 =1
+
+𝑀 𝑐,𝑘 ,̄ 𝜌 = 1
+
+𝐶 
+
+> 𝐶
+
+∑
+
+> 𝑐 =1
+
+𝜌 𝑐 ,
+
+Page 8 of 22 Prevalence 
+
+> Disparity
+> High
+> High
+> Low
+> Low
+> Client 1:
+> Client 2:
+> Client 3:
+> Client 4:
+> Client 1:
+> Client 2:
+> Client 3:
+> Client 4:
+> Client 1:
+> Client 2:
+> Client 3:
+> Client 4:
+> Client 1:
+> Client 2:
+> Client 3:
+> Client 4:
+> class A
+> class B
+> class C
+> class D
+
+Figure 4: Illustration of class prevalence and class-set size disparity. The x-axis indicates prevalence (low to high), the y-axis indicates disparity (low to high), and each colored circle denotes a class (A–D). 
+
+where 𝜌 𝑐 denotes the number of clients in which class 𝑐 appears, and ̄ 𝜌 is the average prevalence across all classes. A larger ̄𝜌 indicates that more classes are shared by more clients on average, whereas a smaller ̄𝜌 implies that more classes are confined to a small number of clients. 
+
+• class-set size disparity across clients :
+
+𝑛 𝑘 =
+
+> 𝐶
+
+∑
+
+> 𝑐 =1
+
+𝑀 𝑐,𝑘 , 𝜇 = 1
+
+𝐾 
+
+> 𝐾
+
+∑
+
+> 𝑘 =1
+
+𝑛 𝑘 , 𝜎 =
+
+√√√√ 1
+
+𝐾 
+
+> 𝐾
+
+∑
+
+> 𝑘 =1
+
+(𝑛 𝑘 − 𝜇 )2,
+
+where 𝑛 𝑘 is the number of classes observed at client 𝑘 , 𝜇 is the mean number of classes across clients, and 𝜎 is the corresponding population standard deviation. A larger 𝜎 indicates stronger cross-client disparity in class-set size, meaning that some clients contain many classes while others contain only a few. We construct 20 non-IID labeled-data splits by specifying target values of average prevalence and disparity: ̄𝜌 ∗ ∈ {3 .5, 3.0, 2.5, 2.0, 1.5} , 𝜎 ∗ ∈ {0 .0, 1.0, 2.0, 3.0} .
+
+Each target pair (̄𝜌 ∗, 𝜎 ∗) defines a desired federated configuration, denoted by Split 𝓁 ̄𝜌 ∗,𝜎 ∗ . Because PreDi controls target statistics through a stochastic assignment process, the realized statistics of a generated split, namely ̄𝜌 and 𝜎 ,are generally close to, but not exactly equal to, their corresponding targets. For example, Split 𝓁  
+
+> 3.0,2.0
+
+denotes a split generated with target values ̄𝜌 ∗ = 3 .0 and 𝜎 ∗ = 2 .0, whose realized statistics typically satisfy ̄𝜌 ≈ 3 .0 and 𝜎 ≈ 2 .0. The IID split and the 20 non-IID split configurations are summarized in Fig. 5. The PreDi method is detailed in Algorithm 1. 
+
+Page 9 of 22 Split IID 
+
+> Split 3.5, 0.0
+> Split 3.5, 1.0
+> Split 3.5, 2.0
+> Split 3.5, 3.0
+> Split 3.0, 0.0
+> Split 3.0, 1.0
+> Split 3.0, 2.0
+> Split 3.0, 3.0
+> Split 2.5, 0.0
+> Split 2.5, 1.0
+> Split 2.5, 2.0
+> Split 2.5, 3.0
+> Split 2.0, 0.0
+> Split 2.0, 1.0
+> Split 2.0, 2.0
+> Split 2.0, 3.0
+> Split 1.5, 0.0
+> Split 1.5, 1.0
+> Split 1.5, 2.0
+> Split 1.5, 3.0
+> Client 1
+> Client 2
+> Client 3
+> Client 4
+> Client ID
+> 36
+> 36
+> 36
+> 36
+> 32
+> 32
+> 31
+> 31
+> 32
+> 30
+> 31
+> 33
+> 33
+> 29
+> 30
+> 34
+> 33
+> 28
+> 30
+> 35
+> 27
+> 27
+> 27
+> 27
+> 28
+> 26
+> 26
+> 28
+> 28
+> 24
+> 26
+> 30
+> 29
+> 23
+> 25
+> 31
+> 23
+> 23
+> 22
+> 22
+> 24
+> 21
+> 22
+> 24
+> 24
+> 20
+> 21
+> 25
+> 24
+> 21
+> 23
+> 26
+> 18
+> 18
+> 18
+> 18
+> 19
+> 17
+> 17
+> 19
+> 19
+> 15
+> 17
+> 21
+> 20
+> 14
+> 16
+> 22
+> 14
+> 14
+> 13
+> 17
+> 14
+> 12
+> 13
+> 15
+> 15
+> 11
+> 12
+> 16
+> 15
+> 10
+> 12
+> 17
+> 10
+> 15
+> 20
+> 25
+> 30
+> 35
+> #classes
+
+Figure 5: Heatmap of the number of classes per client under different labeled-data splits. The x-axis enumerates the IID split Split 𝓁  
+
+> IID
+
+and PreDi non-IID splits Split 𝓁 ̄𝜌 ∗,𝜎 ∗ obtained by varying ̄ 𝜌 ∗ ∈ {3 .5, 3.0, 2.5, 2.0, 1.5} and 𝜎 ∗ ∈ {0 .0, 1.0, 2.0, 3.0} .The y-axis lists the clients, and each cell indicates the number of classes assigned to that client under the corresponding split. 
+
+Algorithm 1 PreDi: Prevalence–Disparity partitioning scheme 
+
+Require: Class set  = {1 , … , 𝐶 }, client set  = {1 , … , 𝐾 }, labeled dataset  = {( 𝑥 𝑖 , 𝑦 𝑖 )} , target statistics (̄𝜌 ∗, 𝜎 ∗),and per client-class sample size 𝑠 = 50 .
+
+Ensure: Assignment matrix 𝐌 ∈ {0 , 1} 𝐶 ×𝐾 and client labeled datasets {𝓁 
+
+𝑘 }𝐾 𝑘 =1 .
+
+1: Prevalence assignment: initialize 𝜌 𝑐 ← 1 for all 𝑐 , then randomly increase selected 𝜌 𝑐 values, subject to 𝜌 𝑐 ≤ 𝐾 ,until 1
+
+𝐶 
+
+∑𝑐 𝜌 𝑐 is close to ̄𝜌 ∗.
+
+2: Disparity assignment: let 𝐴 ← ∑𝑐 𝜌 𝑐 and 𝜇 ← 𝐴 ∕𝐾 . Sample target class counts 𝑞 1, … , 𝑞 𝐾 with mean 𝜇 and standard deviation close to 𝜎 ∗, then adjust them so that ∑𝑘 𝑞 𝑘 = 𝐴 .
+
+3: Class allocation: initialize 𝑛 𝑘 ← 0 and 𝑀 𝑐,𝑘 ← 0 for all 𝑐, 𝑘 .
+
+4: for each class 𝑐 in random order do 
+
+5: 𝑔 𝑘 ← max{ 𝑞 𝑘 − 𝑛 𝑘 , 0} for all 𝑘 
+
+6: assign class 𝑐 to the 𝜌 𝑐 clients with the largest 𝑔 𝑘 
+
+7: for each selected client 𝑘 do 
+
+8: 𝑀 𝑐,𝑘 ← 1, 𝑛 𝑘 ← 𝑛 𝑘 + 1 
+
+9: end for 
+
+10: end for 
+
+11: Image distribution: for each class 𝑐 with index set 𝑐 , randomly permute 𝑐 . For each client 𝑘 such that 𝑀 𝑐,𝑘 = 1 ,assign 𝑠 non-overlapping images from 𝑐 to 𝓁 
+
+𝑘 .
+
+12: return 𝐌 , {𝓁 
+
+𝑘 }𝐾 𝑘 =1 
+
+3.4. Prevalence-based personalized weighted federated learning (PreP-WFL) 
+
+In Fed-MAE fine-tuning, each client optimizes an unweighted cross-entropy (CE) loss and thus treats all classes equally. In our diatom setting, however, some classes are site-specific and appear on only a few clients. To explicitly account for such low-prevalence scenarios, we propose PreP-WFL , as illustrated in Fig 1. The method adaptively reweights the local fine-tuning loss using cross-client class prevalence, statistically estimated from uploaded label IDs without sharing raw images or per-sample annotations. This amplifies rare, site-specific classes during optimization while keeping data local. Specifically, let the client set be  = {1 , … , 𝐾 } and the class set be  = {1 , … , 𝐶 }. Client 𝑘 holds labeled data 
+
+𝓁 
+
+𝑘 with local label set 𝑘 ⊆ . In a one-shot statistics step, each client uploads only its local label set 𝑘 (label IDs, no images) to the server. From these sets, the server computes the prevalence of each class 𝑐 as 
+
+𝜌 𝑐 =
+
+𝐾 ∑
+
+𝑘 =1 
+
+𝟏 {𝑐 ∈ 𝑘 }, (1) 
+
+Page 10 of 22 Algorithm 2 PreP-WFL: Prevalence-based Personalized Weighted Federated Learning 
+
+Require: Client set  = {1 , … , 𝐾 }, class set  = {1 , … , 𝐶 }; labeled data {𝓁  
+
+> 𝑘
+
+}𝐾 𝑘 =1 with 𝓁  
+
+> 𝑘
+
+= {( 𝑥 (𝑘 ) 
+
+> 𝑖
+
+, 𝑦 (𝑘 ) 
+
+> 𝑖
+
+)} 𝑛 𝑘 
+
+> 𝑖 =1
+
+; 
+
+> 1:
+
+initial global encoder 𝜃 0, classifier head 𝜓 0; communication rounds 𝑇 , local epochs 𝐸 . 
+
+> 2:
+
+(Server) PreP-weight calculation  
+
+> 3:
+
+for each client 𝑘 ∈  do  
+
+> 4:
+
+Client 𝑘 sends local label set 𝑘 ⊆  (class IDs only)  
+
+> 5:
+
+end for  
+
+> 6:
+
+for each class 𝑐 ∈  do  
+
+> 7:
+
+𝜌 𝑐 ← ∑𝐾 𝑘 =1 𝟏 {𝑐 ∈ 𝑘 } ⊳ prevalence, Eq. (1)  
+
+> 8:
+
+𝑤 𝑐 ← 1∕ 𝜌 𝑐 ⊳ PreP-weight, Eq. (2)  
+
+> 9:
+
+end for  
+
+> 10:
+
+Broadcast {𝑤 𝑐 }𝐶 𝑐 =1 to all clients  
+
+> 11:
+
+(Server) Federated fine-tuning  
+
+> 12:
+
+Initialize global parameters 𝜃 0, 𝜓 0 
+
+> 13:
+
+for 𝑡 = 1 , … , 𝑇 do  
+
+> 14:
+
+Broadcast (𝜃 𝑡 , 𝜓 𝑡 ) and {𝑤 𝑐 } to all clients  
+
+> 15:
+
+for each client 𝑘 ∈  in parallel do  
+
+> 16:
+
+(𝜃 𝑡 +1  
+
+> 𝑘
+
+, 𝜓 𝑡 +1  
+
+> 𝑘
+
+) ← CLIENT UPDATE (𝑘, 𝜃 𝑡 , 𝜓 𝑡 , {𝑤 𝑐 })  
+
+> 17:
+
+end for  
+
+> 18:
+
+𝑁 tot ← ∑𝐾 𝑘 =1 𝑛 𝑘  
+
+> 19:
+
+𝜃 𝑡 +1 ← ∑𝐾 𝑘 =1 
+
+> 𝑛 𝑘
+> 𝑁 tot
+
+𝜃 𝑡 +1  
+
+> 𝑘
+> 20:
+
+𝜓 𝑡 +1 ← ∑𝐾 𝑘 =1 
+
+> 𝑛 𝑘
+> 𝑁 tot
+
+𝜓 𝑡 +1  
+
+> 𝑘
+> 21:
+
+end for  
+
+> 22:
+
+return (𝜃 𝑇 , 𝜓 𝑇 ) 
+
+> 23:
+
+function CLIENT UPDATE (𝑘, 𝜃 𝑡 , 𝜓 𝑡 , {𝑤 𝑐 }) 
+
+> 24:
+
+𝜃 𝑘 ← 𝜃 𝑡 , 𝜓 𝑘 ← 𝜓 𝑡  
+
+> 25:
+
+Build local weight vector 𝑤 (𝑘 ) by selecting {𝑤 𝑐 ∶ 𝑐 ∈ 𝑘 } 
+
+> 26:
+
+for each local epoch 𝑖 = 1 , … , 𝐸 on 𝓁  
+
+> 𝑘
+
+do  
+
+> 27:
+
+for each batch {( 𝑥 (𝑘 ) 
+
+> 𝑖
+
+, 𝑦 (𝑘 ) 
+
+> 𝑖
+
+)} from 𝓁  
+
+> 𝑘
+
+do  
+
+> 28:
+
+Compute 𝑝 𝜃 𝑘 ,𝜓 𝑘 (𝑦 ∣ 𝑥 ) 
+
+> 29:
+
+Compute WCE loss 𝑘 (𝜃 𝑘 , 𝜓 𝑘 ) ⊳ WCE loss, Eq. (3)  
+
+> 30:
+
+Update (𝜃 𝑘 , 𝜓 𝑘 ) by one step of Adam on 𝑘 (𝜃 𝑘 , 𝜓 𝑘 ) 
+
+> 31:
+
+end for  
+
+> 32:
+
+end for  
+
+> 33:
+
+return (𝜃 𝑘 , 𝜓 𝑘 ) 
+
+> 34:
+
+end function 
+
+i.e., the number of clients on which class 𝑐 appears ( 1 ≤ 𝜌 𝑐 ≤ 𝐾 ). We then define a reciprocal prevalence-based class weight (PreP-weight): 
+
+𝑤 𝑐 = 1
+
+𝜌 𝑐 
+
+. (2) The server then broadcasts the weights {𝑤 𝑐 }𝐶 𝑐 =1 to all clients, which construct local class-weight vectors by selecting the entries corresponding to their own labels sets 𝑘 .On client 𝑘 , with labeled data 𝓁  
+
+> 𝑘
+
+= {( 𝑥 (𝑘 ) 
+
+> 𝑖
+
+, 𝑦 (𝑘 ) 
+
+> 𝑖
+
+)} 𝑛 𝑘 
+
+> 𝑖 =1
+
+, a local encoder 𝑓 𝜃 𝑘 and classifier head ℎ𝜓 𝑘 define the predictive distribution 𝑝 𝜃 𝑘 ,𝜓 𝑘 (𝑦 ∣ 𝑥 ) = sof tmax (ℎ𝜓 𝑘 (𝑓 𝜃 𝑘 (𝑥 )) )
+
+> 𝑦
+
+. We then replace CE loss with a prevalence-weighted 
+
+Page 11 of 22 loss: 
+
+𝑘 (𝜃 𝑘 , 𝜓 𝑘 ) = 1
+
+𝑛 𝑘 𝑛 𝑘 ∑
+
+> 𝑖 =1
+
+[
+
+− 𝑤 𝑦 (𝑘 )
+
+> 𝑖
+
+log 𝑝 𝜃 𝑘 ,𝜓 𝑘 
+
+(𝑦 (𝑘 ) 
+
+> 𝑖
+
+∣ 𝑥 (𝑘 )
+
+> 𝑖
+
+)]
+
+, (3) which is implemented using PyTorch’s built-in weighted cross-entropy loss (WCE) on each client. Federated aggregation remains based on FedAvg over 𝜃 𝑘 and 𝜓 𝑘 . The overall procedure is summarized in Algorithm 2. 
+
+## 4. Experiments 
+
+We adopt MAE and Fed-MAE as the SSL and SSFL framework, respectively. In all experiments, we use ViT-B [50] as the backbone with a patch size of 16 × 16 .
+
+4.1. Pre-training setup 
+
+We follow the MAE configuration with a masking ratio of 75% during pre-training. Optimization is performed with AdamW ( 𝛽 1 = 0 .9, 𝛽 2 = 0 .95 ). The base learning rate is set to 1.5 × 10 −4 . Federated pre-training is run for 800 communication rounds with a warm-up over the first 40 epochs and a batch size of 128. For data augmentation, we apply random resized cropping to generate input images of 224 × 224 pixels, with the scale factor sampled from 
+
+[0 .7, 1.0] , followed by random horizontal and vertical flipping. 
+
+4.2. Fine-tuning setup 
+
+During federated fine-tuning, the pre-trained encoder is further optimized for 100 communication rounds, with a warm-up period of 5 epochs and a batch size of 64. We employ layer-wise learning rate decay with a decay factor of 0.75 and use a base learning rate of 1.0 × 10 −3 . Input images are resized to 224 × 224 pixels. We use “rand-m9-mstd0.5-inc1 ” augmentation policy [51], followed by random erasing (erasing probability 0.25, pixel-wise mode, one erased region per image). 
+
+4.3. Evaluation metrics 
+
+We use macro-averaged accuracy and F1-score as the evaluation metric to account for the strong class imbalance in the test set. Unlike micro-averaging, which is dominated by frequent classes, macro-averaging assigns equal weight to all classes, ensuring that rare diatom classes contribute equally to the final score. We evaluate all methods on the common test set test using the same 36-class global label space (closed-set evaluation). 
+
+## 5. Results and Discussion 
+
+This section presents a comprehensive evaluation of SSFL for diatom classification under diverse data distribution scenarios. We first establish baseline performance under ideal IID settings (§5.1), then systematically examine two key forms of non-IIDness: unlabeled-data-volume heterogeneity during pre-training (§5.2) and label-space heterogeneity during fine-tuning (§5.3). Finally, we demonstrate the effectiveness of the proposed PreP-WFL in mitigating performance degradation in low-prevalence regimes (§5.4). 
+
+5.1. SSFL performance under IID settings 
+
+Under ideal IID settings, our results show that SSFL substantially outperforms isolated local training, while remaining close to centralized training performance, indicating that SSFL is an effective paradigm for diatom classification (Fig. 6). The corresponding results are summarized in Table 2. In the local-only setting, each client 𝑘 either performs SSL pre-training on its own unlabeled split Split 𝑢 𝑘 or uses an encoder pre-trained on ImageNet [1], and then fine-tunes solely on its own labeled split Split 𝓁  
+
+> 𝑘
+
+. The resulting local accuracies lie in a range of approximately 77 –79% . ImageNet initialization yields slightly higher accuracy than SSL pre-training on local data, likely due to the relatively small size of the local unlabeled datasets, consistent with the observations of Tan et al. [24]. In contrast, SSFL attains an accuracy of 84 .87% under the same IID distribution, clearly surpassing all individual local models. Centralized SSL, which pre-trains on the full unlabeled pool 𝑢 and fine-tunes on the union of all labeled subsets ⋃ 
+
+> 𝑘
+
+𝓁  
+
+> 𝑘
+
+, achieves 87 .07% .The corresponding F1-scores are reported in Table 8 in Appendix A.  
+
+> Page 12 of 22 Client 1
+> Client 2
+> Client 3
+> Client 4
+> Federated
+> Centralized
+> 76
+> 78
+> 80
+> 82
+> 84
+> 86
+> 88
+> 90
+> Test Accuracy (%)
+> 77.57
+> 78.85
+> 77.58
+> 78.28
+> 77.18
+> 78.84 78.78 78.83
+> 84.87
+> 87.07
+
+SSL local 
+
+SSL ImageNet 
+
+SSFL 
+
+SSL central Figure 6: SSFL performance under IID settings (see also Table 2). 
+
+These findings indicate that, when each client holds the same amount of unlabeled data and has access to all classes, the performance of isolated training is fundamentally constrained by limited sample diversity and scale. In contrast, SSFL enables institutions to share representation learning via model aggregation, effectively combining complementary data distributions and feature representations across sites. The small gap to the centralized model suggests that most of the benefits of data sharing can be realized through SSFL, without violating data-ownership concerns. 
+
+Table 2 
+
+Accuracy results under IID settings. 𝑢 𝑘 and 𝓁  
+
+> 𝑘
+
+denote the unlabeled and labeled datasets of client 𝑘 , respectively. 
+
+Method Pre-train data Fine-tune data Test Accuracy (%) 
+
+Client 1 SSL 𝑢  
+
+> 1
+
+in Split 𝑢  
+
+> IID
+
+𝓁  
+
+> 1
+
+in Split 𝓁 
+
+> IID
+
+77.57 ImageNet 78.85 Client 2 SSL 𝑢  
+
+> 2
+
+in Split 𝑢  
+
+> IID
+
+𝓁  
+
+> 2
+
+in Split 𝓁 
+
+> IID
+
+77.58 ImageNet 78.28 Client 3 SSL 𝑢  
+
+> 3
+
+in Split 𝑢  
+
+> IID
+
+𝓁  
+
+> 3
+
+in Split 𝓁 
+
+> IID
+
+77.18 ImageNet 78.84 Client 4 SSL 𝑢  
+
+> 4
+
+in Split 𝑢  
+
+> IID
+
+𝓁  
+
+> 4
+
+in Split 𝓁 
+
+> IID
+
+78.78 ImageNet 78.83 Federated SSFL Split 𝑢  
+
+> IID
+
+Split 𝓁  
+
+> IID
+
+84.87 
+
+Centralized SSL 𝑢 𝓁 87.07 
+
+5.2. SSFL performance under non-IID unlabeled data distributions 
+
+To isolate the effect of unlabeled-data-volume heterogeneity on representation learning, we maintain IID settings during fine-tuning (Split 𝓁 
+
+> IID
+
+) while varying only the pre-training distribution across four heterogeneous unlabeled splits (Split 𝑢 
+
+> 1
+
+–Split 𝑢 
+
+> 4
+
+). Results displayed in Fig 7 show that, under FedAvg with data-size weighted aggregation, increasing quantity skew in the unlabeled data is associated with improved downstream performance after SSFL pre-training. The corresponding macro-F1 scores are reported in Table 9 in Appendix A. 
+
+Page 13 of 22 Split u    
+
+> IID
+> Split u
+> 1(= 1.0)
+> Split u
+> 2(= 0.5)
+> Split u
+> 3(= 0.2)
+> Split u
+> 4(= 0.1)
+> Unlabeled data splits
+> 82.0
+> 82.5
+> 83.0
+> 83.5
+> 84.0
+> 84.5
+> 85.0
+> 85.5
+> 86.0
+> 86.5
+> 87.0
+> Test Accuracy (%)
+> 84.87
+> 84.28
+> 84.71
+> 85.41
+> 86.33
+
+Figure 7: Results on unlabeled splits. Bars show mean accuracy and error bars denote standard deviation over three runs. More severe quantity skew in the unlabeled data (smaller 𝛼 ) consistently yields higher accuracy. 
+
+Quantitatively, under mild to moderate heterogeneity ( 𝛼 = 1 .0 or 0.5), federated accuracies are slightly lower or comparable to the IID baseline (84.87%), reaching 84.28% and 84.71%, respectively. With increasing heterogeneity, classification performance keeps improving: Split 𝑢 
+
+> 3
+
+(𝛼 = 0 .2) attains 85.41% accuracy, and the most heterogeneous configuration, Split 𝑢 
+
+> 4
+
+(𝛼 = 0 .1) reaches 86.33%, clearly surpassing the IID baseline. In centralized diatom SSL, enlarging the unlabeled dataset size is known to systematically improve diatom classification by capturing richer morphological structure and intra-class variability [24]. Our federated results extend this principle: under severe quantity skew, data-rich institutions contribute proportionally more gradient updates in FedAvg, steering the global encoder toward more generalizable feature representations. When heterogeneity is mild, the advantage of the largest client is insufficient to compensate for the limited diversity at smaller sites, yielding performance that is only comparable to, or slightly below, the IID case. As heterogeneity becomes more pronounced, the combination of richer morphology at data-abundant sites and volume-weighted aggregation increasingly dominates the optimization, leading to consistent accuracy gains. 
+
+Table 3 
+
+Accuracy results on the most heterogeneous unlabeled split Split 𝑢 
+
+> 4
+
+. For each client 𝑘 , 𝑢 𝑘 and 𝓁  
+
+> 𝑘
+
+denote its local unlabeled and labeled datasets, respectively. 
+
+Pre-train data Fine-tune data Test Accuracy (%) 
+
+Client 1 𝑢  
+
+> 1
+
+in Split 𝑢  
+
+> 4
+
+𝓁  
+
+> 1
+
+in Split 𝓁  
+
+> IID
+
+79.69 Client 2 𝑢  
+
+> 2
+
+in Split 𝑢  
+
+> 4
+
+𝓁  
+
+> 2
+
+in Split 𝓁  
+
+> IID
+
+81.33 Client 3 𝑢  
+
+> 3
+
+in Split 𝑢  
+
+> 4
+
+𝓁  
+
+> 3
+
+in Split 𝓁  
+
+> IID
+
+70.64 Client 4 𝑢  
+
+> 4
+
+in Split 𝑢  
+
+> 4
+
+𝓁  
+
+> 4
+
+in Split 𝓁  
+
+> IID
+
+73.86 Federated Split 𝑢  
+
+> 4
+
+Split 𝓁  
+
+> IID
+
+86.33 
+
+Table 3 compares isolated local training with federated performance under the most heterogeneous unlabeled configuration, Split 𝑢 
+
+> 4
+
+, and shows that the federated model (86.33%) clearly outperforms all local models trained on the client side. The most data-scarce client (Client 3) exhibits a substantial improvement of roughly 16 percentage points, whereas the most data-abundant client (Client 2) still achieves a noteworthy gain of 5 points. This pattern 
+
+Page 14 of 22 3.5 3.0 2.5 2.0 1.5 
+
+Target average prevalence *    
+
+> 65.00
+> 67.50
+> 70.00
+> 72.50
+> 75.00
+> 77.50
+> 80.00
+> 82.50
+> 85.00
+> Test Accuracy (%)
+> *= 0.0
+> *= 1.0
+> *= 2.0
+> *= 3.0
+
+Figure 8: Results on non-IID labeled data.The x-axis shows the target average class prevalence ̄ 𝜌 ∗ and the colored curves correspond to different levels of class-set size disparity 𝜎 ∗. Accuracy is primarily driven by ̄ 𝜌 , whereas varying 𝜎 leads to only minor differences across settings. See also Table 4. 
+
+indicates that both data-poor and data-rich institutions benefit from federated collaboration, as aggregation supplies complementary information that is absent from any single local dataset. Overall, these findings indicate that unlabeled-data-volume heterogeneity need not be detrimental during SSFL federated pre-training when using FedAvg. Even under severe heterogeneity, collaboration with data-poor clients does not degrade the performance of data-rich institutions, but instead, their accuracy is further improved through federated aggregation. In practice, institutions with limited labeled data can still meaningfully contribute to and benefit from the federation by sharing large pools of unlabeled imagery, thereby strengthening the global representation. 
+
+5.3. SSFL performance under non-IID labeled data distributions 
+
+To systematically characterize label-space heterogeneity during fine-tuning, we keep IID settings during pre-training (Split 𝑢 
+
+> IID
+
+) while evaluating 20 non-IID labeled-data splits generated by our PreDi partitioning scheme. Figure 8 reveals that class prevalence (𝜌 ) strongly determines SSFL fine-tuning performance. Table 4 reports the accuracy for all (̄𝜌 ∗, 𝜎 ∗) configurations. When 𝜎 ∗ is fixed, federated accuracy decreases monotonically as ̄𝜌 ∗ is reduced from 3.5 to 1.5, with a largest observed drop of −16 .48 percentage points. In contrast, for fixed ̄𝜌 ∗, varying 𝜎 ∗ from 0.0 to 3.0 induces only minor fluctuations. The corresponding F1-score results exhibit a similar trend and are reported in Table 10 in Appendix A. 
+
+Table 4 
+
+Accuracy results on non-IID labeled data under different ( ̄𝜌 ∗, 𝜎 ∗) configurations. 
+
+Test Accuracy (%) ̄𝜌 ∗ = 3 .5̄ 𝜌 ∗ = 3 .0̄ 𝜌 ∗ = 2 .5̄ 𝜌 ∗ = 2 .0̄ 𝜌 ∗ = 1 .5
+
+𝜎 ∗ = 0 .0 82.47 79.56 77.00 75.89 67.82 
+
+𝜎 ∗ = 1 .0 82.53 79.64 77.47 75.61 67.50 
+
+𝜎 ∗ = 2 .0 82.34 79.84 77.35 74.43 65.86 
+
+𝜎 ∗ = 3 .0 82.81 79.67 77.97 74.71 66.94 Page 15 of 22 Table 5                                                                                  
+
+> Fine-tuning accuracy results under fixed disparity 𝜎 ∗= 0 .0for varying prevalence ̄𝜌 ∗.
+> 𝜎 ∗= 0 .0Test Accuracy (%) ̄𝜌 ∗= 3 .5̄𝜌 ∗= 3 .0̄𝜌 ∗= 2 .5̄𝜌 ∗= 2 .0̄𝜌 ∗= 1 .5
+> Client 1 69.55 59.79 50.18 42.08 11.04 Client 2 71.12 58.74 54.46 43.11 33.71 Client 3 68.63 67.66 50.28 38.30 30.50 Client 4 69.04 62.43 50.54 42.41 30.10 Federated 82.47 79.56 77.00 75.89 67.82
+> Table 6
+> Fine-tuning accuracy results under fixed prevalence ̄𝜌 ∗= 3 .5for varying disparity 𝜎 ∗.̄𝜌 ∗= 3 .5Test Accuracy (%)
+> 𝜎 ∗= 0 .0𝜎 ∗= 1 .0𝜎 ∗= 2 .0𝜎 ∗= 3 .0
+> Client 1 69.55 69.37 71.96 72.24 Client 2 71.12 65.85 64.40 62.38 Client 3 68.63 68.71 66.34 66.48 Client 4 69.04 74.16 75.60 77.90 Federated 82.47 82.53 82.34 82.81
+
+Table 5 compares the isolated local model with the federated model across prevalence levels at 𝜎 ∗ = 0 .0. The federated model consistently outperforms all individual clients. Although its absolute accuracy decreases from 82 .47% 
+
+to 67 .82% as ̄ 𝜌 drops, but the margin over the local models grows substantially, from up to +13 .84 percentage points at ̄ 𝜌 ∗ = 3 .5 to as much as +56 .78 points at ̄ 𝜌 ∗ = 1 .5. This indicates that federated collaboration becomes increasingly beneficial in regimes with more low-prevalence, institution-specific classes. Table 6 compares isolated local models with the federated model across disparity levels at ̄ 𝜌 ∗ = 3 .5, Federated accuracy remains essentially stable (82.34–82.81%) while consistently surpassing all individual clients. The widening gap to the weakest client primarily reflects local degradation rather than changes in the global federated model. Overall, these results reinforce that SSFL performance is primarily governed by cross-client class prevalence, whereas class-set size disparity can be largely compensated by federated aggregation. In particular, under low-prevalence settings, many classes become site-specific or nearly site-specific, so only a few clients contribute gradient updates for a given class during federated fine-tuning. This reduces both the effective sample diversity and the number of independent optimization trajectories per class, making the global model more vulnerable to local biases and overfitting. In contrast, when prevalence is high, each class is observed and updated by many clients, allowing the global model to aggregate diverse evidence and more stable gradients. By comparison, redistributing how many classes each client covers has only a limited effect as long as the prevalence pattern remains fixed, since it mainly permutes which clients are class-rich or class-poor, without substantially changing how many clients contribute to each individual class. 
+
+5.4. Effectiveness of PreP-WFL in low-prevalence regimes 
+
+Given the dominant influence of class prevalence on federated performance (§5.3), low-prevalence regimes expose a key limitation that only a small subset of clients provides supervised updates for a site-specific class. As a result, class-specific gradients become sparse and easily dominated by updates from widely shared classes, causing systematic underfitting of rare, institution-specific taxa. To address this issue, we propose PreP-WFL (Pre valence-based Personalized Weighted Federated Learning) to specifically mitigate performance degradation in low-prevalence regimes. In particular, PreP-WFL personalizes local fine-tuning by reweighting each class-specific loss according to its global cross-client prevalence, statistically estimated from uploaded label IDs without sharing raw images or                          
+
+> Page 16 of 22 *= 3.5
+> *= 3.0
+> *= 2.5
+> *= 2.0
+> *= 1.5
+> *= 0.0
+> *= 1.0
+> *= 2.0
+> *= 3.0
+> +0.15 +1.66 +2.01 +2.22 +3.34
+> +0.03 +1.36 +2.04 +1.69 +2.71
+> +0.57 +1.18 +1.69 +1.81 +2.23
+> +0.24 +1.44 +1.53 +1.44 +1.43
+> Accuracy gain (percentage points)
+
+3
+
+2
+
+1
+
+0
+
+1
+
+2
+
+3Figure 9: Accuracy gain (percentage points) of PreP-WFL over the Fed-MAE baseline across (̄𝜌 ∗, 𝜎 ∗) configurations of labeled data. 
+
+Table 7 
+
+Accuracy results of Fed-MAE (baseline) and Fed-MAE with PreP-WFL (ours) across (̄𝜌 ∗, 𝜎 ∗)
+
+configurations. 
+
+Test Accuracy (%) ̄𝜌 ∗ = 3 .5̄ 𝜌 ∗ = 3 .0̄ 𝜌 ∗ = 2 .5̄ 𝜌 ∗ = 2 .0̄ 𝜌 ∗ = 1 .5
+
+𝜎 ∗ = 0 .0 Fed-MAE 82.47 79.56 77.00 75.89 67.82 Fed-MAE +PreP-WFL (ours) 82.62 81.22 79.01 78.11 71.16 
+
+𝜎 ∗ = 1 .0 Fed-MAE 82.53 79.64 77.47 75.61 67.50 Fed-MAE +PreP-WFL (ours) 82.56 81.00 79.51 77.30 70.21 
+
+𝜎 ∗ = 2 .0 Fed-MAE 82.34 79.84 77.35 74.43 65.86 Fed-MAE +PreP-WFL (ours) 82.91 81.02 79.04 76.23 68.09 
+
+𝜎 ∗ = 3 .0 Fed-MAE 82.81 79.67 77.97 74.71 66.94 Fed-MAE +PreP-WFL (ours) 83.05 81.11 79.50 75.95 68.37 
+
+per-sample annotations. Consequently, site-specific classes with low prevalence receive larger weights, amplifying their learning signal during local updates and rebalancing the global optimization to avoid under-learning of rare classes. Figure 9 presents the accuracy gains of PreP-WFL over the SSFL baseline (Fed-MAE) across all 20 PreDi configurations, showing a clear trend that performance improvements increase as class prevalence decreases. Table 7 reports the performance of the Fed-MAE baseline and Fed-MAE with the proposed PreP-WFL across all (̄𝜌 ∗, 𝜎 ∗) configurations. At high prevalence ( ̄𝜌 ∗ = 3 .5), where most classes are observed by 3–4 clients, PreP-WFL yields only modest gains of +0 .03 to +0 .57 percentage points. This is expected: when prevalence is high, each class already receives abundant and diverse gradient updates under aggregation, so additional reweighting brings limited benefit. As prevalence decreases, the advantages of PreP-WFL become progressively more pronounced. By upweighting rare classes, PreP-WFL emphasizes their contribution during local fine-tuning and partially rebalances the global optimization landscape. The largest improvement occurs in the most challenging prevalence setting ( ̄𝜌 ∗ = 1 .5), where accuracy increases from 67.82% (baseline) to 71.16% with PreP-WFL. This corresponds to an approximate 22% 
+
+Page 17 of 22 reduction in the performance gap between high- and low-prevalence settings (from 82.47% vs. 67.82% to 82.62% vs. 71.16%), demonstrating that PreP-WFL substantially improves the low-prevalence scenarios. Moreover, within each prevalence level, PreP-WFL’s performance gains systematically diminish as disparity 𝜎 
+
+increases. For instance, at ̄ 𝜌 ∗ = 1 .5, the improvement shrinks from +3 .34 points at 𝜎 ∗ = 0 .0 to +1 .43 points at 
+
+𝜎 ∗ = 3 .0. This trend is consistent across low-prevalence settings, as extreme disparity concentrates many classes in a few clients, so that a globally rare class can be locally common at a particular site. In such cases, aggressive up-weighting based on global prevalence becomes suboptimal, because the class is not locally rare and may already receive sufficient optimization emphasis. The corresponding F1-scores exhibit a similar trend and are reported in Table 11 in Appendix A. In summary, these results indicate that PreP-WFL provides an effective mechanism to recover a substantial portion of the performance lost in low-prevalence federated regimes. By relying only on aggregated label statistics, the approach remains data-local and can be seamlessly integrated into existing SSFL pipelines. This highlights its practical value for real-world deployments in which rare, site-specific classes are of primary importance. 
+
+## 6. Conclusion 
+
+This work studies label-scarce visual classification under decentralized and heterogeneous data through the lens of SSFL. Using diatom classification as a representative real-world setting, we demonstrate that SSFL constitutes an effective data-local learning paradigm that consistently outperforms local-only training under both homogeneous and heterogeneous conditions. By explicitly decoupling heterogeneity across pre-training and fine-tuning, we further show that conflating these stage-specific data heterogeneities obscures their individual effects. For label-space heterogeneity specifically, we introduce PreDi, a partitioning scheme that disentangles prevalence and disparity into orthogonal dimensions, enabling controlled analysis of their individual effects. Experiments reveal that prevalence is the primary factor governing downstream performance, whereas disparity plays a comparatively minor role. Building on this finding, we propose PreP-WFL, a prevalence-based personalized weighting strategy that improves robustness in low-prevalence regimes, with gains increasing as prevalence decreases. Overall, these contributions provide a mechanistic basis for characterizing stage-specific data heterogeneity in SSFL and offer principled insights for designing data-local recognition systems in heterogeneous decentralized environments. One limitation of this study is that the analysis is conducted on a representative decentralized setting with a fixed federation scale. Future work will extend this framework to larger and more diverse federations, jointly varying multiple sources of heterogeneity. 
+
+## 7. Declaration of Competing Interest 
+
+The authors declare no competing interests. 
+
+## 8. CRediT Author Statement 
+
+Mingkun Tan: Conceptualization, Methodology, Software, Validation, Formal analysis, Investigation, Data Curation, Writing - Original Draft, Visualization, Project administration. Xilu Wang: Conceptualization, Formal analysis, Writing - Review and Editing, Supervision. Michael Kloster: Resources, Data Curation, Writing - Review and Editing. Tim W. Nattkemper: Conceptualization, Resources, Writing - Review and Editing, Supervision, Project administration, Funding acquisition. 
+
+## 9. Acknowledgement 
+
+This work was supported by the de.NBI Cloud within the German Network for Bioinformatics Infrastructure (de.NBI) and ELIXIR-DE (Forschungszentrum Jülich and W-de.NBI-001, W-de.NBI-004, W-de.NBI-008, W-de.NBI-010, W-de.NBI-013, W-de.NBI-014, W-de.NBI-016, W-de.NBI-022). 
+
+9.1. Funding 
+
+M.T. and M.K. were funded by the Deutsche Forschungsgemeinschaft (DFG, German Research Foundation; project number: 463395318, GZ: NA 731/11-1). 
+
+> Page 18 of 22
+
+## 10. Declaration of generative AI and AI-assisted technologies in the manuscript preparation process 
+
+During the preparation of this work the authors used ChatGPT in order to improve the readability and language of the manuscript. After using it, the authors reviewed and edited the content as needed and took full responsibility for the content of the published article. 
+
+## A. Appendix 
+
+Table 8 
+
+F1-score results under IID settings. 𝑢 𝑘 and 𝓁  
+
+> 𝑘
+
+denote the unlabeled and labeled datasets of client 𝑘 , respectively. 
+
+Method Pre-train data Fine-tune data Test F1-score 
+
+Client 1 SSL 𝑢  
+
+> 1
+
+in Split 𝑢  
+
+> IID
+
+𝓁  
+
+> 1
+
+in Split 𝓁 
+
+> IID
+
+0.7054 ImageNet 0.7234 Client 2 SSL 𝑢  
+
+> 2
+
+in Split 𝑢  
+
+> IID
+
+𝓁  
+
+> 2
+
+in Split 𝓁 
+
+> IID
+
+0.7100 ImageNet 0.7186 Client 3 SSL 𝑢  
+
+> 3
+
+in Split 𝑢  
+
+> IID
+
+𝓁  
+
+> 3
+
+in Split 𝓁 
+
+> IID
+
+0.7051 ImageNet 0.7552 Client 4 SSL 𝑢  
+
+> 4
+
+in Split 𝑢  
+
+> IID
+
+𝓁  
+
+> 4
+
+in Split 𝓁 
+
+> IID
+
+0.7203 ImageNet 0.7215 Federated SSFL Split 𝑢  
+
+> IID
+
+Split 𝓁  
+
+> IID
+
+0.8008 Centralized SSL 𝑢 𝓁 0.8236 
+
+Table 9 
+
+F1-score results on unlabeled splits. 
+
+Pre-train data Test F1-score 
+
+Split 𝑢  
+
+> IID
+
+0.8008 Split 𝑢 
+
+> 1
+
+(𝛼 = 1 .0) 0.7934 Split 𝑢 
+
+> 2
+
+(𝛼 = 0 .5) 0.7975 Split 𝑢 
+
+> 3
+
+(𝛼 = 0 .2) 0.8063 Split 𝑢 
+
+> 4
+
+(𝛼 = 0 .1) 0.8168 
+
+Table 10 
+
+F1-score results on non-IID labeled data under different ( ̄𝜌 ∗, 𝜎 ∗) configurations. 
+
+Test F1-score ̄𝜌 ∗ = 3 .5̄ 𝜌 ∗ = 3 .0̄ 𝜌 ∗ = 2 .5̄ 𝜌 ∗ = 2 .0̄ 𝜌 ∗ = 1 .5
+
+𝜎 ∗ = 0 .0 0.7853 0.7570 0.7310 0.7217 0.6277 
+
+𝜎 ∗ = 1 .0 0.7833 0.7589 0.7357 0.7163 0.6244 
+
+𝜎 ∗ = 2 .0 0.7827 0.7611 0.7312 0.7059 0.6010 
+
+𝜎 ∗ = 3 .0 0.7882 0.7579 0.7404 0.7038 0.6158 Page 19 of 22 Table 11 
+
+F1-score results of Fed-MAE (baseline) and Fed-MAE with PreP-WFL (ours) across (̄𝜌 ∗, 𝜎 ∗)
+
+configurations. 
+
+Test F1-score ̄𝜌 ∗ = 3 .5̄ 𝜌 ∗ = 3 .0̄ 𝜌 ∗ = 2 .5̄ 𝜌 ∗ = 2 .0̄ 𝜌 ∗ = 1 .5
+
+𝜎 ∗ = 0 .0 Fed-MAE 0.7853 0.7570 0.7310 0.7217 0.6277 Fed-MAE +PreP-WFL (ours) 0.7822 0.7696 0.7426 0.7364 0.6611 
+
+𝜎 ∗ = 1 .0 Fed-MAE 0.7833 0.7589 0.7357 0.7163 0.6244 Fed-MAE +PreP-WFL (ours) 0.7838 0.7687 0.7492 0.7279 0.6473 
+
+𝜎 ∗ = 2 .0 Fed-MAE 0.7827 0.7611 0.7312 0.7059 0.6010 Fed-MAE +PreP-WFL (ours) 0.7842 0.7689 0.7420 0.7179 0.6115 
+
+𝜎 ∗ = 3 .0 Fed-MAE 0.7882 0.7579 0.7404 0.7038 0.6158 Fed-MAE +PreP-WFL (ours) 0.7880 0.7674 0.7472 0.7088 0.6173 
+
+## References 
+
+[1] J. Deng, W. Dong, R. Socher, L.-J. Li, K. Li, L. Fei-Fei, Imagenet: A large-scale hierarchical image database [dataset], in: 2009 IEEE Conference on Computer Vision and Pattern Recognition, 2009, pp. 248–255. https://doi.org/10.1109/CVPR.2009.5206848 .[2] J. Su, T. Yang, Research on federated learning algorithms for marine internet of things, in: 2024 10th International Conference on Computer and Communications (ICCC), 2024, pp. 2183–2188. https://doi.org/10.1109/ICCC62609.2024.10942194 .[3] E. A. Lobo, C. G. Heinrich, M. Schuch, C. E. Wetzel, L. Ector, Diatoms as bioindicators in rivers, in: River algae, Springer, 2016, pp. 245–271. 
+
+https://doi.org/10.1007/978-3-319-31984-1_11 .[4] S. Blanco, What do diatom indices indicate? modeling the specific pollution sensitivity index, Environmental Science and Pollution Research 31 (2024) 29449–29459. https://doi.org/10.1007/s11356-024-33115-1 .[5] S. A. Henson, B. Cael, S. R. Allen, S. Dutkiewicz, Future phytoplankton diversity in a changing climate, Nature communications 12 (2021) 5372. https://doi.org/10.1038/s41467-021-25699-w .[6] P. Carcagni, A. G. da Silva Jr, P. Memmolo, V. Bianco, F. Merola, L. M. G. Goncalves, A. Silva, P. Ferraro, C. Distante, An investigation on deep learning approaches for diatoms classification, in: Multimodal Sensing and Artificial Intelligence: Technologies and Applications II, volume 11785, 2021, pp. 138–145. https://doi.org/10.1117/12.2593252 .[7] M. Kloster, D. Langenkämper, M. Zurowietz, B. Beszteri, T. W. Nattkemper, Deep learning-based diatom taxonomy on virtual slides, Scientific reports 10 (2020) 14416. https://doi.org/10.1038/s41598-020-71165-w .[8] S. Pu, F. Zhang, Y. Shu, W. Fu, Microscopic image recognition of diatoms based on deep learning, Journal of phycology 59 (2023) 1166–1178. 
+
+https://doi.org/10.1111/jpy.13390 .[9] Z. Yong-Zheng, J. ZHANG, Q. CHENG, Y. Hui-Xiao, D. Kai-Fei, J.-H. ZHANG, Q. Zhi-Qiang, Z. Jian, S. Jun-Hong, P. HUANG, Comparison among four deep learning image classification algorithms in ai-based diatom test, J. forensic med (2022) 31–39. https: //doi.org/10.12116/j.issn.1004-5619.2021.411001 .[10] D. Langenkämper, M. Zurowietz, T. Schoening, T. W. Nattkemper, Biigle 2.0-browsing and annotating large marine image collections, Frontiers in Marine Science 4 (2017) 83. https://doi.org/10.3389/fmars.2017.00083 .[11] T. Moeller, T. W. Nattkemper, Almi - a generic active learning system for computational object classification in marine observation images, Sensors 21 (2021). https://doi.org/10.3390/s21041134 .[12] M. L. Haug, A. Saad, A. Stahl, A combined informative and representative active learning approach for plankton taxa labeling, in: Thirteenth International Conference on Digital Image Processing (ICDIP 2021), volume 11878, 2021, pp. 495–503. https://doi.org/10.1117/12. 2601096 .[13] J. Liu, A. Du, C. Wang, H. Zheng, N. Wang, B. Zheng, Teaching squeeze-and-excitation pyramidnet for imbalanced image classification with gan-based curriculum learning, in: 2018 24th International Conference on Pattern Recognition (ICPR), 2018, pp. 2444–2449. https: //doi.org/10.1109/ICPR.2018.8546037 .[14] N. Vallez, G. Bueno, O. Deniz, S. Blanco, Diffeomorphic transforms for data augmentation of highly variable shape and texture objects, Computer Methods and Programs in Biomedicine 219 (2022) 106775. https://doi.org/10.1016/j.cmpb.2022.106775 .[15] C. Wang, Z. Yu, H. Zheng, N. Wang, B. Zheng, Cgan-plankton: Towards large-scale imbalanced class generation and fine-grained classification, in: 2017 IEEE International Conference on Image Processing (ICIP), 2017, pp. 855–859. https://doi.org/10.1109/ ICIP.2017.8296402 .[16] G. Bueno, L. Sanchez, G. Cristobal, M. Kloster, B. Beszteri, J. Salido, Phytoplankton identification with prototypical networks: A few-shot learning approach, Results in Engineering (2025) 106984. https://doi.org/10.1016/j.rineng.2025.106984 .[17] J. Guo, J. Guan, Classification of marine plankton based on few-shot learning, Arabian Journal for Science and Engineering 46 (2021) 9253–9262. https://doi.org/10.1007/s13369-021-05786-2 .
+
+Page 20 of 22 [18] L. Schmarje, J. Brünger, M. Santarossa, S.-M. Schröder, R. Kiko, R. Koch, Fuzzy overclustering: Semi-supervised classification of fuzzy labels with overclustering and inverse cross-entropy, Sensors 21 (2021) 6661. https://doi.org/10.3390/s21196661 .[19] M. Ibrahim, Image clustering for unsupervised analysis of plankton data, Master’s thesis, LUT University, Finland (2020). https: //lutpub.lut.fi/handle/10024/161370 .[20] V. P. Pastore, M. Ciranni, S. Bianco, J. C. Fung, V. Murino, F. Odone, Efficient unsupervised learning of biological images with compressed deep features, Image and Vision Computing 137 (2023) 104764. https://doi.org/10.1016/j.imavis.2023.104764 .[21] M. Tan, D. Langenkämper, T. W. Nattkemper, The impact of data augmentations on deep learning-based marine object classification in benthic image transects, Sensors 22 (2022) 5383. https://doi.org/10.3390/s22145383 .[22] T. Chen, S. Kornblith, M. Norouzi, G. Hinton, A simple framework for contrastive learning of visual representations, in: International conference on machine learning, PmLR, 2020, pp. 1597–1607. https://doi.org/10.48550/arXiv.2002.05709 .[23] K. He, X. Chen, S. Xie, Y. Li, P. Dollár, R. Girshick, Masked autoencoders are scalable vision learners, in: Proceedings of the IEEE/CVF conference on computer vision and pattern recognition, 2022, pp. 16000–16009. https://doi.org/10.1109/CVPR52688.2022.01553 .[24] M. Tan, D. Langenkämper, M. Kloster, T. W. Nattkemper, Scaling down annotation needs: The capacity of self-supervised learning on diatom classification, Iscience 28 (2025). https://doi.org/10.1016/j.isci.2025.112236 .[25] J. Kareinen, T. Eerola, K. Kraft, L. Lensu, S. Suikkanen, H. Kälviäinen, Self-supervised pretraining for fine-grained plankton recognition, in: Proceedings of IEEE/CVF conference on computer vision and pattern recognition workshops, 2025. https://doi.org/10.48550/arXiv. 2503.11341 .[26] F. Lombard, E. Boss, A. M. Waite, M. Vogt, J. Uitz, L. Stemmann, H. M. Sosik, J. Schulz, J.-B. Romagnan, M. Picheral, et al., Globally consistent quantitative observations of planktonic ecosystems, Frontiers in Marine Science 6 (2019) 196. https://doi.org/10.3389/ fmars.2019.00196 .[27] T. Li, A. K. Sahu, A. Talwalkar, V. Smith, Federated learning: Challenges, methods, and future directions, IEEE signal processing magazine 37 (2020) 50–60. https://doi.org/10.1109/MSP.2020.2975749 .[28] B. McMahan, E. Moore, D. Ramage, S. Hampson, B. A. y Arcas, Communication-efficient learning of deep networks from decentralized data, in: Artificial intelligence and statistics, PMLR, 2017, pp. 1273–1282. https://proceedings.mlr.press/v54/mcmahan17a.html .[29] D. Zhang, V. Voleti, J. L. Deglint, A. Wong, Plankton-fl: Exploration of federated learning for privacy-preserving training of deep neural networks for phytoplankton classification, Journal of Computational Vision and Imaging Systems 8 (2022) 17–19. https://doi.org/10. 48550/arXiv.2212.08990 .[30] R. Yan, L. Qu, Q. Wei, S.-C. Huang, L. Shen, D. L. Rubin, L. Xing, Y. Zhou, Label-efficient self-supervised federated learning for tackling data heterogeneity in medical imaging, IEEE Transactions on Medical Imaging 42 (2023) 1932–1943. https://doi.org/10.1109/TMI. 2022.3233574 .[31] X. Xu, H. H. Deng, J. Gateno, P. Yan, Federated multi-organ segmentation with inconsistent labels, IEEE transactions on medical imaging 42 (2023) 2948–2960. https://doi.org/10.1109/TMI.2023.3270140 .[32] Z. Deng, L. Luo, H. Chen, Scale federated learning for label set mismatch in medical image classification, in: International Con-ference on Medical Image Computing and Computer-Assisted Intervention, Springer, 2023, pp. 118–127. https://doi.org/10.1007/ 978-3-031-43898-1_12 .[33] Z. Fan, J. Yao, R. Zhang, L. Lyu, Y. Wang, Y. Zhang, Federated learning under partially disjoint data via manifold reshaping, Transactions on Machine Learning Research (2023). https://openreview.net/forum?id=jLJTqJXAG7 .[34] Z. Fan, R. Zhang, J. Yao, B. Han, Y. Zhang, Y. Wang, Federated learning with bilateral curation for partially class-disjoint data, in: Thirty-seventh Conference on Neural Information Processing Systems, 2023. https://openreview.net/forum?id=wwmKVO8bsR .[35] K. Guo, Y. Ding, J. Liang, Z. Wang, R. He, T. Tan, Exploring vacant classes in label-skewed federated learning, in: Proceedings of the AAAI Conference on Artificial Intelligence, volume 39, 2025, pp. 16960–16968. https://doi.org/10.1609/aaai.v39i16.33864 .[36] I. Misra, L. v. d. Maaten, Self-supervised learning of pretext-invariant representations, in: Proceedings of the IEEE/CVF conference on computer vision and pattern recognition, 2020, pp. 6707–6717. https://doi.org/10.1109/CVPR42600.2020.00674 .[37] K. He, H. Fan, Y. Wu, S. Xie, R. Girshick, Momentum contrast for unsupervised visual representation learning, in: Proceedings of the IEEE/CVF conference on computer vision and pattern recognition, 2020, pp. 9729–9738. https://doi.org/10.1109/CVPR42600.2020. 00975 .[38] J.-B. Grill, F. Strub, F. Altché, C. Tallec, P. Richemond, E. Buchatskaya, C. Doersch, B. Avila Pires, Z. Guo, M. Gheshlaghi Azar, et al., Boot-strap your own latent-a new approach to self-supervised learning, Advances in neural information processing systems 33 (2020) 21271–21284. 
+
+https://proceedings.neurips.cc/paper_files/paper/2020/file/f3ada80d5c4ee70142b17b8192b2958e-Paper.pdf .[39] X. Chen, K. He, Exploring simple siamese representation learning, in: Proceedings of the IEEE/CVF conference on computer vision and pattern recognition, 2021, pp. 15750–15758. https://doi.org/10.1109/CVPR46437.2021.01549 .[40] J. Xu, L. Xiao, A. M. López, Self-supervised domain adaptation for computer vision tasks, IEEE Access 7 (2019) 156694–156706. 
+
+https://doi.org/10.1109/ACCESS.2019.2949697 .[41] H. Bao, L. Dong, S. Piao, F. Wei, Beit: Bert pre-training of image transformers, arXiv preprint arXiv:2106.08254 (2021). https: //doi.org/10.48550/arXiv.2106.08254 .[42] M. Ciranni, A. Gjergji, A. Maracani, V. Murino, V. P. Pastore, In-domain self-supervised learning for plankton image classification on a budget, in: Proceedings of the Winter Conference on Applications of Computer Vision, 2025, pp. 1588–1597. https://doi.org/10. 1109/WACVW65960.2025.00173 .[43] A. Venkataramanan, M. Kloster, A. Burfeid-Castellanos, M. Dani, N. A. Mayombo, D. Vidakovic, D. Langenkämper, M. Tan, C. Pradalier, T. Nattkemper, et al., “ude diatoms in the wild 2024”: a new image dataset of freshwater diatoms for training deep learning models, GigaScience 13 (2024) giae087. https://doi.org/10.1093/gigascience/giae087 .[44] P. Kairouz, H. B. McMahan, B. Avent, A. Bellet, M. Bennis, A. N. Bhagoji, K. Bonawitz, Z. Charles, G. Cormode, R. Cummings, et al., Advances and open problems in federated learning, Foundations and trends ® in machine learning 14 (2021) 1–210. https://doi.org/10. 
+
+Page 21 of 22 1561/2200000083 .[45] D. Gao, X. Yao, Q. Yang, A survey on heterogeneous federated learning, arXiv preprint arXiv:2210.04505 (2022). https://doi.org/10. 48550/arXiv.2210.04505 .[46] Z. Lu, H. Pan, Y. Dai, X. Si, Y. Zhang, Federated learning with non-iid data: A survey, IEEE Internet of Things Journal 11 (2024) 19188–19209. 
+
+https://doi.org/10.1109/JIOT.2024.3376548 .[47] A. Fallah, A. Mokhtari, A. Ozdaglar, Personalized federated learning with theoretical guarantees: A model-agnostic meta-learning approach, Advances in neural information processing systems 33 (2020) 3557–3568. https://proceedings.neurips.cc/paper_files/paper/ 2020/file/24389bfe4fe2eba8bf9aa9203a44cdad-Paper.pdf .[48] T. Li, S. Hu, A. Beirami, V. Smith, Ditto: Fair and robust federated learning through personalization, in: International conference on machine learning, PMLR, 2021, pp. 6357–6368. https://proceedings.mlr.press/v139/li21h/li21h.pdf .[49] S. Ali Khowaja, K. Dev, S. Muhammad Anwar, M. George Linguraru, Selffed: Self-supervised federated learning for data heterogeneity and label scarcity in medical images, Expert Systems with Applications 261 (2025). https://doi.org/10.1016/j.eswa.2024.125493 .[50] A. Dosovitskiy, An image is worth 16x16 words: Transformers for image recognition at scale, arXiv preprint arXiv:2010.11929 (2020). 
+
+https://doi.org/10.48550/arXiv.2010.11929 .[51] E. D. Cubuk, B. Zoph, J. Shlens, Q. V. Le, Randaugment: Practical automated data augmentation with a reduced search space, in: Proceedings of the IEEE/CVF conference on computer vision and pattern recognition workshops, 2020, pp. 702–703. https://doi.org/10.1109/ CVPRW50498.2020.00359 .
+
+Page 22 of 22

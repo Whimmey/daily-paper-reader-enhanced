@@ -1,0 +1,561 @@
+Title: Variational Graph Neural Networks for Uncertainty Quantification in Inverse Problems
+
+URL Source: https://arxiv.org/pdf/2603.29515v1
+
+Published Time: Wed, 01 Apr 2026 01:18:51 GMT
+
+Number of Pages: 19
+
+Markdown Content:
+# Variational Graph Neural Networks for Uncertainty Quantification in Inverse Problems 
+
+## David Gonz´ alez 1, Alba Muix´ ı2,3, Beatriz Moya 4, El´ ıas Cueto 1 
+
+> 1
+
+Keysight-UZ Chair of the Spanish National Strategy on AI. Aragon Institute of Engineering Research (I3A), Universidad de Zaragoza, Spain  
+
+> 2
+
+Laboratori de C` alcul Num` eric (LaC` aN), Universitat Polit` ecnica de Catalunya - BarcelonaTech (UPC), Spain  
+
+> 3
+
+Centre Internacional de M` etodes Num` erics en Enginyeria (CIMNE), Barcelona, Spain  
+
+> 4
+
+PIMM Lab. Arts et M´ etiers Institute of Technology, Paris, France 
+
+## April 1, 2026 
+
+Abstract 
+
+The increasingly wide use of deep machine learning techniques in computational mechanics has signif-icantly accelerated simulations of problems that were considered unapproachable just a few years ago. However, in critical applications such as Digital Twins for engineering or medicine, fast responses are not enough; reliable results must also be provided. In certain cases, traditional deterministic methods may not be optimal as they do not provide a measure of confidence in their predictions or results, especially in inverse problems where the solution may not be unique or the initial data may not be entirely reliable due to the presence of noise, for instance. Classic deep neural networks also lack a clear measure to quantify the uncertainty of their predictions. In this work, we present a variational graph neural network (VGNN) architecture that integrates variational layers into its architecture to model the probability distribution of weights. Unlike computationally expensive full Bayesian net-works, our approach strategically introduces variational layers exclusively in the decoder, allowing us to estimate cognitive uncertainty and statistical uncertainty at a relatively lower cost. In this work, we validate the proposed methodology in two cases of solid mechanics: the identifi-cation of the value of the elastic modulus with nonlinear distribution in a 2D elastic problem and the location and quantification of the loads applied to a 3D hyperelastic beam, in both cases using only the displacement field of each test as input data. The results show that the model not only recovers the physical parameters with high precision, but also provides confidence intervals consistent with the physics of the problem, as well as being able to locate the position of the applied load and estimate its value, giving a confidence interval for that experiment. 
+
+Keywords: Variational Inference, Graph Neural Networks, Inverse Problems, Hyperelasticity, Un-certainty Quantification. 
+
+# 1 Introduction 
+
+The most transformative aspects that today’s society is experiencing are undoubtedly the development and practical implementation of technologies applied to problems that just a few years ago were considered unfeasible due to cost or complexity (fast genomic sequencing; algorithms that predict the response to certain drugs; smart, personalized, and adaptive production). Without these technologies, precision medicine and industry, among others, would remain limited and applied to specific and undoubtedly costly cases. These phenomena have a common denominator, which is the ability to manage and exploit enormous volumes of data in real time for decision-making. In particular, industry and precision medicine also share a need: to merge the physical world with the virtual world through digital twins [1]. To be effective, numerical simulation must be capable of delivering results in real time, a requirement that classical methods generally cannot meet due to their high computational cost. Scientific Machine Learning has emerged as a promising solution. The development of artificial neural network architectures informed by physics (PINNs) [2], thermodynamics (TINNs) [3], or neural operators (DeepONet) [4] has demonstrated their ability to emulate complex physics at response speeds superior to those of classical solvers. However, the vast majority of these models are deterministic, meaning that 1
+
+> arXiv:2603.29515v1 [cs.LG] 31 Mar 2026
+
+given input data, they produce output data without informing the user about the reliability of that prediction. This aspect can be considered critical in some inverse problems, where the aim is to obtain the causes that have generated certain effects, for example, to obtain the properties of the material that have produced certain displacements under a given load. It is well known that the nature of the input data (noised data) or the lack of uniqueness of the solution to the problem can lead to significant errors if one relies entirely on the prediction obtained with this type of architecture. This paper proposes a hybrid architecture—combining the capabilities provided by the geometric biases of graph neural networks (GNNs) [5–7] with variational inference [8,9]—which, in our point of view, overcomes the limitations of conventional networks by providing efficient quantification of uncertainty. To do this, we use a combination of graph neural networks with variational layers that let us get a non-deterministic solution to the inverse problems posed, since it treats the weights of the network of these variational layers not as fixed values, but as random variables with a probability distribution. This allows our architecture to quantify two types of uncertainty: cognitive (or epistemic) uncertainty, which is the uncertainty associated with a lack of data or knowledge of the model—this type of uncertainty can be reduced with more data—; and statistical (or random) uncertainty, which is the uncertainty associated with the noise inherent in the input data. There are two types of architectures that allow the probability distribution of weights to be processed. On the one hand, there are Bayesian neural networks (BNNs) [10], which, as mentioned above, go a step further than conventional neural networks by treating the network weights as random variables that follow a probability distribution, rather than obtaining fixed values for the weights. The main objective of Bayesian inference in this context is to obtain the posterior distribution of the weights for some input data (training data). This is why BNNs can quantify the uncertainty in their predictions, making them particularly valuable in applications such as reliable uncertainty estimation or outlier detection. However, training a BNN is computationally expensive. For this reason, approximate methods such as variational inference, among others, are used. This approach is widely used when working with very complex models or large data sets. Instead of calculating the probability distribution of the weights, vari-ational inference seeks a simpler distribution that approximates it as closely as possible [11]. Variational neural networks incorporate variational inference directly into the architecture to model uncertainty, improve robustness, and encourage better generalization. In summary, variational inference is a Bayesian technique that replaces complex and intractable pos-terior distributions with simpler distributions that are more efficient to optimize, which is the alternative used in this work. As already mentioned, there is a neural PDE solver architecture that has demonstrated a great capacity to adapt to changes in geometry and boundary conditions: graph networks [12, 13]. Combined with a Bayesian variational approach to solving inverse problems, the resulting architecture promises to provide some very important features, particularly for the design of digital twins in changing environments [14, 15]. The purpose of this work is precisely to explore the possibilities offered by both methodologies: on the one hand, the quantification of uncertainty provided by the Bayesian approach to the problem. On the other hand, the generalisability of graph networks, already demonstrated in the literature. We thus hope that the result will be a technique with a high degree of generalisation in the face of changing scenarios and even those not seen in training. The outline of the paper is as follows. In Section 2 we introduce the proposed architecture for our networks. Section 3 briefly introduces the strategy followed for training. Section 4 presents the chosen numerical examples that demonstrate the sought advantages of our approach. Finally, in Section 5 we draw some conclusions. 
+
+# 2 Neural Network Architecture 
+
+In computational mechanics, continuum models are discretized using usually unstructured meshes (trian-gles, tetrahedrons) to adapt to the complex geometries of the different problems under study. However, classical deep learning methods, such as convolutional neural networks (CNNs) that dominate image processing, operate on regular domains [16]. Projecting these meshes onto regular grids to use CNNs can introduce interpolation errors or loss of important topological information. Graph Neural Networks (GNNs) generalize convolution to domains that are not necessarily regular [5, 6, 17, 18]. They treat the computational mesh of the model directly as if it were a graph G = ( V, E), 2composed by a set of vertices V and edges E, preserving the original connectivities and guaranteeing an indispensable physical property: it is invariant to the ordering of the nodes, i.e., the result does not depend on the order in which the nodes have been enumerated. Graph networks employed as a neural Partial Differential Equation (PDE) solver classically follow the pattern proposed by Battaglia et al. [12] and consists of an encoder, a processor and a decoder, whose structure we describe next. 
+
+## 2.1 Encoder 
+
+The encoder processes the input data (dimension of a mesh node, processing all at once in the dimension reserved for the batch) and projects it onto the latent space of a higher dimension than the input one. Let 
+
+xi be the feature vector of node i. In this work, the coordinates and displacements (observable variables) of each node are considered. In order to characterize and differentiate each experiment or simulation to which this displacement field is attributed, the mean of this displacement field of the experiment is also taken into account. The characteristics of the edge are denoted by aij , which in this work considers the relative distance between neighboring nodes (defined by the connectivity of the graph). The encoder consists of two independent multi-layer perceptron (MLP) networks for nodes and edges: 
+
+v(l) 
+
+> i
+
+= f (W v,l xi + bv,l ), e(l) 
+
+> ij
+
+= f (W e,l aij + be,l ), (1) where f is a nonlinear activation function. Specifically, in this work, the SwishLayer activation function has been used [19], and l fully connected layers have been considered for each MLP, l = 1 , . . . , 3. The subscripts i, j run through the number of nodes in the model. 
+
+## 2.2 Processor 
+
+The processor is the interaction core that performs m message steps to propagate information across the domain using the connectivity defined in the graph. This is essential for simulating the physics of the problem, since local interactions between neighboring nodes give rise to global behaviors of the entire model. For each message step k = 1 , . . . , m :1. The information for each edge of the graph is updated by calculating the “message”—interaction value from the information stored in the connected nodes. 
+
+e(k+1)  
+
+> ij
+
+= e(k) 
+
+> ij
+
++ ϕe
+
+
+
+v(k) 
+
+> i
+
+, v(k) 
+
+> j
+
+, e(k)
+
+> ij
+
+
+
+. (2) 2. Message passing step, where 
+
+mi = X 
+
+> j∈N(i)
+
+e(k+1)  
+
+> ij
+
+.
+
+The number of message passes is a key parameter in the performance of graph networks. In [20], the minimum number of message passes required to ensure a given level of prediction accuracy is studied in depth, depending on the type of partial differential equation governing the physical process. 3. Node aggregation and updating step. For each node, it aggregates the messages from its neighbor-hood N (i) and updates its state. 
+
+v(k+1)  
+
+> i
+
+= v(k) 
+
+> i
+
++ ϕv
+
+
+
+v(k) 
+
+> i
+
+, m i
+
+
+
+= v(k) 
+
+> i
+
++ ϕv
+
+v(k) 
+
+> i
+
+, X 
+
+> j∈N(i)
+
+e(k+1) 
+
+> ij
+
+ , (3) where ϕe and ϕv are again basic neural networks (3-layer fully connected MLPs with swissLayer activation functions). It is important to note that the number of steps m determines how much information each node receives. As discussed in [20], an insufficient m causes the phenomenon known as under-reaching , where physical information does not have time to propagate throughout the domain (analogous to the CFL condition in explicit numerical methods), preventing or making convergence of the inverse problem more difficult. 32.3 Variational Decoder 
+
+Unlike Graph Networks, where all the weights calculated by the network are constant, and unlike Bayesian Networks, where all the weights in the network are distributions (which considerably increases the compu-tational cost and significantly hinders the convergence of the network), in this work we propose a hybrid approach. The Encoder and Processor are deterministic, extracting deep features and therefore their weights are considered constant, and uncertainty is modeled only in the decoder, defining a Variational Decoder whose weights are probability distributions. To solve the inverse problem, we seek the posterior distribution of the parameters to be estimated 
+
+y (e.g., Young’s modulus, or the position and value of the load) given the input data or observations x
+
+(e.g., the displacement field from the experiment). In this work, we assume that the output follows a Normal distribution, so the network seeks to obtain the best weights to obtain the mean and variance that best approximate the solution of the training data, i.e., 
+
+p(y|x) = N (y|μθ (x), diag( σ2 
+
+> θ
+
+(x))) , (4) where θ represents the network weights. The proposed network architecture therefore has two outputs: one predicts the mean vector μ and the other predicts its variance σ2, which represents the noise in the network predictions, ensuring a certain degree of numerical stability. Fig. 1 shows a diagram of the network architecture proposed in this work. With this proposed architecture, non-deterministic behavior is considered only in the Decoder, allowing the Processor to learn complex physical characteristics in a deterministic and efficient manner. The dimensions of the input vector required by the network are those of the displacement field of a single node—2D or 3D, depending on the problem—concatenated with the average displacement of the experiment—used as a global feature to identify and differentiate each experiment and which adds, again, 2 or 3 dimensions to the input vector—and the information regarding whether or not the node belongs to the contour using a binary variable. Additionally, graph information is provided, describing the node’s neighborhood (its connections with neighboring nodes). Specifically, it requires the Euclidean distance between neighboring nodes in each spatial direction and the modulus of that distance. This structure also includes the global characteristic of the experiment –in this work, it has been considered sufficient to use only the mean of the displacements of the entire mesh.           
+
+> Input Node
+> (u,u,Γu)
+> Input Edge
+> (x,u)
+> Processor
+> Message Passing
+> ×mPasses
+> Interaction Network
+> Encoder
+> MLP per node/edge
+> Rd→Rh>d
+> Variational
+> Decoder
+> μ(Mean)
+> σ(Std)
+> N
+> Output
+> C(x)∼ N (μ, σ )
+> Latent
+> Graph
+> Deterministic Logic
+> (Physics)
+> Probabilistic Logic
+> (Uncertainty)
+
+Figure 1: A sketch of the Variational Graph Neural Network Architecture. The output of the neural network returns the parameters of a normal distribution of the parameter studied for the input node: the mean and the variance. As an example, Fig. 1 shows the Young’s modulus obtained for the displacement field given at the input. It is important to emphasize that only the input data from a single node is required for the network input, and that the network returns the Young’s modulus of that node (its distribution). During the inference phase, when all the nodes of the mesh are processed simultaneously (taking advantage of the batch size), the complete distribution of the parameter throughout the model is obtained. Precisely because it is a node-to-node approach that explicitly incorporates graph connectivity, the model allows inference to be performed on meshes other than those used during training. This property is inherent to Graph Neural Networks (GNN) and is one of the main reasons for their versatility in 4computational mechanics—and in other disciplines. However, it is important to note that if only meshes with a limited range of element sizes (edges) have been processed during training, performance is likely to decline significantly when inferring on meshes with elements of a size considerably different from those processed during the training phase, as the network will have learned physical patterns strongly associated with a specific spatial scale. 
+
+## 2.4 Loss Function 
+
+Based on Bayes’ theorem, 
+
+P (θ|D ) = P (D| θ) · P (θ)
+
+P (D) ∝ P (D| θ) · P (θ), (5) the posterior probability P (θ|D ) could be calculated from the likelihood probability distribution P (D| θ)and the prior probability P (θ). Therefore, P (θ|D ) is obtained by normalizing P (D| θ) · P (θ) so that it sums to 1. 
+
+P (D| θ) reflects how the parameters of the neural network are updated based on the data. Therefore, it can be used to make new predictions for new data (inputs), which is known as Bayesian inference. The denominator of Bayes’ Theorem, Eq. 5, is called Evidence and is a marginal distribution that measures the probability of the data according to the model, that is, it is a normalizing constant that guarantees that the Posterior distribution adds up to 1. Therefore, it is possible to update the certainty about the weights ( θ) based on the data D,
+
+P (D) = 
+
+Z
+
+P (D| θ) · P (θ)dθ. (6) As mentioned above, due to the difficulty of calculating the posterior distribution P (θ|D ), we want to approximate it with a variational distribution Q(θ) that is closest to the posterior and is represented by a small set of parameters, such as means and variances of a multivariate Gaussian distribution. Now, how do we know that we are in the variational distribution closest to the true posterior dis-tribution if we do not know what this distribution is like? The answer is by using the Kullback-Leibler divergence between the two distributions, DKL [Q(θ)|| P (θ|D )]. The divergence DKL is also known as information divergence, information gain, or relative entropy, and is a non-symmetric measure of the similarity or difference between two distribution functions. To do this, we simply need to arrive at the expression for the Evidence Lower Bound (ELBO), which is a useful lower bound of log( p(D| θ)) (Log-likelihood) of the observed data, log P (D)
+
+| {z }
+
+> Evidence
+
+− DKL [Q(θ)|| P (θ|D )] 
+
+| {z }
+
+> Our Goal
+
+=
+
+> ELBO
+
+z }| {
+
+EQ[log P (D| θ)] 
+
+| {z }
+
+> Classification Loss
+
+− DKL [Q(θ|D )|| P (θ)] 
+
+| {z }
+
+> Regularization Loss
+
+. (7) Thus, we have converted an inference problem into an optimization problem. By optimizing ELBO, we maximize the evidence, that is, we minimize the divergence between Q(θ) and P (θ|D ). Training is performed by maximizing the Evidence Lower Bound (ELBO) [21]. For a dataset D, the loss function to be minimized consists of two parts: 
+
+L = LNLL + β · L KL , (8) where β ∈ [0 , 1] minimizes the cost of each minibatch in the training process, since, 
+
+βi = 2M −i
+
+2M − 1 , (9) 
+
+β being a scaling factor for estimating the posterior distribution of weights with PMi βi = 1 .
+
+# 3 Training Methodology 
+
+The basis of this proposal is stochastic training of the neural network using Variational Inference, [22]. The aim is to approximate the true posterior distribution P (w|D ) of the weights ( w) that best fit the data ( D). Finding this true distribution P (w|D ) can be highly difficult and costly, so another variational distribution Q(θ) parameterized by θ = ( μ, σ ) is sought that best approximates the true P (w|D ). 53.1 Local Reparameterization 
+
+To enable backpropagation through random sampling, we use the Local Reparameterization Trick pro-posed for variational inference in [21]. The weights w are expressed as: 
+
+w = μ + log(1 + eρ) ⊙ ϵ, ϵ ∼ N (0 , I ), (10) that is, the standard deviation is σ = log(1 + eρ). This reparameterization allows the use of stochastic gradient descent for variational inference, since it decouples the randomness represented by ϵ from the parameters to be learned θ = ( μ, ρ ), allowing the calculation of stable gradients. 
+
+## 3.2 Variational Inference and ELBO 
+
+Since the calculation of the exact posterior distribution P (w|D ) is intractable, the Kullback-Leibler (KL) divergence between Q(θ) and P (w|D ) is minimized. As developed above and reflected in Eq. (7), this is equivalent to maximizing the Evidence Lower Bound (ELBO), or minimizing the Negative ELBO cost function, since the optimizers implemented in neural networks perform gradient descent optimally, 
+
+ELBO ≡ L (θ) = EQ(θ)[log P (D| θ)] − DKL [Q(θ)|| P (θ)] , (11) where the first term measures the fit to the data given the model weights (likelihood) and the second term acts as a complexity-dependent regularizer (prior), measuring how much the model deviates from the initial assumptions. Rewriting Eq. (11) and taking into account Eq. (8) above, where the loss function has been defined, it is determined that, 
+
+−ELBO = −l + β · DKL [Q(θ)|| P (θ)] . (12) On the one hand, we want to minimize the loss function known as Negative Log-Likelihood ( LNLL =
+
+−l). This loss function measures the fitting error in the data, weighted by the predicted uncertainty. In other words, it estimates the probability of the network’s prediction given the actual values and sampling noise. In this work, we have chosen to use the logarithm of a normal distribution as the probability density function, thus, log N (x, μ, σ ) = − (x − μ)2
+
+2σ2
+
+> i
+
+− 12 log(2 π) − log( σ). (13) Therefore, we calculate Log-Likelihood as the logarithm of the probability of the data given in the model, which for a Gaussian output such as the one proposed would be equivalent to: 
+
+l = EQ(θ)[log P (D| θ)] ≈ X
+
+> i
+
+log P (D| θi) = X
+
+> i
+
+
+
+− || yi − μi|| 2
+
+2σ2
+
+> i
+
+− 12 log(2 π) − log( σi)
+
+
+
+, (14) with yi ∈ D . This term allows the neural network to reduce loss by reducing error ( y ≈ μ) or increasing variance ( σ) if error is unavoidable. In other words, it allows the model to “admit” that it does not know the answer, which is known as statistical or random uncertainty. The second term of Eq. (12) is the Kullback-Leibler divergence ( DKL ) and is a regularizer of the weights—or latent distributions—, which helps to avoid overfitting. In particular, the Kullback-Leibler divergence for discrete probability distributions is defined according to 
+
+DKL [Q(θ)|| P (θ)] = X
+
+> i
+
+Q(θi) log 
+
+ Q(θi)
+
+P (θi)
+
+
+
+= X
+
+> i
+
+Q(θi) log 
+
+ 1
+
+P (θi)
+
+
+
+− X
+
+> i
+
+Q(θi) log 
+
+ 1
+
+Q(θi)
+
+
+
+(15) = H(Q, P ) − H (Q) ∼= logPost − logPrior ,
+
+where H(Q, P ) ∼= log( P (θ)) ≡ logPost is known as Cross-Entropy and H(Q) ∼= log( Q(θ)) ≡ logPrior as entropy. Therefore, Eq. (12) can be rewritten as 
+
+−ELBO = −l + β · (logPost − logPrior) . (16) 6Algorithm 1: Variational Graph NN Training 
+
+Entrada: Dataset D = {(xn, y n)}, number of epochs nEpoch 
+
+Entrada: Prior Hyperparameters: πw, σ 1, σ 2
+
+Salida: Variational Parameters: θ∗ = {μ, ρ }, σnoise 
+
+// Initialization  
+
+> 1
+
+Initialize trainable parameters;  
+
+> 2
+
+for epoch e ← 1 to nEpoch do  
+
+> 3
+
+Shuffle D and divide in mini-batches B 
+
+> 4
+
+for each batch b ∈ B do 
+
+// Forward step  
+
+> 5
+
+Forward noise ϵ ∼ N (0 , I ) 
+
+> 6
+
+σ ← log(1 + exp( ρ))  
+
+> 7
+
+w ← μ + σ ⊙ ϵ 
+
+> 8
+
+Prediction: ˆ y ← fVGNN (xb; w)
+
+// ELBO Loss  
+
+> 9
+
+Ldata = P log N (yb|ˆy, σ 2noise ) 
+
+> 10
+
+DKL = log Q(w|θ) − log P (w) 
+
+> 11
+
+Ltotal ← β · DKL − L data 
+
+// Optimization (Backward)  
+
+> 12
+
+Gradients computation: ∇θ L, ∇σnoise L 
+
+> 13
+
+θ ← Adam( θ, ∇θ ) 
+
+> 14
+
+σnoise ← Adam( σnoise , ∇σnoise ) 
+
+> 15
+
+end  
+
+> 16
+
+end  
+
+> 17
+
+return μ, ρ, σ noise 
+
+As reflected above in the implemented Algorithm 1, which is analogous to the one developed in [22], to calculate logPrior we use Scale Mixture Prior to calculate the probability p(θ). This distribution is a weighted sum (we have considered πw = 12 ) of two Gaussians centered at zero with different variances (σ21 , σ 22 ), 
+
+p(θ) = Y
+
+> j
+
+πwN (θj , 0, σ 21 ) + (1 − πw)N (θj , 0, σ 22 ), (17) that are considered hyperparameters of the network and that in this work have been considered learnable during the training process. This approach encourages the calculation of sparse weights. It assigns a peaked/narrow distribution to weights that are expected to be close to zero or irrelevant, and a much wider distribution to those weights that are significant. Therefore, the Cross-Entropy H(Q, P ) ∼= log( P (θ)) is calculated using, logPrior = X
+
+> all
+
+πw log N (θweights , 0, σ 21 ) + (1 − πw) log N (θweights , 0, σ 22 )+ πw log N (θbias , 0, σ 21 ) + (1 − πw) log N (θbias , 0, σ 22 ).
+
+(18) Finally, to calculate logPost, Gaussian Variational Posterior is implemented as a diagonal Gaussian distribution. The weights θ are obtained from the standard Normal as discussed in Subsection 3.1. Therefore, the Entropy H(Q) = H(Q, Q ) ∼= log( Q(θ)) is calculated using, logPost = X
+
+> all
+
+log N (θweights , μ weights + log(1 + eρweights ) · ϵweights , log(1 + eρweights )) + log N (θbias , μ bias + log(1 + eρbias ) · ϵbias , log(1 + eρbias )) .
+
+(19) When maximizing the Evidence Lower Bound, a balance is desired between adjusting the data and not overfitting it. 73.3 Proposed Algorithm 
+
+The algorithm implemented in MATLAB for VGNN training is developed in Algorithm 1. This procedure ensures the convergence of the variational parameters and the estimation of data noise. During training, the algorithm updates the weights and biases and the (global) sampling noise. This last parameter represents the noise in the network’s predictions and is a parameter that the network learns. Specifically, it will calculate the weights for each layer μweights , ρweights , μbias , ρbias , σ1 and σ2.
+
+## 3.4 Neural Network Prediction 
+
+Once trained, the neural network will return a sample of the weights and biases [ wweights , w bias ] in the variational layers of the decoder, with values ϵweights , ϵ bias ∼ N (0 , 1), according to, 
+
+wweights = μweights + log(1 + eρweights ) · ϵweights ,wbias = μbias + log(1 + eρbias ) · ϵbias .
+
+Therefore, the value predicted by the network will be 
+
+μN N = XnewData · wweights + wbias .
+
+# 4 Numerical Examples 
+
+The VGNN architecture proposed for parameter estimation in inverse problems is applied to two numerical examples already described at the beginning of this work. The framework has been fully implemented in MATLAB using its Deep Learning Toolbox and executed on NVIDIA GeForce 4090RTX. 
+
+## 4.1 Estimation of the Elastic Modulus in a 2D Plate under Plane Stress 
+
+The first example in which the technique developed above is applied seeks to obtain Young’s modulus 
+
+E(x, y ) at the nodes of a two-dimensional plate under plane stress, as shown in Figure 2. This is a square domain with side length L = 1 .0, and the problem is considered dimensionless without loss of generality. The Dirichlet boundary conditions in Γ u are homogeneous in the horizontal direction, allowing vertical displacement at that boundary, except at the origin. The Neumann boundary Γ t is the right side of the plate, which is subjected to a tensile load σx = 1 .5. Γu Γt
+
+## x
+
+## y
+
+## Ω
+
+## E(x, y ) σx
+
+Figure 2: 2D Plate with a nonlinear distribution of the elastic modulus under plane stress. The behavior of the plate varies for each experiment since the expression of the Elastic Module varies, following a random LogNormal distribution, and whose expression is 
+
+E(x, y ) = α + γ exp ( g(x, y )) , (20) 
+
+g(x, y ) ∼ GP 
+
+
+
+0, exp 
+
+
+
+− || x − x′|| 2
+
+2l2
+
+ 
+
+, (21) 8where α = γ = l = 1 have been used. As reflected in [23], from where the dataset was obtained, the database is published in a public repository https://github.com/NASA/pigans-material-ID .For each randomly generated expression of the Elastic Modulus at each node in the domain (25 × 25 nodes), a displacement field u has been obtained. For illustrative purposes, Fig. 3 shows three simulations belonging to the dataset used in training the network. 
+
+Figure 3: Three examples of experiments used in neural network training. The first row represents the actual distribution of the Elastic Module, the next two rows represent the corresponding displacements –horizontal and vertical, respectively– for the behavior of the material represented in the initial row. 
+
+4.1.1 Specific training parameters 
+
+To ensure the reproducibility of the results, the hyperparameters used and the generation process are detailed below. The initial dataset in the repository has a very high number of simulations. For the purposes of this work, 115 simulations were used for training and 100 for testing, which was considered sufficient to verify the validity of the proposed technique. All meshes are identical and the same load and boundary conditions were applied to them. Therefore, the associated graph does not vary and consists of 625 nodes and 1825 edges (it was considered appropriate to generate self-informed connectivity). The neural network used in this example has only 23 800 parameters, and the most important hyperparameters were as follows: 
+
+• An nBatch = 2 has been used. Although the neural network input consists of data from a single node, the entire simulation (at least) is entered in the batch direction. Therefore, a batch of 2 means that the training is fed with 2 complete simulations. 
+
+• Latent space dimension 25 neurons. 
+
+• 5 Message Passing steps ( m). 
+
+• σ1 = 1exp(1) and σ2 = 1exp(2) .9• As mentioned throughout the document, SwishLayer has been used as the activation function, which is preferable in this type of problem due to its smoothness compared to ReLU. 
+
+• The number of epochs used in training was nEpoch = 4500. 
+
+• As this is a static problem, where the neural network does not play a temporal integrator role and the input data is synthetic, it was not considered necessary to add noise to the data. 
+
+• Considering that the input has only one field, that of displacements, and that this field is essential data for the characterization of each experiment, it was not deemed necessary to normalize the input data. 
+
+• The Adam optimizer was chosen with an adaptive learning rate lr = 10 −3 that changes with training. Specifically, a learning rate decay of 98% every 700 epochs was used. Fig. 4 shows the relative error (RRMSE) obtained for both the training and test datasets. 
+
+Figure 4: Relative RMSE error for training and test data for the problem of a 2D plate subjected to plane stress with nonlinear elastic modulus distributions. Figures 5, 6, and 7 show the inference results for some of the test simulations, comparing the reference result—the actual distribution of the elastic modulus that leads to the displacement field used for the inference input—and the neural network prediction. It is important to note that, due to the architecture used in this work, the network also provides a confidence interval for the elastic modulus at each point. The figures showing the results reflect the lower and upper limits of the elastic modulus for each point. The results show how the neural network is capable of effectively recovering the nonlinear distribution of Young’s modulus, as well as providing the distribution of uncertainty in the result offered, which allows us to see the areas of greater or lesser confidence in the results. A confidence interval of 97 .72% has been used in the representation of the results. 
+
+## 4.2 Estimation of the Load Applied to a 3D Hyperelastic Beam 
+
+In this second example, we seek to locate the position and value of the load applied to a cantilevered hyperelastic beam. The beam has Neo-Hookean behavior, with loads ranging from F ∈ [5 , 100] kN , every 5kN and at different positions on its upper face from the cantilevered end to an area near the fixed end, specifically linear loads at 13 in the transverse direction and on the upper face. The dataset consists of 260 high-fidelity simulations performed using the finite element method with nonlinear behavior of the hyperelastic beam with dimensions 40 × 10 × 10. All meshes are identical, so the only difference between each simulation is the position and value of the applied load, which induces a displacement field that will be the data feeding the neural network training. All simulations have the same boundary and material conditions. For all the above reasons, the associated graph (Fig. 8) does not vary and consists of 240 nodes and 824 edges (it has been considered appropriate to generate self-informed connectivity) in a three-dimensional distribution. 10 Figure 5: Test example of the plate subjected to flat stress. The upper left shows the distribution of the actual elastic modulus (Ground Truth), while the upper right shows the average prediction of that field. The bottom row shows the lower and upper limits of that field, on the left and right, respectively. 
+
+Figure 6: Second test example of the plate subjected to plane stress. The upper left shows the distribution of the actual elastic modulus (Ground Truth), while the upper right shows the average prediction of that field. The bottom row shows the lower and upper limits of that field, on the left and right, respectively. 
+
+4.2.1 Training parameters 
+
+The neural network used in this example has only 6900 parameters, and the most important hyperpa-rameters have been the following: 
+
+• Once again, an nBatch = 2 has been used, which corresponds to 2 simulations of the entire mesh, for a single load value. However, as has been emphasized throughout this work, the neural network input consists of data from a single node, and it is in the batch direction where two complete simulations are introduced in this case. 11 Figure 7: Third example test of the plate subjected to flat stress. The upper left shows the distribution of the actual elastic modulus (Ground Truth), while the upper right shows the average prediction of that field. The bottom row shows the lower and upper limits of that field, on the left and right, respectively. 
+
+Figure 8: Mesh (left) and graph (right) associated with the hyperelastic beam problem. 
+
+• Latent space dimension 12 neurons. 
+
+• 4 Message Passing ( m) steps. 
+
+• SwishLayer has been used as the activation function. 
+
+• The number of epochs used in training has been nEpoch = 5000. 
+
+• It was not considered necessary to add noise to the data, nor was it deemed necessary to normalize the input data. 
+
+• The Adam optimizer was chosen with an adaptive learning rate lr = 10 −3 that changes with training. Specifically, a Learning Rate decay of 98% every 1000 epochs was used. Fig. 9 shows the relative error (RRMSE) obtained for both the training and test datasets. In the following Figs. 10, 11, and 12 show the inference results for three of the test simulations, comparing the reference result—the actual value and position of the load applied to the beam, which leads to the displacement field used for the inference input and represented along the beam—with the predictions generated by the neural network. For each experiment, the average value of the load at each node is represented. Since this value is zero or almost zero at most nodes, it will not be reflected in the result, as the vectors are shown relative to their modulus. Again, the network also provides a confidence interval for the value of this load at every point in the domain. 12 Figure 9: Relative RMSE error for training and test data for the 3D Hyperelastic Beam problem. 
+
+Figure 10: Test example of the hyperelastic beam subjected to bending. The upper left shows the distribution of the applied load (ground truth) together with the displacement field that serves as input to the neural network, while the upper right shows the average prediction of the load value and its location. The bottom row shows the lower and upper limits of the load value distributions, on the left and right, respectively. The uncertainty in the position of the load increases significantly as it approaches the Dirichlet boundary. This is consistent, since a force near the support produces very small displacements, which complicates the inverse problem. Where a deterministic model would simply fail, the use of this architecture (VGNN) allows the user to be alerted by high variance. 13 Figure 11: Second test example of the hyperelastic beam subjected to bending. The upper left shows the distribution of the applied load (Ground Truth) together with the displacement field that serves as input to the neural network, while the upper right shows the average prediction of the load value and its location. The bottom row shows the lower and upper limits of the load value distributions, on the left and right, respectively. 
+
+Figure 12: Third test example of the hyperelastic beam subjected to bending. The upper left shows the distribution of the applied load (Ground Truth) together with the displacement field that serves as input to the neural network, while the upper right shows the average prediction of the load value and its location. The bottom row shows the lower and upper limits of the load value distributions, on the left and right, respectively. 14 4.3 Estimation of the Load Applied to a previously unseen Beam 
+
+In this last example, the training of the previous hyperelastic beam has been used to estimate the value and position of the load on a new beam, with a different geometry to that trained in the previous Section 4.2. Fig. 13 compares the geometry of the beam used to train the neural network with the new (shorter) beam for which the load is to be predicted. 
+
+Figure 13: Comparative of geometries of trained beam and the new, shorter one. Fig. 14 shows the relative error in the prediction of 10 new experiments, in which the value and position of the load are changed. 
+
+Figure 14: Relative RMSE error for test data for the new (shorter) 3D hyperelastic Beam problem. In the following Figs.15, 16 and 17 show the inference results for three of the test simulations for not trained geometry, comparing the reference value and position of the load applied to the new beam, which leads to the displacement field used for the inference input and represented along the beam, with the predictions generated by the neural network. Again, for each experiment, the average value of the load at each node is represented. As previous examples, the network also provides a confidence interval for the value of this load at every point in the domain. 
+
+# 5 Conclusions 
+
+The implementation of Variational layers in Graph architectures allows for robust estimation of uncer-tainty thanks to the variational nature of the neural network without sacrificing the predictive and versa-tile performance offered by graph networks. The training algorithm presented effectively balances model complexity (KL divergence) and accuracy (likelihood), providing a valuable tool for complex problems where risk must be controlled. 15 Figure 15: Test example of the new hyperelastic beam subjected to bending. The upper left shows the distribution of the applied load (Ground Truth) together with the displacement field that serves as input to the neural network, while the upper right shows the average prediction of the load value and its location. The bottom row shows the lower and upper limits of the load value distributions, on the left and right, respectively. 
+
+Figure 16: Test example of the new hyperelastic beam subjected to bending. The upper left shows the distribution of the applied load (Ground Truth) together with the displacement field that serves as input to the neural network, while the upper right shows the average prediction of the load value and its location. The bottom row shows the lower and upper limits of the load value distributions, on the left and right, respectively. 16 Figure 17: Test example of the new hyperelastic beam subjected to bending. The upper left shows the distribution of the applied load (Ground Truth) together with the displacement field that serves as input to the neural network, while the upper right shows the average prediction of the load value and its location. The bottom row shows the lower and upper limits of the load value distributions, on the left and right, respectively. The methodology developed in this work maintains the fundamental characteristics of GNNs by respecting the topology of the meshes of the proposed problems. The variational formulation in the decoder allows real-time confidence metrics to be obtained, and its application in quantifying uncertainty in nonlinear inverse problems confirms the robustness of the method. 
+
+# Acknowledgements 
+
+This work was supported by the Spanish Ministry of Science and Innovation, AEI/10.13039/501100011033, through Grant numbers PID2023-147373OB-I00 and PID2023-148952OB-I00, and by the Ministry for Digital Transformation and the Civil Service, through the ENIA 2022 Chairs for the creation of university-industry chairs in AI, through Grant TSI-100930-2023-1. This material is also based upon work supported in part by the Army Research Laboratory and the Army Research Office under contract/grant number W911NF2210271. The authors also acknowledge the support of ESI Group, Keysight Technologies, through the chair at the University of Zaragoza. AM is a Fellow of the Serra H´ unter Programme of the Generalitat de Catalunya. BM acknowledges the support of the CPJ-ANR ITTI. 
+
+# References 
+
+[1] Francisco Chinesta, Fouad El Khaldi, and Elias Cueto. Hybrid twin: an intimate alliance of knowl-edge and data. In The Digital Twin , pages 279–298. Springer, 2023. [2] M. Raissi, P. Perdikaris, and G.E. Karniadakis. Physics-informed neural networks: A deep learning framework for solving forward and inverse problems involving nonlinear partial differential equations. 
+
+Journal of Computational Physics , 378:686–707, 2019. [3] Quercus Hern´ andez, Alberto Bad´ ıas, Francisco Chinesta, and El´ ıas Cueto. Thermodynamics-informed graph neural networks. IEEE Transactions on Artificial Intelligence , 5(3):967–976, 2022. 17 [4] Sifan Wang, Hanwen Wang, and Paris Perdikaris. Learning the solution operator of parametric partial differential equations with physics-informed deeponets. Science advances , 7(40):eabi8605, 2021. [5] Gabriele Corso, Hannes Stark, Stefanie Jegelka, Tommi Jaakkola, and Regina Barzilay. Graph neural networks. Nature Reviews Methods Primers , 4(1):17, 2024. [6] Federico Pichi, Beatriz Moya, and Jan S Hesthaven. A graph convolutional autoencoder approach to model order reduction for parametrized pdes. Journal of Computational Physics , 501:112762, 2024. [7] Alicia Tierz, Iciar Alfaro, David Gonz´ alez, Francisco Chinesta, and El´ ıas Cueto. Graph neural networks informed locally by thermodynamics. Engineering Applications of Artificial Intelligence ,144:110108, 2025. [8] Alex Graves. Practical variational inference for neural networks. Advances in neural information processing systems , 24, 2011. [9] Lucas Pinheiro Cinelli, Matheus Ara´ ujo Marins, Eduardo Ant´ unio Barros da Silva, and S´ ergio Lima Netto. Variational autoencoder. In Variational methods for machine learning with applications to deep networks , pages 111–149. Springer, 2021. [10] Igor Kononenko. Bayesian neural networks. Biological Cybernetics , 61(5):361–370, 1989. [11] Cheng Zhang, Judith B¨ utepage, Hedvig Kjellstr¨ om, and Stephan Mandt. Advances in variational inference. IEEE transactions on pattern analysis and machine intelligence , 41(8):2008–2026, 2018. [12] Peter W Battaglia, Jessica B Hamrick, Victor Bapst, Alvaro Sanchez-Gonzalez, Vinicius Zambaldi, Mateusz Malinowski, Andrea Tacchetti, David Raposo, Adam Santoro, Ryan Faulkner, et al. Rela-tional inductive biases, deep learning, and graph networks. arXiv preprint arXiv:1806.01261 , 2018. [13] Alicia Tierz, Mikel M Iparraguirre, Ic´ ıar Alfaro, David Gonz´ alez, Francisco Chinesta, and El´ ıas Cueto. On the feasibility of foundational models for the simulation of physical phenomena. Inter-national Journal for Numerical Methods in Engineering , 126(6):e70027, 2025. [14] M Gorpinich, B Moya, S Rodriguez, F Meraghni, Y Jaafra, A Briot, M Henner, R Leon, and F Chinesta. Bridging data and physics: A graph neural network-based hybrid twin framework. 
+
+arXiv preprint arXiv:2512.15767 , 2025. [15] Beatriz Moya, Alberto Bad´ ıas, Ic´ ıar Alfaro, Francisco Chinesta, and El´ ıas Cueto. Digital twins that learn and correct themselves. International Journal for Numerical Methods in Engineering ,123(13):3034–3044, 2022. [16] Pierre Sermanet, Soumith Chintala, and Yann LeCun. Convolutional neural networks applied to house numbers digit classification. In Proceedings of the 21st international conference on pattern recognition (ICPR2012) , pages 3288–3291. IEEE, 2012. [17] Alvaro Sanchez-Gonzalez, Jonathan Godwin, Tobias Pfaff, Rex Ying, Jure Leskovec, and Peter Battaglia. Learning to simulate complex physics with graph networks. In Hal Daume and Aarti Singh, editors, Proceedings of the 37th International Conference on Machine Learning , volume 119 of Proceedings of Machine Learning Research , pages 8459–8468. PMLR, 13–18 Jul 2020. [18] Tobias Pfaff, Meire Fortunato, Alvaro Sanchez-Gonzalez, and Peter W. Battaglia. Meshgraphnets: Learning the physics of complex systems. Proceedings of the International Conference on Learning Representations (ICLR) , 2021. [19] Prajit Ramachandran, Barret Zoph, and Quoc V Le. Searching for activation functions. arXiv preprint arXiv:1710.05941 , 2017. [20] Lucas Tesan, Mikel M. Iparraguirre, David Gonzalez, Pedro Martins, and Elias Cueto. On the Under-Reaching Phenomenon in Message Passing Neural PDE Solvers: Revisiting the CFL Condition. 
+
+Computer Methods in Applied Mechanics and Engineering , 449:118476, 2026. [21] Diederik P Kingma and Max Welling. Auto-encoding variational bayes. arXiv preprint arXiv:1312.6114 , 2013. 18 [22] Charles Blundell, Julien Cornebise, Koray Kavukcuoglu, and Daan Wierstra. Weight uncertainty in neural network. In International conference on machine learning , pages 1613–1622. PMLR, 2015. [23] James E Warner, Julian Cuevas, Geoffrey F Bomarito, Patrick E Leser, and William P Leser. Inverse estimation of elastic modulus using physics-informed generative adversarial networks. arXiv preprint arXiv:2006.05791 , 2020. 19
