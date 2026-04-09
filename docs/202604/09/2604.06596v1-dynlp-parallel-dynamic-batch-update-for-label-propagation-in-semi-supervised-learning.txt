@@ -1,0 +1,1313 @@
+Title: DynLP: Parallel Dynamic Batch Update for Label Propagation in Semi-Supervised Learning
+
+URL Source: https://arxiv.org/pdf/2604.06596v1
+
+Published Time: Thu, 09 Apr 2026 00:25:00 GMT
+
+Number of Pages: 13
+
+Markdown Content:
+# DynLP: Parallel Dynamic Batch Update for Label Propagation in Semi-Supervised Learning 
+
+(to be published in the ACM International Conference on Supercomputing (ICS 2026)) 
+
+## S M Shovan ∗
+
+sskg8@mst.edu Missouri University of Science and Technology Rolla, MO, USA 
+
+## Arindam Khanda ∗
+
+akkcm@mst.edu Missouri University of Science and Technology Rolla, MO, USA 
+
+## S M Ferdous 
+
+sm.ferdous@pnnl.gov Pacific Northwest National Laboratory USA 
+
+## Sajal K. Das 
+
+sdas@mst.edu Missouri University of Science and Technology Rolla, MO, USA 
+
+## Mahantesh Halappanavar 
+
+hala@pnnl.gov Pacific Northwest National Laboratory USA 
+
+## Abstract 
+
+Semi-supervised learning aims to infer class labels using only a small fraction of labeled data. In graph-based semi-supervised learn-ing, this is typically achieved through label propagation to predict labels of unlabeled nodes. However, in real-world applications, data often arrive incrementally in batches. Each time a new batch ap-pears, reapplying the traditional label propagation algorithm to recompute all labels is redundant, computationally intensive, and inefficient. To address the absence of an efficient label propagation update method, we propose DynLP , a novel GPU-centric Dynamic Batched Parallel Label Propagation algorithm that performs only the necessary updates, propagating changes to the relevant sub-graph without requiring full recalculation. By exploiting GPU ar-chitectural optimizations, our algorithm achieves on average 13 ×
+
+and upto 102 × speedup on large-scale datasets compared to state-of-the-art approaches. 
+
+## Keywords 
+
+semi-supervised learning, label propagation, GPU 
+
+ACM Reference Format: 
+
+S M Shovan, Arindam Khanda, S M Ferdous, Sajal K. Das, and Mahantesh Halappanavar. 2026. DynLP: Parallel Dynamic Batch Update for Label Prop-agation in Semi-Supervised Learning (to be published in the ACM International Conference on Supercomputing (ICS 2026)). In 
+
+Proceedings of Make sure to enter the correct conference title from your rights confirmation email (ICS 2026). ACM, New  
+
+> ∗These authors contributed equally to this work. Permission to make digital or hard copies of all or part of this work for personal or classroom use is granted without fee provided that copies are not made or distributed for profit or commercial advantage and that copies bear this notice and the full citation on the first page. Copyrights for components of this work owned by others than the author(s) must be honored. Abstracting with credit is permitted. To copy otherwise, or republish, to post on servers or to redistribute to lists, requires prior specific permission and/or a fee. Request permissions from permissions@acm.org.
+> ICS 2026, Belfast, Northern Ireland
+> ©2026 Copyright held by the owner/author(s). Publication rights licensed to ACM. ACM ISBN 978-x-xxxx-xxxx-x/YYYY/MM https://doi.org/10.1145/nnnnnnn.nnnnnnn
+
+York, NY, USA, 13 pages. https://doi.org/10.1145/nnnnnnn. nnnnnnn 
+
+## 1 Introduction 
+
+In many machine learning applications, data evolve over time, and there is a need to analyze such dynamic data efficiently without recomputing results from scratch. These tasks become even more challenging when the training data are limited or expensive to obtain, as labeling often requires human input, sometimes from domain experts. Many learning tasks, including sentiment analysis on text, web page categorization, speech analysis, and medical image classification, fall into this dynamic and sparsely labeled data category. In such scenarios, conventional supervised learning is inadequate as it relies on a large amount of labeled data. Semi-supervised learning (SSL) [ 3 ] models address this imbal-ance between labeled and unlabeled data. Among SSL methods, graph-based approaches have gained popularity due to their accu-racy and computational efficiency [ 4, 28 , 30 ]. However, most exist-ing studies focus on static data, overlooking the inherent dynamism in many learning settings. In this paper, we study graph-based semi-supervised learning (GSSL) for dynamic data. Specifically, we design and implement efficient parallel algorithms for label propagation, a widely used inference approach for GSSL, on evolving graphs. A typical GSSL framework consists of two key phases [ 40 ]: (1) graph construction from data and (2) label inference on the con-structed graph. For datasets that are not naturally represented as graphs (e.g., collections of images), a similarity graph is first con-structed—most commonly using neighborhood-based methods such as 𝑘 -nearest neighbors (kNN). The label inference phase then pre-dicts the labels of unlabeled nodes using the few labeled ones (seed nodes). Label propagation (LP) and its variants are among the ear-liest [ 39 , 40 ] and most widely used methods [ 28 ] for this task. LP solves a quadratic optimization problem involving the graph Lapla-cian. Although an analytical solution exists, it is computationally expensive due to the dense matrix operations involved. A more scalable alternative adopts an iterative random-walk-like process, which we call ItLP : starting from known labels for seed nodes and  
+
+> arXiv:2604.06596v1 [cs.DC] 8 Apr 2026 ICS 2026, July 06–09, 2026, Belfast, Northern Ireland S M Shovan, Arindam Khanda, S M Ferdous, Sajal K. Das, and Mahantesh Halappanavar
+
+arbitrary initial labels for unlabeled ones, it iteratively updates each node’s label as the average of its neighbors’ labels while keeping the labeled nodes fixed. This iterative approach is guaranteed to converge to the analytic solution. Beyond GSSL, LP methods are also used in applications such as community detection [ 23 ] and in augmenting graph neural networks (GNNs) [35]. In this paper, we adopt a dynamic algorithm model, where batches of data changes (i.e., graph node addition and deletion) arrive, and the goal is to maintain accurate labels for all vertices as the graph evolves. Since each batch of nodes is inserted/deleted at discrete time steps, parallel computing can be leveraged to ac-celerate updates. A naive approach would be to simply augment the neighborhood graph (e.g., via kNN or 𝜖 -neighborhood con-struction) and rerun the entire LP procedure from scratch. Wag-ner et al. [ 34 ] proposed a streaming algorithm for temporal label propagation ( StLP ), which can be adapted to our dynamic setting. Their approach uses a graph reduction technique inspired by the short-circuit operator in electrical networks to improve memory efficiency. However, when adapted to our setting, we show that 
+
+StLP still requires dense matrix multiplications after every batch updates, making it unsuitable for large-scale datasets. Our proposed Dynamic Batch Parallel Label Propagation ( DynLP )algorithm improves upon ItLP and StLP by maintaining connected components across batches of nodes and performing iterative la-bel propagation on a reduced graph representation. We compare 
+
+DynLP with our parallel implementations of ItLP and StLP on di-verse synthetic and real-world datasets and the scalability grows proportional to the dataset size and the number of batches. Below, we summarize our contributions: 
+
+• We provide StLP , a GPU parallel implementation of the streaming label propagation algorithm of [34]. 
+
+• We develop DynLP , a novel, dynamic parallel label propaga-tion algorithm that supports both insertions and deletions of data points. It addresses the inefficiencies of StLP using connected component-based efficient update while avoiding redundant operations. 
+
+• We implement DynLP on GPUs and compare it against StLP 
+
+and ItLP in terms of speedup, convergence rate and accuracy in both real and synthetic sparse datasets. 
+
+• Our results show that DynLP achieves, on average, a 13 ×
+
+speedup (up to 102 ×) over state-of-the-art iterative meth-ods, while being up to 100 × more memory efficient than harmonic-solution-based approaches for sparse graphs. 
+
+## 2 Related work 
+
+We review label propagation techniques for graph-based semi-supervised learning on static and dynamic cases. 
+
+## 2.1 Static 
+
+In the static case, labels are inferred only for the unlabeled nodes already present in the graph [28]. Zhu et al. [ 40 ] model the label function over the graph as a Gaussian random field, where nearby nodes are encouraged to have similar label values. They show that the mean of this field minimizes a quadratic energy function defined by the graph Laplacian (detailed in § 3). The resulting harmonic function has a closed-form solu-tion involving the inverse of a submatrix of the Laplacian, which can alternatively be computed through iterative label propagation methods, which is the focus of our paper. Zhu et al. first formulated the problem with a Gaussian fields-based objective function [ 40 ]. In a subsequent study [ 42 ], they showed that this objective can be written in combinatorial Laplacian form, enabling optimal min-imization. However, the resulting solution required 𝑂 (𝑛 2) space, motivating later work on more efficient alternatives. The direct analytical method can be accelerated using low-rank matrix ap-proximations of the graph [ 6], while other works employ quantiza-tion based on cluster centroids [ 31 ]. Later, researchers such as [ 18 ]further improved label-propagation performance by enhancing the quality of the underlying graph structure. Sparse-graph construc-tion using principal component analysis has also been explored in studies such as [ 15 ]. More recently, researchers have incorporated random-walk-based label-propagation techniques, in which labeled nodes are treated as absorbing states under the assumption that no alternative paths are explored once a labeled node is reached [ 8]. This family of approaches has been extended using guided random walks [ 12 ], allowing the exploration of additional paths associated with the same class. Random-walk-based label propaga-tion has also been applied to graph-clustering tasks [ 27 ]. Although rank-reduction strategies and absorbing random-walk formulations provide modest improvements in scalability, they often sacrifice guarantees on solution quality. Moreover, none of these approaches is designed for sparse graphs, nor do they parallelize computation to exploit modern high-performance architectures. 
+
+## 2.2 Dynamic 
+
+In real-world applications, unlabeled nodes often arrive incremen-tally over time, either as a continuous stream or in multiple batches, which constitutes an inductive scenario. Recent studies have ex-plored various forms of dynamicity, such as the arrival of new samples with distinct feature spaces [ 9, 36 ] or the emergence of entirely new class labels [44]. Zhu et al. [ 41 ] proposed an online solution with a no-regret formulation, where the cumulative error propagated from batch to batch remains close to zero. Sindhwani et al. [ 26 ] addressed a related challenge in which the unlabeled nodes need not follow the same distribution as the labeled ones. Huang et al. [ 16 ] applied label propagation for dataset annotation, where label prediction was restricted to the current batch of unlabeled nodes only. However, most of these methods suffer from scalability issues due to their 𝑂 (𝑛 2) space complexity. Many methods assume that incom-ing vertices have known similarities to all existing vertices, which is unrealistic when many pairwise similarities are unknown. In such sparse settings, the inherent 𝑂 (𝑛 2) space complexity restricts scalability [ 11 ]. Later, Ravi et al. [ 25 ] proposed an approximate so-lution, which does not leverage current predictions to infer future labels and scales linearly with the number of vertices. To mitigate the memory bottleneck, Wagner et al. [ 34 ] introduced a short-circuiting approach that represents each ground-truth class using only two representative nodes without information loss. Nev-ertheless, for 𝑛 unlabeled vertices, the memory requirement remains 
+
+𝑂 (𝑛 2), which is high, especially when labeled nodes are far fewer than unlabeled ones. Recent approaches employ graph neural networks (GNNs) to handle unreliable or evolving nodes by leveraging implicit semantic DynLP: Parallel Dynamic Batch Update for Label Propagation in Semi-Supervised Learning 
+
+(to be published in the ACM International Conference on Supercomputing (ICS 2026)) ICS 2026, July 06–09, 2026, Belfast, Northern Ireland 
+
+relationships [ 37 ]. Prototype-based learning methods summarize streams of unlabeled nodes into representative prototypes with varying levels of granularity [ 10 ]. Other approaches use generative feature models [ 17 ], rather than simple similarity scores, to propa-gate labels with the goal of capturing latent feature representations. Although these machine-learning-based methods introduce promis-ing ideas, their training and inference times often struggle to scale in highly dynamic environments where changes occur frequently. Furthermore, many of these models require a substantial amount of ground-truth labels to achieve strong predictive performance, making them unsuitable for scenarios where only a small fraction of labeled data is available. The study by Bunger et al. [ 2] empirically compared various time series distance measures under the assumption that the underlying graph is fully connected, overlooking scenarios in which similari-ties between certain vertex pairs may be unknown or undefined. This assumption limits scalability and disregards the feasibility of performing label propagation on sparse graphs [ 32 ]. Due to the absence of scalable label propagation algorithms, Song et al. [ 28 ]emphasized the need for parallelization in future research, noting that recent approaches should achieve time complexity that scales linearly with the number of samples. Only a few studies, such as Covell et al. [ 5], have attempted to parallelize label propagation. However, their approach targets static graphs in which the labels of both known and unknown samples are already available. When applied to multi-batch settings, such methods typically recompute the entire process for each batch of changes, resulting in redundant computation. The lack of scalable label propagation approaches on large-scale sparse dynamic graphs motivates us to design DynLP .
+
+## 3 Preliminaries 
+
+We model data as a weighted, undirected graph 𝐺 = (𝑉 , 𝐸 ), where 𝑉 
+
+is the vertex set denoting the data points and 𝐸 ⊆ 𝑉 × 𝑉 is the edge set denoting the similarity among the vertices. Let N ( 𝑢 ) = {𝑣 ∈ 𝑉 :
+
+𝑤 𝑢,𝑣 > 0} denote the neighbor set of 𝑢 , where 𝑤 : 𝑉 × 𝑉 → R ≥ 0
+
+is a similarity function on vertex pairs that assigns a similarity value as the edge weight. The Laplacian of the graph 𝐺 is defined as L = D − W, where D and W are the degree and weight matrices, respectively. Given a graph 𝐺 with a small labeled subset 𝑉 𝐿 ⊆ 𝑉 and unla-beled nodes 𝑉 𝑈 = 𝑉 \𝑉 𝐿 , and a similarity function 𝑤 on vertex pairs, semi-supervised learning infers labels for all nodes in 𝑉 = 𝑉 𝐿 ∪𝑉 𝑈 .Here, we consider a binary classification setup with labels 1 and 0.
+
+## 3.1 Label Propagation 
+
+The simplest yet effective way to infer labels for unlabeled nodes is 
+
+label propagation [40 ]. It enforces smoothness iteratively: adjacent vertices with large edge weight should have similar label scores, while labels on 𝑉 𝐿 remain fixed. At each iteration, every unlabeled node 𝑢 replaces its label 𝐹 𝑢 with the average of its neighbors’ labels (unweighted graph) or the weighted average (weighted graph). Except for 𝑢 ∈ 𝑉 𝐿 that have the ground-truth labels 𝑌 𝑢 , all the nodes that appear from time 1 to 𝑡 are iteratively updated until convergence using the following equation. 
+
+𝐹 (𝑘 +1) 
+
+> 𝑢
+
+=
+
+( 1  
+
+> 𝑑 (𝑢 )
+
+Í𝑣 ∈𝑉 𝑤 (𝑢, 𝑣 )𝐹 (𝑘 ) 
+
+> 𝑣
+
+, ∀𝑢 ∈ 𝑉 \ 𝑉 𝐿 ,𝑌 𝑢 , ∀𝑢 ∈ 𝑉 𝐿 , (1) where 𝑑 (𝑢 ) = Í𝑣 ∈𝑉 𝑤 (𝑢, 𝑣 ) and 𝑘 denotes the iteration identifier. In graph-based label propagation for binary classification, the har-monic solution also can be defined as a function 𝐹 : 𝑉 → R2 that matches the given labels 𝑌 𝑢 on 𝑢 ∈ 𝑉 𝐿 , and minimizes the energy function 12
+
+Í(𝑢,𝑣 ) ∈ 𝐸 𝑤 𝑢,𝑣 
+
+ 𝐹 𝑢 − 𝐹 𝑣 
+
+2 [ 40 ]. The closed form formula for the unknown part of the solution can be derived as: 
+
+𝐹 𝑈 = −L−1 
+
+> 𝑈 𝑈
+
+L𝑈 𝐿 𝐹 𝐿 , (2) where L =
+
+L𝐿𝐿 L𝐿𝑈 
+
+L𝑈 𝐿 L𝑈 𝑈 
+
+
+
+is the graph Laplacian after indexing vertices as labeled 𝐿 first, then unlabeled 𝑈 .
+
+## 3.2 Dynamic Graphs and Temporal Label Propagation 
+
+A dynamic graph 𝐺 𝑡 = (𝑉 𝑡 , 𝐸 𝑡 ) models data that evolves over time. At discrete time 𝑡 , new data may appear as vertices Δ𝐼𝑛𝑠 𝑡 , such that 
+
+𝑉 𝑡 +1 = 𝑉 𝑡 ∪Δ𝐼𝑛𝑠 𝑡 . On the other hand, some data can become irrelevant and can be considered as deleted vertices Δ𝐷𝑒𝑙 𝑡 . Together, we denote all the changed vertices as Δ𝑡 = {Δ𝐼𝑛𝑠 𝑡 , Δ𝐷𝑒𝑙 𝑡 }. Typically, Δ𝑡 contains few or no labeled vertices. Therefore, semi-supervised learning aims to infer vertex labels at time step 𝑡 + 1 using the labeled vertices 
+
+𝑉 𝐿 ⊆ 𝑉 𝑡 +1, the unlabeled vertices 𝑉 𝑈 = 𝑉 𝑡 +1 \𝑉 𝐿 , and the similarity function 𝑤 . Note that labels of vertices with ground truth remain constant over time, whereas labels of vertices without ground truth may change due to the influence of newly appeared/disappeared vertices. Restricting 𝑉 𝐿 to vertices with ground truth only, the task of predicting labels for the unlabeled vertices at time 𝑡 + 1
+
+reduces to finding the harmonic solution on the updated graph 
+
+𝐺 𝑡 +1. Algorithm 1 follows this approach. It first deletes vertices 
+
+𝑢 ∈ Δ𝐷𝑒𝑙 𝑡 and related edges from the existing graph. Then it adds vertices 𝑢 ∈ Δ𝐼𝑛𝑠 𝑡 to 𝑉 𝑡 +1 and edges (𝑢, 𝑣 ) : 𝑣 ∈ 𝑉 𝑡 +1, 𝑢 ∈ Δ𝐼𝑛𝑠 𝑡 to 𝐸 𝑡 +1.Finally the algorithm recomputes the harmonic solution 𝐹 𝑈 for all unlabeled vertices 𝑉 𝑈 = 𝑉 𝑡 +1 \ 𝑉 𝐿 , where 𝑉 𝐿 is the set of vertices with ground truth. 
+
+Algorithm 1: Label Recomputation 
+
+Input: Similarity graph 𝐺 𝑡 = (𝑉 𝑡 , 𝐸 𝑡 ), label vector 𝐹 𝐿 for vertices with ground truth, batch of new vertices Δ𝑡 = {Δ𝐼𝑛𝑠 𝑡 , Δ𝐷𝑒𝑙 𝑡 }
+
+Output: Updated label vector 𝐹 𝑈 for unlabeled vertices. 
+
+/* Step 1: Update Graph */  
+
+> 1
+
+Initialize 𝑉 𝑡 +1 ← 𝑉 𝑡 , 𝐸 𝑡 +1 ← 𝐸 𝑡  
+
+> 2
+
+for 𝑢 ∈ Δ𝐷𝑒𝑙 𝑡 do  
+
+> 3
+
+for 𝑣 ∈ 𝑉 𝑡 +1 do  
+
+> 4
+
+Delete edge (𝑢, 𝑣 ) from 𝐸 𝑡 +1 
+
+> 5
+
+𝑉 𝑡 +1 ← 𝑉 𝑡 +1 \ 𝑢  
+
+> 6
+
+for 𝑢 ∈ Δ𝐼𝑛𝑠 𝑡 do  
+
+> 7
+
+for 𝑣 ∈ 𝑉 𝑡 +1 do  
+
+> 8
+
+Add edge (𝑢, 𝑣 ) with weight 𝑤 𝑣,𝑢 into 𝐸 𝑡 +1 
+
+> 9
+
+𝑉 𝑡 +1 ← 𝑉 𝑡 +1 ∪ 𝑢 
+
+/* Step 2: Update labels */  
+
+> 10
+
+L =
+
+ L𝐿𝐿 L𝐿𝑈 
+
+L𝑈 𝐿 L𝑈 𝑈 
+
+
+
+← D𝑡 +1 − W𝑡 +1 // Compute Laplacian  
+
+> 11
+
+𝐹 𝑈 ← − L−1 
+
+> 𝑈 𝑈
+
+L𝑈 𝐿 𝐹 𝐿 // Compute Harmonic Solution ICS 2026, July 06–09, 2026, Belfast, Northern Ireland S M Shovan, Arindam Khanda, S M Ferdous, Sajal K. Das, and Mahantesh Halappanavar 
+
+Although this approach is straightforward, it becomes computa-tionally inefficient on large incremental graphs. Restarting propa-gation after each new batch forces all previously processed nodes to participate in every iteration and allows any previously labeled node (without ground truth) to change its label due to the new nodes, leading to rapidly growing computation time and memory. To avoid this issue, the short circuiting method is proposed for streaming incremental graphs [ 34 ]. It reduces dimensionality by contracting all vertices with the same ground truth label into one representative node per class. For each representative, its edges to other vertices are replaced by the parallel edge sum. This com-pact graph preserves the information and enables memory-efficient temporal label propagation. Although effective on dense graphs, this method relies on the Laplacian and its inverse. Since the inverse of a sparse matrix is typically dense [ 22 ], the approach cannot exploit sparse linear al-gebra and is neither scalable nor well-suited to large real-world graphs, which are usually sparse. Second, for a set of changes Δ𝑡 , the method recomputes labels for all vertices in 𝑉 𝑈 from scratch. How-ever, in practice, influence decays with propagation, so changed vertices in Δ𝑡 affect only nodes within a limited number of hops. These motivate us to design a parallel label update approach that avoids redundant recomputation of the harmonic solution. 
+
+## 4 Proposed DynLP 
+
+Here, we design a parallel label update algorithm, DynLP (Algo-rithm 2), to predict labels of vertices in dynamic graphs while avoiding full label recomputation. Our algorithm considers a semi-supervised learning scenario for binary classification with a very few labeled ground-truth set denoted as 𝑉 𝐿 = {𝑉 𝐿 1 ∪ 𝑉 𝐿 0 }, where 
+
+𝑉 𝐿 1 and 𝑉 𝐿 0 are the sets of vertices of classes 1 and 0, respectively and 𝑉 𝐿 1 ∩ 𝑉 𝐿 0 = ∅. When a new batch of data (Δ𝑡 = {Δ𝐼𝑛𝑠 𝑡 , Δ𝐷𝑒𝑙 𝑡 }) 
+
+arrives, DynLP computes fractional labels in [0, 1] for the unla-beled vertices 𝑉 𝑈 to facilitate a partition into class 0 and class 1
+
+sets. Algorithm 2 consists of three steps: (i) Change Adjustment and Sparsification, (ii) Label Initialization, and (iii) Iterative Propagation. 
+
+Change Adjustment and Sparsification: In a similarity graph 
+
+𝐺 𝑡 , the label of a vertex from an unknown class is often influenced by the aggregation of the labels of its neighbors. Therefore, deleting a vertex in a similarity graph can impact the labels of its neighbors. Accordingly, DynLP marks the deletion affected vertices by visiting the neighbors of each vertex 𝑢 ∈ Δ𝐷𝑒𝑙 𝑡 in parallel and storing them in 𝑉 𝑎𝑓 𝑓 , a list of affected vertices that require further processing (Al-gorithm 2 Line 1-5). Similarly, for inserted vertices, both the vertex 
+
+𝑢 ∈ Δ𝐼𝑛𝑠 𝑡 and its neighbors N ( 𝑢 ) are marked as affected and require label updates. However, note that newly arrived vertices typically have unknown labels and may require multiple iterations of label propagation to reach a stable label, whereas existing neighboring vertices already have assigned labels from the previous time stamp and should require only a few iterations of label propagation to adjust their labels. To improve the efficiency of label update we follow two ap-proaches: (1) A compact graph representation (sparsification) to reduce the size of computation, (2) A good initial labeling for the new unlabeled vertices in Δ𝐼𝑛𝑠 𝑡 such that the label propagation is expected to converge in fewer iterations. We observe that the data 
+
+Algorithm 2: DynLP Update 
+
+Input: Similarity graph 𝐺 𝑡 = (𝑉 𝑡 , 𝐸 𝑡 ), label vector 
+
+𝐹 𝐿 = {𝐹 𝐿 0 , 𝐹 𝐿 1 } for vertices with ground truth, label vector 
+
+𝐹 𝑈 𝑡 for the vertices in 𝑉 𝑡 without ground truth, batch of new vertices Δ𝑡 = {Δ𝐼𝑛𝑠 𝑡 , Δ𝐷𝑒𝑙 𝑡 }.
+
+Output: Updated label vector 𝐹 𝑈 𝑡 +1 for all vertices in 𝑉 𝑡 +1 without ground truth. 
+
+/* Step 1: Change Adjustment and Sparsification */  
+
+> 1
+
+Initialize 𝑉 𝑎𝑓 𝑓 ← ∅  
+
+> 2
+
+Initialize 𝑉 𝑡 +1 ← 𝑉 𝑡 , 𝐸 𝑡 +1 ← 𝐸 𝑡  
+
+> 3
+
+for 𝑢 ∈ Δ𝐷𝑒𝑙 𝑡 do  
+
+> 4
+
+𝑉 𝑎𝑓 𝑓 ← 𝑉 𝑎𝑓 𝑓 ∪ N ( 𝑢 ) 
+
+> 5
+
+Remove 𝑢 from 𝑉 𝑡 +1 and related edges from 𝐸 𝑡 +1 
+
+> 6
+
+Initialize an empty graph 𝐺 ′ (𝑉 ′, 𝐸 ′ ) 
+
+> 7
+
+𝑉 ′ ← Δ𝐼𝑛𝑠 𝑡  
+
+> 8
+
+for 𝑢 ∈ Δ𝐼𝑛𝑠 𝑡 do  
+
+> 9
+
+for 𝑣 ∈ 𝑉 𝑡 +1 do  
+
+> 10
+
+if 𝑆𝑖𝑚 (𝑣, 𝑢 ) > 𝜏 then  
+
+> 11
+
+Add edge (𝑢, 𝑣 ) with weight 𝑆𝑖𝑚 (𝑢, 𝑣 ) into 𝐸 𝑡 +1 
+
+> 12
+
+if 𝑣 ∈ Δ𝐼𝑛𝑠 𝑡 then  
+
+> 13
+
+Add edge (𝑢, 𝑣 ) with weight 𝑆𝑖𝑚 (𝑢, 𝑣 ) into 𝐸 ′ 
+
+> 14
+
+𝑉 𝑎𝑓 𝑓 ← 𝑉 𝑎𝑓 𝑓 ∪ { 𝑢 } ∪ N ( 𝑢 ) 
+
+> 15
+
+C ← FindConnectedComponents (𝐺 ′ (𝑉 ′, 𝐸 ′ ) ) 
+
+/* Step 2: Label Initialization */  
+
+> 16
+
+Let 𝐿 0 is the super node consisting of the vertices 𝑢 ∈ 𝑉 𝐿 0 with label 0 only.  
+
+> 17
+
+Let 𝐿 1 is the super node consisting of the vertices 𝑢 ∈ 𝑉 𝐿 1 with label 1 only.  
+
+> 18
+
+for 𝑐 𝑖 ∈ C do  
+
+> 19
+
+W𝐿 0 
+
+> 𝑐 𝑖
+
+← Í𝑢 ∈𝑐 𝑖 
+
+Í𝑣 ∈𝐿 0 𝑤 (𝑢, 𝑣 ) 
+
+> 20
+
+W𝐿 1 
+
+> 𝑐 𝑖
+
+(𝑐 𝑖 ) ← Í𝑢 ∈𝑐 𝑖 
+
+Í𝑣 ∈𝐿 1 𝑤 (𝑢, 𝑣 ) 
+
+> 21
+
+for 𝑢 ∈ 𝑐 𝑖 do  
+
+> 22
+
+𝐹 𝑢 ← 0.5 − W𝐿 0   
+
+> 𝑐 𝑖
+> 2· (W 𝐿 0
+> 𝑐 𝑖 +W 𝐿 1
+> 𝑐 𝑖 )
+
++ W𝐿 1  
+
+> 𝑐 𝑖
+> 2· (W 𝐿 0
+> 𝑐 𝑖 +W 𝐿 1
+> 𝑐 𝑖 )
+
+/* Step 3: Iterative Propagation */  
+
+> 23
+
+while 𝑉 𝑎𝑓 𝑓 ≠ ∅ do  
+
+> 24
+
+for 𝑢 ∈ 𝑉 𝑎𝑓 𝑓 in parallel do  
+
+> 25
+
+W𝑎𝑙𝑙 ← Í𝑣 ∈N ( 𝑢 ) 𝑤 (𝑢, 𝑣 ) 
+
+> 26
+
+W𝐿 0 
+
+> 𝑢
+
+← Í𝑣 ∈𝐿 0 𝑤 (𝑢, 𝑣 ) 
+
+> 27
+
+W𝐿 1 
+
+> 𝑢
+
+← Í𝑣 ∈𝐿 1 𝑤 (𝑢, 𝑣 ) 
+
+> 28
+
+𝐹 ′ 
+
+> 𝑢
+
+← 𝐹 𝑢 + ( 0 − 𝐹 𝑢 ) W𝐿 0 
+
+> 𝑢
+> W𝑎𝑙𝑙
+
++ ( 1 − 𝐹 𝑢 ) W𝐿 1 
+
+> 𝑢
+> W𝑎𝑙𝑙
+
++
+
+Í      
+
+> 𝑣 ∈N ( 𝑢 )\{ 𝑉 𝐿 0,𝑉 𝐿 1}
+
+(𝐹 𝑣 − 𝐹 𝑢 ) 𝑤 (𝑢𝑣 )W𝑎𝑙𝑙  
+
+> 29
+
+if 𝐹 ′ 
+
+> 𝑢
+
+− 𝐹 𝑢 > 𝛿 then  
+
+> 30
+
+𝑉 𝑎𝑓 𝑓 ← 𝑉 𝑎𝑓 𝑓 ∪ N ( 𝑢 ) 
+
+> 31
+
+𝐹 ′ 
+
+> 𝑢
+
+← 𝐹 𝑢  
+
+> 32
+
+else  
+
+> 33
+
+Remove 𝑢 from 𝑉 𝑎𝑓 𝑓 
+
+points with common features often show high similarity among themselves, leading to higher edge weights compared to the edge weight connecting two dissimilar data points [ 24 ]. It enables us DynLP: Parallel Dynamic Batch Update for Label Propagation in Semi-Supervised Learning 
+
+(to be published in the ACM International Conference on Supercomputing (ICS 2026)) ICS 2026, July 06–09, 2026, Belfast, Northern Ireland 
+
+to design a method to predict the labels of similar incoming data points early through graph sparsification. Given the incoming vertices Δ𝑡 , Algorithm 2, Lines 6-7 first con-structs a graph 𝐺 ′ = (𝑉 ′, 𝐸 ′) solely with the newly arriving vertices such that 𝑉 ′ = Δ𝐼𝑛𝑠 𝑡 . An edge between a pair (𝑢, 𝑣 ), ∀𝑢, 𝑣 ∈ Δ𝐼𝑛𝑠 𝑡 , is included in 𝐸 ′ only if the similarity between the vertices 𝑆𝑖𝑚 (𝑣, 𝑢 )
+
+exceeds a predefined threshold 𝜏 . This approach yields disjoint subgraphs in which the vertices of each connected subgraph share strong commonality. Consequently, vertices within a connected subgraph are likely to receive similar fractional labels through label propagation. Throughout the experiments, we set the value of 𝜏 to the average of the edge weights in each dataset. To improve the scalability of label propagation and reduce the number of iterations required for label convergence, the sparsifi-cation step identifies the connected components (Let C) of 𝐺 ′ and treats each component 𝑐 𝑖 ∈ C as a supernode. 
+
+Label Initialization: As the vertices in a supernode are con-sidered similar, a supernode can be initialized with a single value representing the initial label for all its vertices. In the absence of additional information, each supernode can be initialized with a label value of 0.5, representing the midpoint between class labels 0
+
+and 1. However, starting label propagation with vertex labels closer to their true values takes fewer iterations to converge. Therefore, assuming data points with close label values have higher mutual similarity weights, we leverage similarities between the supernodes and two initial vertex sets with ground truth 𝑉 𝐿 0 and 𝑉 𝐿 1 to predict better initial labels for the supernodes 𝑐 𝑖 ∈ C .Treating 𝑉 𝐿 0 as a special supernode 𝐿 0, the similarity weight between any supernode 𝑐 𝑖 ∈ C and 𝐿 0 can be computed as the edge weight sum W𝐿 0 
+
+> 𝑐 𝑖
+
+= Í𝑢 ∈𝑐 𝑖 
+
+Í𝑣 ∈𝐿 0 𝑤 (𝑢, 𝑣 ) (Algorithm 2, Line 19). Similarly, treating 𝑉 𝐿 1 as a supernode 𝐿 1, the weight between 𝑐 𝑖 
+
+and 𝐿 1 is W𝐿 1 
+
+> 𝑐 𝑖
+
+= Í𝑢 ∈𝑐 𝑖 
+
+Í𝑣 ∈𝐿 1 𝑤 (𝑢, 𝑣 ).Leveraging the edge weights between the supernodes in C and the supernodes with ground truth, each vertex 𝑢 in a supernode 
+
+𝑐 𝑖 ∈ C can be initialized with 
+
+𝐹 𝑢 = 0.5 + ( 0 − 0.5) W𝐿 0
+
+> 𝑐 𝑖
+
+ W𝐿 0 
+
+> 𝑐 𝑖
+
++ W 𝐿 1
+
+> 𝑐 𝑖
+
+ + ( 1 − 0.5) W𝐿 1
+
+> 𝑐 𝑖
+
+ W𝐿 0 
+
+> 𝑐 𝑖
+
++ W 𝐿 1
+
+> 𝑐 𝑖
+
+ ,
+
+where the first term, 0.5, provides a neutral initialization, the second term reflects the similarity contribution of 𝐿 0 and reduces the value toward 0, and the third term reflects the contribution of 𝐿 1 and increases the value toward 1.
+
+Iterative Propagation: This step considers the updated graph 
+
+𝐺 𝑡 +1 = (𝑉 𝑡 +1, 𝐸 𝑡 +1), where 𝑉 𝑡 +1 = 𝑉 𝑡 \{ Δ𝐷𝑒𝑙 𝑡 ∪Δ𝐼𝑛𝑠 𝑡 } and 𝐸 𝑡 +1 includes all edges with the vertices 𝑉 𝑡 +1. As updating a vertex’s label can affect its neighbors, the iteration begins by updating the labels of the vertices 𝑢 ∈ Δ𝑡 along with their neighbors N ( 𝑢 ). There are three kinds of vertices that can impact the label of a vertex 𝑢 :(1) Vertices with ground truth class 0, denoted as a supernode 𝐿 0.The similarity weight between 𝑢 and 𝐿 0 is the edge-weight sum W𝐿 0 
+
+> 𝑢
+
+= Í𝑣 ∈𝐿 0 𝑤 (𝑢, 𝑣 ).(2) Vertices with ground truth class 1. They have similarity weight W𝐿 1 
+
+> 𝑢
+
+= Í𝑣 ∈𝐿 1 𝑤 (𝑢, 𝑣 ) with vertex 𝑢 .(3) Neighbor vertices 𝑣 ∈ N ( 𝑢 ) \ 𝑉 𝐿 0 \𝑉 𝐿 1 from timestamp 𝑡 + 1
+
+or earlier, without any ground truth. Therefore, the label of 𝑢 at each iteration can be updated as: 
+
+𝐹 ′ 
+
+> 𝑢
+
+= 𝐹 𝑢 + ( 0 − 𝐹 𝑢 ) W𝐿 0
+
+> 𝑢
+
+W𝑎𝑙𝑙 + ( 1 − 𝐹 𝑢 ) W𝐿 1
+
+> 𝑢
+
+W𝑎𝑙𝑙 
+
++∑︁      
+
+> 𝑣 ∈ N ( 𝑢 )\ 𝑉 𝐿 0\𝑉 𝐿 1
+
+(𝐹 𝑣 − 𝐹 𝑢 ) 𝑤 (𝑢𝑣 )W𝑎𝑙𝑙 
+
+Here, W𝑎𝑙𝑙 = Í𝑣 ∈ N ( 𝑢 ) 𝑤 (𝑢, 𝑣 ) is the sum of the weights of all edges between 𝑢 and its neighbors. The second and third terms of the equation reflect the similarity contributions of 𝐿 0 and 𝐿 1,respectively. The last term reflects the contribution of the other neighbors of 𝑢 . If the difference between the updated label and the previous label of 𝑢 exceeds a predefined threshold 𝛿 , its neighbors are likely to be affected and are flagged for label updates in the next iteration. The process converges when no such significant label changes occur in an iteration. Figure 1 provides an overview of the proposed Algorithm 2. Figure 1a depicts the initial setup, including the ground truth at time 𝑡 0 and all vertices observed during the interval [𝑡 1, 𝑡 𝑖 +1]. The ground truth contains two classes: red indicates class label 0, and green indicates class label 1. Because the ground truth labels are fixed and do not change as new data points arrive, intermediate edges among ground truth vertices are omitted for clarity. Vertices appearing in the interval [𝑡 1, 𝑡 𝑖 ] (purple region) are shown in color white with their current estimated labels. Newly added vertices are shown in yellow, and deleted vertices are marked with a cross. Step 1 computes the weights of edges associated with the new vertices and identifies the connected components. Figure 1b shows these connected components, indicated by dotted circles. To reduce visual clutter, we do not display edges formed between the new vertices and the ground truth vertices. Here, 𝑢 5 and 𝑢 6 are marked with color violet to indicate affected by their deleted or inserted neighbors 
+
+𝑢 7, 𝑢 8, 𝑢 9, 𝑢 10 . Figure 1c illustrates Step 2, where the labels of the new vertices in connected components 𝑐 1 and 𝑐 2 are initialized using the ground truth vertices. The supernodes composed of vertices with labels 0 and 1 are denoted by 𝐿 0 and 𝐿 1, respectively. Finally, Figure 1d illustrates the iterative label update (Step 3) for all affected vertices. The algorithm converges when no affected vertices remain. For example, the label of 𝑢 9 changes across iterations as 0.15 − >
+
+0.19 − > 0.23 .
+
+## 5 Theoretical analysis 
+
+In this section, we analyze the theoretical properties of the proposed iterative update rule used in DynLP . We first show that the update rule is equivalent to standard weighted neighborhood averaging, and then establish convergence to the unique harmonic solution by leveraging the convexity of the Dirichlet energy. 
+
+Equivalence between Iterative Update and Neighborhood Averag-ing. Let 𝑢 ∈ 𝑉 𝑈 be an unlabeled vertex with neighbor set N ( 𝑢 ).Assume that the labels 𝐹 𝑣 of all neighbors 𝑣 ∈ N ( 𝑢 ) are fixed during the update of 𝑢 . Define the normalized edge weights 
+
+𝛼 𝑢,𝑣 = 𝑤 (𝑢, 𝑣 )
+
+Í𝑥 ∈ N ( 𝑢 ) 𝑤 (𝑢, 𝑥 ) , ∀𝑣 ∈ N ( 𝑢 ),
+
+which satisfy Í𝑣 ∈ N ( 𝑢 ) 𝛼 𝑢,𝑣 = 1.ICS 2026, July 06–09, 2026, Belfast, Northern Ireland S M Shovan, Arindam Khanda, S M Ferdous, Sajal K. Das, and Mahantesh Halappanavar 16  12                      
+
+> 321 3118 3
+> 52
+> (a) Initial state consists of ground truth at time 𝑡 0and data came till time 𝑡 𝑖 1
+> 2
+> 16
+> 3
+> 5
+> 118
+> 3
+> 21
+> 118
+> 3
+> 10
+> 1
+> 2
+> 8
+> 3
+> (b) Arrival of new data at time
+> 𝑡 𝑖 +117 3312
+> 5
+> (c) Compact representation with 𝑢 ∗
+> 0and 𝑢 ∗
+> 1
+> as red and green class representative with parallel edge sum. 5
+> 10
+> 821
+> 9
+> 1
+> 2
+> 8
+> 312 11
+> 3
+> (d) Each connected component is initialized as 0.5that converges after one iteration with updated value.
+
+Figure 1: Evolution of the label-propagation algorithm over six iterations. 
+
+(1) Weighted Neighborhood Averaging. The classical label propagation update assigns to 𝑢 the weighted average of its neigh-bors’ labels: 
+
+𝐹 ★ 
+
+> 𝑢
+
+=∑︁   
+
+> 𝑣 ∈ N ( 𝑢 )
+
+𝛼 𝑢,𝑣 𝐹 𝑣 . (3) 
+
+(2) Iterative Adjustment Rule. The iterative update rule used in DynLP updates 𝐹 𝑢 as 
+
+𝑇 (𝐹 𝑢 ) = 𝐹 𝑢 +∑︁   
+
+> 𝑣 ∈ N ( 𝑢 )
+
+𝛼 𝑢,𝑣 (𝐹 𝑣 − 𝐹 𝑢 ). (4) 
+
+(3) Equivalence. We show that the update in (4) produces ex-actly the weighted average in (3) , regardless of the current value of 
+
+𝐹 𝑢 :
+
+𝑇 (𝐹 𝑢 ) = 𝐹 𝑢 +∑︁   
+
+> 𝑣 ∈ N ( 𝑢 )
+
+𝛼 𝑢,𝑣 𝐹 𝑣 − 𝐹 𝑢 ∑︁   
+
+> 𝑣 ∈ N ( 𝑢 )
+
+𝛼 𝑢,𝑣 
+
+= 𝐹 𝑢 +∑︁   
+
+> 𝑣 ∈ N ( 𝑢 )
+
+𝛼 𝑢,𝑣 𝐹 𝑣 − 𝐹 𝑢 
+
+=∑︁   
+
+> 𝑣 ∈ N ( 𝑢 )
+
+𝛼 𝑢,𝑣 𝐹 𝑣 = 𝐹 ★ 
+
+> 𝑢
+
+.
+
+Hence, the proposed iterative adjustment rule is equivalent to stan-dard weighted neighborhood averaging and computes the local harmonic condition in a single update. 
+
+Convexity of the Dirichlet Energy. Let 𝐺 = (𝑉 , 𝐸 ) be a finite, connected, weighted graph with edge weights 𝑤 𝑢,𝑣 ≥ 0. Let 𝑉 𝐿 ⊂ 𝑉 
+
+denote the set of vertices with ground truth labels, and 𝑉 𝑈 = 𝑉 \𝑉 𝐿 
+
+the unlabeled vertices. For a label function 𝐹 : 𝑉 → R satisfying 
+
+𝐹 𝑢 = 𝑌 𝑢 for all 𝑢 ∈ 𝑉 𝐿 , define the Dirichlet energy 
+
+E ( 𝐹 ) = 12∑︁ (𝑢,𝑣 ) ∈ 𝐸 
+
+𝑤 𝑢,𝑣 (𝐹 𝑢 − 𝐹 𝑣 )2. (5) 
+
+Lemma 1 (Strict Convexity). The energy E ( 𝐹 ) is strictly convex when restricted to the free variables 𝐹 𝑢 , 𝑢 ∈ 𝑉 𝑈 .
+
+Proof. Assume, for contradiction, that E ( 𝐹 ) is not strictly con-vex on 𝑉 𝑈 . Then there exist two distinct minimizers 𝐹 (1) ≠ 𝐹 (2)
+
+satisfying the boundary constraints on 𝑉 𝐿 and 
+
+∇E ( 𝐹 (1) ) = ∇E ( 𝐹 (2) ) = 0.
+
+This implies the existence of multiple harmonic extensions of the same boundary labels. However, by the Dirichlet principle for finite graphs [ 40 ], for a connected graph with a nonempty boundary set 𝑉 𝐿 , there exists a 
+
+unique harmonic function on 𝑉 𝑈 that minimizes (5) . This contra-dicts the assumption of multiple minimizers. Therefore, E ( 𝐹 ) must be strictly convex on 𝑉 𝑈 . □
+
+Convergence of the Iterative Update. We now establish conver-gence of the proposed update rule. 
+
+Corollary 1 (Convergence to the Harmonic Solution). Let 
+
+𝐺 = (𝑉 , 𝐸 ) be a finite connected graph with ground truth vertices 
+
+𝑉 𝐿 ≠ ∅. If the labels of unlabeled vertices 𝑢 ∈ 𝑉 𝑈 are updated according to 
+
+𝐹 𝑢 ← 𝐹 𝑢 +∑︁   
+
+> 𝑣 ∈ N ( 𝑢 )
+
+𝛼 𝑢,𝑣 (𝐹 𝑣 − 𝐹 𝑢 ),
+
+then the update process converges to the unique harmonic solution 
+
+𝐹 𝑈 = −L−1 
+
+> 𝑈 𝑈
+
+L𝑈 𝐿 𝐹 𝐿 .
+
+Proof Sketch. From the equivalence established earlier, each update enforces the local harmonic condition. By Lemma 1, the Dirichlet energy has a unique minimizer over 𝑉 𝑈 . Therefore, re-peated application of the update rule converges to this unique harmonic solution, which coincides with the closed-form Laplacian-based solution. □
+
+## 6 Implementation details 6.1 Load balancing 
+
+We store the graphs in compressed sparse row (CSR) format where each vertex 𝑣 owns a row segment [𝑟𝑜𝑤𝑃𝑡𝑟 [𝑣 ], 𝑟𝑜𝑤𝑃𝑡𝑟 [𝑣 + 1]) 
+
+whose length 𝑑𝑒𝑔 (𝑣 ) may vary by orders of magnitude, leading to potential load imbalance. To handle this variability, we adopt a block-per-row segment execution model, where each thread block is assigned to process a single row segment. Threads within the block cooperatively traverse the neighbor list in a block-strided manner, enabling efficient and parallel processing of high-degree vertices. Partial results computed by individual threads are combined using shared-memory block-level reduction. Although the degree of row segments remain irregular, this cooperative block-level parallelism mitigates long-tail effects for hub vertices and allows the GPU scheduler to maintain overall load balance through concurrent execution of multiple blocks. DynLP: Parallel Dynamic Batch Update for Label Propagation in Semi-Supervised Learning 
+
+(to be published in the ACM International Conference on Supercomputing (ICS 2026)) ICS 2026, July 06–09, 2026, Belfast, Northern Ireland 
+
+## 6.2 Kernel design 
+
+Figures 2 and 3 illustrate the GPU kernel designs developed to achieve scalability. Given a graph where each pairwise similarity between vertices are available, we obtain the connected components by temporarily removing all edges whose weights are below a threshold 𝜏 . Figure 2a presents the kernel responsible for temporarily removing edges by negating the destination vertex ID in the col array of the CSR data structure. This operation does not actually remove the edge from the structure; instead, it flags it for exclusion in later steps where edge information may still be needed. For instance, with a similarity threshold value of 𝜏 = 5, the kernel marks entries at indices 1, 3, 4, 5
+
+in the col array as deleted. This task is embarrassingly parallel and benefits from memory coalescing, a performance optimization enabled by the regular access patterns of the CSR format. For connected component find, we adopt the Shiloach–Vishkin (SV) algorithm [ 33 ] that relies on simple, data-parallel operations, and its pointer-jumping step involves parent up-dates through regular array accesses, making it well-suited for GPU execution. Furthermore, mapping one thread per vertex enables high occupancy, effectively hiding memory latency and improving overall throughput. Figure 2b illustrates the kernel implementing SV algorithm, which consists of two iterative steps: (i) Hook and (ii) Jump. These kernels continue alternating until no changes are detected after a Jump step, indicating convergence. In the Hook phase, each thread is assigned to a vertex and updates its parent in the par array to be the minimum of its current parent and the IDs of its adjacent vertices (including itself). For example, as shown in Figure 2b (left), vertex index 9 updates its parent from 
+
+9 to 8 (since 𝑢 8 has the smallest ID among its neighbors). Vertices 
+
+𝑢 8 and 𝑢 10 remain unchanged. The Jump phase then compresses the paths in the parent array by updating each element par[i] to par[par[i]], effectively halving the distance to the root. This process is illustrated in Figure 2d. In this example, as the Jump phase makes no further updates, the iteration terminates after a single pass. The final par array contains two unique parent IDs 0, 2, indicating the existence of two connected components. However, these component IDs are non-sequential (e.g., ID 1 is skipped), which is resolved via prefix scan operation using thrust library. Figure 2c demonstrates the same kernel logic applied with a lower threshold, 𝜏 = 1, resulting in fewer edges being marked for deletion. Figure 2d shows the Hook kernel producing a parent ar-ray of 8, 8, 9, where 𝑢 10 identifies 𝑢 9 as its parent. The subsequent Jump phase updates 𝑢 10 to have the same parent as 𝑢 9, effectively compressing the path. Since a change occurred, the algorithm pro-ceeds with further iterations of Hook and Jump until no updates are detected in the Jump step. Computing the parallel edge sum is a critical operation used in both Line 22 and Line 28 of Algorithm 2. To achieve efficient parallelism, we aim to process all vertices in the affected node set (i.e., the frontier list) concurrently. However, each vertex must aggregate edge weights over three distinct subsets of nodes: (i) the ground truth nodes, (ii) vertices that appeared from time 𝑡 1 to 𝑖 , and (iii) vertices appearing at time 𝑖 + 1.Assigning a single thread per vertex would result in sequen-tial edge sum computations within each vertex’s neighborhood, introducing significant performance bottlenecks. To overcome this limitation, we employ CUDA block level parallelism. Instead of map-ping a single thread to each vertex in the affected set, we launch an entire thread block per vertex. Within each block, multiple threads collaboratively compute the edge sum in parallel, significantly re-ducing computation time. This approach is illustrated in Figure 3. In cases where the number of neighboring vertices exceeds the number of threads in a block, we implement strided parallelism. 
+
+## 6.3 Overlapping subgraph transfer and kernel execution 
+
+Figure 4 illustrates the use of asynchronous memory transfer from host to device for updating the CSR graph stored in host (CPU) memory. Rather than transferring the entire graph to the GPU for each incoming batch of vertices, we asynchronously transfer only the required portions. This approach enables overlapping memory transfer with kernel execution, effectively hiding memory transfer latency and improving overall throughput. Figure 4a depicts the parallel update of the graph in CPU memory. On the CPU, we represent the graph using a 2-D vector structure to facilitate dynamic memory allocation. Since the graph grows incrementally—only allowing additions of vertices and edges—we parallelize the update process by assigning each incoming batch of vertices to separate threads. This enables efficient concurrent insertion of new edges and vertices without the need for global synchronization. Subsequently, we transfer data from the CPU to the GPU using asynchronous memory transfer, as illustrated in Figure 4b. Instead of transferring the entire graph, we begin by transferring only the vertices arriving at time 𝑡 𝑖 +1, highlighted in yellow. As soon as this memory transfer is initiated, we launch the sparsification and connected component kernels (corresponding to Step 1 and Step 2 in Algorithm 2) on this subset. Concurrently, while the sparsification kernel is executing, we initiate the transfer of ground truth data (shown in red and green) to the GPU. Once the ground truth data is available on the device, we perform the parallel edge sum operation as described in Line 14 of Algorithm 2. Additionally, the memory corresponding to vertices arriving at 𝑡 1: 𝑖 is transferred immediately after the ground truth at 𝑡 0 is available, enabling the execution of Step 3. This pipelined data transfer and execution strategy significantly reduces idle time and improves throughput by an average factor of 9.7×.Figure 4c illustrates the static memory layout of the graph in GPU memory. Although the layout itself remains fixed, the rows ( row ∗)corresponding to vertices arriving at times 𝑡 1 . . . 𝑡 𝑖 +1 are appended sequentially as they arrive. This contiguous storage pattern ensures that each kernel benefits from coalesced memory access, thereby improving memory bandwidth utilization and overall performance. 
+
+## 7 Experimental Results 7.1 Experimental Setup 
+
+All GPU experiments were conducted on an NVIDIA H100 with 80 GB of VRAM. The host machine is equipped with an AMD EPYC 7502 32-Core CPU and 32 GB of RAM. ICS 2026, July 06–09, 2026, Belfast, Northern Ireland S M Shovan, Arindam Khanda, S M Ferdous, Sajal K. Das, and Mahantesh Halappanavar 10 
+
+> Row*
+> Col
+> Val
+> Sparsification
+
+(a) Parallel sparsification kernel step the node as negative to de-note as temporary deleted for edge weight less than or equal to 𝜏 = 5Connected Component Find 
+
+> Par
+> 0. Initialization
+> 8
+> 1. Hook
+> 1. Jump (no changes)
+
+(b) Parallel connected component find for (a) 10  2
+
+> Row*
+> Col
+> Val
+> Sparsification
+
+(c) Parallel sparsification kernel sets the node as negative to de-note as temporary deleted for edge weight less than or equal to 𝜏 = 1Connected Component Find  
+
+> 910 Par
+> 0. Initialization
+> 1. Hook
+> 1. Jump (changes)
+> 2. Hook
+> 2. Jump (no changes)
+
+(d) Parallel connected component find for (c) 
+
+Figure 2: CUDA Kernel design for sparsification and connected component finding Grid  Block 
+
+> Stride
+> Stride
+
+Figure 3: Block level granularity to process nodes in the frontier list Table 1: Baseline methods compared with DynLP .
+
+Method 
+
+> Incremental
+> Decremental
+> Parallelism
+> Update
+> Target graph
+> Memory Optim.
+
+ItLP [40] ✓ ✗ ✗ ✗ Dense Compression CAGNN[43] ✓ ✗ ✓ ✗ Dense Compression A2LP[38] ✓ ✗ ✓ ✗ Sparse KNN 
+
+StLP [34] ✓ ✓ ✓ ✗ Dense N/A Approx StLP [22] ✓ ✓ ✓ ✗ Dense Sparse Inverse 
+
+DynLP [this work] ✓ ✓ ✓ ✓ Sparse CSR 
+
+Baselines. We compare DynLP with the state-of-the-art methods listed in Table 1. We implement the average-neighborhood method 
+
+ItLP in a GPU setting to evaluate both iteration count and parallel execution time. We also efficiently parallelize StLP , which was tra-ditionally constrained by the inverse adjacency matrix, leading to high execution time and memory usage. We mitigate this limitation by incorporating an approximate inverse[ 22 ], improving memory scalability. In addition, we include machine-learning baselines such 
+
+Table 2: Dataset description 
+
+Dataset |𝑉 | |𝐸 |
+
+IMDB Review[20] 50,000 125K ImageNet[7] 50,000 125K Yelp Review[21] 6,990,280 17M Amazon Household Review[14] 25,600,000 64M Amazon Book Review[14] 29,500,000 73M Random Dataset 50,000,000 {75M,62M,175M} 
+
+as A2LP[ 38 ] and CAGNN[ 43 ] to provide a comprehensive compari-son across approaches. 
+
+Datasets. We evaluate DynLP using synthetic and real-world datasets listed in Table 2. The synthetic sparse graphs are gener-ated using the Erdős–Rényi model, with the average degree varying among 3, 5, and 7. Following the standard approach [ 30 ], non-graph datasets are modeled as graphs. For ImageNet, we select an image set of 50K with classes “cat” and “non-cat” to form a balanced binary classification problem. Each image is represented as a node, and feature vectors were extracted from the penultimate layer of a pre-trained model ResNet-50 [ 13 ]. Pairwise cosine similarities [ 1] are computed to construct a fully connected similarity matrix, which is then sparsified using a 𝑘 -nearest neighbor (kNN) with 𝑘 = 5 as proposed in [ 19 ]. For the review datasets (IMDB, Yelp, Amazon Household, and Amazon Book), each review is considered as a ver-tex. We compute Term Frequency-Inverse Document Frequency (TF–IDF) [ 29 ] of the reviews to generate embeddings, then apply pairwise cosine similarity among them and sparsify using the afore-mentioned kNN-based strategy to form edges. The IMDB dataset is inherently binary-labeled, while for Yelp and Amazon reviews, we convert the star ratings into binary classes, assigning label 1 to reviews with a rating of three stars or higher, and 0 otherwise. The ItLP , StLP and DynLP support dynamic updates, including the insertion of ground-truth and unlabeled vertices, as well as the deletion of existing vertices. In all experiments, each batch of changes consists of 90% unlabeled new vertices, 1% vertices with DynLP: Parallel Dynamic Batch Update for Label Propagation in Semi-Supervised Learning 
+
+(to be published in the ACM International Conference on Supercomputing (ICS 2026)) ICS 2026, July 06–09, 2026, Belfast, Northern Ireland Row* 
+
+Col 
+
+Val 
+
+(a) CSR vector layout in host device memory to update graph efficiently Row* 
+
+Col 
+
+Val 
+
+Wait  Step 1  Wait  Step 2  Wait 
+
+Execution flow 
+
+(b) Asynchronous memory transfer and overlap-ping kernel execution to hide memory latency Step 3 
+
+(c) GPU memory layout 
+
+Figure 4: Memory latency hiding 
+
+ground-truth, and 9% deleted vertices. For deletions, vertices are randomly selected from the subgraph of the existing graph while ensuring that the entire graph is not removed. When the required number of deletions exceeds the number of available vertices, sam-pling is performed with replacement, allowing the same vertex to be selected multiple times to avoid size inconsistencies. IMDB 
+
+> ImageNet
+> Yelp
+> Household
+> Books
+> Random
+> Dataset
+> 0
+> 10000
+> 20000
+> 30000
+> 40000
+> Number of Iterations
+> 126
+> 156
+> 14873
+> 22817
+> 24283
+> 34273
+
+(a) Required iterations. IMDB  
+
+> ImageNet
+> Yelp
+> Household
+> Books
+> Random
+> Dataset
+> 0
+> 20000
+> 40000
+> 60000
+> 80000
+> Time (ms)
+> 897
+> 1183
+> 29463
+> 56233
+> 59433
+> 81839
+
+(b) Execution time. 
+
+Figure 5: Iterations and execution time of DynLP across datasets. 
+
+## 7.2 Experiment on DynLP properties 
+
+In our first experiment, we set the average degree of all datasets to 5 with the goal to study the impact of the size of the datasets for DynLP . We assume that 1% of the vertices in each dataset have ground truth labels, while the remaining vertices require labeling. We place all unlabeled vertices into a single batch and process them using DynLP . Figure 5a and Figure 5b report the required iterations and execution time of DynLP across datasets, respectively. We ob-serve that as the number of vertices increases, both the iterations and the execution time increase. IMDB, as the smallest dataset, re-quires the fewest iterations (average 126) and the least time (average 897 ms). In contrast, the random graph with 1000 × more vertices than IMDB requires 34,273 iterations and has an average execution time of 81,839 ms. In the next set of experiments, we vary the update threshold 𝛿 
+
+from the set {0.1, 0.01 , 0.001 , 0.0001 , 0.00001 } and study its impact on the execution of DynLP . We find that 𝛿 directly affects the number of iterations, which in turn determines the total execution time. As 𝛿 increases, Algorithm 2 terminates faster because Step 3 IMDB Yelp Household Books Random     
+
+> Dataset
+> 50
+> 60
+> 70
+> 80
+> 90
+> 100
+> Accuracy (%)
+> 99
+> 94
+> 83
+> 83
+> 82
+> 100
+> 98
+> 91
+> 90
+> 88
+> 100
+> 100
+> 97
+> 96
+> 97
+> 100
+> 100
+> 99
+> 98
+> 97
+> 100
+> 100
+> 100
+> 99
+> 100
+> Delta
+> 0.1 0.01 0.001 0.0001 0.00001
+
+(a) Accuracy variation on different datasets. 0.00001 0.0001 0.001 0.01 0.1                                     
+
+> 10000
+> 100000
+> 1000000
+> 5000000
+> 10000000
+> 15000000
+> 20000000
+> 25000000
+> 30000000
+> Vertex Count
+> 100.00 100.00 100.00 100.00 99.80
+> 100.00 100.00 100.00 98.70 96.50
+> 100.00 100.00 99.40 93.60 89.40
+> 100.00 100.00 98.80 92.10 84.20
+> 100.00 100.00 97.70 91.80 84.40
+> 100.00 98.80 95.80 94.40 87.70
+> 100.00 99.60 99.80 95.20 87.80
+> 99.74 98.50 94.20 89.10 84.70
+> 99.21 98.20 91.40 84.60 83.90
+> 80.0
+> 82.5
+> 85.0
+> 87.5
+> 90.0
+> 92.5
+> 95.0
+> 97.5
+> 100.0
+
+(b) Accuracy variation on different batchsize. 
+
+Figure 6: Impact of 𝛿 on DynLP 
+
+requires fewer iterations. However, early termination can reduce accuracy. Here, by accuracy, we mean the fraction of correctly predicted levels divide by total predicted levels. Each of the levels is mapped to either 0 or 1 with a cutoff probability threshold of 0.5. The accuracy is measured relative to the baseline method of Wagner et al. [ 34 ], which optimally minimizes the energy function. Figure 6a shows that accuracy is lower for larger 𝛿 and in most cases, 𝛿 = 0.0001 achieves near optimal accuracy. Reducing it fur-ther slightly improves accuracy, but increases the number of it-erations and the execution time. We also observe that accuracy decreases as the graph size increases. To further analyze the im-pact of 𝛿 under different input batch sizes, we vary the number of ICS 2026, July 06–09, 2026, Belfast, Northern Ireland S M Shovan, Arindam Khanda, S M Ferdous, Sajal K. Das, and Mahantesh Halappanavar 
+
+vertices per batch from 10,000 to 30,000,000 on a random graph. Figure 6b shows that accuracy decreases as batch size increases. We find that 𝛿 = 0.0001 or smaller achieves near optimal accu-racy across all batch sizes. Therefore, we use 𝛿 = 0.0001 in the subsequent experiments. 
+
+## 7.3 Comparison with baselines 
+
+Comparison with ItLP : We compare DynLP with our GPU im-plementation of ItLP . For each graph, we begin with 10 4 randomly selected initial vertices with ground truth labels. Then, in each batch, 5 million vertices are added, and this process continues until the total number of vertices matches that of the original graph. In this experiment, we vary the average degree (for the random graph) and 𝑘 (for the non-graph data) among 3, 5, and 7. Since both DynLP 
+
+and ItLP rely on iterative convergence, we compare their required number of iterations in Figures 7(a), (b), and (c). Note that we set the convergence parameter 𝛿 = 0.0001 for both DynLP and ItLP .We observe that across all experiments, ItLP requires more itera-tions than DynLP because ItLP recomputes labels for all vertices in every round, whereas our method updates labels for previously inserted vertices and efficiently computes labels for newly added vertices using a connected component assisted label initialization technique. Moreover, the gap in required iterations increases as the total vertex count grows. We also find that, for both methods, the iteration count decreases as the average degree increases. With the number of vertices fixed, increasing the average degree (or 𝑘 ) makes the graph denser, which reduces the hop distance between vertices. Consequently, in denser graphs, labels propagate to more vertices within fewer iterations, reducing the overall iteration requirement. Figures 7(d), (e), and (f) plot the speedup, computed as the ratio of the execution time of ItLP to that of DynLP . On the random graph, DynLP runs up to 100 × faster than ItLP . On the Amazon books and household datasets, DynLP achieves up to 35 × and 80 ×
+
+speedup, respectively. Consistent with the iteration trends, the speedup increases as the graph’s average degree decreases. 
+
+Comparison with StLP : Here, we compare our proposed 
+
+DynLP with a GPU implementation of StLP [34 ]. Due to the 𝑂 (𝑛 2)
+
+space complexity of StLP , we were able to test the baseline only up to 50,000 nodes. Although we used a sparse graph, the Laplacian ma-trix of such a graph, required for StLP , still exhibits quadratic space complexity, which severely limited scalability. Figure 8a illustrates the kernel-level speedup of our proposed algorithm relative to the baseline. Initially, our method incurs overhead from the connected component find step, but this cost is quickly amortized as the batch size increases. The primary bottleneck in the baseline lies in its repeated matrix inversion and harmonic solution recomputation for each batch, which dominates its execution time. When memory transfer time between host and device is also considered in the speedup computation, as shown in Figure 8b, the performance gap widens further. Our algorithm employs a CSR-based data structure, which is highly efficient for sparse graphs, while the baseline implementation constructs the Laplacian matrix without exploiting the benefits of sparsity, resulting in significantly higher memory and computational costs. 
+
+Comparison with machine learning-based approaches: 
+
+As A2LP is a convolutional neural network-based approach, it is best suited to image datasets. We use 50,000 ImageNet sam-ples, modeled as vertices, to evaluate both DynLP and A2LP. From each class, 1,000 nodes are randomly selected as labeled ground truth, and the remaining nodes are divided into batches of approx-imately 10,000 samples for incremental updates. Figure 9a shows that DynLP achieves, on average, a 10 6× speedup over A2LP. In terms of accuracy, A2LP reaches 80% and its accuracy decreases as the total number of vertices increases. We also compare DynLP 
+
+with CAGNN, a two-layer Graph Convolutional Network (GCN) architecture configured with SVD_DIM =512, HIDDEN_DIM =256, and 
+
+OUT_DIM =2. CAGNN is more scalable than A2LP, and in addition to ImageNet and IMDB, it also runs on larger datasets such as Yelp. Figure 9b shows the speedup of DynLP over CAGNN on IMDB data and compares accuracy. We observe that DynLP achieves up to a 
+
+14 × speedup. Compared to DynLP , CAGNN achieves 100% accu-racy when the total vertex count is small; however, its accuracy decreases as the number of vertices increases.                       
+
+> Table 3: Execution time comparison across datasets. Dataset ItLP StLP DynLP CAGNN IMDB 652.25 3,196.41 439.21 8,545.53 Yelp 18,283.94 23,182.12 ( 𝛾 =10 )3,712.82 40,853.31 Household 678,939.29 -18,232.38 -Book 783,925.09 -19,927.31 -
+
+More on execution time: Table 3 compares execution times of the proposed algorithm with baselines on the IMDB, Yelp, Amazon Household, and Book Review datasets. All execution times corre-spond to processing a single batch with 1% initial ground-truth labels. DynLP outperforms all baselines, and the performance gap widens as graph size increases. For StLP , the primary bottleneck is memory, which restricts its execution to the smallest dataset, IMDB. Using the approximation method proposed in [ 22 ] with 𝛾 = 10 ,
+
+StLP can also run on Yelp. Here, 𝛾 is a parameter introduced in [ 22 ]to control the trade-off between sparsity and approximation quality of the matrix inverse. A larger 𝛾 promotes a sparser generalized inverse, but may lead to a poorer approximation. In contrast, a smaller 𝛾 keeps the solution closer to the Moore-Penrose inverse, at the cost of reduced sparsity and higher memory usage[22]. 
+
+> Table 4: Performance comparison on random graph with varied batch sizes (T: Execution time, A: Accuracy)
+
+Method 50K 500K 5M 
+
+T(ms) A T(ms) A T(ms) A
+
+ItLP 1,120 100 4,738 100 11,929 100 
+
+StLP 1,637 100 – – – –
+
+StLP (𝛾 = 0.1) 5,637 72.9 – – – –
+
+StLP (𝛾 = 1.0) 3,989 83.5 – – – –
+
+StLP (𝛾 = 10 .0) 1,563 56.3 5,989 54.2 21,637 49.5 CAGNN 7,637 100 31,293 96 92,838 88 A2LP 7,637 82 – – – –
+
+DynLP 473 100 2,128 99.3 3,271 97.9 
+
+Memory and accuracy: In our experimental setup, we evalu-ated different categories of label propagation methods for an exhaus-tive comparison. However, not all baselines are equally scalable DynLP: Parallel Dynamic Batch Update for Label Propagation in Semi-Supervised Learning 
+
+(to be published in the ACM International Conference on Supercomputing (ICS 2026)) ICS 2026, July 06–09, 2026, Belfast, Northern Ireland 1M 
+
+> 5M
+> 10M
+> 15M
+> 20M
+> 25M
+> 30M
+> 35M
+> 40M
+> 45M
+> 50M
+
+Vertex Count 
+
+0
+
+10000 
+
+20000 
+
+30000 
+
+40000 
+
+50000 
+
+> Number of Iterations
+> Algorithm
+> DynLP
+> ITLP
+> Degree
+> deg=3
+> deg=5
+> deg=7
+
+(a) Iterations (Random Graph) 1M 
+
+> 5M
+> 10M
+> 15M
+> 20M
+> 25M
+> 29.5M
+
+Vertex Count 
+
+0
+
+5000 
+
+10000 
+
+15000 
+
+20000 
+
+25000 
+
+30000 
+
+35000 
+
+> Number of Iterations
+
+Algorithm 
+
+> DynLP
+> ITLP
+
+k-NN  
+
+> k = 3
+> k = 5
+> k = 7
+
+(b) Iterations (Amazon Books) 1M 
+
+> 5M
+> 10M
+> 15M
+> 20M
+> 25.6M
+
+Vertex Count 
+
+0
+
+5000 
+
+10000 
+
+15000 
+
+20000 
+
+25000 
+
+30000 
+
+35000 
+
+40000 
+
+> Number of Iterations
+
+Algorithm 
+
+> DynLP
+> ITLP
+
+k-NN  
+
+> k = 3
+> k = 5
+> k = 7
+
+(c) Iterations (Amazon Household) 1M 
+
+> 5M
+> 10M
+> 15M
+> 20M
+> 25M
+> 30M
+> 35M
+> 40M
+> 45M
+> 50M
+> Vertex Count
+> 0
+> 20
+> 40
+> 60
+> 80
+> 100
+> Speedup
+> Degree
+> Deg=3
+> Deg=5
+> Deg=7
+
+(d) Speedup (Random Graph) 1.0M  
+
+> 5.0M
+> 10.0M
+> 15.0M
+> 20.0M
+> 25.0M
+> 29.5M
+> Vertex Count
+> 0
+> 5
+> 10
+> 15
+> 20
+> 25
+> 30
+> 35
+> Speedup
+> k-NN
+> k = 3
+> k = 5
+> k = 7
+
+(e) Speedup (Amazon Books) 1M  
+
+> 5M
+> 10M
+> 15M
+> 20M
+> 25.5M
+> Vertex Count
+> 0
+> 20
+> 40
+> 60
+> 80
+> Speedup
+> k-NN
+> k = 3
+> k = 5
+> k = 7
+
+(f) Speedup (Amazon Household) 
+
+Figure 7: Iteration and speedup comparison between DynLP and ItLP as vertex count varies. 10K 20K 30K 40K 50K 
+
+> Vertex Count
+> 0.0
+> 0.5
+> 1.0
+> 1.5
+> 2.0
+> 2.5
+> Speedup
+> ER Random
+> IMDB
+> ImageNet-50K
+> A. Household
+> A. Books
+
+(a) Speedup over the StLP considering only kernel execution time. 10K 20K 30K 40K 50K 
+
+> Vertex Count
+> 0
+> 10
+> 20
+> 30
+> 40
+> Speedup
+> ER Random
+> IMDB
+> ImageNet-50K
+> Household
+> Books
+
+(b) Speedup considering memory transfer + kernel execution time. 
+
+Figure 8: Speedup comparison between DynLP and StLP 10000 
+
+> 20000
+> 30000
+> 40000
+> 50000
+> Vertex Count
+> 0.00
+> 0.25
+> 0.50
+> 0.75
+> 1.00
+> 1.25
+> 1.50
+> Speedup
+> 1e6
+> Speedup (A2LP / DynLP)
+> A2LP Accuracy
+> DynLP Accuracy
+> 0.0
+> 0.2
+> 0.4
+> 0.6
+> 0.8
+> 1.0
+> Accuracy
+
+(a) Comparison with A2LP 10000  
+
+> 20000
+> 30000
+> 40000
+> 50000
+> Vertex Count
+> 0
+> 2
+> 4
+> 6
+> 8
+> 10
+> 12
+> 14
+> Speedup
+> Speedup (CAGNN / DynLP)
+> CAGNN Accuracy
+> DynLP Accuracy
+> 0.0
+> 0.2
+> 0.4
+> 0.6
+> 0.8
+> 1.0
+> Accuracy
+
+(b) Comparison with CAGNN 
+
+Figure 9: Performance comparison with machine learning methods 
+
+in terms of memory. Due to memory limitations, we varied the single-batch size to highlight their differences. As shown in Table 4, the StLP method is restricted to a batch size of 50K because of its quadratic memory requirement. This limitation can be partially alleviated by using an approximate matrix inverse, allowing the batch size to scale up to 5M; however, this comes at a significant loss in accuracy. For A2LP, the limited availability of ground-truth labels pre-vents the learning model from generalizing effectively, even for batch sizes of 50K. Increasing the batch size further degrades its performance, making it comparable to random binary classification. In contrast, the methods that scale well in practice, such as ItLP 
+
+and CAGNN, demonstrate better memory efficiency. Compared to these approaches, our method achieves lower execution time by en-abling efficient initialization and avoiding redundant computations, while maintaining accuracy close to the optimal solution. 
+
+Comparison Summary: Table 5 presents a comprehensive comparison of speedup, accuracy, and memory trade-offs across all baseline methods. We consider ItLP as the reference baseline for accuracy since it optimally minimizes the underlying energy func-tion. In terms of accuracy, StLP achieve optimal performance and 
+
+DynLP , remains very close to optimal, achieving approximately 
+
+99% accuracy on average. However, the approximate variant of 
+
+StLP (𝛾 ) suffers noticeable accuracy degradation. Machine learn-ing–based methods also show relatively lower accuracy. In terms of computational performance, the non–machine learning approaches achieve speedups of up to 102 ×, demonstrating the effectiveness of our connected-component–based initialization and incremental update strategy. Our approach also significantly outperforms ma-chine learning–based methods. From a memory perspective, StLP 
+
+does not exploit graph sparsity and is therefore limited to handling ICS 2026, July 06–09, 2026, Belfast, Northern Ireland S M Shovan, Arindam Khanda, S M Ferdous, Sajal K. Das, and Mahantesh Halappanavar 
+
+Table 5: Comparison summary table 
+
+Method Accuracy Speedup Max Graph Size Avg Max Avg Max Node Degree 
+
+ItLP 100 100 13 102 50M 7
+
+StLP 100 100 7 39 50K 5
+
+StLP (𝛾 ) 70 83 7 7 7M 5CAGNN 76 88 32 32 5M 5A2LP 56 58 1,935 1,935 50K 5
+
+DynLP 99 100 1 1 50M 7graphs of only up to 50K vertices with an average degree of 5. In contrast, StLP (𝛾 ) can process graphs with up to 7M vertices by us-ing approximate matrix inverse techniques. For A2LP and CAGNN, increasing the graph size beyond 50K vertices leads to accuracy dropping close to 50% , indicating difficulty in learning even a binary classification task. On the other hand, both ItLP and our proposed 
+
+DynLP scale efficiently, processing graphs with up to 50M vertices stored in CSR format with average degrees up to 7. 
+
+## 8 Conclusion 
+
+We propose DynLP , a scalable and efficient framework for label propagation that eliminates redundant computation in dynamic batch updates. DynLP is designed to exploit graph sparsity to im-prove both runtime and memory efficiency on large graphs. We compare DynLP with multiple state-of-the-art baselines, cov-ering classical optimization-based techniques and recent learning-based approaches, to quantify the trade-offs among accuracy, speed, and scalability. Across experiments, DynLP exhibits near-linear scal-ing with respect to the number of update batches. Our connected component–based initialization in DynLP substantially reduces the number of required iterations, yielding further computational sav-ings and faster updates. Overall, DynLP consistently provides better speed and scalability than competing methods while maintaining accuracy close to the optimal solution. 
+
+DynLP is currently designed for binary classification. In future work, we plan to extend the approach to the multi-class setting. 
+
+## References 
+
+[1] Roberto J Bayardo, Yiming Ma, and Ramakrishnan Srikant. 2007. Scaling up all pairs similarity search. In Proceedings of the 16th international conference on World Wide Web . 131–140. [2] Dominik Bünger, Miriam Gondos, Lucile Peroche, and Martin Stoll. 2022. An empirical study of graph-based approaches for semi-supervised time series clas-sification. Frontiers in Applied Mathematics and Statistics 7 (2022), 784855. [3] Olivier Chapelle, Bernhard Schölkopf, Alexander Zien, et al . 2006. Semi-supervised learning, vol. 2. Cambridge: MIT Press. Cortes, C., & Mohri, M.(2014). Domain adaptation and sample bias correction theory and algorithm for regression. Theoretical Computer Science 519 (2006), 103126. [4] Yanwen Chong, Yun Ding, Qing Yan, and Shaoming Pan. 2020. Graph-based semi-supervised learning: A review. Neurocomputing 408 (2020), 216–230. doi:10. 1016/j.neucom.2019.12.130 [5] Michele Covell. 2013. Efficient and accurate label propagation on large graphs and label sets. (2013). [6] Olivier Delalleau, Yoshua Bengio, and Nicolas Le Roux. 2005. Efficient non-parametric function induction in semi-supervised learning. In International Work-shop on Artificial Intelligence and Statistics . PMLR, 96–103. [7] Jia Deng, Wei Dong, Richard Socher, Li-Jia Li, Kai Li, and Li Fei-Fei. 2009. Imagenet: A large-scale hierarchical image database. In 2009 IEEE conference on computer vision and pattern recognition . Ieee, 248–255. [8] Michael Desmond, Evelyn Duesterwald, Kristina Brimijoin, Michelle Brachman, and Qian Pan. 2021. Semi-automated data labeling. In NeurIPS 2020 competition and demonstration track . PMLR, 156–169. [9] Salah Ud Din, Junming Shao, Jay Kumar, Waqar Ali, Jiaming Liu, and Yu Ye. 2020. Online reliable semi-supervised learning on evolving data streams. Information Sciences 525 (2020), 153–171. [10] Salah Ud Din, Aman Ullah, Cobbinah B Mawuli, Qinli Yang, and Junming Shao. 2024. A reliable adaptive prototype-based learning for evolving data streams with limited labels. Information Processing & Management 61, 1 (2024), 103532. [11] Iain S Duff, Albert M Erisman, C William Gear, and John K Reid. 1988. Sparsity structure and Gaussian elimination. ACM Signum newsletter 23, 2 (1988), 2–8. [12] Mohsen Fazaeli and Saeedeh Momtazi. 2022. GuidedWalk: Graph embedding with semi-supervised random walk. World Wide Web 25, 6 (2022), 2323–2345. [13] Kaiming He, Xiangyu Zhang, Shaoqing Ren, and Jian Sun. 2016. Deep residual learning for image recognition. In Proceedings of the IEEE conference on computer vision and pattern recognition . 770–778. [14] Yupeng Hou, Jiacheng Li, Zhankui He, An Yan, Xiusi Chen, and Julian McAuley. 2024. Bridging Language and Items for Retrieval and Recommendation. arXiv preprint arXiv:2403.03952 (2024). [15] Zhiwen Hua and Youlong Yang. 2022. Robust and sparse label propagation for graph-based semi-supervised classification. Applied Intelligence 52, 3 (2022), 3337–3351. [16] Lei Huang, Xianglong Liu, Binqiang Ma, and Bo Lang. 2015. Online semi-supervised annotation via proxy-based local consistency propagation. Neu-rocomputing 149 (2015), 1573–1586. [17] Yanchao Li, Yongli Wang, Qi Liu, Cheng Bi, Xiaohui Jiang, and Shurong Sun. 2019. Incremental semi-supervised learning on streaming data. Pattern Recognition 88 (2019), 383–396. [18] Yu-Feng Li, Shao-Bo Wang, and Zhi-Hua Zhou. 2016. Graph quality judgement: A large margin expedition. In Proceedings of the Twenty-Fifth International Joint Conference on Artificial Intelligence . 1725–1731. [19] Vijay Lingam, Arun Iyer, and Rahul Ragesh. 2021. Glam: Graph learning by modeling affinity to labeled nodes for graph neural networks. arXiv preprint arXiv:2102.10403 (2021). [20] Andrew L. Maas, Raymond E. Daly, Peter T. Pham, Dan Huang, Andrew Y. Ng, and Christopher Potts. 2011. Learning Word Vectors for Sentiment Analysis. In Pro-ceedings of the 49th Annual Meeting of the Association for Computational Linguis-tics: Human Language Technologies . Association for Computational Linguistics, Portland, Oregon, USA, 142–150. http://www.aclweb.org/anthology/P11-1015 [21] mhamine. n.d.. Yelp Review Dataset. https://www.kaggle.com/datasets/mhamine/ yelp-review-dataset. Kaggle dataset. Accessed: 2026-02-05. [22] Gabriel Ponte, Marcia Fampa, Jon Lee, and Luze Xu. 2024. On computing sparse generalized inverses. Operations Research Letters 52 (2024), 107058. [23] Usha Nandini Raghavan, Réka Albert, and Soundar Kumara. 2007. Near linear time algorithm to detect community structures in large-scale networks. Physical Review E—Statistical, Nonlinear, and Soft Matter Physics 76, 3 (2007), 036106. [24] Priyesh Ranjan, Ashish Gupta, and Sajal K Das. 2025. Securing federated learning from distributed backdoor attacks via maximal clique and dynamic reputation system. In 2025 IEEE International Conference on Smart Computing (SMARTCOMP) .IEEE, 130–137. [25] Sujith Ravi and Qiming Diao. 2016. Large scale distributed semi-supervised learning using streaming approximation. In Artificial intelligence and statistics .PMLR, 519–528. [26] Vikas Sindhwani, Partha Niyogi, and Mikhail Belkin. 2005. Beyond the point cloud: from transductive to semi-supervised learning. In Proceedings of the 22nd international conference on Machine learning . 824–831. [27] Wen Song, Yi Liu, Zhiguang Cao, Yaoxin Wu, and Qiqiang Li. 2023. Instance-specific algorithm configuration via unsupervised deep graph clustering. Engi-neering Applications of Artificial Intelligence 125 (2023), 106740. [28] Zixing Song, Xiangli Yang, Zenglin Xu, and Irwin King. 2022. Graph-based semi-supervised learning: A comprehensive review. IEEE Transactions on Neural Networks and Learning Systems 34, 11 (2022), 8174–8194. [29] Karen Sparck Jones. 1972. A statistical interpretation of term specificity and its application in retrieval. Journal of documentation 28, 1 (1972), 11–21. [30] Amarnag Subramanya and Partha Pratim Talukdar. 2014. Graph-based semi-supervised learning . Morgan & Claypool Publishers. [31] Michal Valko, Branislav Kveton, Ling Huang, and Daniel Ting. 2012. Online semi-supervised learning on quantized graphs. arXiv preprint arXiv:1203.3522 
+
+(2012). [32] Jesper E Van Engelen and Holger H Hoos. 2020. A survey on semi-supervised learning. Machine learning 109, 2 (2020), 373–440. [33] Y Shiloachand U Vishkin and Y Shiloach. 1982. An O (log n) parallel connectivity algorithm. J. algorithms 3 (1982), 57–67. [34] Tal Wagner, Sudipto Guha, Shiva Kasiviswanathan, and Nina Mishra. 2018. Semi-supervised learning on data streams via temporal label propagation. In Interna-tional Conference on Machine Learning . PMLR, 5095–5104. [35] Hongwei Wang and Jure Leskovec. 2021. Combining graph convolutional neural networks and label propagation. ACM Transactions on Information Systems (TOIS) 
+
+40, 4 (2021), 1–27. [36] Di Wu, Shengda Zhuo, Yu Wang, Zhong Chen, and Yi He. 2023. Online semi-supervised learning with mix-typed streaming features. In Proceedings of the DynLP: Parallel Dynamic Batch Update for Label Propagation in Semi-Supervised Learning 
+
+(to be published in the ACM International Conference on Supercomputing (ICS 2026)) ICS 2026, July 06–09, 2026, Belfast, Northern Ireland 
+
+AAAI Conference on Artificial Intelligence , Vol. 37. 4720–4728. [37] Hang Yu, Jiahao Wen, Yiping Sun, Xiao Wei, and Jie Lu. 2024. CA-GNN: A competence-aware graph neural network for semi-supervised learning on stream-ing data. IEEE Transactions on Cybernetics (2024). [38] Yabin Zhang, Bin Deng, Kui Jia, and Lei Zhang. 2020. Label propagation with augmented anchors: A simple semi-supervised learning baseline for unsupervised domain adaptation. In European Conference on Computer Vision . Springer, 781– 797. [39] Dengyong Zhou, Olivier Bousquet, Thomas N Lal, Jason Weston, and Bernhard Schölkopf. 2004. Learning with local and global consistency. In Advances in neural information processing systems . 321–328. [40] Xiaojin Zhu, Zoubin Ghahramani, and John D Lafferty. 2003. Semi-supervised learning using gaussian fields and harmonic functions. In Proceedings of the 20th International conference on Machine learning (ICML-03) . 912–919. [41] Xiaojin Zhu, Andrew B Goldberg, and Tushar Khot. 2009. Some new directions in graph-based semi-supervised learning. In 2009 IEEE International Conference on Multimedia and Expo . IEEE, 1504–1507. [42] Xiaojin Zhu, John Lafferty, and Zoubin Ghahramani. 2003. Semi-supervised learning: From Gaussian fields to Gaussian processes . School of Computer Science, Carnegie Mellon University. [43] Yanqiao Zhu, Yichen Xu, Feng Yu, Shu Wu, and Liang Wang. 2020. CAGNN: Cluster-aware graph neural networks for unsupervised graph representation learning. arXiv preprint arXiv:2009.01674 (2020). [44] Yong-Nan Zhu and Yu-Feng Li. 2020. Semi-supervised streaming learning with emerging new labels. In Proceedings of the AAAI Conference on Artificial Intelli-gence , Vol. 34. 7015–7022.

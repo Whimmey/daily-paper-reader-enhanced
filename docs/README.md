@@ -6,69 +6,69 @@
 </div>
 
 ## 每次日报
-- 最新运行日期：2026-04-08
-- 运行时间：<span class="dpr-runtime" data-beijing="04-09 05:02 (UTC+8)" data-utc="04-08 21:02 UTC">04-09 05:02 (UTC+8) / 04-08 21:02 UTC</span>
+- 最新运行日期：2026-04-09
+- 运行时间：<span class="dpr-runtime" data-beijing="04-10 04:10 (UTC+8)" data-utc="04-09 20:10 UTC">04-10 04:10 (UTC+8) / 04-09 20:10 UTC</span>
 - 运行状态：成功
 - 本次总论文数：17
 - 精读区：6
 - 速读区：11
 
 ### 今日简报（AI）
-今日聚焦图像修复与AI安全领域，精读6篇高价值论文，速读11篇前沿研究。图像修复领域统一框架与AI安全中的提示注入攻击研究值得关注，均获高分评价。普通读者可关注图像修复技术在文化遗产保护中的应用，以及AI系统安全防护新方法。
-- 详情：[/202604/08/README](/202604/08/README)
+今日精研扩散模型与LLM算法革新，速览多实例着色与联邦检索前沿。LLM对基础算法的革新潜力与扩散模型新视角合成质量评估最具突破性。关注LLM在各领域的实际应用边界，探索AI与传统技术的融合可能。
+- 详情：[/202604/09/README](/202604/09/README)
 
 ### 精读区论文标签
-1. [Task-Guided Prompting for Unified Remote Sensing Image Restoration](/202604/08/2604.02742v1-task-guided-prompting-for-unified-remote-sensing-image-restoration)  
+1. [PR-IQA: Partial-Reference Image Quality Assessment for Diffusion-Based Novel View Synthesis](/202604/09/2604.04576v1-pr-iqa-partial-reference-image-quality-assessment-for-diffusion-based-novel-view-synthesis)  
    标签：评分：9.0/10、query:dl-cv
-   evidence：统一图像修复框架
-2. [High-Fidelity Mural Restoration via a Unified Hybrid Mask-Aware Transformer](/202604/08/2604.03984v1-high-fidelity-mural-restoration-via-a-unified-hybrid-mask-aware-transformer)  
+   evidence：图像质量评估
+2. [Can Large Language Models Reinvent Foundational Algorithms?](/202604/09/2604.05716v1-can-large-language-models-reinvent-foundational-algorithms)  
    标签：评分：9.0/10、query:dl-cv
-   evidence：壁画图像修复
-3. [A Unified Foundation Model for All-in-One Multi-Modal Remote Sensing Image Restoration and Fusion with Language Prompting](/202604/08/2604.05629v1-a-unified-foundation-model-for-all-in-one-multi-modal-remote-sensing-image-restoration-and-fusion-with-language-prompting)  
+   evidence：大模型创新能力
+3. [DynLP: Parallel Dynamic Batch Update for Label Propagation in Semi-Supervised Learning](/202604/09/2604.06596v1-dynlp-parallel-dynamic-batch-update-for-label-propagation-in-semi-supervised-learning)  
    标签：评分：9.0/10、query:dl-cv
-   evidence：带语言提示的统一图像修复模型
-4. [GraphER: An Efficient Graph-Based Enrichment and Reranking Method for Retrieval-Augmented Generation](/202604/08/2603.24925v1-grapher-an-efficient-graph-based-enrichment-and-reranking-method-for-retrieval-augmented-generation)  
+   evidence：半监督学习的高效标签传播
+4. [MARVEL: Multimodal Adaptive Reasoning-intensiVe Expand-rerank and retrievaL](/202604/09/2604.07079v1-marvel-multimodal-adaptive-reasoning-intensive-expand-rerank-and-retrieval)  
+   标签：评分：9.0/10、query:dl-cv
+   evidence：多模态大模型检索
+5. [Towards Controllable Low-Light Image Enhancement: A Continuous Multi-illumination Dataset and Efficient State Space Framework](/202604/09/2603.25296v1-towards-controllable-low-light-image-enhancement-a-continuous-multi-illumination-dataset-and-efficient-state-space-framework)  
    标签：评分：8.0/10、query:dl-cv
-   evidence：基于图的RAG增强方法
-5. [GenSmoke-GS: A Multi-Stage Method for Novel View Synthesis from Smoke-Degraded Images Using a Generative Model](/202604/08/2604.03039v2-gensmoke-gs-a-multi-stage-method-for-novel-view-synthesis-from-smoke-degraded-images-using-a-generative-model)  
+   evidence：可控低光图像增强框架
+6. [GenSmoke-GS: A Multi-Stage Method for Novel View Synthesis from Smoke-Degraded Images Using a Generative Model](/202604/09/2604.03039v1-gensmoke-gs-a-multi-stage-method-for-novel-view-synthesis-from-smoke-degraded-images-using-a-generative-model)  
    标签：评分：8.0/10、query:dl-cv
-   evidence：烟雾退化图像修复
-6. [Many Preferences, Few Policies: Towards Scalable Language Model Personalization](/202604/08/2604.04144v1-many-preferences-few-policies-towards-scalable-language-model-personalization)  
-   标签：评分：8.0/10、query:dl-cv
-   evidence：大模型个性化方法
+   evidence：从退化图像进行图像修复
 
 ### 速读区论文标签
-1. [BiFM: Bidirectional Flow Matching for Few-Step Image Editing and Generation](/202604/08/2603.24942v1-bifm-bidirectional-flow-matching-for-few-step-image-editing-and-generation)  
+1. [InstanceAnimator: Multi-Instance Sketch Video Colorization](/202604/09/2603.25357v1-instanceanimator-multi-instance-sketch-video-colorization)  
    标签：评分：8.0/10、query:dl-cv
-   evidence：双向流匹配图像编辑
-2. [Shopping with a Platform AI Assistant: Who Adopts, When in the Journey, and What For](/202604/08/2603.24947v1-shopping-with-a-platform-ai-assistant-who-adopts-when-in-the-journey-and-what-for)  
+   evidence：草图视频着色
+2. [Supercharging Federated Intelligence Retrieval](/202604/09/2603.25374v1-supercharging-federated-intelligence-retrieval)  
    标签：评分：8.0/10、query:dl-cv
-   evidence：大模型购物助手采用研究
-3. [PIDP-Attack: Combining Prompt Injection with Database Poisoning Attacks on Retrieval-Augmented Generation Systems](/202604/08/2603.25164v1-pidp-attack-combining-prompt-injection-with-database-poisoning-attacks-on-retrieval-augmented-generation-systems)  
+   evidence：联邦检索增强生成与大模型
+3. [Are LLMs Overkill for Databases?: A Study on the Finiteness of SQL](/202604/09/2603.25568v1-are-llms-overkill-for-databases-a-study-on-the-finiteness-of-sql)  
    标签：评分：8.0/10、query:dl-cv
-   evidence：利用大语言模型检索系统的漏洞
-4. [Probing the Lack of Stable Internal Beliefs in LLMs](/202604/08/2603.25187v1-probing-the-lack-of-stable-internal-beliefs-in-llms)  
+   evidence：大语言模型用于数据库查询生成
+4. [MemoryCD: Benchmarking Long-Context User Memory of LLM Agents for Lifelong Cross-Domain Personalization](/202604/09/2603.25973v1-memorycd-benchmarking-long-context-user-memory-of-llm-agents-for-lifelong-cross-domain-personalization)  
    标签：评分：8.0/10、query:dl-cv
-   evidence：研究人格驱动型LLM的一致性
-5. [Webscraper: Leverage Multimodal Large Language Models for Index-Content Web Scraping](/202604/08/2603.29161v1-webscraper-leverage-multimodal-large-language-models-for-index-content-web-scraping)  
+   evidence：LLM代理长上下文记忆基准
+5. [Region-Adaptive Generative Compression with Spatially Varying Diffusion Models](/202604/09/2604.01122v1-region-adaptive-generative-compression-with-spatially-varying-diffusion-models)  
    标签：评分：7.0/10、query:dl-cv
-   evidence：多模态语言模型用于网页抓取
-6. [Extend3D: Town-Scale 3D Generation](/202604/08/2603.29387v1-extend3d-town-scale-3d-generation)  
+   evidence：区域自适应图像生成
+6. [Screening Is Enough](/202604/09/2604.01178v1-screening-is-enough)  
    标签：评分：7.0/10、query:dl-cv
-   evidence：3D场景生成
-7. [FlowPIE: Test-Time Scientific Idea Evolution with Flow-Guided Literature Exploration](/202604/08/2603.29557v1-flowpie-test-time-scientific-idea-evolution-with-flow-guided-literature-exploration)  
+   evidence：语言模型注意力机制
+7. [Joint Pricing and Innovation Control in Regulated Recycling-Rate Diffusion](/202604/09/2604.01402v1-joint-pricing-and-innovation-control-in-regulated-recycling-rate-diffusion)  
    标签：评分：7.0/10、query:dl-cv
-   evidence：新颖科学想法生成框架
-8. [Self-Supervised Federated Learning under Data Heterogeneity for Label-Scarce Diatom Classification](/202604/08/2603.29633v1-self-supervised-federated-learning-under-data-heterogeneity-for-label-scarce-diatom-classification)  
+   evidence：创新控制模型
+8. [ReFormeR: Learning and Applying Explicit Query Reformulation Patterns](/202604/09/2604.01417v1-reformer-learning-and-applying-explicit-query-reformulation-patterns)  
    标签：评分：7.0/10、query:dl-cv
-   evidence：自监督联邦学习
-9. [CT-to-X-ray Distillation Under Tiny Paired Cohorts: An Evidence-Bounded Reproducible Pilot Study](/202604/08/2603.29167v1-ct-to-x-ray-distillation-under-tiny-paired-cohorts-an-evidence-bounded-reproducible-pilot-study)  
+   evidence：基于模式的LLM查询重构
+9. [BloClaw: An Omniscient, Multi-Modal Agentic Workspace for Next-Generation Scientific Discovery](/202604/09/2604.00550v1-bloclaw-an-omniscient-multi-modal-agentic-workspace-for-next-generation-scientific-discovery)  
    标签：评分：6.0/10、query:dl-cv
-   evidence：有限数据下的跨模态蒸馏
-10. [Variational Graph Neural Networks for Uncertainty Quantification in Inverse Problems](/202604/08/2603.29515v1-variational-graph-neural-networks-for-uncertainty-quantification-in-inverse-problems)  
+   evidence：科学发现的多模态AI工作空间
+10. [ORBIT: Scalable and Verifiable Data Generation for Search Agents on a Tight Budget](/202604/09/2604.01195v2-orbit-scalable-and-verifiable-data-generation-for-search-agents-on-a-tight-budget)  
    标签：评分：6.0/10、query:dl-cv
-   evidence：深度学习不确定性量化
-11. [Can LLM Agents Identify Spoken Dialects like a Linguist?](/202604/08/2603.29541v1-can-llm-agents-identify-spoken-dialects-like-a-linguist)  
+   evidence：语言模型数据生成框架
+11. [CliffSearch: Structured Agentic Co-Evolution over Theory and Code for Scientific Algorithm Discovery](/202604/09/2604.01210v1-cliffsearch-structured-agentic-co-evolution-over-theory-and-code-for-scientific-algorithm-discovery)  
    标签：评分：6.0/10、query:dl-cv
-   evidence：语言模型用于方言分类
+   evidence：用于科学发现的LLM智能体
 

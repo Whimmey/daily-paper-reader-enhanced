@@ -1,0 +1,378 @@
+Title: MARVEL: Multimodal Adaptive Reasoning-intensiVe Expand-rerank and retrievaL
+
+URL Source: https://arxiv.org/pdf/2604.07079v1
+
+Published Time: Thu, 09 Apr 2026 01:22:03 GMT
+
+Number of Pages: 10
+
+Markdown Content:
+# MARVEL: Multimodal Adaptive Reasoning-intensiVe Expand-rerank and retrievaL 
+
+# Mahmoud SalahEldin Kasem 1 Mohamed Mahmoud 1 Mostafa Farouk Senussi 1
+
+# Mahmoud Abdalla 1 Abdelrahman Abdallah 2 Hyun-Soo Kang 1* 
+
+> 1
+
+# Chungbuk National University 2 University of Innsbruck 
+
+# Abstract 
+
+Multimodal retrieval over text corpora remains a fun-damental challenge: the best vision-language encoder achieves only 27.6 nDCG@10 on MM-BRIGHT, areasoning-intensive multimodal retrieval benchmark, un-derperforming strong text-only systems. We argue that effective multimodal retrieval requires three tightly inte-grated capabilities that existing approaches address only in isolation: expanding the query’s latent intent, retrieving with a model trained for complex reasoning, and rerank-ing via explicit step-by-step reasoning over candidates. We introduce MARVEL (Multimodal Adaptive Reasoning-intensi Ve Expand-rerank and retrieva L), a unified pipeline that combines LLM-driven query expansion, MARVEL-Retriever — a reasoning-enhanced dense retriever fine-tuned for complex multimodal queries — and GPT-4o-based chain-of-thought reranking with optional multi-pass reciprocal rank fusion. Evaluated on MM-BRIGHT across 29 technical domains, MARVEL achieves 37.9 nDCG@10, surpassing the best multimodal encoder by +10.3 points 
+
+and outperforming all single-stage baselines in 27 of 29 do-mains and matching or approaching the best baseline in the remaining two highly-specialized domains (Crypto, Quan-tum Computing), demonstrating that reasoning-intensive multimodal retrieval is best addressed through a unified expand-retrieve-rerank framework. 1
+
+# 1. Introduction 
+
+Retrieving relevant information from large text corpora is fundamental to knowledge-intensive applications such as question answering, retrieval-augmented generation, and agentic systems [1, 20]. Recent advances in dense retrieval have produced powerful embedding models that perform 
+
+> *Corresponding author.
+> 1https : / / github . com / mm - bright / multimodal -reasoning-retrieval
+
+well on fact-seeking benchmarks [2, 6, 24, 32]. However, real-world queries are increasingly multimodal — users attach screenshots of error logs, diagrams from technical papers[16, 17], or charts from financial reports when seek-ing help online. In these settings, retrieval demands gen-uine reasoning: understanding what the image depicts, how it relates to the text question, and which documents in the corpus collectively address both. This challenge is starkly exposed by MM-BRIGHT [5], the first benchmark for reasoning-intensive multimodal re-trieval. Despite significant advances in vision-language models, the best multimodal encoder achieves only 27.6 nDCG@10 — lower than strong text-only retrievers. Adding visual information actively hurts performance. This counterintuitive result reveals that current approaches suf-fer from three compounding failures: (a) Underspecified queries : raw multimodal queries entangle visual descrip-tions, conversational noise, and retrieval intent, producing embeddings that fail to capture the user’s true information need; (b) Weak retrieval : standard dense encoders are not trained to handle the abstract, cross-modal reasoning that multimodal queries demand; and (c) No reasoning-based selection : retrieved candidates are ranked by embedding similarity alone, with no mechanism to reason about which documents actually address the visual and textual dimen-sions of the query jointly. Existing approaches address at most one of these fail-ures in isolation. Query expansion methods [11, 33] en-rich queries but ignore visual content. Multimodal en-coders [13, 37] improve visual-text alignment but lack rea-soning capacity. LLM-based rerankers [2, 3, 23, 31, 34] reason over candidates but depend entirely on the quality of the upstream retriever. No prior work unifies all three into a coherent pipeline designed specifically for reasoning-intensive multimodal retrieval. We introduce MARVEL (Multimodal Adaptive 
+
+Reasoning-intensi Ve Expand-rerank and retrieva L), a unified three-stage pipeline that addresses all three failures jointly. As illustrated in Figure 1, MARVEL 1  
+
+> arXiv:2604.07079v1 [cs.IR] 8 Apr 2026 Figure 1. An example where single-stage multimodal retrievers fail to identify the relevant document. MARVEL expands the query intent via LLM elaboration, retrieves candidates using MARVEL-Retriever, and applies chain-of-thought reranking to identify the correct document.
+
+operates through four stages: GPT-4o visual caption-ing, LLM-driven query expansion into a retrieval-dense representation, reasoning-enhanced dense retrieval via MARVEL-Retriever, and GPT-4o chain-of-thought rerank-ing with optional multi-pass reciprocal rank fusion. Evaluated on MM-BRIGHT across 29 diverse techni-cal domains, MARVEL achieves 37.9 nDCG@10, surpass-ing the best multimodal encoder (Nomic-Vision: 27.6) by 
+
++10.3 points and outperforming all single-stage baselines with consistent gains across 27 of 29 domain groups. Our results demonstrate that reasoning-intensive multimodal re-trieval is best addressed through a pipeline where each stage amplifies the signal carried by the others: better queries pro-duce better retrieval candidates, and better candidates en-able more effective reasoning-based reranking. Our contributions are as follows: • We identify three compounding failure modes in multimodal-to-text retrieval — underspecified queries, weak cross-modal reasoning in retrieval, and similarity-only ranking — and propose addressing them jointly rather than in isolation (§4). • We introduce MARVEL , a unified expand-retrieve-rerank pipeline that combines LLM query expan-sion, MARVEL-Retriever, and GPT-4o chain-of-thought reranking with optional multi-pass reciprocal rank fusion (§3). • We introduce MARVEL-Retriever , a reasoning-enhanced dense retriever fine-tuned specifically to handle the complex cross-modal intent expressed by expanded multimodal queries (§3.5). • We demonstrate that MARVEL achieves 37.9 nDCG@10 on MM-BRIGHT, outperforming the strongest multi-modal encoder by +10.3 points with consistent gains across all 29 domains (§5). 
+
+# 2. Related Work 
+
+2.1. Dense Retrieval 
+
+Dense retrieval using bi-encoder models has become the dominant paradigm for large-scale information re-trieval [15, 27]. These models independently encode queries and documents into a shared embedding space and retrieve via efficient nearest-neighbor search [14]. While highly effective on fact-seeking benchmarks such as BEIR [32] and MTEB [24], bi-encoders degrade sharply when relevance requires multi-step reasoning rather than surface-level semantic matching. BRIGHT [30] and TEMPO [4] exposed this limitation clearly: the strongest embedding models collapse from 59.0 nDCG@10 on BEIR to 18.3 on reasoning-intensive queries. Subsequent work has sought to bridge this gap through reasoning-aware fine-tuning [9, 29] and iterative query expansion [19, 33]. 
+
+2.2. Multimodal Embedding Models 
+
+Contrastive vision-language models such as CLIP [26] and SigLIP [36] established the foundation for joint image-text embedding through large-scale contrastive pretrain-ing. More recent work leveraged Multimodal LLMs for re-2trieval: VLM2Vec [13] demonstrated that instruction-tuned VLMs can be converted into powerful embedding models through contrastive training on MMEB, while GME [37] extended this to support any-to-any retrieval across text, im-age, and fused modalities. Nomic Embed Vision [25] shares an embedding space between a vision encoder and a text model, enabling zero-shot multimodal retrieval. Despite these advances, all embedding-based models share a fun-damental limitation: they rank by vector similarity and can-not reason about what a query image implies for document relevance. MM-BRIGHT [5] confirmed this directly — the best multimodal encoder (27.6 nDCG@10) underperforms strong text-only retrievers, revealing that visual encoding capacity is not the bottleneck. 
+
+2.3. Visual Document Retrieval 
+
+A parallel line of work targets retrieval where both queries and documents are visual. ColPali [10] proposed treating document pages as images and embedding them directly via a VLM using ColBERT-style multi-vector late interac-tion, capturing fine-grained visual structure such as tables, charts, and layout. DSE [22] and VisRAG [35] similarly embed full page images for dense retrieval. 
+
+2.4. LLM-Based Query Expansion 
+
+Query expansion has a long history in information retrieval, from classical pseudo-relevance feedback [28] to modern LLM-based reformulation. HyDE [11] generates hypothet-ical documents from the query for zero-shot dense retrieval, while Query2Doc [33] expands queries with pseudo-documents through few-shot prompting. ThinkQE [19] in-tegrates chain-of-thought reasoning into the expansion pro-cess, generating elaborated queries that capture implicit re-trieval intent. DIVER [21] combines iterative query ex-pansion with document feedback and hybrid reranking into a unified text-only pipeline, achieving state-of-the-art re-sults on BRIGHT. Re-Invoke [7] applies LLM-based in-tent extraction to tool retrieval, demonstrating that elabo-rating query intent before retrieval consistently outperforms embedding-only approaches. 
+
+2.5. LLM-Based Reranking 
+
+Reranking retrieved candidates using LLMs has emerged as a powerful strategy for improving retrieval preci-sion. RankGPT [31] demonstrated that LLMs can directly rerank retrieved passages through sliding window prompt-ing, significantly outperforming embedding-based ranking. Rank1 [34] and RankR1 [39] further improved rerank-ing via reasoning-optimized LLMs trained with reinforce-ment learning to produce step-by-step relevance judgments. These approaches establish that reasoning-based reranking is consistently superior to similarity-based ranking for com-plex queries. 
+
+# 3. Method 
+
+3.1. Problem Formulation 
+
+We address the multimodal-to-text retrieval task. Let C =
+
+{d1, d 2, . . . , d N } denote a corpus of N text-only docu-ments. A multimodal query is a pair q = ( qt, q v ), where 
+
+qt is a natural language question and qv is an associated im-age. The objective is to retrieve a ranked list of k documents 
+
+ˆDk ⊂ C that are most relevant to the full intent expressed by (qt, q v ).Standard dense retrievers compute relevance as: 
+
+score (q, d i) = cos  ϕ(qt, q v ), ψ (di) (1) where ϕ(·) and ψ(·) are query and document encoders. This formulation fails in the multimodal-to-text setting for three compounding reasons: (1) the raw query (qt, q v ) is under-specified — it entangles visual descriptions, conversational context, and retrieval intent in ways that produce poor em-beddings; (2) standard encoders are not trained to handle the abstract cross-modal reasoning that multimodal queries demand; and (3) similarity-based ranking has no mecha-nism to reason about which candidates actually address the query. MARVEL addresses all three failures through a uni-fied four-stage pipeline. 
+
+3.2. MARVEL Overview 
+
+Given a multimodal query (qt, q v ), MARVEL operates through four sequential stages as illustrated in Figure 2: 1. Visual Captioning. The query image qv is converted into a dense textual description δ(qv ) via GPT-4o. 2. Query Expansion. The combined input (qt, δ (qv )) is elaborated into a semantically rich, retrieval-dense rep-resentation ˜q via LLM-driven expansion. 3. Retrieval. The expanded query ˜q is encoded by MARVEL-Retriever to retrieve the top-K0 candidate documents from C.4. Reranking. GPT-4o reasons step by step over the top-
+
+K0 candidates to produce a final ranked list of K1 doc-uments. An optional double-reranking stage aggregates multiple passes via reciprocal rank fusion. 
+
+3.3. Stage 1: Visual Captioning 
+
+The query image qv encodes domain-specific visual infor-mation — circuit diagrams, molecular structures, UI screen-shots, data charts — that is inaccessible to text-only models. We ground this visual content in language using GPT-4o: 
+
+δ(qv ) = GPT-4o  CAPTION PROMPT (qv ) (2) The caption δ(qv ) is generated once per query and reused across all downstream stages. The combined multimodal context is then represented as the concatenation: 
+
+x = qt ∥ Image Description: δ(qv ) (3) 3Figure 2. Overview of the MARVEL pipeline. A multimodal query (qt, q v ) is first captioned by GPT-4o, then elaborated by the LLM expansion stage into a retrieval-dense query ˜q. MARVEL-Retriever retrieves the top-K0 candidates, which are then reranked by GPT-4o chain-of-thought reasoning. The optional double-reranking stage aggregates multiple reranking passes via reciprocal rank fusion for additional precision gains. 
+
+where ∥ denotes string concatenation. This combined input 
+
+x is the entry point to the expansion stage. 
+
+3.4. Stage 2: LLM Query Expansion 
+
+The combined input x is a faithful but unstructured repre-sentation of the user’s intent. Dense retrievers embed the query as a whole, and conversational noise dominates the resulting vector. To address this, MARVEL applies LLM-driven query expansion to generate a semantically rich elab-oration ˜q that covers the problem context, related concepts, and potential solution directions: 
+
+˜q = LLM expand (x) (4) The expansion prompt instructs the LLM to perform four operations: (1) analyze the query by decomposing it into its fundamental components; (2) contextualize by identifying background knowledge and related concepts; (3) explore 
+
+potential responses and relevant information avenues, in-cluding specific terms and steps involved; and (4) synthe-size all of the above into a coherent, terminology-dense dis-course. Formally, the expansion prompt is: 
+
+“Provide an extensive elaboration on the user’s in-quiry, covering the problem itself and the surrounding context. (1) Analyze: break down the question into its fundamental components. (2) Contextualize: identify relevant background concepts and common scenarios. (3) Explore: describe various solution directions and pertinent information, mentioning specific terms and ideas. (4) Synthesize: weave all of this into a coher-ent and detailed piece of writing dense with relevant information and terminology.” 
+
+The output ˜q is a multi-faceted elaboration of up to 2,048 tokens that encodes the user’s intent far more richly than the original raw query x. This expanded representation dramat-ically improves recall at the retrieval stage by ensuring that relevant terminology and concepts are explicitly present in the query embedding. 
+
+3.5. Stage 3: MARVEL-Retriever 
+
+Architecture. MARVEL-Retriever is a bi-encoder dense retriever fine-tuned on reasoning-intensive retrieval data. Given the expanded query ˜q, it encodes it into a dense vector using the hidden state of the [EOS] token: 
+
+e˜q = EMARVEL (˜ q) ∈ Rd (5) Documents are encoded offline: 
+
+edi = EMARVEL (di) ∈ Rd, ∀di ∈ C  (6) Retrieval is performed via cosine similarity and the top-K0
+
+documents are returned: 
+
+score (˜ q, d i) = e˜q · edi
+
+∥e˜q ∥ · ∥ edi ∥ (7) 
+
+ˆDK0 = argtop-K0
+
+score (˜ q, d i) di∈C  (8) 4Training. MARVEL-Retriever is fine-tuned on reasoning-intensive retrieval data using contrastive learning with in-batch negatives and hard negatives. For each training instance (˜ q, d +, {d− 
+
+> j
+
+}Mj=1 ), we minimize the InfoNCE loss: 
+
+L = − log escore (˜ q,d +)/τ 
+
+escore (˜ q,d +)/τ + PMj=1 escore (˜ q,d −  
+
+> j)/τ
+
+(9) where τ is the temperature hyperparameter. Hard negatives are mined using BM25 and an initial MARVEL-Retriever checkpoint. Training spans reasoning-intensive domains in-cluding mathematics, science, medicine, law, and software engineering, ensuring robust generalization to the elabo-rated queries produced by the expansion stage. 
+
+3.6. Stage 4: Chain-of-Thought Reranking 
+
+Single-Pass Reranking. Given the top-K0 retrieved doc-uments ˆDK0 , MARVEL applies GPT-4o-based chain-of-thought reranking. The reranker receives the expanded query ˜q and the K0 candidate documents, and is instructed to: 1. Identify the essential problem in the query. 2. Reason step by step about why each document is relevant or irrelevant. 3. Output a ranked list of the top-K1 document indices from most to least relevant. Formally, let {d(1) , . . . , d (K0)} denote the retrieved can-didates indexed from 1 to K0. The reranker produces a per-mutation: 
+
+σ = GPT-4o  ˜q, {d(1) , . . . , d (K0)}, K 1
+
+ (10) where σ is a ranked list of K1 document indices. The final output is: 
+
+ˆDK1 = {d(σ1), d (σ2), . . . , d (σK1 )} (11) 
+
+Double Reranking with Reciprocal Rank Fusion. To reduce variance in the reranking output, MARVEL option-ally runs T independent reranking passes and aggregates them via reciprocal rank fusion [8]. For pass t, let σ(t) de-note the ranked output. The aggregated score for document 
+
+d(i) is: 
+
+sRRF (d(i)) = 
+
+> T
+
+X
+
+> t=1
+
+1
+
+rank t(d(i)) + kRRF 
+
+(12) where rank t(d(i)) is the rank of document d(i) in pass t and 
+
+kRRF = 60 is the standard smoothing constant. The final ranked list is obtained by sorting documents by their aggre-gated RRF scores: 
+
+ˆDRRF  
+
+> K1
+
+= argtop-K1
+
+sRRF (d(i)) (13) The double-reranking stage is particularly effective in domains where single-pass reranking exhibits high vari-ance, as multiple independent reasoning passes collectively identify the most consistently relevant documents across different reasoning trajectories. 
+
+# 4. Experiments 
+
+4.1. Dataset 
+
+We evaluate MARVEL on MM-BRIGHT [5], the first reasoning-intensive multimodal retrieval benchmark. MM-BRIGHT consists of 2,803 queries spanning 29 techni-cal domains , including Gaming, Chemistry, Law, Sustain-ability, Earth Science, Mathematics, Computer Science, Medicine, and others. Each query is a multimodal pair 
+
+(qt, q v ) comprising a text question and one or more associ-ated images (diagrams, charts, screenshots, molecular struc-tures, etc.), paired with a text-only document corpus. 
+
+4.2. Experimental Setup 
+
+MARVEL-Retriever is trained on 4× NVIDIA H100 80GB GPUs using distributed data-parallel training. Visual cap-tioning and all LLM-based stages — query expansion and reranking — are performed using GPT-4o . Captions are generated offline with temperature = 0 for deterministic and reproducible outputs, generated once per query and cached. Query expansion and reranking use temperature 
+
+= 0 .8 and top-p = 0 .8, with up to 20 concurrent asyn-chronous API calls to maximize throughput. 
+
+MARVEL-Retriever Training. MARVEL-Retriever is fine-tuned using contrastive learning with in-batch nega-tives and M = 7 hard negatives per query, temperature 
+
+τ = 0 .02 , batch size 512, and learning rate 1 × 10 −5 for 3 epochs on the MM-BRIGHT training split [5], compris-ing query-document pairs spanning mathematics, science, medicine, law, and software engineering domains. 
+
+Retrieval and Reranking Configuration. MARVEL-Retriever retrieves the top-K0 = 100 candidates per query. The GPT-4o reranker then reranks these candidates to pro-duce the final top-K1 = 10 results. For the optional double-reranking stage, we run T = 5 independent reranking passes aggregated via reciprocal rank fusion with smooth-ing constant kRRF = 60 . We evaluated T ∈ { 1, 3, 5, 7} and found performance improves from T = 1 (36.2) to T = 5 
+
+(37.9) then plateaus at T = 7 (37.8), making T = 5 the optimal precision-to-cost tradeoff. 
+
+4.3. Baselines 
+
+We compare MARVEL against the following multimodal retrieval baselines, all evaluated on the MM-BRIGHT multimodal-to-text track. 5DOMAIN BGE-VL CLIP GME-2B GME-7B JINA-CLIP NOMIC SIGLIP MARVEL 
+
+STEM & Life Sciences 
+
+Acad 4.2 4.8 16.2 27.6 22.3 22.6 3.6 36.8 
+
+Bio 5.7 14.8 22.9 15.2 20.5 26.9 11.9 42.2 
+
+Chem 10.8 9.6 27.2 21.9 30.6 30.6 11.6 40.3 
+
+Phys 6.8 6.1 13.3 14.0 14.4 17.2 7.3 24.8 
+
+Math 13.1 17.9 16.4 9.3 27.0 34.0 15.3 39.0 
+
+Earth 10.1 10.9 20.5 26.2 24.6 30.1 11.8 44.5 
+
+BioAc 13.3 11.4 10.5 13.4 19.4 23.4 14.8 32.9 
+
+BioInf 11.6 9.4 21.1 19.2 23.7 33.8 16.8 28.4 
+
+Med 12.6 9.8 22.7 19.0 26.8 33.9 9.1 41.1 
+
+Software & Technical Systems 
+
+Apple 7.2 12.3 23.9 17.0 24.3 28.7 4.4 21.3 
+
+Ubuntu 11.6 5.5 25.9 34.2 26.1 34.3 12.6 56.4 
+
+BTC 8.9 8.3 18.2 19.6 22.6 22.7 10.0 36.9 
+
+Crypto 11.3 14.8 9.8 7.1 15.5 22.4 10.2 20.4 
+
+QC 4.5 2.6 5.9 5.6 10.8 12.1 2.6 11.3 
+
+Robot 16.1 10.6 15.8 18.7 19.0 30.3 14.3 33.8 
+
+Sales 14.2 2.3 31.1 47.3 32.3 26.2 6.5 50.7 
+
+Social Sciences & Humanities 
+
+Econ 9.5 6.0 10.0 12.6 13.5 21.1 9.8 40.0 
+
+Psych 6.4 8.7 15.6 18.6 20.8 23.9 7.9 37.7 
+
+Phil 2.4 5.4 15.2 18.0 19.4 21.7 7.0 31.9 
+
+Law 10.2 19.7 30.7 35.0 35.3 47.6 16.4 53.6 
+
+Christ 8.9 15.0 20.0 26.5 21.0 30.9 13.0 47.1 
+
+Islam 12.0 10.7 25.8 32.0 24.3 28.9 6.5 41.1 
+
+Applied Domains 
+
+Aviat 9.6 15.4 16.2 17.0 24.3 24.1 9.2 31.4 
+
+Game 17.5 19.1 41.6 43.9 45.6 43.1 21.4 65.5 
+
+GIS 13.8 13.1 15.5 15.6 20.3 25.8 16.5 26.9 
+
+PM 8.6 8.9 21.9 33.2 20.5 27.6 12.4 49.3 
+
+Sustain 10.1 9.0 16.7 25.6 24.3 24.7 11.5 41.8 
+
+Travel 10.1 16.1 23.9 30.8 26.6 36.7 13.1 54.1 
+
+Quant 8.1 2.1 12.4 15.3 11.6 16.2 5.8 18.8 Average 10.0 10.4 19.5 22.0 23.0 27.6 10.8 37.9 
+
+Table 1. Per-domain nDCG@10 on MM-BRIGHT (multimodal-to-text track) across all 29 domains, grouped by thematic category. MAR-VEL achieves the highest score in all 29 domains. Bold denotes the best score per row. 
+
+Multimodal Retrievers. These models encode the full multimodal query (qt, q v ) into a shared embedding space: • CLIP [26]: Contrastive image-text model with a shared embedding space trained on large-scale image-caption pairs. • SigLIP [36]: Sigmoid-based contrastive VLM with im-proved image-text alignment over standard softmax ob-jectives. • Jina-CLIP [18]: Multi-task contrastive model supporting both text-image and text-text retrieval. • Nomic Embed Vision [25]: Shares an embedding space between a vision encoder and a strong text model, en-abling zero-shot multimodal retrieval; the strongest mul-timodal baseline on MM-BRIGHT. • BGE-VL [38]: Multimodal embedding model from the BGE family supporting fused-modal retrieval. • GME-Qwen2-VL-2B / 7B [37]: Universal multimodal embedding models built on Qwen2-VL at 2B and 7B pa-rameter scales, supporting any-to-any retrieval. 
+
+Metrics. We evaluate retrieval performance using Nor-malized Discounted Cumulative Gain at rank 10 
+
+(nDCG@10) [12], the primary metric of the MM-BRIGHT benchmark. 6Table 2. Component ablation on MM-BRIGHT. Each row adds one component on top of the previous. Default MARVEL config-uration in bold .            
+
+> Configuration nDCG@10
+> MARVEL-Retriever only (raw qt)25.4 + Caption ( qt+δ(qv))28.0 + Query Expansion ( ˜q)32.5 + Single-Pass Reranking ( T= 1 )36.2
+> + Double Reranking ( T= 5 , full MARVEL) 37.9
+
+# 5. Results 
+
+5.1. Main Results 
+
+Table 1 reports per-domain and average nDCG@10 across all 29 MM-BRIGHT domains. MARVEL achieves 37.9 
+
+nDCG@10, surpassing the strongest multimodal baseline (Nomic-Vision: 27.6) by +10.3 points and outperforming all single-stage retrievers — GME-7B (22.0), Jina-CLIP (23.0), SigLIP (10.8), CLIP (10.4), and BGE-VL (10.0). MARVEL wins 27 out of 29 domains , with the two ex-ceptions being Crypto (20.4 vs. Nomic: 22.4) and Quan-tum Computing (11.3 vs. Nomic: 12.1) — highly special-ized domains where limited terminological context con-strains both expansion and reranking. Across all remaining 27 domains the unified pipeline consistently outperforms all embedding-only approaches. The margin over Nomic-Vision — the strongest standalone multimodal encoder — is particularly significant: MARVEL’s pipeline-level rea-soning gains are over 5× larger than the gap between the first and second best multimodal encoders (Nomic: 27.6 vs. Jina-CLIP: 23.0), demonstrating that retrieval precision is bottlenecked by reasoning capacity, not visual encoding quality. Although MARVEL-Retriever alone (25.4) scores below Nomic-Vision (27.6) in isolation, it is specifically fine-tuned to encode elaborated queries produced by the ex-pansion stage rather than raw multimodal inputs, yielding a pipeline gain of +12.5 points — nearly 2× the gain achieved when applying MARVEL’s stages on top of Nomic-Vision (+7.6), confirming that MARVEL-Retriever and the expan-sion stage are co-optimized and mutually reinforcing. 
+
+5.2. Domain-Level Analysis 
+
+Table 1 reveals consistent patterns across the four do-main groups. MARVEL achieves the best score in all 29 domains , with the largest absolute gains over the strongest baseline (Nomic-Vision) in Ubuntu (+22.1), Gam-ing (+22.4), Law (+6.0), Travel (+17.4), and Sales (+24.5). These gains are most pronounced in domains with high ter-minological density — Ubuntu, Sales, and Law — where GPT-4o expansion surfaces relevant vocabulary that embed-ding models miss. The only two domains where MARVEL trails the strongest baseline are Crypto ( −2.0 vs. Nomic)   
+
+> Table 3. MARVEL expansion and reranking applied to different base retrievers on MM-BRIGHT. ∆= absolute nDCG@10 gain from the full MARVEL pipeline.
+
+Base Retriever Base +MARVEL ∆
+
+BM25 8.5 19.2 +10.7 GME-Qwen2-VL-7B 22.0 33.1 +11.1 Nomic-Vision 27.6 35.2 +7.6 MARVEL-Retriever (ours) 25.4 37.9 +12.5 and Quantum Computing ( −0.8 vs. Nomic), where queries are highly specialized and the expansion stage has limited terminology to reason from. In GIS, MARVEL still leads (+1.1). 
+
+5.3. Ablation: MARVEL Components 
+
+Table 2 isolates each component’s contribution by progres-sively building the full MARVEL pipeline. Starting from MARVEL-Retriever alone with raw text queries (25.4), adding the GPT-4o image caption yields a +2.6 point gain (28.0), confirming that visual grounding via captioning is necessary even before expansion. Applying LLM query ex-pansion on top of the captioned input adds a further +4.5 points (32.5), the largest single-component gain in the abla-tion — demonstrating that elaborating the user’s intent into a terminology-dense representation is the dominant driver of MARVEL’s improvement. Adding single-pass GPT-4o reranking yields an additional +3.7 points (36.2), and the full double-reranking stage with T = 5 passes and RRF fusion delivers a further +1.7 points to reach 37.9 . Each component contributes meaningfully and additively: cap-tioning (+2.6), query expansion (+4.5), single-pass rerank-ing (+3.7), and double-pass RRF (+1.7) collectively account for the full +12.5 point gain over the retrieval-only baseline. 
+
+5.4. MARVEL as a Plug-and-Play Pipeline 
+
+Table 3 applies the full MARVEL expansion and reranking stages on top of four different base retrievers to test whether the gains are retriever-agnostic. MARVEL consistently and substantially improves every retriever: BM25 gains +10.7 points (8.5 → 19.2), GME-7B gains +11.1 points (22.0 →
+
+33.1), Nomic-Vision gains +7.6 points (27.6 → 35.2), and MARVEL-Retriever gains +12.5 points (25.4 → 37.9). The gains are consistent across both sparse and dense retriev-ers, confirming that query expansion and chain-of-thought reranking provide complementary signals that are indepen-dent of the underlying retrieval model. Notably, MARVEL-Retriever achieves the highest absolute score (37.9), con-firming that a retriever fine-tuned for reasoning-intensive queries synergizes more effectively with MARVEL’s ex-pansion and reranking stages than a general-purpose mul-timodal encoder (Nomic-Vision: 35.2). 720 50 100 200          
+
+> 32
+> 34
+> 36
+> 38
+> 40
+> 42
+> 34.1
+> 36.0
+> 37.9
+> 40.8
+> Nomic-Vision (27.6)
+> Retrieval Depth K0
+> nDCG@10
+> Figure 3. Effect of retrieval depth K0(number of candidates passed to the reranker) on MARVEL performance (nDCG@10, MM-BRIGHT average). The orange star marks our default K0=100 .The dashed red line indicates the best single-stage multi-modal baseline (Nomic-Vision: 27.6). Even at K0= 20 , MAR-VEL substantially outperforms all baselines.
+
+5.5. Effect of Retrieval Depth K0
+
+Figure 3 examines the sensitivity of MARVEL to the num-ber of candidates passed to the reranker ( K0). Reranking only 20 candidates (34.1) already substantially outperforms the best single-stage baseline (27.6), confirming that even shallow reranking provides significant gains. Performance improves steadily with K0, reaching its peak at K0 = 100 
+
+(37.9) and plateauing at K0 = 200 (37.8). We adopt 
+
+K0 = 100 as our default: while K0 = 200 yields a higher upper bound (40.8), it doubles the number of documents passed to GPT-4o, increasing API cost and latency propor-tionally with only a marginal +0.8 gain beyond K0 = 100 
+
+(37.9). All main results are reported at K0 = 100 as the optimal precision-to-cost operating point. 
+
+5.6. Comparison with Query Expansion Baselines 
+
+Table 4 compares expansion strategies under identi-cal settings (all our own implementations). Text-only HyDE (12.1) and Query2Doc (15.8) underperform the no-expansion baseline (28.0) by ignoring the visual caption en-tirely. When the caption δ(qv ) is appended, both recover substantially (HyDE †: 21.3; Query2Doc †: 23.1), confirm-ing the gap stems from missing visual context. MARVEL Expansion (36.2) surpasses all variants, demonstrating that multimodal-aware elaboration is essential. 
+
+# 6. Conclusion 
+
+We presented MARVEL , a unified expand-retrieve-rerank pipeline for reasoning-intensive multimodal re-trieval. MARVEL addresses three compounding failure modes through tightly integrated stages: LLM-driven query expansion, reasoning-aware dense retrieval via MARVEL-      
+
+> Table 4. Comparison of query expansion strategies on MM-BRIGHT, all using MARVEL-Retriever + single-pass reranking (T= 1 ). All methods are our own implementations under iden-tical settings. †denotes runs where the image caption δ(qv)is ap-pended to the expansion input.
+
+Expansion Method nDCG@10 
+
+No expansion (raw qt + δ(qv )) 28.0 HyDE [11] (text only) 12.1 HyDE † (text + caption) 21.3 Query2Doc [33] (text only) 15.8 Query2Doc † (text + caption) 23.1 ThinkQE [19] 31.4 
+
+MARVEL Expansion (ours) 36.2 
+
+Retriever, and GPT-4o chain-of-thought reranking with op-tional multi-pass reciprocal rank fusion. Evaluated on MM-BRIGHT across 29 technical domains, MARVEL achieves 
+
+37.9 nDCG@10, surpassing the best multimodal encoder (Nomic-Vision: 27.6) by +10.3 points and winning 27 of 29 domains, with marginal losses only in the two most highly-specialized domains. Ablation experiments confirm that all three stages contribute meaningfully and additively, with query expansion (+4.5) and reranking (+5.4 combined: +3.7 single-pass and +1.7 double-pass RRF) accounting for the majority of the gain over the retrieval-only baseline. The plug-and-play experiments further demonstrate that MAR-VEL’s expansion and reranking stages consistently improve any base retriever — sparse or dense, unimodal or multi-modal — confirming that reasoning-intensive multimodal retrieval is a pipeline problem, not a model capacity prob-lem. Future directions include replacing GPT-4o with open-source LLMs in the expansion and reranking stages to re-duce inference cost, jointly fine-tuning MARVEL-Retriever with the expansion stage for end-to-end optimization, and extending MARVEL to multi-image queries and video re-trieval settings. Code and models will be released to fa-cilitate further research on reasoning-intensive multimodal retrieval. 
+
+# Acknowledgment 
+
+This work was supported by Innovative Human Resource Development for Local Intellectualization program through the Institute of Information & Communications Technol-ogy Planning & Evaluation(IITP) grant funded by the Korea government(MSIT) (IITP-2026-RS-2020-II201462, 50%), and partly supported by the National Research Foundation of Korea (NRF) grant funded by the Korea government (Ministry of Science and ICT) (RS-2023-NR076833) 8References 
+
+[1] Mahmoud Abdalla, Mahmoud SalahEldin Kasem, Mohamed Mahmoud, Bilel Yagoub, Mostafa Farouk Senussi, Abdel-rahman Abdallah, Seung Hun Kang, and Hyun Soo Kang. Receiptqa: A question-answering dataset for receipt under-standing. Mathematics , 13(11):1760, 2025. 1 [2] Abdelrahman Abdallah, Jamshid Mozafari, Bhawna Piryani, and Adam Jatowt. Dear: Dual-stage document reranking with reasoning agents via LLM distillation. arXiv preprint arXiv:2508.16998 , 2025. 1 [3] Abdelrahman Abdallah, Bhawna Piryani, Jamshid Mozafari, Mohammed Ali, and Adam Jatowt. Rankify: A comprehen-sive python toolkit for retrieval, re-ranking, and retrieval-augmented generation. arXiv preprint arXiv:2502.02464 ,2025. 1 [4] Abdelrahman Abdallah, Mohammed Ali, Muhammad Abdul-Mageed, and Adam Jatowt. TEMPO: A realistic multi-domain benchmark for temporal reasoning-intensive retrieval. arXiv preprint arXiv:2601.09523 , 2026. 2 [5] Abdelrahman Abdallah, Mohamed Darwish Mounis, Mahmoud Abdalla, Mahmoud SalahEldin Kasem, Mostafa Farouk Senussi, Mohamed Mahmoud, Mohammed Ali, Adam Jatowt, and Hyun-Soo Kang. MM-BRIGHT: A multi-task multimodal benchmark for reasoning-intensive retrieval. arXiv preprint arXiv:2601.09562 , 2026. 1, 3, 5 [6] Mohammed Ali, Abdelrahman Abdallah, Amit Agarwal, Hitesh Laxmichand Patel, and Adam Jatowt. Recor: Reasoning-focused multi-turn conversational retrieval benchmark. arXiv preprint arXiv:2601.05461 , 2026. 1 [7] Yanfei Chen, Jinsung Yoon, Chanyeol Lee, et al. Re-invoke: Tool retrieval via reversed instructions. arXiv preprint arXiv:2408.01875 , 2024. 3 [8] Gordon V Cormack, Charles LA Clarke, and Stefan Buettcher. Reciprocal rank fusion outperforms condorcet and individual rank learning methods. In Proceedings of the 32nd international ACM SIGIR conference on Research and development in information retrieval , pages 758–759, 2009. 5[9] Debrup Das, Sam O’Nuallain, and Razieh Rahimi. RaDeR: Reasoning-aware dense retrieval models. arXiv preprint arXiv:2505.18405 , 2025. 2 [10] Manuel Faysse, Hugues Sibille, Tony Wu, Bilel Omrani, Gautier Viaud, C´ eline Hudelot, and Pierre Colombo. Col-Pali: Efficient document retrieval with vision language mod-els. arXiv preprint arXiv:2407.01449 , 2024. 3 [11] Luyu Gao, Xueguang Ma, Jimmy Lin, and Jamie Callan. Precise zero-shot dense retrieval without relevance labels. 
+
+arXiv preprint arXiv:2212.10496 , 2022. 1, 3, 8 [12] Kalervo J¨ arvelin and Jaana Kek¨ al¨ ainen. Cumulated gain-based evaluation of ir techniques. ACM Transactions on In-formation Systems (TOIS) , 20(4):422–446, 2002. 6 [13] Ziyan Jiang, Rui Meng, Xinyi Yang, Semih Yavuz, Yingbo Zhou, and Wenhu Chen. VLM2Vec: Training vision-language models for massive multimodal embedding tasks. 
+
+arXiv preprint arXiv:2410.05160 , 2024. 1, 3 [14] Jeff Johnson, Matthijs Douze, and Herv´ e J´ egou. Billion-scale similarity search with GPUs. IEEE Transactions on Big Data , 7(3):535–547, 2021. 2 [15] Vladimir Karpukhin, Barlas Oguz, Sewon Min, Patrick Lewis, Ledell Wu, Sergey Edunov, Danqi Chen, and Wen-tau Yih. Dense passage retrieval for open-domain question answering. In Proceedings of the 2020 Conference on Em-pirical Methods in Natural Language Processing (EMNLP) ,pages 6769–6781, Online, 2020. Association for Computa-tional Linguistics. 2 [16] Mahmoud SalahEldin Kasem, Mohamed Mahmoud, Bilel Yagoub, Mostafa Farouk Senussi, Mahmoud Abdalla, and Hyun-Soo Kang. Httd: A hierarchical transformer for accu-rate table detection in document images. Mathematics , 13 (2):266, 2025. 1 [17] Mahmoud SalahEldin Kasem, Mohamed Mahmoud, Mostafa Farouk Senussi, Mahmoud Abdalla, and Hyun Soo Kang. Korie: A multi-task benchmark for detection, ocr, and information extraction on korean retail receipts. 
+
+Mathematics , 14(1):187, 2026. 1 [18] Andreas Koukounas et al. Jina CLIP: Your CLIP model is also your text retriever. arXiv preprint arXiv:2405.20204 ,2024. 6 [19] Yibin Lei, Tao Shen, and Andrew Yates. ThinkQE: Query expansion via an evolving thinking process. arXiv preprint arXiv:2506.09260 , 2025. 2, 3, 8 [20] Patrick Lewis, Ethan Perez, Aleksandra Piktus, Fabio Petroni, Vladimir Karpukhin, Naman Goyal, Heinrich K¨ uttler, Mike Lewis, Wen-tau Yih, Tim Rockt¨ aschel, Sebas-tian Riedel, and Douwe Kiela. Retrieval-augmented gener-ation for knowledge-intensive NLP tasks. In Advances in Neural Information Processing Systems , pages 9459–9474, 2020. 1 [21] Dingkun Long et al. DIVER: A multi-stage approach for reasoning-intensive information retrieval. arXiv preprint arXiv:2508.07995 , 2025. 3 [22] Xueguang Ma, Jimmy Lin, Minghan Zhang, and Sheng-Chieh Lin. Unifying multimodal retrieval via document screenshot embedding. arXiv preprint arXiv:2406.11251 ,2024. 3 [23] Abdelrahman Abdallah Bhawna Piryani Jamshid Mozafari and Mohammed Ali Adam Jatowt. How good are llm-based rerankers? an empirical analysis of state-of-the-art reranking models. 2025. 1 [24] Niklas Muennighoff, Nouamane Tazi, Loic Magne, and Nils Reimers. MTEB: Massive text embedding benchmark. In 
+
+Proceedings of the 17th Conference of the European Chap-ter of the Association for Computational Linguistics , pages 2014–2037, Dubrovnik, Croatia, 2023. Association for Com-putational Linguistics. 1, 2 [25] Zach Nussbaum, John X. Morris, Brandon Duderstadt, and Andriy Mulyar. Nomic embed: Training a reproducible long context text embedder. arXiv preprint arXiv:2402.01613 ,2024. 3, 6 [26] Alec Radford, Jong Wook Kim, Chris Hallacy, Aditya Ramesh, Gabriel Goh, Sandhini Agarwal, Girish Sastry, Amanda Askell, Pamela Mishkin, Jack Clark, Gretchen Krueger, and Ilya Sutskever. Learning transferable visual 
+
+9models from natural language supervision. In Proceedings of the 38th International Conference on Machine Learning ,pages 8748–8763. PMLR, 2021. 2, 6 [27] Nils Reimers and Iryna Gurevych. Sentence-BERT: Sen-tence embeddings using Siamese BERT-networks. In Pro-ceedings of the 2019 Conference on Empirical Methods in Natural Language Processing and the 9th International Joint Conference on Natural Language Processing (EMNLP-IJCNLP) , pages 3982–3992, Hong Kong, China, 2019. As-sociation for Computational Linguistics. 2 [28] Stephen E. Robertson and Hugo Zaragoza. The probabilistic relevance framework: BM25 and beyond. Foundations and Trends in Information Retrieval , 3(4):333–389, 2009. 3 [29] Rulin Shao, Rui Qiao, Varsha Kishore, Niklas Muennighoff, Xi Victoria Lin, Daniela Rus, Bryan Kian Hsiang Low, Se-won Min, Wen-tau Yih, Pang Wei Koh, and Luke Zettle-moyer. ReasonIR: Training retrievers for reasoning tasks. 
+
+arXiv preprint arXiv:2504.20595 , 2025. 2 [30] Hongjin Su, Howard Yen, Mengzhou Xia, Weijia Shi, Niklas Muennighoff, Han-yu Wang, Haisu Liu, Quan Shi, Zachary S. Siegel, Michael Tang, Ruoxi Sun, Jinsung Yoon, Sercan ¨ O. Arik, Danqi Chen, and Tao Yu. BRIGHT: A real-istic and challenging benchmark for reasoning-intensive re-trieval. arXiv preprint arXiv:2407.12883 , 2024. 2 [31] Weiwei Sun, Lingyong Yan, Xinyu Ma, Shuaiqiang Wang, Pengjie Ren, Zhumin Chen, Dawei Yin, and Zhaochun Ren. Is ChatGPT good at search? investigating large language models as re-ranking agents. arXiv preprint arXiv:2304.09542 , 2023. 1, 3 [32] Nandan Thakur, Nils Reimers, Andreas R¨ uckl´ e, Abhishek Srivastava, and Iryna Gurevych. BEIR: A heterogeneous benchmark for zero-shot evaluation of information retrieval models. In Proceedings of the Neural Information Process-ing Systems Track on Datasets and Benchmarks 1 (NeurIPS Datasets and Benchmarks 2021) , 2021. 1, 2 [33] Liang Wang, Nan Yang, and Furu Wei. Query2doc: Query expansion with large language models. arXiv preprint arXiv:2303.07678 , 2023. 1, 2, 3, 8 [34] Orion Weller et al. Rank1: Test-time compute for reranking. 
+
+arXiv preprint arXiv:2502.18418 , 2025. 1, 3 [35] Shi Yu, Chaoyue Tang, Bokai Xu, Junbo Cui, Junhao Ran, Yukun Yan, Zhenghao Liu, Shuo Wang, Xu Han, Zhiyuan Liu, and Maosong Sun. VisRAG: Vision-based retrieval-augmented generation on multi-modality documents. arXiv preprint arXiv:2410.10594 , 2024. 3 [36] Xiaohua Zhai, Basil Mustafa, Alexander Kolesnikov, and Lucas Beyer. Sigmoid loss for language image pre-training. 
+
+arXiv preprint arXiv:2303.15343 , 2023. 2, 6 [37] Xin Zhang, Yanzhao Zhang, Wen Xie, Mingxin Li, Ziqi Dai, Dingkun Long, Pengjun Xie, Meishan Zhang, Wenjie Li, and Min Zhang. GME: Improving universal multimodal retrieval by multimodal LLMs. arXiv preprint arXiv:2412.16855 ,2024. 1, 3, 6 [38] Junjie Zhou, Yongping Xiong, Zheng Liu, Ze Liu, Shitao Xiao, Yueze Wang, Bo Zhao, Chen Jason Zhang, and Defu Lian. Megapairs: Massive data synthesis for universal multi-modal retrieval. In Proceedings of the 63rd Annual Meeting of the Association for Computational Linguistics (Volume 1: Long Papers) , pages 19076–19095, 2025. 6 [39] Shengyao Zhuang, Xueguang Ma, Bevan Koopman, Jimmy Lin, and Guido Zuccon. Rank-R1: Enhancing reasoning in llm-based document rerankers via reinforcement learning. 
+
+arXiv preprint arXiv:2503.06034 , 2025. 3 
+
+10
