@@ -1,0 +1,725 @@
+Title: Protecting User Prompts Via Character-Level Differential Privacy
+
+URL Source: https://arxiv.org/pdf/2603.26032v1
+
+Published Time: Mon, 30 Mar 2026 00:29:05 GMT
+
+Number of Pages: 26
+
+Markdown Content:
+PROTECTING USER PROMPTS VIA CHARACTER-LEVEL DIFFERENTIAL PRIVACY 
+
+SHASHIE DILHARA BATAN ARACHCHIGE, HASSAN JAMEEL ASGHAR, BENJAMIN ZI HAO ZHAO, DINUSHA VATSALAN, DALI KAAFAR Macquarie University, Cyber Security Hub, Sydney, Australia 
+
+Abstract. Large Language Models (LLMs) generate responses based on user prompts. Often, these prompts may contain highly sensitive information, including personally iden-tifiable information (PII), which could be exposed to third parties hosting these models. In this work, we propose a new method to sanitize user prompts. Our mechanism uses the randomized response mechanism of differential privacy to randomly and independently perturb each character in a word. The perturbed text is then sent to a remote LLM, which first performs a prompt restoration and subsequently performs the intended downstream task. The idea is that the restoration will be able to reconstruct non-sensitive words even when they are perturbed due to cues from the context, as well as the fact that these words are often very common. On the other hand, perturbation would make reconstruction of sensitive words difficult because they are rare. We experimentally validate our method on two datasets, i2b2/UTHealth and Enron, using two LLMs: Llama-3.1 8B Instruct and GPT-4o mini. We also compare our approach with a word-level differentially private mechanism, and with a rule-based PII redaction baseline, using a unified privacy–utility evaluation. Our results show that sensitive PII tagged in these datasets are reconstructed at a rate close to the theoretical rate of reconstructing completely random words, whereas non-sensitive words are reconstructed at a much higher rate. Our method has the advantage that it can be applied without explicitly identifying sensitive pieces of information in the prompt, while showing a good privacy-utility tradeoff for downstream tasks. 
+
+1. Introduction 
+
+With the rise of large language models (LLMs) many have started using them as helpful tools for personal and work-related tasks. These LLMs respond to prompts submitted by users to fulfill a given task. In many real-world scenarios, user prompts may include personally identifiable information, proprietary company data, or other confidential details. As these LLMs are mostly hosted by third parties, this risks leaking and exposing said information to third parties. For instance, in healthcare applications, LLMs might be prompted with clinical reports containing sensitive patient data to provide medical insights. Sensitive data in these reports may include patient names, medical record numbers, phone numbers, locations, and email addresses. These sensitive details could be memorized by the LLM, 
+
+Key words and phrases: Local Differential Privacy, κ-ary Randomized Response, Prompt Privacy, Privacy-Preserving Mechanisms, Large Language Models. 
+
+> 1
+> arXiv:2603.26032v1 [cs.CR] 27 Mar 2026 2SHASHIE DILHARA BATAN ARACHCHIGE, HASSAN JAMEEL ASGHAR, BENJAMIN ZI HAO ZHAO, DINUSHA VATSALAN, DALI KA
+
+accidentally exposed in future interactions or even accessed by untrusted entities which can lead to severe ethical and regulatory violations [Tang et al., 2024]. Real-world reports show that such misuses of LLMs are not merely of theoretical concern. For instance, Samsung employees accidentally exposed confidential company meeting records and proprietary details of unreleased products by entering sensitive data into an LLM [Powell, 2023]. To address prompt privacy, various approaches have been proposed. These include sanitization using named entity recognition (NER) models and rule-based filtering [Chen et al., 2024, Kan et al., 2023], differential privacy (DP) [Yue et al., 2021, Mattern et al., 2022a, Tong et al., 2023, Du et al., 2023, Utpala et al., 2023, Feyisetan et al., 2019], homomorphic encryption or secure multiparty computation (SMC) based techniques [Santos et al., 2024, Liu and Liu, 2023], and custom techniques to obfuscate the prompt through for instance adding redundant or dummy tokens [Yao et al., 2024, Lin et al., 2024], and simple encoding [Zhang et al., 2023]. Each of these techniques have their own limitations. NER and rule-based filtering methods rely on correctly defining and identifying sensitive entities in the text which may lead to false positives and negatives, as the NER model may miss some sensitive information while erroneously marking non-sensitive information as sensitive [Quijada et al., 2022]. Techniques based on homomorphic encryption and SMC [Liu and Liu, 2023, Santos et al., 2024] require changes to the LLM to enable computations in the encrypted domain, which in most circumstances is not realistic as these LLMs are hosted by third parties. Furthermore, currently, these techniques are slow due to significant computational and communication overhead. Custom obfuscation techniques [Shen et al., 2024, Zhang et al., 2023] do not carry formal privacy guarantees like homomorphic encryption and DP techniques. Furthermore, they also require architectural changes, where partial computation such as prompt tokenization is done at the client side. This again is not realistic in the setting where LLMs are hosted remotely by a third party. Differential privacy provides a mathematically rigorous framework for privacy of sta-tistical databases [Dwork et al., 2006]. However, applying it to the text domain is not straightforward, and has given rise to a number of different techniques. One such techniques is word-level differential privacy [Feyisetan et al., 2020]. This replaces words in the text with other semantically similar words. However, this often impacts utility as it changes all words within the text which may or may not be sensitive. We provide a more detailed description and limitations of existing DP techniques for text sanitization in Section 2. Despite this, DP has one key advantage over the other techniques mentioned above: it can be applied in an automated manner without significant computational overhead as well as without needing access to any part of the remote LLM. In this paper, we propose a new way to apply differential privacy to sanitize text data given as input prompts to LLMs. Given a prompt to be sanitized, we perturb each character of every word of the prompt independently using a randomized response mechanism [Warner, 1965]. The resulting perturbed text is then restored by a remote LLM as much as possible and which subsequently performs the downstream task, all without access to the original, unperturbed prompt. The intuition is that prompt restoration will reconstruct common words as each character in such words is correlated with other characters in the word, as well as other words in the prompt. On the other hand, sensitive words in the prompt tend to be rare and have higher entropy, and hence difficult to reconstruct by the remote LLM. This is backed up by previous results which show that LLMs handle typos and minor perturbations effectively for common words but struggle with rare words [Zhu et al., 2024, Schick and Sch¨ utze, 2020, Fox and Delworth, 2022, Cao et al., 2023]. Since LLMs are the state-of-the-art PROTECTING USER PROMPTS VIA CHARACTER-LEVEL DIFFERENTIAL PRIVACY 3
+
+for text-related tasks, if they are unable to reconstruct the original content, it is highly unlikely that any other method will perform better. The advantage of our mechanism is that we automatically provide privacy while maintaining utility of the prompt, without the need to explicitly identify or mark sensitive terms, using predefined rules or external classifiers, and thus avoiding the pitfalls of incomplete redaction, as may be the case with NER-based schemes. In summary, our main contributions are as follows: 
+
+• We present a prompt sanitization method that applies local differential privacy at the character level using the k-ary randomized response ( k-RR) mechanism directly on the user side, before the prompt is sent to an untrusted LLM provider. This reduces exposure of raw prompt content during transmission and removes the need for a separate sanitization component. It also removes dependence on NER or rule-based detection, since privacy protection is applied uniformly to the entire prompt. 
+
+• We leverage the capabilities of LLMs to reliably reconstruct common words over rare words, to ensure that the sanitized text remains both private and readable. We utilize two LLMs, GPT-4o mini and Llama-3.1 8B, to restore the LDP-sanitized text, allowing the LLM to recover many common words while minimizing the reconstruction of rare words, thereby balancing privacy and readability. 
+
+• We establish a theoretical baseline for reconstruction of random words after they are perturbed by character-level k-RR. These words contain characters that are sampled uniformly at random, independently of other characters in the word. Using this baseline we show that sensitive PII is reconstructed at rates close to reconstruction of this baseline for random words; meaning recovery is no better than random guessing. In contrast, non-sensitive words are reconstructed at substantially higher rates, which supports the privacy and usability guarantees of our approach. 
+
+• We benchmark our character-level k-RR method against a word-level differential privacy approach and rule-based PII redaction, under a unified privacy–utility evaluation. Privacy is quantified via sensitive term reconstruction rate (reported as privacy preserved), and utility is measured via cosine similarity between summaries from original versus protected inputs, under a standardized restoration and summarization pipeline. Our results indicate that character-level perturbation can achieve high summary similarity at higher levels of privacy preserved, compared to the word-level DP baseline. Presidio provides high utility at a single fixed setting, but lacks tunable privacy–utility trade-offs. To support reproducibility, we will release our code and evaluation scripts. 2. Related Work 
+
+Prompt privacy comes under the umbrella of data sanitization methods which find and remove sensitive information, like personally identifiable information (PII), from data [Ishihara, 2023]. Papadopoulou et al. [Papadopoulou et al., 2022] introduce a neural privacy-enhanced entity recognizer for text sanitization, classifying personal identifiers. Kan et al. [Kan et al., 2023] used a local LLM to sanitize privacy-sensitive user inputs before sending the sanitized text to a cloud-based LLM for processing. Instead of relying on a single local LLM for sanitization, Chen et al.[Chen et al., 2024] introduced Hide and Seek (HaS), a framework with two models: the Hide-Model, which anonymizes private entities, and the Seek-Model, which restores them when needed. 4SHASHIE DILHARA BATAN ARACHCHIGE, HASSAN JAMEEL ASGHAR, BENJAMIN ZI HAO ZHAO, DINUSHA VATSALAN, DALI KA 
+
+However, simple sanitization techniques are insufficient, as privacy depends on context and non-identifiable data Brown et al. [2022]. Furthermore, Carlini et al. [Carlini et al., 2021] demonstrate that sanitization is imperfect, often leaving private data exposed. Even with LLM-based sanitization, the level of protection depends on the model’s ability to interpret context and strictly adhere to sensitivity instructions. Consequently, sensitive information may still be overlooked, particularly when contextual cues are subtle or the boundary of what is sensitive is ambiguous. Local differential privacy (LDP) mechanisms provide a formal privacy guarantee by randomizing each user’s data on the client side, ensuring the true input is difficult to infer even for an untrusted observer [Duchi et al., 2013]. In practice, LDP sanitizes sensitive data locally by introducing randomness into embedding vectors at the token, word, sentence, or prompt level before sending it to an untrusted LLM server [Edemacu and Wu, 2024]. Lyu et al. [Lyu et al., 2020] proposed a local DP-based framework that ensures privacy by privatizing each word’s representation vector and sequentially replacing sensitive words with semantically similar alternatives. To address privacy concerns related to previous differentially private mechanisms, Tong et al. [Tong et al., 2024] introduced the InferDPT framework and proposed RANTEXT, a method that applies random adjacency for token-level perturbation in uploaded prompts. While differentially private mechanisms for perturbing word embeddings contribute to anonymization, [Mattern et al., 2022b] highlight their limitations, including weakened theoretical privacy guarantees, vulnerability to deanonymization attacks, and challenges in preserving sentence content and language quality. Word-level privacy may fail to obscure higher-level concepts, leading Du et al. [Du et al., 2023] to explore sentence-level private embeddings, introducing metric LDP with two approaches based on Euclidean and angular distances. Utpala et al. [Utpala et al., 2023] introduced DP-Prompt, a document-level DP method that uses zero-shot prompting on a local language model, applying a differentially private token selection process with the exponential mechanism to generate sanitized paraphrased documents for cloud LLMs. Existing LDP text sanitization methods typically operate at the word, sentence, or document level. However, a major limitation of these approaches is that they indiscriminately perturb non-sensitive tokens alongside sensitive ones, often degrading the semantic coherence of the text and yielding a suboptimal privacy-utility tradeoff. In contrast, we apply LDP at the character level within the prompt and then use a remote LLM to recover utility by restoring many common words from context, while ensuring that sensitive, often rare, strings remain difficult to reconstruct. Our design avoids key limitations of existing privacy-preserving techniques. Unlike NER-based sanitization [Chen et al., 2024, Kan et al., 2023], which depends on accurately detecting predefined entity types [Lison et al., 2021, Pil´ an et al., 2022], our method does not require entity detection. Under domain shift, novel formats, or obfuscation, NER can miss sensitive spans (false negatives), enabling verbatim leakage [Lison et al., 2021, Agarwal et al., 2021]. Furthermore, in contrast to cryptographic methods [Liu and Liu, 2023, Santos et al., 2024] that incur high computational overhead, or heuristic obfuscation techniques [Yao et al., 2024, Lin et al., 2024] that lack rigorous security definitions, our approach is computationally lightweight and offers formal privacy guarantees. Protection is applied uniformly at the character level, independent of whether the content matches any schema or requires changes to the remote model. PROTECTING USER PROMPTS VIA CHARACTER-LEVEL DIFFERENTIAL PRIVACY 5
+
+3. Background 
+
+3.1. Large Language Models (LLMs). Language models (LMs) are computational models that are capable of understanding and generating human language and are able to predict the likelihood of word sequences or generate new text based on a given input [Chang et al., 2024]. LMs can be down-streamed to various NLP tasks including Natural Language understanding and Generation, via transfer learning [Smith et al., 2023]. LMs can be Statistical Language Models (SLM), Neural Language Models (NLM), Pre-trained Language Models (PLMs) and Large Language Models (LLMs) [Minaee et al., 2024]. SLMs view text in a form of a word sequence and then estimate the probability of text as a product of their word probabilities [Minaee et al., 2024]. NLMs characterize the probability of word sequences by neural networks like Recurrent Neural Networks (RNNs) and use deep leaning methods to obtain knowledge of language patterns from large text data corpora [Raiaan et al., 2024]. Unlike NLMs, PLMs are domain independent and their training and inference, follows a pre-training or fine-tuning approach [Zhao et al., 2023]. LLMs are advanced LMs, which are transformer-based [Vaswani et al., 2017] and contain a large number of parameters with exceptional learning capabilities of in context learning, instruction following, and multi-step following [Minaee et al., 2024] when compared to the PLMs. 3.2. Differential Privacy. Differential privacy (DP) provides a mathematical framework for ensuring the confidentiality of an individual’s data [Dwork et al., 2006]. DP has been applied on two main settings, global (GDP) and local (LDP) [Liu et al., 2022]. GDP assumes the existence of a trusted data curator who knows the dataset in the clear, and applies a DP algorithm on the entire dataset. In the LDP setting each individual locally sanitizes his/her own data using a DP algorithm before passing on to the possibly untrusted curator [Kasiviswanathan et al., 2011]. Since our work applies to the local setting, this fleeting introduction to differential privacy is from the LDP lens. Let X be the data domain, which we assume to be discrete. 
+
+Definition 3.1 (Local Differential Privacy) . A randomized algorithm M : X → Y , with discrete range Y, is ϵ-differentially private if for all x, x ′ ∈ X and for all y ∈ Y , we have: Pr[ M(x) = y] ≤ eϵ Pr[ M(x′) = y],
+
+where ϵ ≥ 0. In other words, anyone seeing the output is not able to discern the input except with the probability difference dictated by the parameter ϵ. The following are known results. 
+
+Theorem 3.2 (Post-processing Property [Dwork et al., 2006]) . If M is ϵ-DP, then for any algorithm M′, M′ ◦ M is also ϵ-DP. Note that M′ does not take the initial data as input. It only access this indirectly through M.
+
+Theorem 3.3 (Sequential composition [Dwork et al., 2014]) . If M1, . . . , Mt are ϵ-DP, then the sequence of algorithms M′ = ( M1, . . . , Mt) is tϵ -DP. 6SHASHIE DILHARA BATAN ARACHCHIGE, HASSAN JAMEEL ASGHAR, BENJAMIN ZI HAO ZHAO, DINUSHA VATSALAN, DALI KA 
+
+4. Proposed Method 
+
+4.1. Scenario and Threat Model. Our scenario concerns a user who submits a prompt 
+
+T to an online remote LLM R hosted by a third party for some text generation task. This LLM is also our adversary. The prompt may contain sensitive terms which we do not want R
+
+to learn. The goal is to replace the prompt T with a sanitized prompt T ∗ with the sensitive terms removed. This is done at the user side, e.g., using a Web browser plugin before the prompt is sent to R.4.2. Overview of the Method and Intuition. Our methodology consists of two main steps: (1) Noise Injection. We replace each character of every word in T independently by a printable ASCII character via a local differentially private algorithm. (2) Prompt Restoration and Task Execution. The noisy prompt is then given to a remote LLM R, to restore as much of the text as possible by removing typos, and other errors, and perform the downstream task. After the first step, depending on the level of privacy via the privacy parameter ϵ, some or all of the characters in every word in T are replaced. However, LLMs can use their in-context learning capabilities to restore some or most of the original text. This is because common words in the prompt can be easily corrected by the remote LLM, even if some characters have been replaced, using cues such as the length of the word, its surrounding words and context. E.g., the perturbed word “ cbrr/MpondenXe ” is correctly spell-corrected by the LLM as “ correspondence ” in Figure 1. On the other hand, many sensitive terms are rare, and hence the LLM is unable to reconstruct them correctly, e.g., Harlan → W_rlan →
+
+Halld , again in Figure 1. This simple observation leads to an automated way of sanitizing the prompt while maintaining utility. For the purpose of our study, we conceptually separate the overall process handled by the remote LLM R into two sequential stages: prompt restoration and task execution . Although both stages are performed by R in practice as part of a single inference step, this conceptual separation allows us to analyze how the model first attempts to restore the noised input and subsequently performs the intended downstream task. This decomposition provides a clearer understanding of the remote LLM’s behavior in the presence of privacy-preserving perturbations. 4.3. Defining Sensitive Terms. It is difficult to come up with an all encompassing definition of privacy for user prompts as it differs depending on the case. For instance, one can think of scenarios where the entire prompt may be considered sensitive. We therefore do not claim to provide privacy for every use case. Rather, we focus on a scenario which is arguably commonplace: [G´ omez-Hidalgo et al., 2010, Dernoncourt et al., 2017, Joshi et al., 2022] we assume that there are only a certain categories of words in the text which are flagged as sensitive such as full names of individuals, email addresses, and PROTECTING USER PROMPTS VIA CHARACTER-LEVEL DIFFERENTIAL PRIVACY 7User                   
+
+> Patient Harlan Valdez Jr. (MRN: 845-41-54-4 ) was seen by Dr. Habib Valenzuela at Campbell Orthopedic Associates in Omak, GA . The consultation was referred by Dr. Harlan Oneil .Additional correspondence was sent to Dr. Harold Nutter at Doctors Hospital North. Contact:
+> (555) 789-1234
+> Untrusted Remote LLM
+> Patient Harlan Valdez Jr.
+> (MRN: 845-41-54-4 ) was seen by Dr. Habib Valenzuela at Campbell Orthopedic Associates in Omak, GA ,following a referral from Dr. Harlan Oneil . Correspondence was also sent to Dr. Harold Nutter at Doctors Hospital North. Contact: (555) 789-1234
+> Input Prompt
+> Summarized Output
+> Summarize the following input:
+
+Standard Use Case: Direct Prompt Processing 1
+
+> 2
+
+Privacy-Preserving Prompt Processing with k-ary randomized response                           
+
+> Patient Harla3 Valiez Jr .(URT: 8a5-41-44 ) was seen by Dr. Hadib Valiquela at Lampert Orthopedic Associates in
+> Omaji GAm . The consultation was referred by Dr. Wrlan Ojail . Any additional correspondence was sent to
+> Dr. Halld VuttFr at Doctors Hospital North. Contact: (555) 812-XXXX
+> κ-ary LDP
+> Noise Injection
+> Noise Added Prompt
+> Patient Harla3 Valiez Jr .(URT: 8a5-41-44 ) was seen by Dr. Hadib Valiquela at Lampert Orthopedic Associates in
+> Omaha, GA , following a referral from Dr. Wrlan Ojail .Correspondence was also sent to Dr. Halld VuttFr at Doctors Hospital North. Contact: (555) 812-XXXX
+> Summarized Output
+> Privacy Preserved
+> Utility Enhanced Prompt
+> User
+> Patient Harlan Valdez Jr. (MRN: 845-41-54-4 ) was seen by Dr. Habib Valenzuela at Campbell Orthopedic Associates in Omak, GA . The consultation was referred by Dr. Harlan Oneil .Additional correspondence was sent to Dr. Harold Nutter at Doctors Hospital North. Contact:
+> (555) 789-1234
+> Pat!8nt Harla3 Valiez Jr. (uRT: 8a5-41-)4-4) wa3 ser$ ,y Dr. Hadib Val<QVu[la at Lam5Pell Orthopedic AssoHi}tes in OmaJi GAm +'e co4su5tp'w+C was refeYrud by Dr. W_rlan Ojail. ndYVCio<al cbrr/MpondenXe was s/nE tw wr. Hal_ld VuttFr dt Doctors
+> Hospitav NHrt&= ConSact: (m55) (8!-12;G
+> Input Prompt
+> Restore the
+> prompt and
+> summarize
+> Untrusted
+> Remote LLM
+
+Figure 1. Proposed privacy-preserving prompt restoration pipeline with 
+
+k-ary randomized response residential addresses. These are commonly known as personal identifiable information (PII). Furthermore, these categories may be dataset dependent. See Section 5.1 for the categories used in our experiments. Returning to our discussion in the previous section, the words belonging to these categories, which we call sensitive words , are often rare , in the sense that they are either never or rarely found in text corpuses, such as a private residential phone number. Since LLMs are generally trained on text data available from the Web, these words would be rarely encountered by them, and hence would be difficult for them to reconstruct if distorted via our method. On the other hand, many instances of these words are indeed common, e.g., Barack Obama. These are more likely to be reconstructed by LLMs as they have seen them frequently in their training data. However, because these terms are widely known and publicly available, their reconstruction poses a lower privacy risk. Thus, our method provides an automated way of striking a balance between privacy and utility: rare PII remain effectively anonymized, while common terms are handled in a way that preserves contextual coherence. 4.4. Noise Injection via k-Randomized Response. Let C denote the set of printable ASCII characters minus the ‘space’ character. Thus |C| = 94. A word w is a sequence of characters from C. The ith character in w is denoted w[i]. Let |w| denote the length of the word w. For any two words w, w ′ of equal length let d(w, w ′) denote their Hamming distance which counts the number of characters different in the two words. Thus, 0 ≤
+
+d(w, w ′) ≤ | w| = |w′|. We employ the k-Randomized Response ( k-RR) algorithm [Warner, 1965, Balle et al., 2019] described in Algorithm 1 to perturb each character of a word. For a single character, the k-RR is ϵ-differentially private. For completeness, we provide a proof 8SHASHIE DILHARA BATAN ARACHCHIGE, HASSAN JAMEEL ASGHAR, BENJAMIN ZI HAO ZHAO, DINUSHA VATSALAN, DALI KA 
+
+Algorithm 1: k-Randomized Response [Warner, 1965, Balle et al., 2019] 
+
+Input : Character set C, word w, privacy parameter ϵ 
+
+> 1
+
+Set k ← | C| 
+
+> 2
+
+Set γ ← k−1 
+
+> k−1+ eϵ
+> 3
+
+Initialize w∗ ← ∅  
+
+> 4
+
+for i = 1 to |w| do  
+
+> 5
+
+b ← Ber( γ) 
+
+> 6
+
+if b = 0 then  
+
+> 7
+
+w∗[i] ← w[i] 
+
+> 8
+
+else  
+
+> 9
+
+w∗[i] $
+
+← C − { w[i]} 
+
+> 10
+
+return w∗
+
+in Appendix A. Using the sequential composition theorem (Theorem 3.3), the mechanism is 
+
+|w|ϵ-differentially private for a word w of length w.Given some the input prompt T , the noise injection step applies the k-RR algorithm to each word in T , which is then passed on to the remote LLM R to restore the prompt and perform the downstream task. Prompt restoration and subsequent task remains differentially private due to the post-processing property of differential privacy (Theorem 3.2). We give details on how this LLM is instructed to restore the prompt and perform the subsequent task in Section 4.7. We denote the prompt after the noise injection by T ∗. Note that the 
+
+k-RR algorithm maintains the length of words. The length of words is also mostly preserved after the post-processing step by the LLM. Thus, we assume a one-to-one correspondence between the position of each character in the original word w in T , and the transformed word w∗ in T ∗.4.5. Privacy Interpretation. In Section 3.2, we defined DP in terms of hiding an indi-vidual’s data. Our use case deviates from this typical DP scenario, and therefore privacy guarantees need to be interpreted differently. We apply LDP to all characters of a word in the prompt. Privacy is breached if the perturbed word can be reconstructed in the post-processing step. The most appropriate way to understand the privacy guarantee provided by our mechanism is to think of correlations between characters of a word. If a word is completely random, i.e., each character is sampled uniformly at random from C, then there is no correlation between characters. In this case, the differentially private mechanism ensures that the probability of reconstructing the original word is only slightly better than randomly guessing each of its characters, depending of course, on the choice of ϵ.On the other hand, if a word is common in a language, say the English language, then not only are the characters of this word correlated with other characters of the word, but also with other words in the prompt. It has previously been flagged that one needs to carefully examine privacy expectations if the input data to a differentially private algorithm is strongly PROTECTING USER PROMPTS VIA CHARACTER-LEVEL DIFFERENTIAL PRIVACY 9
+
+correlated [Kifer and Machanavajjhala, 2011]. For instance, a family of 10 living under one roof is either all susceptible to a disease or none of them are, even if each individual submits a (binary) randomized response to the question of whether he/she has the disease [Kifer and Machanavajjhala, 2011]. Thus, the privacy guarantee in this case is weaker. But this is precisely what we want! In many use cases of data sanitization, common words are rarely sensitive, and therefore weaker privacy protection for them is not only tolerable, but also desirable from a utility point of view. On the other hand, sensitive words are often rare, and exhibit properties similar to the uncorrelated setting. As we further discuss in Section 5.4, unlike common words, rare words do not follow strong correlations or statistical dependencies, making them harder for LLMs to reconstruct based on fewer contextual clues available. In the following, we analyze how difficult it is to restore words with uncorrelated characters after being passed through the k-RR algorithm, which establishes our baseline. 4.6. Word Reconstruction Analysis and Baseline. Given an arbitrary target character of some word w∗ ∈ T ∗, we are interested in knowing how likely it is for any algorithm to guess the character in the same position of the original word w.To estimate this, let us define some events. Let Ci be the event that the target character in w is the ith character from C. The probability space of Ci is over the distribution of characters and words in the corpus. Let C∗ 
+
+> i
+
+be the event that the target character in w∗ is the ith character from C. The probability space of C∗ 
+
+> i
+
+is, in addition to the aforementioned distribution, also over the randomization in the k-RR algorithm. Likewise let W be the event that the target word is w, and W∗ be the event that the word w∗ is output by k-RR. For 0 ≤ j ≤ | w|, let Wj be the event that a word w′ is within Hamming distance j from the target word w, i.e., d(w, w ′) ≤ j. Note that W0 = W.Given the description of k-RR, privacy parameter ϵ, the vocabulary, and T ∗, the goal of the algorithm is to correctly guess the target character in w. To estimate the success probability of the algorithm, we calculate the probability Pr [Ci | C∗ 
+
+> j
+
+], i.e., the probability that the target character in the original word w was the ith character from C, given that the character in the same position in w∗ is the jth character from C. By Bayes’ rule this is equal to: Pr[ Ci | C∗ 
+
+> j
+
+] = Pr[ C∗j | Ci] Pr[ Ci]Pr[ C∗ 
+
+> j
+
+]From the description of k-RR Pr[ C∗ 
+
+> j
+
+| Cj ] = 1 · (1 − γ) + 0 · γ = 1 − γ, 
+
+and for i̸ = j
+
+Pr[ C∗ 
+
+> j
+
+| Ci] = 0 · (1 − γ) + 1
+
+k − 1 · γ = γk − 1 ,
+
+and thus, Pr[ C∗ 
+
+> j
+
+| Ci] = (1 − γ)δi,j + γk − 1 (1 − δi,j )= γ + ((1 − γ)( k − 1) − γ)δi,j 
+
+k − 1 ,10 SHASHIE DILHARA BATAN ARACHCHIGE, HASSAN JAMEEL ASGHAR, BENJAMIN ZI HAO ZHAO, DINUSHA VATSALAN, DALI KA 
+
+where δi,j = 1 if i = j and 0 otherwise. From this, we can expand: Pr[ C∗ 
+
+> j
+
+] = 
+
+> n
+
+X
+
+> ℓ=1
+
+Pr[ C∗ 
+
+> j
+
+| Cℓ] Pr[ Cℓ]=
+
+
+
+> n
+
+X
+
+> ℓ=1 ,ℓ ̸=j
+
+γk − 1 Pr[ Cℓ]
+
+ + (1 − γ) Pr[ Cj ]= γk − 1 (1 − Pr[ Cj ]) + (1 − γ) Pr[ Cj ]= γk − 1 +
+
+
+
+1 − γ − γk − 1
+
+
+
+Pr[ Cj ]= γ + ((1 − γ)( k − 1) − γ) Pr[ Cj ]
+
+k − 1Combining these results, and simplifying we get: Pr[ Ci | C∗ 
+
+> j
+
+] = (γ + ((1 − γ)( k − 1) − γ)δi,j ) Pr[ Ci]
+
+γ + ((1 − γ)( k − 1) − γ) Pr[ Cj ] . (4.1) In general, the probabilities Pr [Ci] for all i ∈ | C| are difficult to estimate as they depend on a number of factors including the context of the text, other words surrounding a given word, and characters in the same word. On the other hand, if a word is constructed by sampling each character uniformly at random from C then we can substitute Pr [Ci] = 1 /k for all i in Eq. (4.1) to obtain the simplified equation: Pr[ Ci | C∗ 
+
+> j
+
+, w random] = pi,j,γ =
+
+(
+
+1 − γ if j = i,  
+
+> γk−1
+
+if j̸ = i , (4.2) and because w is constructed by selecting each character uniformly at random, we get: Pr[ W | W∗, w random] = p|w| 
+
+> i,j,γ
+
+. (4.3) This gives us two competing hypothesis for each character of the original word w: one that says that each character of w is the same as the character of w∗, and the other which says that each character is different. Given the length of the word w we can plot the log likelihood ratio of these two probabilities across different values of ϵ (and hence γ) as ln 
+
+ p|w|
+
+> j,j,γ
+
+P|C| 
+
+> i=1 ,i ̸=j
+
+pi,j,γ 
+
+|w|
+
+ = ln p|w|
+
+> j,j,γ
+
+(1 − pj,j,γ )|w|
+
+!
+
+= |w| (ln(1 − γ) − ln( γ)) In Figure 2 we plot the log-likelihood ratio and the probability in Eq. (4.3) with i = j
+
+and |w| = 6. We can see that past ϵ = 4, the log-likelihood ratio is positive, meaning that any algorithm who has been tasked to guess the word w behind w∗, can use the hypothesis PROTECTING USER PROMPTS VIA CHARACTER-LEVEL DIFFERENTIAL PRIVACY 11 2 4 6 8 10 
+
+Epsilon 
+
+20 
+
+10 
+
+0
+
+10 
+
+20 
+
+30 
+
+> log likelihood ratio
+
+(a) Log-likelihood Ratio 2 4 6 8 10 
+
+Epsilon 
+
+0.00 
+
+0.25 
+
+0.50 
+
+0.75 
+
+1.00  
+
+> Pr[ T0]
+
+(b) Probability from Eq. (4.3) 
+
+Figure 2. The log-likelihood ratio and the probability that the original word w is the same as the perturbed word w∗ for a word of 6 characters constructed randomly across different values of ϵ.that all characters were not perturbed by the k-RR algorithm. The probability of correctly guessing the target word improves just after ϵ = 4. In general, some characters in the guessed word w′ might be the same as w, while others might be different. Thus, the probability that the guessed word has up to 0 ≤ ℓ ≤ | w|
+
+characters different from w is given as: Pr[ Wℓ | W∗, w random] = 
+
+> ℓ
+
+X
+
+> m=0
+
+|w|
+
+m
+
+
+
+p|w|− mj,j,γ (1 − pj,j,γ )m
+
+=
+
+> ℓ
+
+X
+
+> m=0
+
+|w|
+
+m
+
+
+
+(1 − γ)|w|− m γm
+
+= qℓ, |w|,γ (4.4) Note that Pr[ W0 | W∗, w random] = Pr[ W | W∗, w random] ,
+
+implies that q0,|w|,γ = p|w| 
+
+> j,j,γ
+
+, i.e., the probability that the guessed word is exactly the same as the original word. To calculate the probability of guessing all the words in the prompt T ,let us define the event Tα, which says that any guessed word w′ is at a Hamming distance 
+
+d(w, w ′) ≤ α|w| from the corresponding word w ∈ T , where α ∈ [0 , 1]. Let ℓ(i) = ⌊αi ⌋. Let 
+
+T (i) be the number of words in T of length i. Then, Pr[ Tα] = 1
+
+|T |
+
+> ∞
+
+X
+
+> i=1
+
+qℓ(i),i,γ T (i) (4.5) Thus, we can estimate the performance of the algorithm by checking what percentage (fracton) of words are reconstructed by it at a relative Hamming distance α from the actual 12 SHASHIE DILHARA BATAN ARACHCHIGE, HASSAN JAMEEL ASGHAR, BENJAMIN ZI HAO ZHAO, DINUSHA VATSALAN, DALI KA 
+
+words. If the resulting percentage is close to the probability in Eq (4.5) then we can say that the algorithm is only succeeding by chance. We are particularly interested when α = 0, i.e., reconstructing the original word, and therefore the probability Pr [T0]. This estimates the percentage (fraction) of words completely reconstructed by the algorithm by chance. In the following, we use this as the baseline . As we show later, the percentage of sensitive words reconstructed by the LLM closely follows the curve for Pr [T0]. This implies that the LLM is performing close to random guess in reconstructing sensitive words. A plot for Pr [T0] where all words in T are of length 6 is shown in Figure 2b. 4.7. Prompt Restoration using LLMs. After the application of k-RR , the resultant text T ∗ contains random substitutions that are only partially coherent. To minimize utility loss and enhance readability of the prompt we adopt an LLM based approach for text enhancement by restoration of distorted words. LLMs trained on extensive corpus of text data can identify and correct irregularities in text by leveraging contextual awareness and training data diversity, unlike simple rule-based or dictionary-based correction tools. In our threat model, the restoration is performed by a remote LLM R. We therefore send T ∗ to R
+
+and instruct it to first restore the text and then perform the downstream task. For clarity and reproducibility, we present the unified system prompt used in our implementation below. During our analysis, we additionally separated restoration and summarization into two sequential prompts (restore → summarize) to inspect the restored text independently and to measure the effect of restoration without conflating it with the summarization stage.  
+
+> System Prompt
+> You are a text restoration and summarization assistant. First, correct only the errors introduced by distortion/noise. Do not make any unnecessary changes. Preserve the original wording, punctuation, capitalization, and formatting as much as possible. Second, create a concise and accurate summary of the restored text. Focus on the main ideas and key details, and avoid unnecessary details. Do not add opinions or any prefacing.
+
+5. Experimental Setup 
+
+In this section we give details of our experimental setup and evaluation metrics. 5.1. Datasets and Sensitive Terms. Our evaluation is done on two datasets from different domains. 
+
+• Health dataset: This is the i2b2/UTHealth dataset [Stubbs and Uzuner, 2015] which contains 1,304 longitudinal medical records describing 296 patients. This consists of multiple categories of protected health information (PHI) including names, locations, emails, phone numbers and medical record numbers (MRNs) containing on average 22.14 instances of PHI per record. 
+
+• Enron dataset: The Enron dataset [Klimt and Yang, 2004] contains about 600,000 emails belonging to 158 employees of Enron Corporation containing personal information (PI) such as names, work addresses, phone numbers and emails. We randomly sample a subset of 10,000 records from the dataset, which averages 8.02 instances PI per record. PROTECTING USER PROMPTS VIA CHARACTER-LEVEL DIFFERENTIAL PRIVACY 13 
+
+Note that our selection of what is considered personal information is natural, in the sense that these are the pieces of information that would most likely be considered as sensitive in these types of datasets. In particular, we have not excluded/included any category of sensitive information that would likely give an advantage to our proposed scheme. 5.2. LLMs. We experiment with two models as the Remote LLM: (1) GPT-4o mini 1, a lightweight variant of GPT-4o [OpenAI et al., 2024], optimized for low-latency and cost-efficient text processing; and (2) Llama-3.1 8B Instruct [Grattafiori et al., 2024] 2, an open-source 8B-parameter model capable of handling complex language tasks such as text correction and summarization. 5.3. Privacy and Utility Metrics. We use the following metrics to evaluate the utility and privacy of our experimental results. 
+
+Semantic Similarity: To measure how well the meaning of original text is preserved after noise injection and prompt restoration, we use cosine similarity through a sentence transformer model all-distilroberta-v1 .3 This model is designed to map sentences and paragraphs into a 768-dimensional dense vector space, to facilitate tasks like clustering and semantic search. It is built upon the distilled version of RoBERTa [Liu et al., 2019] architecture and was fine-tuned on over a billion sentence pairs from diverse datasets. To compare the similarity of two sentences, they are first converted into sentence embeddings using this model and then cosine similarity is calculated over these embeddings. We call the final similarity score, semantic similarity , which is cosine similarity converted to a percentage between 0 and 100. 
+
+Reconstruction Rate: The differential privacy parameter ϵ dictates the probability with which each character is perturbed in a word. However, we need another privacy metric to assess the difficulty in reconstructing a complete word. For this we use the reconstruction rate , which is the percentage of terms reconstructed by an LLM. This can be used to quantify the number of sensitive or non-sensitive words that are successfully reconstructed through prompt enhancement. Note that for the latter category of words, the reconstruction rate serves as a utility metric. In other words, we want high reconstruction of non-sensitive words, and low reconstruction of sensitive words. 5.4. What Qualifies as a Rare Word? Our approach is motivated by the observations that non-sensitive and sensitive words exhibit distinct statistical and linguistic properties, which directly influence how well an LLM can reconstruct distorted text. LLMs are widely used for various NLP tasks, yet they often struggle to handle typos and misspellings of rare or unseen words, leading to inaccurate outputs. According to Fox et al. [Fox and Delworth, 2022] end to end models struggle with words that are rarely or never seen during model training. Likewise, Zhu et al. [Zhu et al., 2024] demonstrated that lower frequency words are inherently less robust to even minor perturbations like typos, synonym swaps or restructured sentences. The study by Schick et al. [Schick and Sch¨ utze, 2020] also reveals that even models like BERT struggle to understand rare words as they rely on sub-word 
+
+> 1https://platform.openai.com/docs/models#gpt-4o-mini
+> 2https://huggingface.co/meta-llama/Llama-3.1-8B-Instruct
+> 3https://huggingface.co/sentence-transformers/all-distilroberta-v1 14 SHASHIE DILHARA BATAN ARACHCHIGE, HASSAN JAMEEL ASGHAR, BENJAMIN ZI HAO ZHAO, DINUSHA VATSALAN, DALI KA
+
+based tokenization which does not always assign dedicated embeddings to infrequent words. This results in rare words not being represented in the model’s learned vocabulary leading to poor semantic understanding. Based on this discussion, we hypothesize that: 
+
+• Sensitive words are typically high-entropy and rare, meaning they are less frequently found in training corpora. 
+
+• Non-sensitive words are generally low-entropy and common, that are more frequently seen by the model during training. 
+
+• LLMs reconstruct non-sensitive words better than sensitive words due to their prior exposure to common vocabulary and sentence structures compared to rare sensitive words. 6. Results and Analysis 
+
+We begin this section with the overall performance of our method in sanitizing sensitive words. 6.1. Word Reconstruction. We begin by running our method on the i2b2/UTHealth and Enron datasets with varying levels of ϵ, and evaluating privacy and utility of the resulting prompt using the metrics described in the previous section. More specifically, privacy is measured through the reconstruction rate of sensitive words, while utility is quantified through the reconstruction rate of non-sensitive words as well as the semantic similarity between the original summary and the restored summary. Figures 3 shows the results of applying our mechanism, noise injection, followed by prompt restoration via the remote LLMs, GPT-4o mini and Llama-3.1 8B, on the i2b2/UTHealth and Enron datasets, respectively. The theoretical baseline Pr [T0] curve is plotted through Eq. 4.5 in Section 4.6. This is the probability of reconstructing words, if the sensitive words were to be replaced by words of the same length each character of which is selected uniformly at random from the 94 printable ASCII characters. Thus, this serves as a baseline for the reconstruction rate. At lower values of ϵ < 4, none of the sensitive words are reconstructed. However, about 10% of non-sensitive words are still being reconstructed. As ϵ increases beyond 4, reconstruction rates for both sensitive and non-sensitive words rise sharply and plateau at high values by ϵ = 10; the residual shortfall is expected because our exact match metric, which penalizes even plausible generative variations. In some cases, the restoration model may output a phonetically or orthographically similar but distinct entity, such as restoring ‘Stevenson’ as ‘Stephenson’ or ‘Stafford’ as ‘Stratford’. Similarly, occasional minor character variations such as 43 year old’ versus 43-year- old’ prevent exact matches despite semantic equivalence. Our first main observation is that the reconstruction rate of the sensitive words is close to the theoretical baseline for both datasets and both LLMs. On the other hand, there is a gap between the reconstruction rate of sensitive vs non-sensitive words, especially between 4 ≤ ϵ ≤ 10. This gives credence to our hypothesis that LLMs would easily reconstruct PROTECTING USER PROMPTS VIA CHARACTER-LEVEL DIFFERENTIAL PRIVACY 15 2 4 6 8 10  
+
+> Epsilon ( )
+> 0
+> 20
+> 40
+> 60
+> 80
+> 100
+> Percentage (%)
+> Avg Semantic Score (%)
+> Reconstructed
+> Non-sensitive Words (%)
+> Reconstructed
+> Sensitive Words (%)
+> Theoritical Baseline Pr[ T0] (%)
+
+(a) Health dataset (GPT-4o mini) 2 4 6 8 10   
+
+> Epsilon ( )
+> 0
+> 20
+> 40
+> 60
+> 80
+> 100
+> Percentage (%)
+> Avg Semantic Score (%)
+> Reconstructed
+> Non-sensitive Words (%)
+> Reconstructed
+> Sensitive Words (%)
+> Theoritical Baseline Pr[ T0] (%)
+
+(b) Health dataset (Llama-3.1 8B) 2 4 6 8 10  
+
+> Epsilon ( )
+> 0
+> 20
+> 40
+> 60
+> 80
+> 100
+> Percentage (%)
+> Avg Semantic Score (%)
+> Reconstructed
+> Non-sensitive Words (%)
+> Reconstructed
+> Sensitive Words (%)
+> Theoritical Baseline Pr[ T0] (%)
+
+(c) Enron dataset (GPT-4o mini) 2 4 6 8 10   
+
+> Epsilon ( )
+> 0
+> 20
+> 40
+> 60
+> 80
+> 100
+> Percentage (%)
+> Avg Semantic Score (%)
+> Reconstructed
+> Non-sensitive Words (%)
+> Reconstructed
+> Sensitive Words (%)
+> Theoritical Baseline Pr[ T0] (%)
+
+(d) Enron dataset (Llama-3.1 8B) 
+
+Figure 3. Sensitive, non-sensitive terms reconstruction (%) by remote LLMs, theoretical reconstruction baseline Pr [T0] from Eq. (4.5) , and average semantic similarity (%) vs. ϵ for the i2b2/UTHealth and Enron datasets. common words, which would mostly be non-sensitive, while struggle with rare words, of which most are sensitive. The other important thing to notice is that the semantic similarity of the original prompt summary with the restored prompt summary is high, even if a low percentage of non-sensitive words have been reconstructed. For instance, in Figure 3a, at ϵ = 5 .5, the reconstruction rate of sensitive words is less than 20%, and that of non-sensitive words is about 70%, yet the similarity score is 80%. Thus, this suggests that an ϵ between the ranges of 4 to 6 should give us a good balance between privacy and utility. We will return to the choice of ϵ in Section 6.4. For now, we are interested in knowing what causes sensitive words to be reconstructed at a substantially lower rate than non-sensitive words. After all, we did not use any specific criterion to choose sensitive words other than what may be PII. 6.2. Impact of Iterative Restoration. An interesting question to ask is whether the LLM can improve prompt restoration if it is asked to better its previous attempt. In order to check this, we performed a second restoration with the same system prompt shown in 16 SHASHIE DILHARA BATAN ARACHCHIGE, HASSAN JAMEEL ASGHAR, BENJAMIN ZI HAO ZHAO, DINUSHA VATSALAN, DALI KA 
+
+Section 4.7. While the first pass ensures most of the utility is recovered with controlled privacy, the second pass helps us to evaluate whether iterative restoration increases the likelihood of sensitive information reconstruction. Since a second restoration is resource intensive, we selectively performed this experiment on i2b2/UTHealth dataset (highest PII instances per record) using GPT-4o mini, which was identified as the best performing LLM in the first phase of reconstruction. As shown in Table 1, the restoration percentages indicate that applying an additional LLM restoration step does not lead to a significant increase in the overall reconstruction percentage of sensitive terms. While this second reconstruction introduces new reconstructed terms, it was observed that out of the newly reconstructed total terms 98.72% are non-sensitive words while only 1.28% are sensitive words. This further supports our hypothesis that LLMs still struggle to reconstruct rare, sensitive words. 
+
+Table 1. Comparison of First and Second Restorations for Sensitive and Non-Sensitive Words (i2b2/UTHealth dataset - GPT-4o mini) Epsilon ( ϵ)Non-sensitive Words Sensitive Words First Second First Second Restoration (%) Restoration (%) Restoration (%) Restoration (%) 1.0 4.54 4.54 0.00 0.00 1.5 4.32 4.32 0.00 0.00 2.0 4.29 4.29 0.00 0.00 2.5 4.04 4.05 0.00 0.00 3.0 4.01 4.01 0.00 0.00 3.5 4.12 4.12 0.01 0.01 4.0 4.74 4.77 0.01 0.01 4.5 17.88 18.05 0.62 0.71 5.0 42.86 43.70 5.96 6.53 5.5 69.98 70.68 17.85 19.30 6.0 83.07 83.30 33.94 34.77 6.5 89.22 89.31 63.96 64.61 7.0 92.45 92.49 74.14 74.80 7.5 94.27 94.31 80.79 81.01 8.0 95.43 95.46 85.27 86.02 8.5 96.12 96.13 87.22 87.46 9.0 96.50 96.50 89.48 90.14 9.5 96.72 96.72 90.48 90.81 10.0 96.86 96.86 91.13 91.13 6.3. Reconstruction of Sensitive Entities. The analysis in the previous section shows that the utility of the downstream task can be maintained while removing most of the PROTECTING USER PROMPTS VIA CHARACTER-LEVEL DIFFERENTIAL PRIVACY 17 
+
+sensitive terms. However, some sensitive terms are still reconstructed. This does not always mean the full sensitive entity is recovered. Many sensitive items are entities, not single words, e.g., names and locations often have multiple parts. A model may restore one part but not the full entity. This can make leakage look higher if we only count reconstructed words. We study this effect using the i2b2/UTHealth dataset. We use i2b2 because it has gold annotations for names and location. The Enron dataset does not provide the same type of entity labels. For names, we report three measures: total name reconstruction, single-name reconstruction, and full-name reconstruction. Full-name reconstruction means that every part of a multi-word name must be restored. For location, we follow the dataset labels. Location information is split into components such as street, city/state, and facility names (e.g., hospital/clinic). We distinguish between complete address reconstruction, a strict record level metric requiring the simultaneous recovery of all address fields (e.g., Street + City + State) for a single record, and total location reconstruction, which measures the aggregate recovery of individual location entities independently. Since many records in the dataset do not contain full postal addresses, the strict complete address metric is inapplicable; therefore, we report total location reconstruction alongside the component level breakdown. Figures 4 and 5 show the trend for both GPT-4o mini and Llama-3.1 8B for the name and location entities, respectively. For names, full-name reconstruction is lower than single-name reconstruction at all ϵ values. This means full multi-word names are harder to restore. For location, street reconstruction is lower than city/state reconstruction. Street strings are more specific and less predictable. They often include a number and an uncommon name. Examples include “50 Indian Rock Road” and “558 Paxton Terrace”. City and state terms come from a smaller and more common set, so they are easier to recover. We also see that facility names are reconstructed more than street names. Facility names are usually more structured than street strings. They often look like “X Hospital” or “Y Memorial Hospital”, as in “Pennsylvania Hospital” and “Superior Memorial Hospital”. These patterns make facility names easier to restore from partial cues. These results strengthen the privacy claim in two ways. First, complete reconstruction of multi-word name entities is much less likely than reconstruction of single-word names. Second, for location, street-level details are harder to recover than city/state and facility names, especially at lower-to-mid ϵ values. 6.4. Recommended Range of ϵ. To recommend the best ϵ based on our analysis, we revisit Figure 3 which illustrates the trade-off between utility and privacy across different ϵ
+
+values for both GPT-4o mini and Llama-3.1 8B on the i2b2/UTHealth and Enron datasets. At ϵ = 5 .5 GPT-4o mini achieves high utility ( ∼ 80%) , while sensitive term reconstruc-tion remains low ( ∼ 20 − 25%) for both datasets, ensuring strong privacy protection without significantly compromising text utility. In contrast Llama-3.1 8B, ϵ = 6 .0 provides similar utility ( ∼ 75%) while keeping sensitive term reconstruction around 30%, making it a more privacy-utility preserving choice. Thus, we recommend ϵ = 5 .5 for GPT-4o mini and ϵ = 6 .018 SHASHIE DILHARA BATAN ARACHCHIGE, HASSAN JAMEEL ASGHAR, BENJAMIN ZI HAO ZHAO, DINUSHA VATSALAN, DALI KA 2 4 6 8 10 
+
+Epsilon ( ) 
+
+0
+
+20 
+
+40 
+
+60 
+
+80 
+
+100 
+
+> Percentage (%)
+> Total Name Reconstruction (%)
+> Single Name Reconstruction (%)
+> Full Name Reconstruction (%)
+
+(a) GPT-4o mini 2 4 6 8 10 
+
+Epsilon ( ) 
+
+0
+
+20 
+
+40 
+
+60 
+
+80 
+
+100  
+
+> Percentage (%)
+> Total Name Reconstruction (%)
+> Single Name Reconstruction (%)
+> Full Name Reconstruction (%)
+
+(b) Llama-3.1 8B 
+
+Figure 4. Analysis of name reconstruction on the i2b2/UTHealth dataset across different ϵ values. 2 4 6 8 10 
+
+> Epsilon ( )
+> 0
+> 20
+> 40
+> 60
+> 80
+> 100
+> Percentage (%)
+> Total location reconstruction (%)
+> City/State reconstruction (%)
+> Facility-name reconstruction (%)
+> Street-address reconstruction (%)
+
+(a) GPT-4o mini 2 4 6 8 10  
+
+> Epsilon ( )
+> 0
+> 20
+> 40
+> 60
+> 80
+> 100
+> Percentage (%)
+> Total location reconstruction (%)
+> City/State reconstruction (%)
+> Facility-name reconstruction (%)
+> Street-address reconstruction (%)
+
+(b) Llama-3.1 8B 
+
+Figure 5. Analysis of location reconstruction on the i2b2/UTHealth dataset across different ϵ values. for Llama-3.1 8B as the optimal values that provide the best balance between privacy and utility. 7. Comparison with Other Prompt Privacy Mechanisms 
+
+We compare our character-level local differential privacy (LDP) method with two other prompt privacy mechanisms: a word-level differential privacy approach and a rule-based PII redaction baseline. For word-level DP, we adopt the approach of [Feyisetan et al., 2020], which perturbs each word by adding calibrated noise in a pre-trained embedding space and then decoding the noised vector back to a discrete token via nearest-neighbor replacement. For the rule-based baseline, we use Microsoft Presidio, 4 an open-source framework that detects and anonymizes PII. We evaluate all methods on two datasets (Health and Enron) 
+
+4https://microsoft.github.io/presidio/ PROTECTING USER PROMPTS VIA CHARACTER-LEVEL DIFFERENTIAL PRIVACY 19 
+
+and under two restoration settings (GPT-based and Llama-based) to capture both domain and model variability. A key challenge is that these mechanisms cannot be compared fairly through a shared privacy budget. Although both character-level and word-level mechanisms are parameterized by ϵ, the same numeric ϵ does not correspond to the same effective perturbation strength because the mechanisms operate at different granularities (characters versus words). Presidio further differs in that, as it is non-parametric: it does not expose an ϵ style parameter and instead produces a single deterministic transformation for a given input. For these reasons, a direct ϵ comparison would be misleading. To enable a fair comparison across such heterogeneous mechanisms, we evaluate all meth-ods using a common privacy–utility perspective. Privacy is quantified via an attacker oriented measurement of sensitive term reconstruction rate. To align the metric so that higher values indicate stronger protection, we report the ‘privacy preserved score’, defined as the com-plement of the sensitive term reconstruction rate (1 − Sensitive Term Reconstruction Rate ). Utility is measured at the downstream task level. We compute cosine similarity between the summary generated from the original input and the summary generated from the protected input. We report both privacy preserved score and cosine similarity on a 0–100% scale for readability. This yields a curve across ϵ for DP-based methods and a single operating point for Presidio. To make this comparison fair, we standardize the summarization pipeline across all methods. After applying word-level noise or Presidio redaction, we use the same system instruction for the remote LLM. If the input appears degraded, it should enhance or fix it when possible before producing the summary. Because the summarization model receives the same enhancement instruction in every setting, variations in privacy and utility are attributable to the noise or redaction step, not inconsistencies in the summarization prompt. Overall, the baseline comparison in Figure 6 indicates that our character-level LDP method is a practical option alongside word-level DP and Presidio. When compared with word-level DP, character-level perturbation tends to retain summarization quality better at similar levels of privacy protection. This suggests that character-level noise introduces more local distortions that the restoration model can often repair, without necessarily reconstructing sensitive terms exactly. By contrast, word-level perturbation replaces whole tokens. This can introduce larger semantic shifts, which are harder to undo during enhancement, and can lead to a less favorable privacy-utility trade-off. On the other hand, Presidio typically achieves high utility at its fixed setting. This is expected because it does not add random noise and often leaves non-sensitive text unchanged. However, Presidio provides only a single operating point and therefore offers limited flexibility when privacy requirements differ across contexts. In practice, deployments often need to adjust protection depending on trust assumptions and risk. For example, summarizing a patient note using a third-party LLM may require a stricter privacy setting than an internal workflow operating in a more controlled environment. DP based mechanisms naturally support this context-dependent deployment by allowing a range of operating points: stronger protection (smaller ϵ) can be chosen when risk is high, while lighter perturbation (larger 20 SHASHIE DILHARA BATAN ARACHCHIGE, HASSAN JAMEEL ASGHAR, BENJAMIN ZI HAO ZHAO, DINUSHA VATSALAN, DALI KA 20 40 60 80 100 
+
+> Privacy preserved (%)
+> 0
+> 20
+> 40
+> 60
+> 80
+> 100
+> Semantic similarity / Utility (%)
+> =1
+> =5
+> =5.5
+> =6.5
+> =10
+> =1
+> =7
+> =9
+> =11
+> =60
+> Character-level DP
+> Word-level DP
+> Presidio
+
+(a) Health dataset (GPT-4o mini) 20 40 60 80 100  
+
+> Privacy preserved (%)
+> 0
+> 20
+> 40
+> 60
+> 80
+> 100
+> Semantic similarity / Utility (%)
+> =1
+> =5
+> =5.5
+> =6.5
+> =10
+> =1
+> =7
+> =9
+> =11
+> =60
+> Character-level DP
+> Word-level DP
+> Presidio
+
+(b) Health dataset (Llama-3.1 8B) 20 40 60 80 100 
+
+> Privacy preserved (%)
+> 0
+> 20
+> 40
+> 60
+> 80
+> 100
+> Semantic similarity / Utility (%)
+> =1
+> =4.5
+> =5
+> =5.5
+> =10
+> =1
+> =7
+> =9
+> =11
+> =60
+> Character-level DP
+> Word-level DP
+> Presidio
+
+(c) Enron dataset (GPT-4o mini) 20 40 60 80 100  
+
+> Privacy preserved (%)
+> 0
+> 20
+> 40
+> 60
+> 80
+> 100
+> Semantic similarity / Utility (%)
+> =1
+> =5.5
+> =6
+> =6.5
+> =10
+> =1
+> =7
+> =9
+> =11
+> =60
+> Character-level DP
+> Word-level DP
+> Presidio
+
+(d) Enron dataset (Llama-3.1 8B) 
+
+Figure 6. Baseline Comparison 
+
+ϵ) can be used when utility is more critical. In comparison, both DP mechanisms support multiple operating points across the privacy–utility spectrum. Within that spectrum, our results suggest that character-level perturbation provides a more preferable set of operating points than the word-level alternative. Another difference is that Presidio’s protection is limited to what it can actually detect. When Presidio detects an entity, it can redact it effectively, but if an identifier is not detected due to an uncommon format, a domain-specific code, or a misspelling, it may be left unchanged and receive no protection. This matters in realistic text, where sensitive information is not always neatly formatted as standard PII categories. For example, a clinical note may include an internal identifier such as ‘MRN 00-34-81-92,’ or a contact reference such as ‘j.holmes ext 74219,’ which can be identifying in context but may not match a predefined recognizer. In contrast, our character-level LDP perturbation applies independently of detection, so such identifiers are still likely to be distorted and therefore harder to reconstruct exactly. PROTECTING USER PROMPTS VIA CHARACTER-LEVEL DIFFERENTIAL PRIVACY 21 
+
+8. Discussion 
+
+Our privacy guarantee is based on the fact that the k-RR algorithm perturbs characters in sensitive words to such an extent that even an LLM is not able to recover the original word. In essence, we use the LLM as a proxy for what is recoverable, in the sense that any other algorithm, or even human, will not be able to do significantly better. Since LLMs are state-of-the-art in such textual tasks, we believe that this assumption is well-grounded. In our setting, many sensitive terms are high-entropy strings such as uncommon names or identifiers, and their exact spelling is only weakly constrained by surrounding context. By contrast, common words are often recoverable because syntax, word length, and context sharply restrict the candidate set even when several characters are corrupted; for example, “Pje2 $e c4pq a d&ctBr” is still readily interpreted as “Please call a doctor.” Proper names and identifiers do not benefit from the same constraints. Suppose the true name is “Chervy,” but after perturbation it appears as “Ch%r $y” in the sentence “Ch%r $y is a residential patient.” Even if it is clear that the token is a name and the rest of the sentence is intact, many alternatives remain plausible (e.g., “Cherry,” “Charly,” “Sherry”), and there is typically no contextual signal strong enough to select the correct one. Once character-level perturbation disrupts these distinguishing spelling cues, exact recovery becomes difficult without auxiliary information, regardless of whether the restorer is a human or a model. Auxiliary knowledge can change this picture by shrinking the search space. If an adversary already has access to a patient list, employee directory, or a small candidate set of identifiers, they could attempt a constrained guess and check strategy. However, this shifts the threat model from prompt only recovery to a linkage attack that depends on external data. Here in our evaluation, we treat strong modern LLMs as a reasonable proxy for the best available text only restorer, so failure to recover high entropy tokens suggests that the remaining signal is insufficient for reliable exact reconstruction. Our definition of private terms is guided by the sensitive categories present in our evaluated datasets, such as names and locations. In other domains, sensitive content can also include business or technical identifiers like IP addresses, software versions, internal ticket IDs, or configuration strings, where leakage can have direct security consequences. A practical implication is that the privacy–utility trade-off depends on the restoration model: the same epsilon can lead to different reconstruction behavior under different LLM restorers. This suggests that epsilon should be calibrated for the specific restoration model used in deployment. A conservative strategy is to calibrate epsilon against a strong restoration model as a worst case restorer and then deploy that setting, since weaker models are unlikely to reconstruct more than the strongest model under the same perturbation. In practice, this points to a lightweight empirical calibration step to choose epsilon for a given dataset and model configuration. We also examined whether individual word-level characteristics, such as word frequency (as a proxy for training exposure), explain the gap between sensitive and non-sensitive reconstruction. We did not find a meaningful or consistent association, suggesting that these characteristics are not the main differentiator. Instead, reconstruction appears to be driven more by contextual constraints: common words are often recoverable because the surrounding text narrows the candidate space, whereas sensitive terms typically remain underconstrained even when the rest of the sentence is intact. 22 SHASHIE DILHARA BATAN ARACHCHIGE, HASSAN JAMEEL ASGHAR, BENJAMIN ZI HAO ZHAO, DINUSHA VATSALAN, DALI KA 
+
+9. Conclusion 
+
+In this paper, we introduce an approach that applies local differential privacy at the character level to sanitize text data given as input prompts to large language models . We experimentally evaluate our approach on two datasets of emails and clinical notes, with Llama 3.1 8B and GPT-4o mini models. Our findings indicate that with the application of our technique, sensitive PII is reconstructed at a rate nearly equivalent to that of random words, while non-sensitive words are recovered at much higher rates, indicating strong privacy protection with good utility preservation. We also compared our method against a word-level differentially private mechanism and an NER-based sanitization approach under a unified privacy–utility evaluation framework. Our technique is agnostic of the underlying text, and serves as a useful tool to enhance prompt privacy, while maintaining prompt utility without the pitfalls of supervisory models that need to identify and sanitize private terms. 
+
+References 
+
+O. Agarwal, Y. Yang, B. C. Wallace, and A. Nenkova. Interpretability analysis for named entity recognition to understand system predictions and how they can improve, 2021. URL https://arxiv.org/abs/2004.04564 .B. Balle, J. Bell, A. Gasc´ on, and K. Nissim. The privacy blanket of the shuffle model. In 
+
+Advances in Cryptology–CRYPTO 2019: 39th Annual International Cryptology Conference, Santa Barbara, CA, USA, August 18–22, 2019, Proceedings, Part II 39 , pages 638–667. Springer, 2019. H. Brown, K. Lee, F. Mireshghallah, R. Shokri, and F. Tram` er. What Does it Mean for a Language Model to Preserve Privacy? ACM International Conference Proceeding Series ,N/A:2280–2292, 2022. doi: 10.1145/3531146.3534642. Q. Cao, T. Kojima, Y. Matsuo, and Y. Iwasawa. Unnatural Error Correction: GPT-4 Can Almost Perfectly Handle Unnatural Scrambled Text. EMNLP 2023 - 2023 Conference on Empirical Methods in Natural Language Processing, Proceedings , pages 8898–8913, 2023. doi: 10.18653/v1/2023.emnlp-main.550. N. Carlini, F. Tram` er, E. Wallace, M. Jagielski, A. Herbert-Voss, K. Lee, A. Roberts, T. Brown, D. Song, ´U. Erlingsson, A. Oprea, and C. Raffel. Extracting training data from large language models. Proceedings of the 30th USENIX Security Symposium , N/A(N/A): 2633–2650, 2021. Y. Chang, X. Wang, J. Wang, Y. Wu, L. Yang, K. Zhu, H. Chen, X. Yi, C. Wang, Y. Wang, W. Ye, Y. Zhang, Y. Chang, P. S. Yu, Q. Yang, and X. Xie. A survey on evaluation of large language models. ACM Trans. Intell. Syst. Technol. , N/A(N/A):N/A, jan 2024. ISSN 2157-6904. doi: 10.1145/3641289. URL https://doi.org/10.1145/3641289 .Y. Chen, T. Li, H. Liu, and Y. Yu. Hide and Seek (HaS): A Lightweight Framework for Prompt Privacy Protection. 2024. F. Dernoncourt, J. Y. Lee, O. Uzuner, and P. Szolovits. De-identification of patient notes with recurrent neural networks. Journal of the American Medical Informatics Association ,24(3):596–606, 2017. M. Du, X. Yue, S. S. Chow, and H. Sun. Sanitizing Sentence Embeddings (and Labels) for Local Differential Privacy , volume 1. Association for Computing Machinery, 2023. ISBN 9781450394161. doi: 10.1145/3543507.3583512. PROTECTING USER PROMPTS VIA CHARACTER-LEVEL DIFFERENTIAL PRIVACY 23 
+
+J. C. Duchi, M. I. Jordan, and M. J. Wainwright. Local privacy and statistical minimax rates. In 2013 IEEE 54th Annual Symposium on Foundations of Computer Science , pages 429–438, 2013. doi: 10.1109/FOCS.2013.53. C. Dwork, F. McSherry, K. Nissim, and A. Smith. Calibrating noise to sensitivity in private data analysis. In Theory of Cryptography: Third Theory of Cryptography Conference, TCC 2006, New York, NY, USA, March 4-7, 2006. Proceedings 3 , pages 265–284. Springer, 2006. C. Dwork, A. Roth, et al. The algorithmic foundations of differential privacy. Foundations and Trends ® in Theoretical Computer Science , 9(3–4):211–407, 2014. K. Edemacu and X. Wu. Privacy Preserving Prompt Engineering: A Survey. pages 1–23, 2024. URL http://arxiv.org/abs/2404.06001 .O. Feyisetan, T. Diethe, and T. Drake. Leveraging hierarchical representations for preserving privacy and utility in text. Proceedings - IEEE International Conference on Data Mining, ICDM , 2019-November:210–219, 2019. ISSN 15504786. doi: 10.1109/ICDM.2019.00031. O. Feyisetan, B. Balle, T. Drake, and T. Diethe. Privacy-and utility-preserving textual analysis via calibrated multivariate perturbations. In Proceedings of the 13th international conference on web search and data mining , pages 178–186, 2020. J. D. Fox and N. Delworth. Improving Contextual Recognition of Rare Words with an Alter-nate Spelling Prediction Model. Proceedings of the Annual Conference of the International Speech Communication Association, INTERSPEECH , 2022-Septe:3914–3918, 2022. ISSN 19909772. doi: 10.21437/Interspeech.2022-10991. J. M. G´ omez-Hidalgo, J. M. Mart´ ın-Abreu, J. Nieves, I. Santos, F. Brezo, and P. G. Bringas. Data leak prevention through named entity recognition. In 2010 IEEE Second International Conference on Social Computing , pages 1129–1134. IEEE, 2010. A. Grattafiori et al. The llama 3 herd of models, 2024. URL https://arxiv.org/abs/ 2407.21783 .S. Ishihara. Training data extraction from pre-trained language models: A survey, 2023. URL https://arxiv.org/abs/2305.16157 .M. Joshi, A. Pal, and M. Sankarasubbu. Federated learning for healthcare domain-pipeline, applications and challenges. ACM Transactions on Computing for Healthcare , 3(4):1–36, 2022. Z. Kan, L. Qiao, H. Yu, L. Peng, Y. Gao, and D. Li. Protecting user privacy in remote conversational systems: A privacy-preserving framework based on text sanitization, 2023. URL https://arxiv.org/abs/2306.08223 .S. P. Kasiviswanathan, H. K. Lee, K. Nissim, S. Raskhodnikova, and A. Smith. What can we learn privately? SIAM Journal on Computing , 40(3):793–826, 2011. doi: 10.1137/ 090756090. D. Kifer and A. Machanavajjhala. No free lunch in data privacy. In Proceedings of the 2011 ACM SIGMOD International Conference on Management of data , pages 193–204, 2011. B. Klimt and Y. Yang. The enron corpus: A new dataset for email classification research. In J.-F. Boulicaut, F. Esposito, F. Giannotti, and D. Pedreschi, editors, Machine Learning: ECML 2004 , pages 217–226, Berlin, Heidelberg, 2004. Springer Berlin Heidelberg. ISBN 978-3-540-30115-8. G. Lin, W. Hua, and Y. Zhang. EmojiCrypt: Prompt Encryption for Secure Communication with Large Language Models. pages 1–12, 2024. URL http://arxiv.org/abs/2402. 05868 .24 SHASHIE DILHARA BATAN ARACHCHIGE, HASSAN JAMEEL ASGHAR, BENJAMIN ZI HAO ZHAO, DINUSHA VATSALAN, DALI KA 
+
+P. Lison, I. Pil´ an, D. Sanchez, M. Batet, and L. Øvrelid. Anonymisation models for text data: State of the art, challenges and future directions. In C. Zong, F. Xia, W. Li, and R. Navigli, editors, Proceedings of the 59th Annual Meeting of the Association for Computational Linguistics and the 11th International Joint Conference on Natural Language Processing (Volume 1: Long Papers) , pages 4188–4203, Online, Aug. 2021. Association for Computational Linguistics. doi: 10.18653/v1/2021.acl-long.323. URL 
+
+https://aclanthology.org/2021.acl-long.323/ .H. Liu, C. Peng, Y. Tian, S. Long, F. Tian, and Z. Wu. Gdp vs. ldp: A survey from the perspective of information-theoretic channel. Entropy , 24(3), 2022. ISSN 1099-4300. doi: 10.3390/e24030430. URL https://www.mdpi.com/1099-4300/24/3/430 .X. Liu and Z. Liu. Llms can understand encrypted prompt: Towards privacy-computing friendly transformers. arXiv preprint arXiv:2305.18396 , 2023. Y. Liu, M. Ott, N. Goyal, J. Du, M. Joshi, D. Chen, O. Levy, M. Lewis, L. Zettlemoyer, and V. Stoyanov. Roberta: A robustly optimized bert pretraining approach, 2019. URL 
+
+https://arxiv.org/abs/1907.11692 .L. Lyu, Y. Li, X. He, and T. Xiao. Towards differentially private text representations. In Pro-ceedings of the 43rd International ACM SIGIR Conference on Research and Development in Information Retrieval , SIGIR ’20, page 1813–1816, New York, NY, USA, 2020. Associ-ation for Computing Machinery. ISBN 9781450380164. doi: 10.1145/3397271.3401260. URL https://doi.org/10.1145/3397271.3401260 .J. Mattern, B. Weggenmann, and F. Kerschbaum. The Limits ofWord Level Differential Privacy. Findings of the Association for Computational Linguistics: NAACL 2022 -Findings , (Section 5):867–881, 2022a. doi: 10.18653/v1/2022.findings-naacl.65. J. Mattern, B. Weggenmann, and F. Kerschbaum. The limits of word level differential privacy, 2022b. URL https://arxiv.org/abs/2205.02130 .S. Minaee, T. Mikolov, N. Nikzad, M. Chenaghlu, R. Socher, X. Amatriain, and J. Gao. Large language models: A survey, 2024. OpenAI, A. Hurst, A. Lerer, A. P. Goucher, et al. Gpt-4o system card, 2024. URL 
+
+https://arxiv.org/abs/2410.21276 .A. Papadopoulou, Y. Yu, P. Lison, and L. Øvrelid. Neural text sanitization with explicit measures of privacy risk. In Y. He, H. Ji, S. Li, Y. Liu, and C.-H. Chang, editors, 
+
+Proceedings of the 2nd Conference of the Asia-Pacific Chapter of the Association for Com-putational Linguistics and the 12th International Joint Conference on Natural Language Processing (Volume 1: Long Papers) , pages 217–229, Online only, Nov. 2022. Association for Computational Linguistics. URL https://aclanthology.org/2022.aacl-main.18 .I. Pil´ an, P. Lison, L. Øvrelid, A. Papadopoulou, D. S´ anchez, and M. Batet. The text anonymization benchmark (tab): A dedicated corpus and evaluation framework for text anonymization, 2022. URL https://arxiv.org/abs/2202.00443 .O. Powell. IOTW: Samsung Employees Allegedly Leak Proprietary Infor-mation via ChatGPT, 2023. URL https://www.cshub.com/data/news/ iotw-samsung-employees-allegedly-leak-proprietary-information-via-chatgpt .Accessed: [08/02/2025]. M. Quijada, M. Viv´ o, ´A. Abella-Bascar´ an, P. Chocr´ on, and G. d. Maeztu. A framework for false negative detection in ner/nel. In P. Rosso, V. Basile, R. Mart´ ınez, E. M´ etais, and F. Meziane, editors, Natural Language Processing and Information Systems , pages 323–330, Cham, 2022. Springer International Publishing. ISBN 978-3-031-08473-7. PROTECTING USER PROMPTS VIA CHARACTER-LEVEL DIFFERENTIAL PRIVACY 25 
+
+M. A. K. Raiaan, M. S. H. Mukta, K. Fatema, N. M. Fahad, S. Sakib, M. M. J. Mim, J. Ahmad, M. E. Ali, and S. Azam. A review on large language models: Architectures, applications, taxonomies, open issues and challenges. IEEE Access , 12:26839–26874, 2024. doi: 10.1109/ACCESS.2024.3365742. M. B. Santos, D. Mouris, M. Ugurbil, S. Jarecki, J. Reis, S. Sengupta, and M. de Vega. Curl: Private LLMs through Wavelet-Encoded Look-Up Tables. In Proceedings of the Conference on Applied Machine Learning in Information Security , pages 1–31, Arlington, Virginia, USA, October 24–25, 2024. T. Schick and H. Sch¨ utze. Rare words: A major problem for contextualized embeddings and how to fix it by attentive mimicking. AAAI 2020 - 34th AAAI Conference on Artificial Intelligence , pages 8766–8774, 2020. ISSN 2159-5399. doi: 10.1609/aaai.v34i05.6403. Z. Shen, Z. Xi, Y. He, W. Tong, J. Hua, and S. Zhong. The fire thief is also the keeper: Balancing usability and privacy in prompts, 2024. URL https://arxiv.org/abs/2406. 14318 .V. Smith, A. S. Shamsabadi, C. Ashurst, and A. Weller. Identifying and mitigating privacy risks stemming from language models: A survey, 2023. A. Stubbs and ¨O. Uzuner. Annotating longitudinal clinical narratives for de-identification: The 2014 i2b2/UTHealth corpus. Journal of Biomedical Informatics , 58:S20–S29, 2015. ISSN 15320464. doi: 10.1016/j.jbi.2015.07.020. X. Tang, R. Shin, H. A. Inan, A. Manoel, F. Mireshghallah, Z. Lin, S. Gopi, J. Kulkarni, and R. Sim. Privacy-Preserving in-Context Learning With Differentially Private Few-Shot Generation. 12th International Conference on Learning Representations, ICLR 2024 ,pages 1–20, 2024. M. Tong, K. Chen, Y. Qi, J. Zhang, W. Zhang, and N. Yu. PrivInfer: Privacy-Preserving Inference for Black-box Large Language Model. pages 1–13, 2023. URL http://arxiv. org/abs/2310.12214 .M. Tong, K. Chen, J. Zhang, Y. Qi, W. Zhang, N. Yu, T. Zhang, and Z. Zhang. Inferdpt: Privacy-preserving inference for black-box large language model, 2024. URL https: //arxiv.org/abs/2310.12214 .S. Utpala, S. Hooker, and P. Y. Chen. Locally Differentially Private Document Generation Using Zero Shot Prompting. Findings of the Association for Computational Linguistics: EMNLP 2023 , pages 8442–8457, 2023. doi: 10.18653/v1/2023.findings-emnlp.566. A. Vaswani, N. Shazeer, N. Parmar, J. Uszkoreit, L. Jones, A. N. Gomez, L. Kaiser, and I. Polosukhin. Attention is all you need. In Proceedings of the 31st International Conference on Neural Information Processing Systems , NIPS’17, page 6000–6010, Red Hook, NY, USA, 2017. Curran Associates Inc. ISBN 9781510860964. S. L. Warner. Randomized response: A survey technique for eliminating evasive answer bias. 
+
+Journal of the American statistical association , 60(309):63–69, 1965. Y. Yao, F. Wang, S. Ravi, and M. Chen. Privacy-Preserving Language Model Inference with Instance Obfuscation. arXiv preprint arXiv:2402.08227 , 2024. X. Yue, M. Du, T. Wang, Y. Li, H. Sun, and S. S. Chow. Differential Privacy for Text Analyt-ics via Natural Text Sanitization. Findings of the Association for Computational Linguis-tics: ACL-IJCNLP 2021 , pages 3853–3866, 2021. doi: 10.18653/v1/2021.findings-acl.337. M. Zhang, T. He, T. Wang, L. Mi, F. Mireshghallah, B. Chen, H. Wang, and Y. Tsvetkov. LatticeGen: A Cooperative Framework which Hides Generated Text in a Lattice for Privacy-Aware Generation on Cloud. 2023. URL http://arxiv.org/abs/2309.17157 .26 SHASHIE DILHARA BATAN ARACHCHIGE, HASSAN JAMEEL ASGHAR, BENJAMIN ZI HAO ZHAO, DINUSHA VATSALAN, DALI KA 
+
+W. X. Zhao, K. Zhou, J. Li, T. Tang, X. Wang, Y. Hou, Y. Min, B. Zhang, J. Zhang, Z. Dong, Y. Du, C. Yang, Y. Chen, Z. Chen, J. Jiang, R. Ren, Y. Li, X. Tang, Z. Liu, P. Liu, J.-Y. Nie, and J.-R. Wen. A survey of large language models, 2023. K. Zhu, J. Wang, J. Zhou, Z. Wang, H. Chen, Y. Wang, L. Yang, W. Ye, Y. Zhang, N. Z. Gong, and X. Xie. Promptrobust: Towards evaluating the robustness of large language models on adversarial prompts, 2024. URL https://arxiv.org/abs/2306.04528 .
+
+Appendix A. k-Randomized Response is ϵ-DP 
+
+Consider two different inputs x, x ′ ∈ X . Fix an outcome y in the (discrete) range Y of M.Note that in the k-RR algorithm X = Y = C, with |C| = k. Assume first that y̸ = x, x ′.Then Pr[ M(x) = y] = γk − 1 = Pr[ M(x′) = y] = e0 Pr[ M(x′) = y].
+
+Now assume that y = x, then Pr[ M(x) = y] = 1 − γ, 
+
+and Pr[ M(x′) = y] = γk − 1 ,
+
+We see that the ratio: Pr[ M(x) = y]Pr[ M(x′) = y] = ( k − 1) 1 − γγ
+
+= k − 1
+
+γ − k + 1 = ( k − 1) eϵ + k − 1
+
+k − 1 − k + 1 = eϵ,
+
+where we have used the value of γ from Algorithm 1. From the above: Pr[ M(x′) = y]Pr[ M(x) = y] = e−ϵ ≤ eϵ.
+
+The case with y = x′ is the same by symmetry. Therefore, for all x, x ′ ∈ X and all y ∈ Y we see that Pr[ M(x) = y] ≤ eϵ Pr[ M(x′) = y].

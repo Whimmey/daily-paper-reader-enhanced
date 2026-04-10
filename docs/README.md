@@ -6,69 +6,69 @@
 </div>
 
 ## 每次日报
-- 最新运行日期：2026-04-09
-- 运行时间：<span class="dpr-runtime" data-beijing="04-10 04:10 (UTC+8)" data-utc="04-09 20:10 UTC">04-10 04:10 (UTC+8) / 04-09 20:10 UTC</span>
+- 最新运行日期：2026-04-10
+- 运行时间：<span class="dpr-runtime" data-beijing="04-11 03:55 (UTC+8)" data-utc="04-10 19:55 UTC">04-11 03:55 (UTC+8) / 04-10 19:55 UTC</span>
 - 运行状态：成功
 - 本次总论文数：17
 - 精读区：6
 - 速读区：11
 
 ### 今日简报（AI）
-今日精研扩散模型与LLM算法革新，速览多实例着色与联邦检索前沿。LLM对基础算法的革新潜力与扩散模型新视角合成质量评估最具突破性。关注LLM在各领域的实际应用边界，探索AI与传统技术的融合可能。
-- 详情：[/202604/09/README](/202604/09/README)
+今日精读6篇、速读11篇AI前沿论文，聚焦创新研发、隐私保护与模型训练优化。AI对研发创新的重组影响与用户提示的字符级差分隐私保护值得关注。关注AI如何促进跨领域创新，同时留意个人数据保护技术的最新进展。
+- 详情：[/202604/10/README](/202604/10/README)
 
 ### 精读区论文标签
-1. [PR-IQA: Partial-Reference Image Quality Assessment for Diffusion-Based Novel View Synthesis](/202604/09/2604.04576v1-pr-iqa-partial-reference-image-quality-assessment-for-diffusion-based-novel-view-synthesis)  
+1. [Bridging Distant Ideas: the Impact of AI on R&D and Recombinant Innovation](/202604/10/2604.02189v1-bridging-distant-ideas-the-impact-of-ai-on-rd-and-recombinant-innovation)  
    标签：评分：9.0/10、query:dl-cv
-   evidence：图像质量评估
-2. [Can Large Language Models Reinvent Foundational Algorithms?](/202604/09/2604.05716v1-can-large-language-models-reinvent-foundational-algorithms)  
-   标签：评分：9.0/10、query:dl-cv
-   evidence：大模型创新能力
-3. [DynLP: Parallel Dynamic Batch Update for Label Propagation in Semi-Supervised Learning](/202604/09/2604.06596v1-dynlp-parallel-dynamic-batch-update-for-label-propagation-in-semi-supervised-learning)  
-   标签：评分：9.0/10、query:dl-cv
-   evidence：半监督学习的高效标签传播
-4. [MARVEL: Multimodal Adaptive Reasoning-intensiVe Expand-rerank and retrievaL](/202604/09/2604.07079v1-marvel-multimodal-adaptive-reasoning-intensive-expand-rerank-and-retrieval)  
-   标签：评分：9.0/10、query:dl-cv
-   evidence：多模态大模型检索
-5. [Towards Controllable Low-Light Image Enhancement: A Continuous Multi-illumination Dataset and Efficient State Space Framework](/202604/09/2603.25296v1-towards-controllable-low-light-image-enhancement-a-continuous-multi-illumination-dataset-and-efficient-state-space-framework)  
+   evidence：AI对创新的影响
+2. [Protecting User Prompts Via Character-Level Differential Privacy](/202604/10/2603.26032v1-protecting-user-prompts-via-character-level-differential-privacy)  
    标签：评分：8.0/10、query:dl-cv
-   evidence：可控低光图像增强框架
-6. [GenSmoke-GS: A Multi-Stage Method for Novel View Synthesis from Smoke-Degraded Images Using a Generative Model](/202604/09/2604.03039v1-gensmoke-gs-a-multi-stage-method-for-novel-view-synthesis-from-smoke-degraded-images-using-a-generative-model)  
+   evidence：使用差分隐私保护大语言模型用户提示
+3. [Can Large Language Models Self-Correct in Medical Question Answering? An Exploratory Study](/202604/10/2604.00261v1-can-large-language-models-self-correct-in-medical-question-answering-an-exploratory-study)  
    标签：评分：8.0/10、query:dl-cv
-   evidence：从退化图像进行图像修复
+   evidence：医疗问答中的LLM自我纠正
+4. [VOSR: A Vision-Only Generative Model for Image Super-Resolution](/202604/10/2604.03225v1-vosr-a-vision-only-generative-model-for-image-super-resolution)  
+   标签：评分：8.0/10、query:dl-cv
+   evidence：仅视觉的图像修复生成模型
+5. [Your Pre-trained Diffusion Model Secretly Knows Restoration](/202604/10/2604.04924v1-your-pre-trained-diffusion-model-secretly-knows-restoration)  
+   标签：评分：8.0/10、query:dl-cv
+   evidence：预训练扩散模型用于修复
+6. [This Treatment Works, Right? Evaluating LLM Sensitivity to Patient Question Framing in Medical QA](/202604/10/2604.05051v1-this-treatment-works-right-evaluating-llm-sensitivity-to-patient-question-framing-in-medical-qa)  
+   标签：评分：8.0/10、query:dl-cv
+   evidence：LLM响应一致性评估
 
 ### 速读区论文标签
-1. [InstanceAnimator: Multi-Instance Sketch Video Colorization](/202604/09/2603.25357v1-instanceanimator-multi-instance-sketch-video-colorization)  
+1. [Retrieval-Augmented Generation Based Nurse Observation Extraction](/202604/10/2603.26046v1-retrieval-augmented-generation-based-nurse-observation-extraction)  
    标签：评分：8.0/10、query:dl-cv
-   evidence：草图视频着色
-2. [Supercharging Federated Intelligence Retrieval](/202604/09/2603.25374v1-supercharging-federated-intelligence-retrieval)  
+   evidence：检索增强生成用于医疗观察提取
+2. [InstaVSR: Taming Diffusion for Efficient and Temporally Consistent Video Super-Resolution](/202604/10/2603.26134v1-instavsr-taming-diffusion-for-efficient-and-temporally-consistent-video-super-resolution)  
    标签：评分：8.0/10、query:dl-cv
-   evidence：联邦检索增强生成与大模型
-3. [Are LLMs Overkill for Databases?: A Study on the Finiteness of SQL](/202604/09/2603.25568v1-are-llms-overkill-for-databases-a-study-on-the-finiteness-of-sql)  
+   evidence：基于扩散的视频超分辨率
+3. [DataFlex: A Unified Framework for Data-Centric Dynamic Training of Large Language Models](/202604/10/2603.26164v1-dataflex-a-unified-framework-for-data-centric-dynamic-training-of-large-language-models)  
    标签：评分：8.0/10、query:dl-cv
-   evidence：大语言模型用于数据库查询生成
-4. [MemoryCD: Benchmarking Long-Context User Memory of LLM Agents for Lifelong Cross-Domain Personalization](/202604/09/2603.25973v1-memorycd-benchmarking-long-context-user-memory-of-llm-agents-for-lifelong-cross-domain-personalization)  
+   evidence：大语言模型数据训练统一框架
+4. [MemBoost: A Memory-Boosted Framework for Cost-Aware LLM Inference](/202604/10/2603.26557v1-memboost-a-memory-boosted-framework-for-cost-aware-llm-inference)  
    标签：评分：8.0/10、query:dl-cv
-   evidence：LLM代理长上下文记忆基准
-5. [Region-Adaptive Generative Compression with Spatially Varying Diffusion Models](/202604/09/2604.01122v1-region-adaptive-generative-compression-with-spatially-varying-diffusion-models)  
+   evidence：用于成本感知LLM推理的内存增强框架
+5. [IDEA2: Expert-in-the-loop competency question elicitation for collaborative ontology engineering](/202604/10/2604.01344v1-idea2-expert-in-the-loop-competency-question-elicitation-for-collaborative-ontology-engineering)  
    标签：评分：7.0/10、query:dl-cv
-   evidence：区域自适应图像生成
-6. [Screening Is Enough](/202604/09/2604.01178v1-screening-is-enough)  
+   evidence：在协作本体工程中集成大语言模型
+6. [ReFlow: Self-correction Motion Learning for Dynamic Scene Reconstruction](/202604/10/2604.01561v1-reflow-self-correction-motion-learning-for-dynamic-scene-reconstruction)  
    标签：评分：7.0/10、query:dl-cv
-   evidence：语言模型注意力机制
-7. [Joint Pricing and Innovation Control in Regulated Recycling-Rate Diffusion](/202604/09/2604.01402v1-joint-pricing-and-innovation-control-in-regulated-recycling-rate-diffusion)  
+   evidence：动态场景重建框架
+7. [Analysis of LLM Performance on AWS Bedrock: Receipt-item Categorisation Case Study](/202604/10/2604.01615v1-analysis-of-llm-performance-on-aws-bedrock-receipt-item-categorisation-case-study)  
    标签：评分：7.0/10、query:dl-cv
-   evidence：创新控制模型
-8. [ReFormeR: Learning and Applying Explicit Query Reformulation Patterns](/202604/09/2604.01417v1-reformer-learning-and-applying-explicit-query-reformulation-patterns)  
+   evidence：LLM性能评估
+8. [Do We Need Bigger Models for Science? Task-Aware Retrieval with Small Language Models](/202604/10/2604.01965v1-do-we-need-bigger-models-for-science-task-aware-retrieval-with-small-language-models)  
    标签：评分：7.0/10、query:dl-cv
-   evidence：基于模式的LLM查询重构
-9. [BloClaw: An Omniscient, Multi-Modal Agentic Workspace for Next-Generation Scientific Discovery](/202604/09/2604.00550v1-bloclaw-an-omniscient-multi-modal-agentic-workspace-for-next-generation-scientific-discovery)  
+   evidence：使用小语言模型的任务感知检索
+9. [PRISM: Probability Reallocation with In-Span Masking for Knowledge-Sensitive Alignment](/202604/10/2604.01682v1-prism-probability-reallocation-with-in-span-masking-for-knowledge-sensitive-alignment)  
    标签：评分：6.0/10、query:dl-cv
-   evidence：科学发现的多模态AI工作空间
-10. [ORBIT: Scalable and Verifiable Data Generation for Search Agents on a Tight Budget](/202604/09/2604.01195v2-orbit-scalable-and-verifiable-data-generation-for-search-agents-on-a-tight-budget)  
+   evidence：语言模型的知识敏感对齐
+10. [AI in Insurance: Adaptive Questionnaires for Improved Risk Profiling](/202604/10/2604.02034v1-ai-in-insurance-adaptive-questionnaires-for-improved-risk-profiling)  
    标签：评分：6.0/10、query:dl-cv
-   evidence：语言模型数据生成框架
-11. [CliffSearch: Structured Agentic Co-Evolution over Theory and Code for Scientific Algorithm Discovery](/202604/09/2604.01210v1-cliffsearch-structured-agentic-co-evolution-over-theory-and-code-for-scientific-algorithm-discovery)  
+   evidence：创新性LLM保险应用
+11. [Answering the Wrong Question: Reasoning Trace Inversion for Abstention in LLMs](/202604/10/2604.02230v1-answering-the-wrong-question-reasoning-trace-inversion-for-abstention-in-llms)  
    标签：评分：6.0/10、query:dl-cv
-   evidence：用于科学发现的LLM智能体
+   evidence：LLM推理轨迹反转
 

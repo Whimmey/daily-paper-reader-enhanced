@@ -1,0 +1,538 @@
+Title: PRISM: Probability Reallocation with In-Span Masking for Knowledge-Sensitive Alignment
+
+URL Source: https://arxiv.org/pdf/2604.01682v1
+
+Published Time: Fri, 03 Apr 2026 00:33:09 GMT
+
+Number of Pages: 10
+
+Markdown Content:
+# PRISM: Probability Reallocation with In-Span Masking for Knowledge-Sensitive Alignment 
+
+## Chenning Xu , Mao Zheng , Mingyang Song 
+
+## Large Language Model Department, Tencent, China 
+
+## {chenningxu, moonzheng, nickmysong }@tencent.com 
+
+## Abstract 
+
+Supervised fine-tuning (SFT) with token-level hard labels can amplify overconfident imitation of fac-tually unsupported targets, causing hallucinations that propagate in multi-sentence generation. We study an augmented SFT setting in which train-ing instances include coarse sentence-level factu-ality risk labels and inter-sentence dependency an-notations, providing structured signals about where factual commitments are weakly supported. We propose PRISM , a differentiable risk-gated frame-work that modifies learning only at fact-critical positions. PRISM augments standard SFT with a lightweight, model-aware probability realloca-tion objective that penalizes high-confidence pre-dictions on risky target tokens, with its scope con-trolled by span-level risk weights and model-aware gating. Experiments on hallucination-sensitive fac-tual benchmarks and general evaluations show that PRISM improves factual aggregates across back-bones while maintaining a competitive overall ca-pability profile. Ablations further show that the auxiliary signal is most effective when used conser-vatively, and that knowledge masking and model-aware reallocation play complementary roles in balancing factual correction and capability preser-vation. 
+
+## 1 Introduction 
+
+Large language models (LLMs) trained with next-token pre-diction can produce fluent text and follow instructions af-ter supervised fine-tuning (SFT). In practice, their usability on downstream applications is often driven by SFT on in-struction data and, in some settings, further preference-based alignment. Instruction tuning and related pipelines substan-tially improve adherence to user intent and overall helpful-ness, making SFT a standard component of modern LLM training recipes [Wei et al. , 2022; Ouyang et al. , 2022]. Despite these gains, factual hallucination remains a per-sistent failure mode: models may produce fluent statements that are unsupported by the given context, internally inconsis-tent with earlier claims, or simply false. This has been doc-SFT 0.01 0.1 0.5 1.0  
+
+> Auxiliary weight λ
+> −2
+> −1
+> 0
+> 1
+> Δ Avg. vs. SFT
+> Factual Avg.
+> Common Avg.
+
+Figure 1: Averaged factual and common performance under differ-ent auxiliary weights λ, shown as ∆ relative to the SFT baseline. The figure illustrates a trade-off between factual improvement and preservation of general capability. 
+
+umented across summarization [Maynez et al. , 2020], open-domain question answering and truthfulness benchmarks [Lin 
+
+et al. , 2022], and long-form generation settings where er-rors can compound over multiple sentences [Min et al. , 2023; Wei et al. , 2024]. Surveys further highlight that hallucination is shaped by both modeling choices and data/optimization pipelines, and that mitigation strategies vary widely across tasks and assumptions [Ji et al. , 2023; Huang et al. , 2025b]. A broad set of approaches has been explored to reduce hal-lucinations. Retrieval-augmented generation (RAG) grounds outputs in external corpora and can improve factuality by con-ditioning on retrieved evidence [Lewis et al. , 2021]. Post-hoc or self-consistency style verification aims to detect un-supported claims after generation, e.g., by sampling and checking consistency [Manakul et al. , 2023a]. Preference-based optimization methods provide another training signal to steer model behavior (often without explicit fact annota-tions), with objectives such as DPO offering a simpler al-ternative to RLHF-style pipelines [Rafailov et al. , 2024]. While effective in many settings, these solutions typically in-troduce additional components (retrieval, verifiers, or multi-stage pipelines) and they do not directly address a basic ten-sion inside SFT: maximizing likelihood on imperfect training targets can also reinforce unsupported or erroneous factual statements. This paper studies a training-time alternative that keeps 
+
+> arXiv:2604.01682v1 [cs.CL] 2 Apr 2026
+
+the simplicity of SFT while injecting structured factual sig-nals into the optimization process. We consider instruction datasets augmented with (a) extracted atomic facts (minimal factual propositions) and (b) a relational structure capturing cross-sentence factual support and dependencies. Atomic-fact decompositions are increasingly used to evaluate long-form factuality and to localize errors at a finer granularity [Min et al. , 2023; Wei et al. , 2024]. Our goal is not to con-vert SFT into full verification, but to use these annotations to identify fact-critical positions where the model introduces new commitments or relies on unsupported links across sen-tences. Concretely, we propose PRISM, a fact-aware SFT frame-work that aims to balance two desiderata: (1) learning gen-eral instruction-following behavior from diverse SFT data and (2) reducing unsupported factual claims in hallucination-sensitive settings such as fact-seeking QA. PRISM cou-ples standard cross-entropy with additional, selectively ap-plied objectives that reallocate token-level probability mass on fact-critical spans, discouraging high-confidence realiza-tions of unsupported atomic facts while avoiding uniform suppression on unrelated tokens. The update is conditioned on the model’s current preference, which targets compensa-tion to tokens the model is most likely to over-commit to, and a single coefficient controls the strength of this com-pensation. This design is aligned with recent evidence that SFT-time interventions—including data filtering, abstention-style learning, and confidence-aware objectives—can mate-rially affect hallucination behavior [Si et al. , 2025; Huang 
+
+et al. , 2025a; Yuan et al. , 2025; Huang and Chen, 2024; Nguyen et al. , 2025]. We evaluate PRISM on both hallucination-sensitive factual benchmarks and general capability benchmarks to quantify whether factual improvements come at the cost of broader instruction-following and reasoning performance. Across backbones, PRISM yields consistent gains in factual aggre-gates relative to vanilla SFT while maintaining a competitive general profile, and ablations characterize how the compen-sation weight and model-aware update rule influence this bal-ance. Our contributions are threefold: • We formulate knowledge-aware SFT using atomic facts and fact-relation structure extracted from instruction data, providing factual signals without requiring exter-nal retrieval at training time. • We propose PRISM, a selective probability-reallocation framework that conditions updates on fact-critical spans and the model’s current preference to control overconfi-dent factual commitments during SFT. • We provide empirical analysis on both general and hallucination-focused evaluations, including ablations that isolate the effects of compensation strength and model-aware updates on factuality–capability interac-tions. 
+
+## 2 Related Work 
+
+2.1 Hallucination Mitigation 
+
+Hallucinations in large language models (LLMs) are com-monly addressed via system- or inference-level mechanisms that improve grounding or add external feedback. Retrieval-augmented generation injects evidence at generation time to reduce unsupported statements [Lewis et al. , 2021], while post-hoc verification and self-checking aim to detect, cri-tique, or filter hallucinated content without modifying the base model [Manakul et al. , 2023b]. Preference-based align-ment provides another axis of control by optimizing models toward human-preferred behavior; this can indirectly reduce hallucinations, but typically introduces additional preference data and training stages [Rafailov et al. , 2024]. Broad sur-veys organize these directions and emphasize recurring ten-sions among factuality, helpfulness, and efficiency [Huang et al. , 2025b]. Recent work further targets factuality with fine-grained supervision signals and knowledge-boundary modeling. FactAlign improves long-form factual consistency using sentence-level alignment signals derived from automatic factuality assessment [Huang and Chen, 2024]. APEFT constructs atomic-statement preferences to address under-alignment and improve factual robustness under distribution shift [Yuan et al. , 2025]. UAlign leverages uncertainty esti-mates (e.g., confidence and entropy) to represent knowledge boundaries and uses them within alignment objectives [Xue 
+
+et al. , 2025]. While effective, these pipelines often depend on evaluators, preference construction, uncertainty estimation, or reward modeling components, motivating simpler training-time interventions that integrate into standard supervised fine-tuning. 
+
+2.2 Hallucination Mitigation during SFT 
+
+A growing line of work argues that hallucinations can be in-troduced or amplified during supervised fine-tuning (SFT) due to knowledge misalignment : hard-label imitation can push models toward confident reproduction of targets that exceed their reliable knowledge. Controlled analyses show that introducing unfamiliar or newly added knowledge dur-ing fine-tuning increases hallucination tendencies as such ex-amples are eventually learned [Gekhman et al. , 2024]. Com-plementarily, studies on factual knowledge extraction high-light failure modes where fine-tuning on poorly stored (less salient) facts can suppress subject-specific cues, leading to generic yet plausible answers even when relevant knowledge is encoded [Ghosal et al. , 2024]. Together, these findings suggest that SFT-time interventions should account for both (i) whether supervision is aligned with the model’s pretrain-ing knowledge and (ii) how training signals shape confidence on fact-critical spans. To mitigate hallucinations during SFT, recent methods in-tervene through objective design and data selection. SEAL introduces selective abstention learning, enabling the model to reject misaligned supervision rather than over-commit to incorrect tokens [Huang et al. , 2025a]. Data-centric approaches such as NOVA reduce hallucinations by filter-ing instruction-tuning data based on the model’s familiar-ity with candidate samples, aiming to preserve instruction-following while avoiding unfamiliar targets [Si et al. , 2025]. Other objective-shaping techniques reduce overconfidence by replacing one-hot supervision with softer targets, includ-ing smoothed knowledge distillation [Nguyen et al. , 2025]. FLAME further studies factuality-aware alignment across both SFT and post-training, illustrating how standard align-ment objectives can inadvertently encourage hallucinations and proposing factuality-aware alternatives [Lin et al. , 2024]. Our work follows this training-time direction: rather than re-lying on retrieval or decoding-time constraints, it modifies SFT objectives to control confidence updates on knowledge-sensitive tokens, and our ablations examine how auxiliary strength and update rules affect the balance between factual benchmarks and general instruction-following. 
+
+## 3 Methodology 
+
+3.1 Setup and Notation 
+
+We consider single-turn SFT examples (x, y ), where x is the user input (instruction plus optional context) and y =(y1, . . . , y T ) is the target response. An autoregressive model parameterized by θ produces logits zt ∈ R|V| and token probabilities pθ (v | x, y <t ) = softmax( zt)v over vocab-ulary V. We train on valid positions indicated by a mask 
+
+mvalid  
+
+> t
+
+∈ { 0, 1} (e.g., excluding padding and non-target re-gions). For a response y, we further segment it into sen-tences {sj }Jj=1 (by standard punctuation rules), and denote by sid( t) ∈ { 1, . . . , J } the sentence index containing token 
+
+yt.
+
+3.2 Fact-Aware Signals from SFT Data 
+
+Given each target response y, we derive a coarse factual struc-ture consisting of (i) a set of atomic facts F = {fi}Mi=1 (min-imal factual propositions) and (ii) a set of directed fact rela-tions E capturing cross-sentence support/dependency. Each atomic fact fi is aligned to one or more token spans in y;these spans mark where the response makes a concrete factual commitment (e.g., entities, numbers, and their predicates). We map this structure to token-level training signals used by PRISM. 
+
+Fact-active mask. We define a fact-active mask mfact  
+
+> t
+
+∈{0, 1} that indicates whether position t belongs to any fact-aligned span. The mask is intentionally coarse: it does not require token-level corrections, only the identification of fact-critical spans where factual commitments are introduced. 
+
+Risk weights with dependency propagation. In addition, each sentence sj is assigned a coarse factuality-risk score 
+
+rj ∈ [0 , 1] (higher means more risky / less supported) and sentence-level dependency edges in E indicate that sj relies on factual content introduced in some prior sentence(s). To reflect that unsupported claims can propagate through depen-dencies, we construct an effective sentence risk 
+
+˜rj = max 
+
+
+
+rj , max  
+
+> (j′→j)∈E
+
+rj′
+
+
+
+, (1) i.e., a sentence inherits risk from its immediate supporting sentences. We then map sentence risk to a per-token support weight wt ∈ [0 , 1] by 
+
+wt = 1 − ˜rsid( t), (2) so that larger wt indicates stronger support (lower risk) and smaller wt indicates weaker support (higher risk). This de-sign matches our supervision setting: the annotations provide structured but coarse guidance about which spans/sentences are fact-sensitive and how risk relates across sentences, with-out requiring explicit alternative targets. 
+
+3.3 Training Objective 
+
+Standard SFT loss. We optimize the usual token-level negative log-likelihood over valid positions, where Nsft =P 
+
+> t
+
+mvalid  
+
+> t
+
+:
+
+LSFT = − 1
+
+Nsft 
+
+> T
+
+X
+
+> t=1
+
+mvalid  
+
+> t
+
+log pθ (yt | x, y <t ) (3) 
+
+Risk-gated probability mass reallocation. On fact-critical spans, we add an auxiliary objective that discourages overly confident probability mass on the ground-truth token when it is deemed risky. Let plabel  
+
+> t
+
+= pθ (yt | x, y <t ) denote the model probability assigned to the label token at step t, and let 
+
+qt = max  
+
+> v̸=yt
+
+pθ (v | x, y <t ) (4) be the largest competing probability. A naive top-1 gate is not sufficient here: if probability mass is reallocated away from the label token so aggressively that it is no longer the preferred token, then the auxiliary update no longer acts on the current factual target, but effectively shifts optimization toward an alternative continuation. This creates a mismatch between the intended factual correction and the sequence actually favored after redistribution. To avoid this, we use a two-stage model-aware gate . First, we require that the label token is currently preferred: 
+
+gpref  
+
+> t
+
+= I
+
+h
+
+yt = arg max  
+
+> v∈V
+
+pθ (v | x, y <t )
+
+i
+
+. (5) Second, we require that after applying the intended proba-bility reallocation, the label token would still remain the top prediction. Given reallocation weight wt ∈ [0 , 1] , we con-sider the induced redistribution 
+
+plabel  
+
+> t
+
+→ plabel  
+
+> t
+
+wt, pt(v) → pt(v)· 1 − plabel  
+
+> t
+
+wt
+
+1 − plabel 
+
+> t
+
+(v̸ = yt),
+
+(6) which preserves normalization. The label remains preferred after redistribution iff 
+
+plabel  
+
+> t
+
+wt ≥ qt · 1 − plabel  
+
+> t
+
+wt
+
+1 − plabel 
+
+> t
+
+, (7) or equivalently, 
+
+plabel  
+
+> t
+
+wt(1 − plabel  
+
+> t
+
+) ≥ qt(1 − plabel  
+
+> t
+
+wt). (8) We define the corresponding consistency gate: 
+
+gkeep  
+
+> t
+
+= I
+
+h
+
+plabel  
+
+> t
+
+wt(1 − plabel  
+
+> t
+
+) ≥ qt(1 − plabel  
+
+> t
+
+wt)
+
+i
+
+. (9) Fact Parser      
+
+> Atomic Fact &
+> Relation Extractor
+> facts: f1,f2, ···
+> relations: support/
+> dependency graph
+> Instruction SFT Pair (x, y)
+> x: user instruction/ context
+> y: model response
+
+A SFT Data + Fact Structure Extraction 
+
+B Training Objectives (Toke n-Level )
+
+LLM 
+
+C Outcome: Balanced Capability 
+
+and Faithfulness                                                   
+
+> apply only if
+> target is top -1
+> Model -Aware Gate
+> skip otherwise
+> Probability Reallocation on Risky Targets
+> only when
+> t*is top -1
+> update strength
+> 0high
+> t*alt -1alt -2alt -3other
+> （target ）
+> prob.
+> t*alt -1alt -2alt -3other
+> （target ）
+> prob.
+> Before After
+> mass shifts to
+> alternatives
+> risk weight
+> (SFT Training)
+> Base SFT objective applied on all valid tokens
+> Optional: global coverage
+> Standard SFT learning(unchanged)
+> gradient
+> update
+> (selective)
+> fact -active mask
+> only on gated
+> fact positions
+> General Instruction Tsks
+> Hallucination -Sensitive QA
+> Trade -off
+> baseline ours
+> task score
+> format/style
+> learning retained
+> baseline ours
+> unsupported
+> claims fewer renlighed
+> risky spans
+> Improve faithfulness while preserving
+> general instruction behavior.
+> fact span
+> supported
+> depends
+> low →high
+> Risk weights
+> Outputs :fact -active mask +risk weights
+
+Figure 2: Overall pipeline of our risk-gated knowledge-aware SFT (PRISM). Starting from instruction–response pairs, we extract atomic facts and fact relations, derive token-level fact spans and risk weights, and inject these signals into SFT via a model-aware, risk-gated probability reallocation objective. 
+
+The final auxiliary weight is 
+
+αt = mfact 
+
+t · gpref 
+
+t · gkeep 
+
+t · (1 − wt). (10) Thus, high-risk positions (small wt) receive stronger penal-ties, but only when the update remains aligned with the cur-rent factual target before and after redistribution. We use a complement loss on the label probability: 
+
+Lcomp = 1
+
+Nfact 
+
+TX
+
+t=1 
+
+αt
+
+ − log  1 − ˜plabel 
+
+t
+
+ , Nfact = X
+
+t
+
+mfact 
+
+t ,
+
+(11) where ˜plabel 
+
+t = min( plabel 
+
+t , 1 − ϵ) clamps the probability for numerical stability (equivalently, using log1p ). Intu-itively, minimizing Lcomp decreases plabel 
+
+t at selected posi-tions; since token probabilities sum to one, this implicitly re-allocates probability mass to alternative tokens according to the model’s current distribution. Crucially, we do not apply this correction whenever it would change the identity of the preferred token after redistribution. The consistency gate in Eq. (9) suppresses such cases, preventing the auxiliary loss from optimizing toward a different continuation than the cur-rent factual target. This reduces mismatch between the in-tended correction target and the sequence preference induced by the reallocation step. 
+
+Final objective. Our overall training loss is a weighted sum: 
+
+L = LSFT + λ Lcomp , (12) where λ controls the strength of the auxiliary complement objective. 
+
+3.4 Gradient Analysis 
+
+We analyze the gradients induced by the complement objec-tive and their interaction with standard SFT. At step t, let 
+
+y = yt and pk = pθ (k | x, y <t ) denote the softmax prob-abilities from logits zt. The per-token complement loss and its normalized objective are 
+
+ℓcomp ,t = − log(1 − ˜py ), Lcomp = 1
+
+Nfact 
+
+X
+
+t
+
+αt ℓcomp ,t ,
+
+(13) with normalization factor Nfact .Here αt is treated as constant in backpropagation, since both gates are non-differentiable indicator functions. Using the derivative of ℓcomp ,t with respect to py together with the softmax Jacobian, we obtain 
+
+∂Lcomp 
+
+∂z y
+
+= αt
+
+Nfact 
+
+py ,∂Lcomp 
+
+∂z k
+
+= − αt
+
+Nfact 
+
+py
+
+1 − py
+
+pk (k̸ = y),
+
+(14) and so gradient descent decreases zy at active positions (re-ducing py ) and increases other logits in proportion to their current probabilities pk. This yields a model-distribution-weighted probability reallocation: the mass removed from the risky label token is redistributed across alternatives according to the model’s present beliefs, without specifying a replace-ment distribution; the factor (1 − py )−1 makes the correction stronger when the model is highly confident. However, such redistribution is only useful when it remains aligned with the current factual target. If the reallocation were strong enough to make a competing token overtake the label token, the auxiliary term would effectively optimize toward a different continuation, introducing a target mismatch. Our consistency gate gkeep  
+
+> t
+
+excludes exactly these cases by requir-ing that the label token would remain top-1 after the intended redistribution. In practice, we clamp py (equivalently, ˜py in 
+
+ℓcomp ,t ) to avoid numerical issues when py approaches 1.For standard SFT, the gradient encourages the target logit and suppresses alternatives in the usual way. In contrast, the complement term decreases zy when activated (Eq. (14)). Combining this with Eq. (12) and the implementation-level masking/normalization, the overall gradient at step t is: 
+
+∂L
+
+∂z k
+
+= mvalid 
+
+> t
+
+Nsft 
+
+∂ℓ SFT ,t 
+
+∂z k
+
+| {z }
+
+> applies on all valid tokens
+
++ λ ∂Lcomp 
+
+∂z k
+
+| {z }
+
+> applies only on gated fact positions
+
+, (15) where Nsft = P 
+
+> t
+
+mvalid  
+
+> t
+
+and the second term is non-zero only when the position is factual, the label token is currently pre-ferred, and it would remain preferred after the intended redis-tribution (through αt). 
+
+3.5 Training Procedure 
+
+We train with standard teacher-forced next-token prediction. At each step, LSFT is applied to all valid tokens, while Lcomp 
+
+is applied only to active factual positions through αt. The two terms are normalized separately by Nsft and Nfact , respec-tively. Implementation follows the formulation in Section 3.3, with standard numerical safeguards. All other aspects of SFT remain unchanged, including the optimizer, batching, and decoding-time behavior. Figure 2 summarizes the overall workflow from fact extraction to consistency-gated training. 
+
+## 4 Experiments 
+
+4.1 Datasets 
+
+Training Data Source. We utilize lmsys chat 1m clean 
+
+[OpenLeecher, 2024] as our base corpus for supervised fine-tuning (SFT). This dataset is a curated derivative of LMSYS-Chat-1M [Zheng et al. , 2024], comprising one million real-world conversations collected from the Vicuna demo and Chatbot Arena (April–August 2023). The cleaned version fil-ters out non-English items, redacted content, and repetitive spam. Crucially, it replaces the original model outputs with high-quality responses regenerated by DeepSeek-V3 . We con-struct single-turn training pairs using the human instruction as the input and the generated assistant response as the target. 
+
+Fact-aware Preprocessing. To enable fine-grained fact su-pervision, we process the SFT targets through a three-stage pipeline. First, we segment responses into chunks based on sentence boundaries, imposing a maximum length of 200 to-kens per chunk. Second, we extract atomic facts from each chunk and induce directed dependency relations. A relation is established if a fact relies on evidence located in preceding chunks or the user instruction. Finally, we apply a verification filter to discard instances with parsing failures. This results in a set of Verified Instances containing span-level annotations used to gate model updates. Table 4 summarizes the statistics of the processed data. 
+
+4.2 Evaluation 
+
+Factual evaluation. We report hallucination detection on HHEM using HHEM-2.1-O PEN , an open hallucination de-tection model that scores whether a generation is supported by the provided reference context [Li et al. , 2024]. For knowledge-intensive short-form QA, we report answer accu-racy on PopQA [Mallen et al. , 2023] and TriviaQA [Joshi 
+
+et al. , 2017] under a grounded evaluation protocol follow-ing Self-RAG [Asai et al. , 2024]. Concretely, we adopt the single-retrieval setting for short-form generation and use pre-retrieved documents obtained offline with Contriever [Izacard 
+
+et al. , 2021]. For each question, we take the top-5 passages ranked by Contriever as grounding evidence and evaluate an-swer correctness conditioned on these documents. 
+
+Common evaluation. To track broad multi-domain knowl-edge and reduce sensitivity to any single domain, we re-port accuracy on MMLU (LMSYS split) [Hendrycks et al. ,2021], which covers diverse academic and professional sub-jects and is widely used to monitor overall knowledge reten-tion under post-training. To complement factual QA met-rics with capability-oriented evaluations, we additionally in-clude GSM8K [Cobbe et al. , 2021] for multi-step mathe-matical reasoning, HumanEval [Chen et al. , 2021] for func-tional code generation (pass@1), and IFEval [Zhou et al. ,2023] for instruction-following compliance. Together, these benchmarks provide a compact coverage of knowledge, rea-soning, coding, and instruction adherence that serves as a general-purpose reference point alongside hallucination-sensitive evaluations. 
+
+4.3 Baselines 
+
+We compare PRISM with the following baselines. To assess robustness across model families and scales, we conduct all comparisons on three representative base LLM backbones: Qwen3-4B-Base and Qwen3-8B-Base [Yang et al. , 2025], and Llama-3.1-8B [Grattafiori et al. , 2024]. 
+
+Supervised Fine-Tuning (SFT). SFT directly fine-tunes the pre-trained model on the constructed instruction–response pairs, optimizing the standard token-level cross-entropy ob-jective to maximize the likelihood of the ground-truth re-sponse conditioned on the input (Eq. 3). This baseline uses the same training data and training recipe as our method, but without any fact-structure extraction or fact-aware auxiliary objectives. 
+
+Selective Abstention Learning (SEAL). SEAL [Huang et al. , 2025a] mitigates hallucinations during SFT by introduc-ing an abstention mechanism for knowledge-misaligned tar-gets. It augments the vocabulary with a special [REJ] to-ken and optimizes a training objective that combines stan-dard negative log-likelihood with an additional term that dis-courages unnecessary abstention when a correct prediction is feasible [Huang et al. , 2025a]. SEAL also proposes a decoding-time regularization that uses the model’s step-wise 
+
+[REJ] probability as an uncertainty signal to penalize risky continuations [Huang et al. , 2025a]. In our experiments, we adopt SEAL’s training objective and apply the same [REJ] -based step-wise penalty at inference, while keeping the rest of decoding consistent with our shared evaluation protocol (i.e., without switching to beam search) to avoid search-strength differences as a confounder. 
+
+NOVA. NOVA [Si et al. , 2025] reduces hallucinations dur-ing instruction tuning via data filtering based on sample famil-iarity to the backbone model. It scores instruction–response pairs using (i) Internal Consistency Probing (agreement among multiple self-generated responses) and (ii) Semantic Equivalence Identification (whether the target response is se-mantically supported by the dominant cluster among model generations, using an NLI-based clustering/voting procedure) [Si et al. , 2025]. Following the paper, we generate K=10 
+
+samples per prompt with temperature T =0 .7 for knowledge estimation (Appendix B in [Si et al. , 2025]) and fine-tune on the retained subset selected by NOVA scores. For the op-tional quality-scoring component, instead of training a task-specific reward model, we use the off-the-shelf reward model Skywork-Reward-Gemma-2-27B-v0.2 [Liu et al. , 2024] to score candidate samples, reducing additional reward-model training variance while keeping the filtering pipeline aligned with NOVA’s design. 
+
+Knowledge Mask. We include a knowledge mask baseline to isolate the effect of suppressing updates on potentially un-reliable factual spans. Using the same fact-span annotations and per-span risk scores as PRISM, this baseline masks out all fact spans whose factuality score is < 1 when computing the SFT cross-entropy loss, and optimizes LSFT only on the remaining tokens. Unlike PRISM, it does not perform prob-ability reallocation or model-aware update gating, and serves as a controlled ablation-style comparator. 
+
+## 5 Results 
+
+5.1 Main Results 
+
+Table 1 indicates that hallucination-aware objectives can change factual reliability (HHEM/PopQA/TriviaQA) and general capability (MMLU/GSM8K/HumanEval/IFEval) in ways that are only partially aligned: improvements on the fac-tual aggregate do not always coincide with gains on the com-mon aggregate, and this coupling differs by backbone. This supports reporting both groups of benchmarks when compar-ing hallucination-mitigation training, rather than relying on a single summary score. A consistent finding is that PRISM improves over vanilla SFT across all tested backbones, increasing Factual Avg while also yielding non-negative changes in Common Avg. The effect on Qwen3-4B is comparatively small, which is plausible given the already-strong factual baseline (e.g., HHEM in the mid-90s), suggesting ceiling effects can limit visible headroom. In contrast, gains are clearer for Qwen3-8B and Llama 3.1-8B, where PRISM provides the strongest or near-strongest factual aggregate while remaining competi-tive on general benchmarks. The source of Common Avg changes is also informa-tive. For Qwen3-8B, the improvement in the common ag-gregate is largely driven by higher IFEval scores, while MMLU/GSM8K/HumanEval remain roughly stable across methods. This implies that common-aggregate gains in this setting should be interpreted primarily as better instruction compliance rather than broad improvements in reasoning or coding. Against this backdrop, PRISM’s advantage relative to vanilla SFT is that it improves factuality while maintaining a competitive general profile, rather than trading factual gains for task-specific boosts. Overall, the baselines and PRISM exhibit complementary behaviors rather than a single uniformly dominant pattern. Compared with vanilla SFT, PRISM is distinguished by its cross-backbone robustness on factual benchmarks without degrading general evaluations, providing context for the ab-lations in Section 5.2 on auxiliary strength and update con-straints. 
+
+5.2 Ablation Study 
+
+Effect of the compensation weight. Table 2 studies the ef-fect of the auxiliary weight λ on Qwen3-4B. Although the behavior is not identical across individual benchmarks, the aggregate pattern is clearer when viewed at the level of fac-tual versus common capability. As λ increases, factual per-formance generally remains competitive and tends to im-prove overall, whereas common capability shows a down-ward trend. This suggests that stronger probability realloca-tion shifts the model toward more aggressive factual correc-tion, but at the cost of broader capability preservation. At the same time, this trend is not strictly monotonic on every benchmark, indicating that the effect of λ is better un-derstood as a trade-off than as a uniform gain. A small-to-moderate auxiliary weight provides the most favorable bal-ance in our setting. In particular, λ = 0.1 achieves the strongest overall profile, offering clear gains on factuality-related evaluation while avoiding the larger regressions on general benchmarks observed at higher values. Overall, these results are consistent with the intended role of the complement objective. When moderately weighted, it acts as a targeted corrective signal. When assigned too much weight, however, it begins to interfere with the base SFT ob-jective, leading to weaker retention of general reasoning and instruction-following behavior. 
+
+Component analysis. Table 3 compares the full method against two partial variants: one without model-aware real-location and one without knowledge masking. The overall pattern suggests that the two components play complemen-tary roles. Using either component alone can remain compet-itive on selected benchmarks, but the combined design yields the most balanced profile overall. Removing model-aware reallocation while retaining knowledge masking leads to a broadly weaker profile, indi-cating that factual masking alone is not sufficient to fully real-ize the benefit of the auxiliary signal. This is consistent with the role of model-aware gating: it makes the update more selective by activating reallocation only when the model is currently inclined toward a risky continuation. Without this selectivity, the correction becomes less targeted and therefore less effective. Conversely, removing knowledge masking while keep-ing model-aware updates preserves competitiveness on some Model Size Method Factual Common HHEM ↑ PopQA ↑ TriviaQA ↑ Avg ↑ MMLU ↑ GSM8K ↑ HumanEval ↑ IFEval ↑ Avg ↑                                                                                                               
+
+> Qwen3 4B SFT 94.53 58.54 68.95 74.01 76.19 85.14 79.27 60.81 75.35 SEAL 92.25 57.76 68.87 72.96 76.01 87.64 79.88 60.81 76.09 NOVA 94.83 58.89 69.34 74.35 75.28 81.58 81.71 57.86 74.11
+> PRISM 95.03 59.54 68.90 74.49 76.93 86.20 81.71 63.40 77.06
+> Qwen3 8B SFT 94.83 54.90 69.22 72.98 78.21 88.02 83.54 45.66 73.86 SEAL 96.22 58.54 70.35 75.04 77.79 88.86 81.10 61.00 77.19 NOVA 94.83 59.11 70.72 74.89 76.43 90.75 82.93 61.00 77.78 PRISM 95.13 60.83 71.22 75.73 77.54 85.67 85.98 61.92 77.78
+> Llama 3.1 8B SFT 88.12 58.18 68.10 71.47 50.70 51.86 40.85 45.84 47.31 SEAL 88.57 57.76 67.94 71.42 48.62 49.73 44.51 45.10 46.99 NOVA 84.10 50.89 66.47 67.15 49.96 58.76 51.22 36.60 49.14 PRISM 89.76 59.75 69.23 72.91 47.72 53.30 47.80 43.07 47.97
+
+Table 1: Main results. Factual Avg is the mean of (HHEM, PopQA, TriviaQA); Common Avg is the mean of (MMLU, GSM8K, HumanEval, IFEval). Best and second-best averages within each backbone are bold and underlined, respectively.                                                                 
+
+> Variant Factual Common HHEM ↑PopQA ↑TriviaQA ↑Avg. ↑MMLU ↑GSM8K ↑HumanEval ↑IFEval ↑Avg. ↑
+> SFT ( λ=0 )94.53 58.54 68.95 74.01 76.19 85.14 79.27 60.81 75.35
+> λ=0 .01 92.64 59.76 68.55 73.65 75.11 85.44 82.93 53.42 74.23
+> λ=0 .195.03 59.54 68.90 74.49 76.93 86.20 81.71 63.40 77.06
+> λ=0 .594.54 58.83 68.06 73.81 74.86 86.81 79.88 51.76 73.33
+> λ=1 .094.54 60.33 67.44 74.10 73.12 86.05 81.71 54.53 73.85
+
+Table 2: Effect of the auxiliary weight λ on Qwen3-4B. The averaged results suggest a trade-off between factual correction and general capability preservation as the auxiliary signal becomes stronger.                                               
+
+> Variant Factual Common HHEM ↑PopQA ↑TriviaQA ↑Avg. ↑MMLU ↑GSM8K ↑HumanEval ↑IFEval ↑Avg. ↑
+> Ours 95.03 59.54 68.90 74.49 76.93 86.20 81.71 63.40 77.06 w/o model-aware reallocation 94.83 58.54 68.14 73.84 75.54 85.22 77.44 61.74 74.99 w/o knowledge mask 94.04 59.97 68.97 74.33 74.68 84.38 80.49 52.31 72.97
+
+Table 3: Component analysis on Qwen3-4B. “Ours” uses both model-aware reallocation and knowledge masking. “w/o model-aware real-location” keeps factual masking but removes preference-conditioned reallocation, while “w/o knowledge mask” keeps model-aware updates without masking. The combined design yields the best overall common average while remaining competitive on factual benchmarks. 
+
+benchmarks, but substantially weakens the overall common-capability profile, with the largest drop appearing on instruction-following. This suggests that model-aware up-dates alone are not enough; they still benefit from an ex-plicit factual prior that constrains where correction should be applied. This comparison suggests a functional division between the two components: knowledge masking provides localization, while model-aware reallocation provides preci-sion. 
+
+## 6 Conclusion 
+
+We propose PRISM, a training-time method that injects coarse fact structure into supervised fine-tuning via model-aware probability reallocation on fact-critical spans. PRISM augments standard SFT with a lightweight auxiliary objective that selectively penalizes high-confidence learning on weakly supported factual targets, with its scope controlled by span-level risk weights and model-aware gating. Across multiple backbones, PRISM improves factual aggregates while main-taining a competitive profile on general benchmarks covering reasoning, code generation, and instruction following. Our ablations further clarify the roles of the two core components. Varying the auxiliary weight reveals a trade-off between stronger factual correction and preservation of broader capabilities, suggesting that the complement objec-tive is most effective when used conservatively. Component analysis further shows that knowledge masking provides lo-calization , while model-aware reallocation provides preci-sion ; their combination yields the most balanced overall pro-file. Future work includes improving the reliability of fact ex-traction and verification, and exploring more adaptive ways to schedule the auxiliary signal across domains and training stages. References 
+
+[Asai et al. , 2024] Akari Asai, Zeqiu Wu, Yizhong Wang, Avirup Sil, and Hannaneh Hajishirzi. Self-RAG: Learning to retrieve, generate, and critique through self-reflection. In The Twelfth International Conference on Learning Rep-resentations , 2024. [Chen et al. , 2021] Mark Chen, Jerry Tworek, Heewoo Jun, Qiming Yuan, et al. Evaluating large language models trained on code, 2021. [Cobbe et al. , 2021] Karl Cobbe, Vineet Kosaraju, Moham-mad Bavarian, Mark Chen, Heewoo Jun, Lukasz Kaiser, Matthias Plappert, Jerry Tworek, Jacob Hilton, Reiichiro Nakano, Christopher Hesse, and John Schulman. Training verifiers to solve math word problems, 2021. [Gekhman et al. , 2024] Zorik Gekhman, Gal Yona, Roee Aharoni, Matan Eyal, Amir Feder, Roi Reichart, and Jonathan Herzig. Does fine-tuning LLMs on new knowl-edge encourage hallucinations? In Yaser Al-Onaizan, Mohit Bansal, and Yun-Nung Chen, editors, Proceed-ings of the 2024 Conference on Empirical Methods in Natural Language Processing , pages 7765–7784, Miami, Florida, USA, November 2024. Association for Computa-tional Linguistics. [Ghosal et al. , 2024] Gaurav Rohit Ghosal, Tatsunori Hashimoto, and Aditi Raghunathan. Understanding finetuning for factual knowledge extraction. In Ruslan Salakhutdinov, Zico Kolter, Katherine Heller, Adrian Weller, Nuria Oliver, Jonathan Scarlett, and Felix Berkenkamp, editors, Proceedings of the 41st Interna-tional Conference on Machine Learning , volume 235 of Proceedings of Machine Learning Research , pages 15540–15558. PMLR, 21–27 Jul 2024. [Grattafiori et al. , 2024] Aaron Grattafiori, Abhimanyu Dubey, Abhinav Jauhri, Abhinav Pandey, et al. The llama 3 herd of models, 2024. [Hendrycks et al. , 2021] Dan Hendrycks, Collin Burns, Steven Basart, Andy Zou, Mantas Mazeika, Dawn Song, and Jacob Steinhardt. Measuring massive multitask lan-guage understanding, 2021. [Huang and Chen, 2024] Chao-Wei Huang and Yun-Nung Chen. FactAlign: Long-form factuality alignment of large language models. In Yaser Al-Onaizan, Mohit Bansal, and Yun-Nung Chen, editors, Findings of the Association for Computational Linguistics: EMNLP 2024 , pages 16363– 16375, Miami, Florida, USA, November 2024. Associa-tion for Computational Linguistics. [Huang et al. , 2025a] Lei Huang, Xiaocheng Feng, Weitao Ma, Yuchun Fan, Xiachong Feng, Yuxuan Gu, Yangfan Ye, Liang Zhao, Weihong Zhong, Baoxin Wang, Dayong Wu, Guoping Hu, Lingpeng Kong, Tong Xiao, Ting Liu, and Bing Qin. Alleviating hallucinations from knowledge misalignment in large language models via selective ab-stention learning. In Wanxiang Che, Joyce Nabende, Eka-terina Shutova, and Mohammad Taher Pilehvar, editors, 
+
+Proceedings of the 63rd Annual Meeting of the Association for Computational Linguistics (Volume 1: Long Papers) ,pages 24564–24579, Vienna, Austria, July 2025. Associa-tion for Computational Linguistics. [Huang et al. , 2025b] Lei Huang, Weijiang Yu, Weitao Ma, Weihong Zhong, Zhangyin Feng, Haotian Wang, Qiang-long Chen, Weihua Peng, Xiaocheng Feng, Bing Qin, and Ting Liu. A survey on hallucination in large language models: Principles, taxonomy, challenges, and open ques-tions. ACM Trans. Inf. Syst. , 43(2), January 2025. [Izacard et al. , 2021] Gautier Izacard, Mathilde Caron, Lu-cas Hosseini, Sebastian Riedel, Piotr Bojanowski, Armand Joulin, and Edouard Grave. Unsupervised dense informa-tion retrieval with contrastive learning, 2021. [Ji et al. , 2023] Ziwei Ji, Nayeon Lee, Rita Frieske, Tiezheng Yu, Dan Su, Yan Xu, Etsuko Ishii, Ye Jin Bang, Andrea Madotto, and Pascale Fung. Survey of hallucina-tion in natural language generation. ACM Comput. Surv. ,55(12), March 2023. [Joshi et al. , 2017] Mandar Joshi, Eunsol Choi, Daniel Weld, and Luke Zettlemoyer. TriviaQA: A large scale dis-tantly supervised challenge dataset for reading compre-hension. In Regina Barzilay and Min-Yen Kan, editors, 
+
+Proceedings of the 55th Annual Meeting of the Associa-tion for Computational Linguistics (Volume 1: Long Pa-pers) , pages 1601–1611, Vancouver, Canada, July 2017. Association for Computational Linguistics. [Lewis et al. , 2021] Patrick Lewis, Ethan Perez, Aleksan-dra Piktus, Fabio Petroni, Vladimir Karpukhin, Naman Goyal, Heinrich K¨ uttler, Mike Lewis, Wen tau Yih, Tim Rockt¨ aschel, Sebastian Riedel, and Douwe Kiela. Retrieval-augmented generation for knowledge-intensive nlp tasks, 2021. [Li et al. , 2024] Miaoran Li, Rogger Luo, and Ofer Mendelevitch. HHEM-2.1-Open, 2024. [Lin et al. , 2022] Stephanie Lin, Jacob Hilton, and Owain Evans. TruthfulQA: Measuring how models mimic hu-man falsehoods. In Smaranda Muresan, Preslav Nakov, and Aline Villavicencio, editors, Proceedings of the 60th Annual Meeting of the Association for Computational Linguistics (Volume 1: Long Papers) , pages 3214–3252, Dublin, Ireland, May 2022. Association for Computational Linguistics. [Lin et al. , 2024] Sheng-Chieh Lin, Luyu Gao, Barlas Oguz, Wenhan Xiong, Jimmy Lin, Wen tau Yih, and Xilun Chen. Flame: Factuality-aware alignment for large lan-guage models, 2024. [Liu et al. , 2024] Chris Yuhao Liu, Liang Zeng, Jiacai Liu, Rui Yan, Jujie He, Chaojie Wang, Shuicheng Yan, Yang Liu, and Yahui Zhou. Skywork-reward: Bag of tricks for reward modeling in llms, 2024. [Mallen et al. , 2023] Alex Mallen, Akari Asai, Victor Zhong, Rajarshi Das, Daniel Khashabi, and Hannaneh Ha-jishirzi. When not to trust language models: Investigat-ing effectiveness of parametric and non-parametric mem-ories. In Anna Rogers, Jordan Boyd-Graber, and Naoaki Okazaki, editors, Proceedings of the 61st Annual Meeting of the Association for Computational Linguistics (Volume 1: Long Papers) , pages 9802–9822, Toronto, Canada, July 2023. Association for Computational Linguistics. [Manakul et al. , 2023a] Potsawee Manakul, Adian Liusie, and Mark Gales. SelfCheckGPT: Zero-resource black-box hallucination detection for generative large language mod-els. In Houda Bouamor, Juan Pino, and Kalika Bali, ed-itors, Proceedings of the 2023 Conference on Empirical Methods in Natural Language Processing , pages 9004– 9017, Singapore, December 2023. Association for Com-putational Linguistics. [Manakul et al. , 2023b] Potsawee Manakul, Adian Liusie, and Mark J. F. Gales. Selfcheckgpt: Zero-resource black-box hallucination detection for generative large language models, 2023. [Maynez et al. , 2020] Joshua Maynez, Shashi Narayan, Bernd Bohnet, and Ryan McDonald. On faithfulness and factuality in abstractive summarization. In Dan Jurafsky, Joyce Chai, Natalie Schluter, and Joel Tetreault, editors, 
+
+Proceedings of the 58th Annual Meeting of the Association for Computational Linguistics , pages 1906–1919, Online, July 2020. Association for Computational Linguistics. [Min et al. , 2023] Sewon Min, Kalpesh Krishna, Xinxi Lyu, Mike Lewis, Wen-tau Yih, Pang Koh, Mohit Iyyer, Luke Zettlemoyer, and Hannaneh Hajishirzi. FActScore: Fine-grained atomic evaluation of factual precision in long form text generation. In Houda Bouamor, Juan Pino, and Ka-lika Bali, editors, Proceedings of the 2023 Conference on Empirical Methods in Natural Language Processing ,pages 12076–12100, Singapore, December 2023. Associ-ation for Computational Linguistics. [Nguyen et al. , 2025] Hieu Nguyen, Zihao He, Shoumik Atul Gandre, Ujjwal Pasupulety, Sharanya Ku-mari Shivakumar, and Kristina Lerman. Smoothing out hallucinations: Mitigating llm hallucination with smoothed knowledge distillation, 2025. [OpenLeecher, 2024] OpenLeecher. lmsys chat 1m clean. Hugging Face Datasets, 2024. Initial release July 2024; accessed 2026-01-16. [Ouyang et al. , 2022] Long Ouyang, Jeffrey Wu, Xu Jiang, Diogo Almeida, et al. Training language models to follow instructions with human feedback. In S. Koyejo, S. Mo-hamed, A. Agarwal, D. Belgrave, K. Cho, and A. Oh, edi-tors, Advances in Neural Information Processing Systems ,volume 35, pages 27730–27744. Curran Associates, Inc., 2022. [Rafailov et al. , 2024] Rafael Rafailov, Archit Sharma, Eric Mitchell, Stefano Ermon, Christopher D. Manning, and Chelsea Finn. Direct preference optimization: Your lan-guage model is secretly a reward model, 2024. [Si et al. , 2025] Shuzheng Si, Haozhe Zhao, Gang Chen, Cheng Gao, Yuzhuo Bai, Zhitong Wang, Kaikai An, Kangyang Luo, Chen Qian, Fanchao Qi, Baobao Chang, and Maosong Sun. Aligning large language models to follow instructions and hallucinate less via effective data filtering. In Wanxiang Che, Joyce Nabende, Ekaterina Shutova, and Mohammad Taher Pilehvar, editors, Pro-ceedings of the 63rd Annual Meeting of the Association for Computational Linguistics (Volume 1: Long Papers) ,pages 16469–16488, Vienna, Austria, July 2025. Associa-tion for Computational Linguistics. [Wei et al. , 2022] Jason Wei, Maarten Bosma, Vincent Y. Zhao, Kelvin Guu, Adams Wei Yu, Brian Lester, Nan Du, Andrew M. Dai, and Quoc V. Le. Finetuned language models are zero-shot learners, 2022. [Wei et al. , 2024] Jerry Wei, Chengrun Yang, Xinying Song, Yifeng Lu, Nathan Hu, Jie Huang, Dustin Tran, Daiyi Peng, Ruibo Liu, Da Huang, Cosmo Du, and Quoc V. Le. Long-form factuality in large language models, 2024. [Xue et al. , 2025] Boyang Xue, Fei Mi, Qi Zhu, Hongru Wang, Rui Wang, Sheng Wang, Erxin Yu, Xuming Hu, and Kam-Fai Wong. UAlign: Leveraging uncertainty es-timations for factuality alignment on large language mod-els. In Wanxiang Che, Joyce Nabende, Ekaterina Shutova, and Mohammad Taher Pilehvar, editors, Proceedings of the 63rd Annual Meeting of the Association for Computa-tional Linguistics (Volume 1: Long Papers) , pages 6002– 6024, Vienna, Austria, July 2025. Association for Compu-tational Linguistics. [Yang et al. , 2025] An Yang, Anfeng Li, Baosong Yang, Be-ichen Zhang, et al. Qwen3 technical report, 2025. [Yuan et al. , 2025] Hongbang Yuan, Yubo Chen, Pengfei Cao, Zhuoran Jin, and Kang Liu. Beyond under-alignment: Atomic preference enhanced factuality tuning for large language models. In Luis Chiruzzo, Alan Rit-ter, and Lu Wang, editors, Findings of the Association for Computational Linguistics: NAACL 2025 , pages 6310– 6323, Albuquerque, New Mexico, April 2025. Association for Computational Linguistics. [Zheng et al. , 2024] Lianmin Zheng, Wei-Lin Chiang, Ying Sheng, Tianle Li, Siyuan Zhuang, Zhanghao Wu, Yong-hao Zhuang, Zhuohan Li, Zi Lin, Eric P. Xing, Joseph E. Gonzalez, Ion Stoica, and Hao Zhang. Lmsys-chat-1m: A large-scale real-world llm conversation dataset, 2024. [Zhou et al. , 2023] Jeffrey Zhou, Tianjian Lu, Swaroop Mishra, Siddhartha Brahma, Sujoy Basu, Yi Luan, Denny Zhou, and Le Hou. Instruction-following evaluation for large language models, 2023. Quantity Count Training instances          
+
+> Verified instances retained for training 265,568
+> Fact structure
+> Fact items (atomic facts extracted) 3,291,756 Fact relations (directed support/dependency edges) 867,202 User-input-supported facts (relations grounded in user input) 324,310
+> Span annotations
+> Total span annotations produced 3,136,976 Masked chunks (chunks containing ≥1 fact item) 781,180 Table 4: Summary statistics of the fact-aware preprocessing applied to lmsys chat 1m clean .
+
+## A Implementation Details 
+
+Unless otherwise stated, all methods are trained under a uni-fied SFT setup to enable controlled comparisons. We use one epoch of training with AdamW, learning rate 1 × 10 −5, co-sine learning-rate schedule, warmup ratio 0.05 , maximum se-quence length 32768 , and global batch size 128 . We employ DeepSpeed ZeRO-2 with CPU offload, BF16 mixed preci-sion, and FlashAttention-2. At evaluation time, we keep the same decoding configuration across methods; for baselines with method-specific inference components, we adapt them to this shared decoding protocol to avoid confounding im-provements with stronger search procedures. 
+
+## B More Information 
+
+Table 4 shows that the preprocessing pipeline produces dense fact-level supervision rather than a small number of coarse instance-level labels. Across 265K verified training in-stances, we obtain over 3.29M fact items, 867K dependency relations, and 3.14M span annotations, indicating that fac-tual structure is both frequent and non-trivial in the processed data. The 324K user-input-supported facts further show that instruction-grounded support is common, motivating its in-clusion in our fact verification and update gating pipeline.
