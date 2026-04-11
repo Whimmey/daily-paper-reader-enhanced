@@ -1,0 +1,581 @@
+Title: Differentiable Stroke Planning with Dual Parameterization for Efficient and High-Fidelity Painting Creation
+
+URL Source: https://arxiv.org/pdf/2604.02752v1
+
+Published Time: Mon, 06 Apr 2026 00:32:36 GMT
+
+Number of Pages: 14
+
+Markdown Content:
+# Differentiable Stroke Planning with Dual Parameterization for Efficient and High-Fidelity Painting Creation 
+
+## Jinfan Liu 1, Wuze Zhang 1, Zhangli Hu 1, Zhehan Zhao 1, Ye Chen 1, Bingbing Ni 1* 1Shanghai Jiao Tong University 
+
+## Abstract 
+
+In stroke-based rendering, search methods often get trapped in local minima due to discrete stroke placement, while dif-ferentiable optimizers lack structural awareness and pro-duce unstructured layouts. To bridge this gap, we pro-pose a dual representation that couples discrete poly-lines with continuous B´ ezier control points via a bidirec-tional mapping mechanism. This enables collaborative optimization: local gradients refine global stroke struc-tures, while content-aware stroke proposals help escape poor local optima. Our representation further supports Gaussian-splatting-inspired initialization, enabling highly parallel stroke optimization across the image. Experiments show that our approach reduces the number of strokes by 30–50%, achieves more structurally coherent layouts, and improves reconstruction quality, while cutting optimization time by 30–40% compared to existing differentiable vector-ization methods. 
+
+## 1. Introduction 
+
+The pursuit of non-photorealistic rendering, particularly in applications like digital oil painting and interactive sketch-ing, has long been driven by the goal of automatically trans-lating images into expressive, stroke-based artworks. This process, known as stroke-based rendering or image vector-ization, fundamentally relies on how strokes are represented and optimized. Existing approaches predominantly fall into two categories, each with significant drawbacks. On one hand, search-based methods [8, 9, 11, 13, 20, 28, 29, 31] trace strokes by following local pixel gradients, often us-ing discrete, rectangular primitives. This leads to struc-tural fragmentation and sensitivity to image noise. Conse-quently, these methods typically require a vast number of strokes, often in the tens of thousands for a single image to achieve reasonable fidelity, resulting in slow optimization and mediocre reconstruction quality (e.g., PSNR often be-low 27 dB for complex textures). On the other hand, differ-entiable optimization methods [18, 22, 32] leverage gradi-
+
+> *
+
+Corresponding author. Visual   
+
+> Disorganization
+> (a) Search-Based Method (b) Differentiable Optimization
+> Structural
+> Fragmentation
+> Mediocre
+> Quality
+> Unstructured
+> Layouts
+> (c) Our Search-Optimization Pipeline
+> Visual
+> Harmony
+> Structured
+> Layouts
+> Impressive
+> Quality
+> Artistic
+> Composition
+> T=10min N=12000 T=20min N=4000
+> T=0.5min N=4000
+
+Figure 1. Comparison with existing stroke-based rendering ap-proaches. (a) Search-based methods suffer from structural frag-mentation and require numerous strokes, leading to slow and time-consuming optimization. (b) Differentiable optimization meth-ods converge faster but often produce visually disorganized and unstructured layouts due to the lack of explicit structural priors. (c) Our method combines discrete structure-aware search with dif-ferentiable refinement, producing coherent, visually harmonious, and high-fidelity paintings with significantly fewer strokes. 
+
+ent descent for efficient color fitting. While more stable and faster per stroke, they lack explicit structural priors. The op-timization is dominated by pixel-level loss, frequently pro-ducing visually disorganized and unstructured stroke lay-outs that fail to capture the coherent flow of image features, thereby tending to be trapped in local minima and limiting their artistic quality and editability. To overcome these inherent limitations, we introduce a novel hybrid optimization framework that seamlessly integrates discrete structural exploration with continuous gradient-based refinement. At its core is a dual stroke rep-resentation : a discrete polyline defined by a sequence of anchor points, and a continuous counterpart represented by smooth B´ ezier control points. These two representations are bidirectionally mapped through a differentiable spline conversion layer, allowing loss gradients to flow from the continuous domain back to influence the discrete structure. 
+
+> arXiv:2604.02752v1 [cs.CV] 3 Apr 2026
+
+This coupling enables our two-stage optimization cycle. First, a residual-guided parallel search proactively proposes short, discrete stroke segments in regions with high recon-struction error, effectively capturing major image structures and escaping poor local minima. Second, a differentiable polyline splatting renderer with an anisotropic kernel takes these proposals and refines them using gradient descent, optimizing their color, shape, and transparency for pixel-accurate fitting. A key innovation is our learnable trans-parency model, which allows strokes to blend smoothly, significantly reducing the number required for high-quality reconstruction. Furthermore, our representation naturally supports a Gaussian-splatting-inspired initialization strat-egy, where potential stroke seeds are distributed based on image feature density, enabling massive parallel optimiza-tion of thousands of strokes from the very beginning. The principal advantages of our system are threefold: 1) it pro-duces structurally coherent and artistically plausible lay-outs; 2) the resulting vectorized strokes are highly amenable to editing; and 3) it achieves a significant boost in optimiza-tion efficiency and final visual fidelity. Extensive evaluations across multiple benchmarks show that our method significantly outperforms prior work [12, 14, 21, 28, 32] on a wide range of metrics. With 30–50% fewer strokes, our approach achieves higher reconstruction fidelity, highlighting its efficient use of primitive elements; on complex texture datasets, our structure-aware optimiza-tion yields a 4–5 dB PSNR gain. Importantly, this improve-ment comes with substantially reduced runtime—thanks to strategic initialization and a GPU-parallel splatting design, the total optimization time decreases by 30–40%, often con-verging to high-quality results within minutes. Qualita-tive comparisons and a user study further confirm that our method produces stroke layouts that are not only more ac-curate but also visually more coherent and better aligned with salient features such as edges and ridges. Taken to-gether, the combination of efficiency, compact representa-tion, and superior artistic quality marks a meaningful step toward practical, high-quality stroke-based rendering. 
+
+## 2. Related Work 
+
+2.1. Stroke Planning 
+
+Stroke planning focuses on organizing brush strokes to effectively represent image structures and styles. Early search-based methods [9, 11, 20, 29] trace strokes by fol-lowing local gradients. Subsequent search-based tech-niques introduced image segmentation and adaptive sam-pling to improve reconstruction quality [8, 13, 28, 31]. However, these methods often produce structurally frag-mented results and require a large number of strokes with slow optimization. Additionally, they remain prone to local minima due to discrete stroke placement. Recently, neu-ral networks like RNNs [10], Transformers [21, 24, 26], and RL-based approaches [12, 14, 15, 19, 25] have been adopted for stroke sequence generation, but they face chal-lenges in both generalization and controllability. Mean-while, differentiable rendering methods [3–5, 18, 22, 32] employ gradient-based optimization for efficient color fit-ting, enabling faster convergence per stroke. However, they often produce visually disorganized layouts due to a lack of structural awareness. Our approach addresses these limita-tions through a dual representation that combines discrete polylines with continuous B´ ezier control points. 
+
+2.2. Stroke Representation 
+
+Stroke representation is fundamental to stylized brushstroke rendering, as it impacts the visual richness and style fidelity of the output. Early methods such as [20, 23] model strokes using rectangular segments, which are simple to render but often fail to capture smooth contours, leading to fragmented results and an excessive number of short strokes. To better approximate natural brush trajectories, curved representa-tions have been widely adopted, including B-splines [11] and B´ ezier curves [8, 17, 18, 27]. While these support continuous paths and richer shapes, they often suffer from slow rendering and local redundancies, and still lack higher-level structural organization. Other studies enrich stroke appearance using texture templates collected from real art-works [28, 31], though such methods frequently exhibit tex-ture discontinuities and limited adaptability. Physics-based modeling techniques simulate pigment-canvas interactions to enhance realism, such as viscous fluid deposition [2, 7] and particle-based pigment dynamics [6]. These achieve compelling material effects, but rely on complex simulation and are difficult to optimize at the stroke level. 
+
+## 3. Methodology 
+
+Our method is motivated by a key observation: the com-plementary strengths of discrete search and continuous op-timization can be harnessed through a dual stroke repre-sentation that enables them to work in concert. This syn-ergy enables efficient exploration of large-scale structures while achieving precise, pixel-level fidelity. Given a target image  Igt ∈ RH×W ×3, our goal is to find a set of strokes 
+
+S = {si} whose rendering  I minimizes the reconstruction loss  L(I, I gt ). Each stroke  si is primarily defined by its spa-tial trajectory and appearance. The core of our framework is an iterative search-and-optimize pipeline, built upon our dual stroke representa-tion. As illustrated in Fig. 2, each iteration consists of two synergistic stages: 1) Structure-Aware Search : Pro-poses new stroke structures in under-reconstructed regions; 2) Gradient-Guided Optimization : Refines the parame-ters of all existing strokes. These steps are followed by a Differentiable Polyline Renderer that efficiently com-Structure-Aware Search Gradient-Guided 
+
+> Optimization
+
+𝐀 (𝐀 )
+
+𝐀 (𝐀 )
+
+𝐀 (𝐀 ) 𝐀 (𝐀 )
+
+𝐀 (𝐀 )
+
+# …
+
+Dual Representation 
+
+# …
+
+> N=3000
+> t=40s
+> N+=50
+> t=1s
+
+Input 
+
+Collaborative Optimization 
+
+Polyline 
+
+𝐀 0
+
+𝐀 1
+
+𝐀 2
+
+𝐀 3
+
+𝐀 ...  
+
+> Mapping
+> Differentiable Rendering
+
+𝐀 𝐀 𝐀 Loss  
+
+> Backward
+> Parallel
+
+Splatting 
+
+Strokes 
+
+Tiles 
+
+Height Map 
+
+> Textual
+> Fitting
+> Gradient
+
+𝐀 (𝐀 )
+
+> N+=100
+> t=2s
+> N+=200
+> t=4s
+
+𝐀 (𝐀 )
+
+𝐀 (𝐀 )
+
+> Error map
+> Search Point
+> Search Gradient
+> Polyline
+> T Sample Curve Fitting
+> Inverse
+> Mapping
+> Bezier Curve
+
+𝐀 0
+
+𝐀 1
+
+𝐀 2 𝐀 3   
+
+> t=10s t=1s t=0.5s t=1s
+> Structural
+> Initialization
+> Skip
+
+Rendering 
+
+Segment 
+
+> iter 1
+> iter 2
+> iter n
+> …
+> 𝐀 ′0
+> 𝐀 ′1
+> 𝐀 ′2
+> 𝐀 ′3
+> 𝐀 ′𝐀
+
+Figure 2. Framework. Given a target image Igt , our method iteratively reconstructs it through a dual-stage search-and-optimize pipeline. At iteration i, the structure-aware search step S(i) samples seeds from high-residual regions using NMS and traces geometry-aligned polylines along image gradients. These polylines are then mapped, via a bidirectional differentiable dual representation, to B´ ezier curves and refined in the optimization step O(i) using gradients from our differentiable polyline splatting renderer. All strokes are splatted in parallel to form the canvas, and the process rapidly converges, with most structure recovered in the first iteration. 
+
+posites strokes onto the canvas, along with coherent stroke height regression and lighting. The pipeline repeats until convergence, progressively building a coherent and com-pact set of strokes that accurately approximates the target image. 
+
+3.1. Dual Stroke Representation 
+
+We introduce a dual representation to bridge the gap be-tween discrete search and continuous gradient optimization, enabling them to collaboratively refine the same stroke to pursue both structural and fine-grained stroke fitting har-mony. To this end, a stroke  si is simultaneously represented in both forms: 1) Discrete Polyline : A sequence of ordered vertices,  Pi = [ pi, 0, pi, 1, . . . , pi,M i−1], which is intuitive for structural proposal and manipulation. 2) Continuous B´ ezier Curve : A smooth parametric curve defined by a set of control points  Ci = [ ci, 0, ci, 1, . . . , ci,K −1], which is ideal for differentiable refinement. These two representations are bidirectionally mapped through a shared parameterization, forming the backbone of our cooperative optimization framework. 
+
+Mapping: Polyline to B´ ezier (Differentiable Fitting) 
+
+To convert the discrete polyline  Pi into a continuous B´ ezier curve, we first assign a normalized parameter  ti,m ∈ [0 , 1] 
+
+to each vertex  pi,m  using chord-length parameterization along the polyline. The goal is to find the B´ ezier control points  Ci that best approximate the polyline vertices. The position of a point on the B´ ezier curve at parameter  t is given by: 
+
+B(t; Ci) = 
+
+> K−1
+
+X
+
+> k=0
+
+ci,k · Bk,K −1(t), (1) 
+
+where  Bk,K −1(t) is the Bernstein basis polynomial of de-gree  K − 1. We solve for the optimal control points  C∗
+
+> i
+
+by minimizing the least-squares error between the original polyline and the fitted curve: 
+
+C∗ 
+
+> i
+
+= arg min 
+
+> Ci
+> Mi−1
+
+X
+
+> m=0
+
+∥pi,m − B(ti,m ; Ci)∥22 . (2) 
+
+This convex problem has a closed-form solution via the pseudoinverse, allowing the fitting process to be trivially differentiated, thus enabling gradient flow from the contin-uous curve back to the polyline vertices. Mapping: B´ ezier to Polyline (Differentiable Sam-pling) The reverse mapping is straightforward and fully dif-ferentiable. Given a set of B´ ezier control points  Ci, we can sample the corresponding discrete polyline  Pi by evaluat-ing the B´ ezier curve at a fixed set of parameters  {ti,m }:    
+
+> pi,m =B(ti,m ;Ci)(3)
+
+This sampling operation is a linear combination of the con-trol points and thus differentiable with respect to  Ci.This bidirectional, differentiable bridge allows gradient signals from the continuous optimization to refine the dis-crete structure proposed by the search module, ensuring that both global layout and local details are optimized. 
+
+3.2. Structure-Aware Stroke Search 
+
+This module is responsible for proactively discovering strokes that capture prominent image structures. The core of our search is a gradient-driven tracing mechanism, which directly leverages the continuous gradient field to guide the discrete growth of polylines, ensuring that the proposed structures are both geometrically salient and optimized for loss reduction from their inception. The search begins with the reconstruction residual  Rt
+
+and its gradient field  Gt at iteration  t:      
+
+> Rt(x) = ∥It(x)−Igt (x)∥22,Gt(x) = ∇Rt(x).(4)
+
+Seed points  {xj } are sampled from the distribution of  Rt
+
+using non-maximum suppression. For each seed, rather than merely initializing a fixed-direction segment, we trace a polyline by iteratively following the path that minimizes the reconstruction error. Starting from  p0 = xj , we grow the polyline by repeat-edly stepping along a gradient-flow direction  dk:        
+
+> pk+1 =pk+η·dk,(5)
+
+where  η is an adaptive step size. Intuitively,  dk performs a 
+
+gradient ascent on the residual field, pushing the stroke to cover high-error regions. To prevent the trace from being trapped by local noise, the direction  dk at each step is a weighted combination of the local gradient and the previous direction  dk−1, encour-aging smoothness:                  
+
+> ˜dk=Gt(pk)
+> ∥Gt(pk)∥+ϵ ,dk=λ·˜dk+ (1 −λ)·dk−1.(6)
+
+The tracing terminates when the current stroke no longer reduces the reconstruction loss, and the overall search ex-ceeds a threshold of consecutive failures. This method produces a set of discrete polylines 
+
+Ssearch = {Pi} where each vertex is explicitly dictated by the gradient flow . The resulting strokes are therefore not only structurally coherent but also primed for loss reduc-tion. They are then directly passed through our dual repre-sentation to become B´ ezier curves, ready for fine-grained, differentiable adjustment in the next stage. In this way, the gradient field serves as a continuous guide throughout the entire discrete search process, achieving true collaboration between the two optimization paradigms. 
+
+3.3. Gradient-Guided Stroke Optimization 
+
+The stroke set  Ssearch = {Pi} proposed by the discrete search module provides a structurally coherent initializa-tion in the form of discrete polylines. This module re-fines the set within the continuous B´ ezier representation 
+
+{Ci} to achieve pixel-level fidelity. The key to our effi-cient co-design is that the search module has already solved the large-scale structural assignment, allowing the gradient-based optimizer to focus on fine-grained adjustments with-out the risk of collapsing into globally poor layouts. All strokes are optimized concurrently. The B´ ezier con-trol points  Ci for each stroke are uniformly sampled to pro-duce a dense, differentiable polyline  ˜Pi for rendering. The entire set is then rendered in a single forward pass using our differentiable splatting kernel (Sec. 3.4) to produce the canvas  Irender . We minimize the reconstruction objective           
+
+> L=∥Irender −Igt ∥2+λℓLlen +λwLwidth ,(7)
+
+where  Llen  and  Lwidth  regularize stroke length and width. Gradients  ∇Ci,ci,oi,w i L are fully backpropagated through the renderer, enabling end-to-end refinement of geometry, color, opacity, and width. We employ an adaptive optimization strategy similar to 3DGS [16] for stable convergence. Since our strokes are typically long and structurally important, directly splitting or pruning them would damage global contour coherence. We therefore only reinitialize strokes with near-zero opacity and minimal reconstruction loss, letting the structure-aware search module assign their new parameters. This preserves structural integrity while ensuring stable and efficient opti-mization. This continuous refinement directly benefits from the structural prior provided by the search stage. Since the ini-tial strokes are already well-placed along salient edges and ridges, the gradient descent efficiently fine-tunes their ge-ometry and appearance rather than attempting costly global reconfiguration. This division of labor— coarse explo-ration via search, fine exploitation via gradients —is the cornerstone of our efficiency. Conversely, the gradient optimization legitimizes and en-hances the proposals from the discrete search. A search-proposed stroke might be geometrically approximate; the gradient refinement corrects its precise placement, width, and color, transforming a structurally correct but coarse proposal into a visually accurate and seamless element of the final painting. This synergistic cycle iterates until con-vergence, progressively building a compact and coherent stroke set  S∗.
+
+3.4. Differentiable Polyline Renderer 
+
+To enable end-to-end optimization while maintaining high rendering efficiency, we design a differentiable renderer that approximates each stroke segment as a soft, anisotropic splat. This offers a favorable trade-off between the com-putational cost of exact B´ ezier rasterization and the need for full differentiability. Each stroke, after being sampled from its B´ ezier repre-sentation into a polyline  ˜Pi, is decomposed into consecu-tive segments. The influence of a segment  ei,j  on a pixel 
+
+x is modeled by an anisotropic kernel based on the shortest distance  di,j (x):            
+
+> ki,j (x) =
+> σ
+> wi/2−di,j (x)
+> τ
+> 
+> −σ
+> −wi/2
+> τ
+> 
+> 1−2·σ
+> −wi/2
+> τ
+> ,(8)
+
+where  wi is the stroke width,  τ a softness parameter, and 
+
+σ the logistic function. The resulting opacity is  αi,j (x) = 
+
+oi · max(0 , k i,j (x)) .All segments are composited onto the canvas in a single, GPU-parallel pass using front-to-back alpha blending. Let 
+
+π(x) denote the sequence of stroke segments overlapping pixel  x, sorted from front to back:        
+
+> C(x) = X
+> (i,j )∈π(x)
+> αi,j (x)ci
+> Y
+> (p,q )<(i,j )
+> (1 −αp,q (x)) .(9)
+
+A key to our efficiency is that this splatting paradigm, inspired by recent advances in Gaussian splatting, enables highly parallelized rasterization of all stroke segments. This directly enables the Gaussian-splatting-inspired initial-ization in Sec. 3.3, where a large population of stroke prim-itives can be placed and optimized simultaneously from the first iteration, dramatically accelerating convergence. The entire rendering process is fully differentiable, al-lowing gradients to flow from the total loss  L back to the stroke parameters  Ci, ci, oi, and  wi. This efficient, paral-lel, and differentiable renderer is the backbone that makes our iterative search-and-optimize pipeline practical. To further enhance the physical realism of the painting, we regress a height value  hi for each stroke, enabling ad-vanced shading effects via relighting. The initial height is estimated from the target image using a pre-trained monoc-ular depth estimation model (e.g., Depth Anything [30]), which provides a dense geometry prior. This initial pre-diction is then refined with a continuity constraint, encour-aging smooth height transitions between spatially adjacent strokes. The final height field allows us to render the paint-ing under novel lighting conditions, simulating the tangible surface relief characteristic of impasto oil paintings. 
+
+## 4. Experiments 
+
+4.1. Experimental Setups 
+
+Implementation details. All experiments are imple-mented in PyTorch and run on a single NVIDIA RTX 4090 GPU. Since our pipeline already achieves strong con-vergence in the first iteration, we use a default of three search–optimization iterations. During the search phase ,we extract seeds from the top 12% residual pixels using a 
+
+7×7 NMS window. We trace strokes using an adaptive step, starting at 1.2 pixels with a smoothing factor of λ = 0 .8.Strokes grow up to 20 vertices dynamically and are accepted only if they reduce the reconstruction loss by at least 0.01 .The local search halts after 20 consecutive rejections. During the optimization phase , discovered polylines are converted into piecewise cubic B´ ezier curves and sampled at 10 discrete points for differentiable rendering. We jointly optimize all stroke parameters using Adam for up to 4000 iterations per stage or until convergence. The base learning rate is 0.01, with color and width updates scaled by 0.1 and 0.01, respectively. 
+
+Dataset & Evaluation. We evaluate on two complemen-tary datasets. (1) The DIV2K validation set [1], a high-resolution and diverse natural-image benchmark resized to 1200 ×1200 for consistent stroke resolution. (2) The Im2Oil gallery dataset [28], featuring classical oil paintings at 600 × 800 with characteristic textures and styles. We report PSNR, SSIM, LPIPS, stroke count, per-iteration run-time, and a perceptual user study. 
+
+4.2. Comparative Analysis with SOTA 
+
+We compare our approach with five state-of-the-art stroke-based rendering methods, including Im2Oil [28], Composi-tional Neural Painting (CNP) [12], Paint Transformer [21], Learning to Paint [14], and Stylized Neural Painting (SNP) [32]. We employ 16K strokes for the DIV2K dataset and 8K strokes for the Im2Oil dataset based on image reso-lution, to align parameters across all baselines. Qualitative comparisons in Fig. 3 show that our method consistently produces clearer structural boundaries, cleaner textures, and more coherent stroke flows on artistic images. By leveraging our Dual Stroke Representation and joint search-optimization pipeline, we effectively preserve thin structures and smooth regions, whereas baselines struggle with noisy, overlapping strokes. Quantitatively, Table 1 shows our superior reconstruc-tion accuracy across both datasets. Notably, the substan-tial improvements in SSIM highlight our method’s capabil-ity in preserving global structures and semantic coherence. Beyond fidelity, our method exhibits remarkable computa-tional efficiency. By synergizing the dual stroke representa-tion with GPU-parallel differentiable splatting, our pipeline substantially accelerates the optimization process, running Ours Input SNP Im2Oil CNP Paint Transformer Learning to Paint Figure 3. Qualitative comparison with state-of-the-art methods. Our method produces clearer contours, cleaner textures, and more coherent stroke flows across both natural and synthetic domains. In contrast, baseline approaches often generate noisy strokes or lose structural consistency, particularly under limited stroke budgets. Method PSNR ↑ SSIM ↑ LPIPS ↓ Time (s) ↓                                                                            
+
+> DIV2K Validation
+> Im2Oil [28] 27.59 0.72 0.211 727.8 CNP [12] 27.91 0.64 0.296 125.5 Paint Transformer [21] 23.83 0.63 0.378 414.1 Learning to Paint [14] 27.19 0.70 0.330 167.9 SNP [32] 20.63 0.42 0.405 5837.2
+> Ours 32.16 0.93 0.076 87.6
+> Gallery Dataset
+> Im2Oil [28] 28.54 0.71 0.204 392.8 CNP [12] 28.46 0.68 0.288 61.3 Paint Transformer [21] 24.46 0.61 0.395 197.4 Learning to Paint [14] 28.58 0.73 0.318 80.6 SNP [32] 20.87 0.49 0.433 2868.1
+> Ours 32.53 0.86 0.192 42.7
+> Table 1. Quantitative comparison with SOTA SBR methods.
+> Method Structure ↑Texture ↑Color ↑Overall ↑
+> Im2Oil [28] 3.42 3.28 3.55 3.38 CNP [12] 3.65 3.12 3.08 3.31 Paint Transformer [21] 2.98 3.05 2.87 2.97 Learning to Paint [14] 3.51 3.42 3.47 3.47 SNP [32] 2.45 2.38 2.31 2.41
+> Ours 4.32 4.28 4.41 4.35
+> Table 2. User study results (1–5 Likert ratings; higher is better). Our method achieves the best rank across all perceptual criteria.
+
+significantly faster than existing SBR baselines. To assess perceptual quality beyond pixel-level metrics, we conducted a user study with 100 participants, including 60 from a university campus and 40 from an online plat-form; about 30% had formal training in visual arts or de-sign. In each trial, participants were shown a set of source images together with six corresponding oil paintings gen-erated by our method and five baselines, displayed in ran-domized order. They were asked to select the best painting and then marked the regions they found most compelling by drawing bounding boxes, encouraging fine-grained judg-ments. Participants further rated each painting across four perceptual criteria commonly used in non-photorealistic rendering: Structural Fidelity , Textural Realism , Color Ac-curacy , and Overall Preference , each on a 1–5 Likert scale. Table 2 shows that our method ranks highest across all cri-teria, confirming its perceptual superiority. 
+
+4.3. Tunable Aesthetics and Physical Realism 
+
+Beyond reconstruction fidelity, our pipeline offers highly tunable aesthetics and physical realism. Stroke appear-ance is flexibly controlled via the hardness parameter τ :higher values ( τ = 0 .7, evaluated in Sec. 4.2) yield smooth, blended photorealism, whereas lower values ( τ = 0 .1) pro-duce sharp, distinct brush-like strokes that vividly reveal the structural layout. Under this hard-edge setting, Fig. 4 500 1000 3000 8000 
+
+> SBP ALPA Ours
+> Origin
+> Figure 4. Progressive painting process with height-field relighting.
+
+compares our progressive rendering against ALPA [13] and SBP [8], two recent semantic SBR baselines. Beyond achieving superior fidelity, structural coherence, and stroke efficiency, our method transcends standard 2D image gen-eration. By rendering splatting-based height fields with physics-based lighting, we produce a volumetric 3D model with tangible surface relief, maintaining expressive stroke flows and strong structural coherence even in this physically realistic, hard-edge regime. 
+
+4.4. Ablation Study 
+
+4.4.1. Analysis of Iterative Optimization Dynamics 
+
+Unless otherwise specified, all ablation experiments are conducted on the DIV2K dataset. The core of our method lies in the Iterative Optimization Dynamics , for which we set the number of iterations to t = 3 in our default config-uration. In this section, we conduct ablation experiments to evaluate both the effectiveness and efficiency of the itera-tive process. As shown in Table 3, we compare the painting reconstruction quality and runtime cost for t = 1 through 
+
+t = 4 . When t = 1 , our method already achieves highly competitive reconstruction performance in under 50 sec-onds. Increasing the number of iterations further improves reconstruction quality with only a marginal increase in op-timization time, and we find t = 3 to offer the best trade-off between performance and efficiency. The qualitative results in Figure. 5 further validate these observations. With just a single iteration, our approach al-ready produces stroke-based renderings with strong artis-tic style and visual realism. As the number of iterations increases, the generated paintings progressively refine geo-metric precision, stroke smoothness, and color consistency. 
+
+4.4.2. Effectiveness of the Dual Stroke Representation 
+
+We evaluate the impact of our dual stroke representation by comparing four variants: 1) Search-only , where strokes are produced by the structure-aware search but not refined; 2) 
+
+Polyline-only optimization , which optimizes polyline ver-tices without conversion to B´ ezier curves; 3) B´ ezier-only Iter. Stage PSNR ↑ SSIM ↑ LPIPS ↓ Time (s) 
+
+t = 1 Search 20.3 0.48 0.323 35.6 Optimize 28.4 0.82 0.214 47.2 
+
+t = 2 Search 29.6 0.83 0.215 59.0 Optimize 30.4 0.85 0.194 65.5 
+
+t = 3 Search 29.9 0.84 0.197 75.6 Optimize 32.2 0.93 0.076 87.6 
+
+t = 4 Search 31.6 0.89 0.112 89.6 Optimize 32.4 0.93 0.073 95.2        
+
+> Table 3. Iteration-by-iteration analysis. Search Optimize
+> Iter = 1
+> Iter = 2
+> Iter = 3
+> Figure 5. Qualitative visualization of intermediate canvases at it-erations t={1,2,3}.Iteration 1 establishes coarse structural coverage via search, while later iterations progressively refine ge-ometric precision, stroke smoothness, and color consistency.
+
+optimization , where B´ ezier refinement is performed with-out discrete search initialization; 4) Full model , our joint search–optimization pipeline using the dual representation. Due to the prohibitive rendering cost of pure B´ ezier opti-mization, we limit the B´ ezier-only variant to 2,000 strokes, while other variants use 16,000 strokes. As shown in Table 4, search-only reconstruction captures coarse struc-ture but lacks fine detail; polyline-only optimization suffers from unstable gradients; B´ ezier-only optimization improves smoothness but often misses global structure due to the ab-sence of discrete guidance. In contrast, our full model con-sistently achieves the highest fidelity and the lowest per-ceptual error, demonstrating that discrete search provides strong structural priors while B´ ezier curves offer a well-                    
+
+> Variant PSNR ↑SSIM ↑LPIPS ↓Time (s) ↓
+> Search-only 27.8 0.76 0.227 57.2 Polyline-only optimization 31.2 0.89 0.126 31.6
+> B´ ezier-only optimization 30.4 0.86 0.138 3978.4
+> Full model (ours) 32.16 0.93 0.076 87.6
+> Table 4. Ablation on the dual stroke representation.
+
+Variant PSNR ↑ SSIM ↑ LPIPS ↓
+
+Search components 
+
+w/o residual seeding 26.6 0.68 0.263 w/o gradient tracing 26.3 0.71 0.249 
+
+Full search 27.8 0.76 0.227 
+
+Optimization components 
+
+w/o opacity reinit 30.3 0.85 0.158 w/o loss reinit 29.9 0.86 0.152 w/o any reinit 28.1 0.83 0.173 
+
+Full optimization 31.2 0.89 0.126 
+
+> Table 5. Ablation study on search and optimization components.
+
+behaved space for continuous refinement. These results confirm that the dual representation is essential for both ac-curacy and stability. 
+
+4.4.3. Ablation on Search and Optimization Components 
+
+As detailed in Table 5, we ablate key components of our pipeline. For the search module, removing residual-guided seeding fails to target salient regions, while dis-abling gradient-driven tracing yields fragmented stroke ge-ometry. Both are essential for structurally meaningful pro-posals. For the optimization module, disabling opacity reinitialization retains visually negligible strokes, hinder-ing convergence, while removing loss reinitialization fails to correct misaligned geometry. Eliminating both yields the worst performance due to persistently collapsed strokes. Conversely, our adaptive approach selectively resets under-performing strokes, yielding stable refinement and yields optimal fidelity. Ultimately, the search stage provides strong structural priors, and adaptive reinitialization ensures stable gradient-based refinement. 
+
+## 5. Conclusion 
+
+We couple discrete polylines with continuous B´ ezier curves via a differentiable bidirectional mapping, allowing discrete search to establish global structure while gradients refine lo-cal details. Integrated with our splatting-based renderer, this approach enables fast optimization and yields high-fidelity painterly renderings using height-based shading. 
+
+Acknowledgement. This work is supported by the Science and Technology Commission of Shanghai Municipality un-der research grant No. 25ZR1401187. References 
+
+[1] Eirikur Agustsson and Radu Timofte. Ntire 2017 challenge on single image super-resolution: Dataset and study. In The IEEE Conference on Computer Vision and Pattern Recogni-tion (CVPR) Workshops , 2017. 5 [2] William Baxter, Jeremy Wendt, and Ming C Lin. Impasto: A realistic, interactive model for paint. In Proceedings of the 3rd International Symposium on Non-photorealistic Anima-tion and Rendering , pages 45–148, 2004. 2 [3] Ye Chen, Bingbing Ni, Xuanhong Chen, and Zhangli Hu. Editable image geometric abstraction via neural primitive as-sembly. In Proceedings of the IEEE/CVF International Con-ference on Computer Vision , pages 23514–23523, 2023. 2 [4] Ye Chen, Bingbing Ni, Jinfan Liu, Xiaoyang Huang, and Xu-anhong Chen. Towards high-fidelity artistic image vector-ization via texture-encapsulated shape parameterization. In 
+
+Proceedings of the IEEE/CVF Conference on Computer Vi-sion and Pattern Recognition , pages 15877–15886, 2024. [5] Ye Chen, Zhangli Hu, Zhongyin Zhao, Yupeng Zhu, Yue Shi, Yuxuan Xiong, and Bingbing Ni. Easy-editable image vec-torization with multi-layer multi-scale distributed visual fea-ture embedding. In Proceedings of the Computer Vision and Pattern Recognition Conference , pages 23345–23354, 2025. 2[6] Zhili Chen, Byungmoon Kim, Daichi Ito, and Huamin Wang. Wetbrush: Gpu-based 3d painting simulation at the bristle level. ACM Transactions on Graphics (TOG) , 34(6):1–11, 2015. 2 [7] Giliam JP De Carpentier and Rafael Bidarra. Interactive gpu-based procedural heightfield brushes. In Proceedings of the 4th International Conference on Foundations of Digital Games , pages 55–62, 2009. 2 [8] Manuel Ladron de Guevara, Matt Fisher, and Aaron Hertz-mann. Segmentation-based parametric painting. In 2024 IEEE International Conference on Multimedia and Expo Workshops (ICMEW) , pages 1–6. IEEE, 2024. 1, 2, 7 [9] Bruce Gooch, Greg Coombe, and Peter Shirley. Artistic vi-sion: painterly rendering using computer vision techniques. In Proceedings of the 2nd international symposium on Non-photorealistic animation and rendering , pages 83–ff, 2002. 1, 2 [10] David Ha and Douglas Eck. A neural representation of sketch drawings. arXiv preprint arXiv:1704.03477 , 2017. 2[11] Aaron Hertzmann. Painterly rendering with curved brush strokes of multiple sizes. In Proceedings of the 25th an-nual conference on Computer graphics and interactive tech-niques , pages 453–460, 1998. 1, 2 [12] Teng Hu, Ran Yi, Haokun Zhu, Liang Liu, Jinlong Peng, Yabiao Wang, Chengjie Wang, and Lizhuang Ma. Stroke-based neural painting and stylization with dynamically pre-dicted painting region. In Proceedings of the 31st ACM International Conference on Multimedia , pages 7470–7480, 2023. 2, 5, 7 [13] Zhangli Hu, Ye Chen, Zhongyin Zhao, Jinfan Liu, Bilian Ke, and Bingbing Ni. Towards artist-like painting agents with multi-granularity semantic alignment. In Proceedings of the 32nd ACM International Conference on Multimedia , pages 10191–10199, 2024. 1, 2, 7 [14] Zhewei Huang, Wen Heng, and Shuchang Zhou. Learning to paint with model-based deep reinforcement learning. In 
+
+Proceedings of the IEEE/CVF international conference on computer vision , pages 8709–8718, 2019. 2, 5, 7 [15] Biao Jia, Jonathan Brandt, Radom´ ır Mech, Byungmoon Kim, and Dinesh Manocha. Lpaintb: Learning to paint from self-supervision. arXiv preprint arXiv:1906.06841 , 2019. 2 [16] Bernhard Kerbl, Georgios Kopanas, Thomas Leimk¨ uhler, and George Drettakis. 3d gaussian splatting for real-time radiance field rendering. ACM Trans. Graph. , 42(4):139–1, 2023. 4 [17] Raph Levien and Arman Uguray. Gpu-friendly stroke ex-pansion. Proceedings of the ACM on Computer Graphics and Interactive Techniques , 7(3):1–29, 2024. 2 [18] Tzu-Mao Li, Michal Luk´ aˇ c, Micha¨ el Gharbi, and Jonathan Ragan-Kelley. Differentiable vector graphics rasterization for editing and learning. ACM Transactions on Graphics (TOG) , 39(6):1–15, 2020. 1, 2 [19] Timothy P Lillicrap, Jonathan J Hunt, Alexander Pritzel, Nicolas Heess, Tom Erez, Yuval Tassa, David Silver, and Daan Wierstra. Continuous control with deep reinforcement learning. arXiv preprint arXiv:1509.02971 , 2015. 2 [20] Peter Litwinowicz. Processing images and video for an im-pressionist effect. In Proceedings of the 24th annual con-ference on Computer graphics and interactive techniques ,pages 407–414, 1997. 1, 2 [21] Songhua Liu, Tianwei Lin, Dongliang He, Fu Li, Ruifeng Deng, Xin Li, Errui Ding, and Hao Wang. Paint transformer: Feed forward neural painting with stroke prediction. In Pro-ceedings of the IEEE/CVF international conference on com-puter vision , pages 6598–6607, 2021. 2, 5, 7 [22] Daniela Mihai and Jonathon Hare. Differentiable drawing and sketching. arXiv preprint arXiv:2103.16194 , 2021. 1, 2 [23] Jeripothula Prudviraj and Vikram Jamwal. Vectorized region based brush strokes for artistic rendering. arXiv preprint arXiv:2506.09969 , 2025. 2 [24] Tomoya Sawada and Marie Katsurai. Mambapainter: Neural stroke-based rendering in a single step. In SIGGRAPH Asia 2024 Posters , pages 1–2. 2024. 2 [25] Jaskirat Singh, Cameron Smith, Jose Echevarria, and Liang Zheng. Intelli-paint: Towards developing more human-intelligible painting agents. In European conference on com-puter vision , pages 685–701. Springer, 2022. 2 [26] Yizhe Tang, Yue Wang, Teng Hu, Ran Yi, Xin Tan, Lizhuang Ma, Yu-Kun Lai, and Paul L Rosin. Attentionpainter: an efficient and adaptive stroke predictor for scene painting. 
+
+IEEE Transactions on Visualization and Computer Graph-ics , 2025. 2 [27] Wayne Tiller and Eric G Hanson. Offsets of two-dimensional profiles. IEEE Computer Graphics and Applications , 4(9): 36–46, 2007. 2 [28] Zhengyan Tong, Xiaohang Wang, Shengchao Yuan, Xuan-hong Chen, Junjie Wang, and Xiangzhong Fang. Im2oil: Stroke-based oil painting rendering with linearly controllable fineness via adaptive sampling. In Proceedings of the 30th ACM international conference on multimedia , pages 1035– 1046, 2022. 1, 2, 5, 7 [29] Greg Turk and David Banks. Image-guided streamline place-ment. In Proceedings of the 23rd annual conference on Com-puter graphics and interactive techniques , pages 453–460, 1996. 1, 2 [30] Lihe Yang, Bingyi Kang, Zilong Huang, Zhen Zhao, Xiao-gang Xu, Jiashi Feng, and Hengshuang Zhao. Depth any-thing v2. Advances in Neural Information Processing Sys-tems , 37:21875–21911, 2024. 5 [31] Kun Zeng, Mingtian Zhao, Caiming Xiong, and Song Chun Zhu. From image parsing to painterly rendering. ACM Trans. Graph. , 29(1):2–1, 2009. 1, 2 [32] Zhengxia Zou, Tianyang Shi, Shuang Qiu, Yi Yuan, and Zhenwei Shi. Stylized neural painting. In Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition , pages 15689–15698, 2021. 1, 2, 5, 7 Differentiable Stroke Planning with Dual Parameterization for Efficient and High-Fidelity Painting Creation 
+
+# Supplementary Material 
+
+## 6. Physically-Grounded Height Field Con-struction per Stroke 
+
+To achieve physically plausible rendering, our method in-corporates a height field reconstruction loss (Sec. 3.4). We precompute a reference height field  Hgt  that encodes both global depth relations and local surface undulations. During rendering, we splat paint strokes to generate the color field 
+
+Irender  and, concurrently, form a height field  Hrender  from the per-stroke height parameters  hi at negligible computa-tional overhead. We then minimize the MSE loss between 
+
+Hrender  and  Hgt , formulated as: 
+
+Lheight = ∥Hrender − Hgt ∥2, (10) 
+
+which guides each  hi toward a physically interpretable sur-face elevation. The target height field  Hgt  is constructed following a structure–texture decomposition principle, where depth supplies coarse ordering of objects in the scene and the im-age texture contributes high-frequency surface relief (see Fig. 6). We first obtain a depth-based height field  Hdepth 
+
+from a monocular depth estimation model (e.g., Depth Anything V2). In parallel, we derive a texture-based height field  Htexture  by converting the input image  Igt  to the CIELAB color space and extracting the high-frequency component from its luminance channel. We fuse these two complementary components into the final  Hgt :
+
+Hgt = λhHdepth + (1 − λh)Htexture , (11) 
+
+where λh is a blending weight, which is typically set to 0.6. Depth Model  
+
+> 𝐀 𝐀𱐀𝐀𱠀𝐀
+> 𝐀 𱠀𱐀𝐀𱠀𝐀𶐀𱐀
+> Fusion
+> 𝐀 𝐀𱠀 𝐀 𝐀𱠀 Texture
+> Enhancement
+
+Figure 6. Overview of our height field construction pipeline. We fuse a depth-based height field, representing global scene struc-ture, with a texture-based height field, capturing local surface de-tails, to generate the final physically-plausible height field  Hgt .
+
+## 7. Lighting for Painterly Rendering 
+
+To reproduce the tactile character of real oil paintings, we construct a height-field representation that models both the canvas substrate and the impasto accumulation of paint (see Fig. 7). For each stroke, we define a per-pixel height con-tribution  hi(x), which is procedurally perturbed to em-ulate bristle-induced ridges and grooves. These stroke-level height fields are composited with the canvas micro-geometry using the same front-to-back alpha blending mechanism described in Sec. 3.4, ensuring that height ac-cumulation follows the identical ordering and transparency behavior as color splatting. The canvas micro-geometry is synthesized procedurally using composite noise. We construct a base albedo field 
+
+C(x) = C0 + ∆ C
+
+h
+
+fbm( x)+ wweave sin(20 x·dx) sin(20 x·dy )
+
+i
+
+, (12) where  C0 = (0 .8, 0.75 , 0.7) , ∆C = 0 .3, and  dx ⊥ dy
+
+specify the weave directions. Here  fbm( ·) denotes frac-tional Brownian motion noise, which introduces multi-scale stochastic variation typical in procedural texture synthesis. We find that  wweave = 0 .45  produces a visually plausible balance between FBM noise and weave detail across all canvas resolutions. The canvas height  hc(x) is derived from the luminance of  C(x), producing fabric-like micro-relief. Each stroke’s height is enhanced through a procedural impasto model. The perturbed height map is defined as 
+
+˜hi(x) = hi(x) + A(ri)
+
+> 2
+
+X
+
+> k=1
+
+wk sin 
+
+
+
+κk f0r−1 
+
+> i
+
+li(x) + ϕk
+
+
+
+, (13) 
+
+where  ri is the stroke radius,  li(x) the coordinate along the stroke direction,  A(ri) = 0.1ri controls amplitude, 
+
+f0 = 0 .5 is a base frequency,  (w1, w 2) = (0 .65 , 0.35)  are harmonic weights,  (κ1, κ 2) = (1 .0, 1.8)  specify frequency ratios, and  ϕk are random per-stroke phases to avoid rep-etition. This formulation generates layered ridge patterns characteristic of real brushwork. To couple paint and canvas geometry, we apply thickness-aware modulation: 
+
+ˆhi(x) = ˜hi(x)
+
+h
+
+1 +  1 − γ(˜hi(x))  hc(x)
+
+i
+
+, (14) 
+
+γ(t) = α min( t/h t, 1) , (15) using  α = 0 .8 and  ht = 40 . Thin strokes inherit more canvas-induced roughness through  hc(x), while thick im-pasto strokes ( γ → 1) gradually override the canvas texture. Output Input Input Output Figure 7. Relighting results using our height field representation. Our rendered result with canvas texture and impasto effects under directional lighting. The height field captures both macroscopic paint accumulation and microscopic canvas weave. The final height field  H(x) is obtained by splatting the modulated stroke heights  ˆhi(x) using the same front-to-back compositing as color (Eq. 9), with height values re-placing the per-segment color. This shared compositing mechanism ensures consistent ordering and enables height accumulation without additional computational cost. Surface normals are computed from the resulting height field via spatial gradients:     
+
+> n(x) = normalize  [−s∇H(x),1] ⊤,(16)
+
+where  s is a height-to-slope scaling factor converting pixel-level height variation into shading-consistent surface slopes. Shading is performed using a GGX microfacet re-flectance model:       
+
+> L=ρπ Ld+D F G
+> 4( n·v)( n·l)Ls,(17)
+
+with roughness  αr = 0 .3, Fresnel base reflectance  F0 =0.08  (typical for non-metallic pigments), and lighting inten-sities  (Ld, L s) = (1 .0, 0.8) . This reflectance model accen-tuates both canvas microstructure and impasto depth under directional illumination. 
+
+## 8. Theoretical Analysis of the B´ ezier Interme-diate Representation 
+
+In our stroke-based rendering (SBR) framework, we param-eterize strokes using a set of vertices θ. Optimizing θ di-rectly in the pixel domain is ill-posed and prone to high-frequency noise. To address this, we employ a B´ ezier curve as a differentiable geometric proxy. This process can be formally understood as a variant of Projected Gradient De-scent , where the optimization trajectory is constrained to the manifold of smooth cubic polynomials. Without loss of generality, we present the analysis for a single cubic B´ ezier segment. In practice, complex strokes are modeled as piecewise chains of such segments (splines), where this analysis applies locally to each segment. 
+
+8.1. The B´ ezier Proxy as a Projection Operator 
+
+Let a stroke segment be represented by N vertices P ∈
+
+RN ×d, flattened into a parameter vector θ = vec( P ) ∈
+
+RN d . We define a differentiable rendering loss L(θ).The projection begins by fitting a cubic B´ ezier curve to the vertices. We assign scalar parameters {ti}N −1 
+
+> i=0
+
+based on cumulative chord length and construct the Bernstein ba-sis matrix B ∈ RN ×4. The control points C ∈ R4×d are obtained via least-squares fitting:   
+
+> C= ( B⊤B)−1B⊤P. (18)
+
+To express this rigorously in vector form, we utilize the Kronecker product ⊗. Let c = vec( C) ∈ R4d. The fitting operation is a linear projection: 
+
+c = F θ, where F =  (B⊤B)−1B⊤ ⊗ Id. (19) Here, Id is the d × d identity matrix, ensuring the projection applies independently to each spatial dimension. Following projection, we define a reconstruction oper-ator S that samples the curve at fixed intervals to pro-duce a refined polyline ˜θ. The composite operator M =
+
+SF projects the arbitrary vertex vector θ onto the B´ ezier subspace. The optimization objective becomes ˜L(θ) =
+
+L(M θ ).
+
+8.2. Decoupling Normal and Tangential Flow 
+
+A critical aspect of our formulation is the handling of the parameterization {ti}. Since ti depends on the vertex posi-tions P , the matrix M is technically a function of θ. By the chain rule, the exact gradient is:           
+
+> ∇θ˜L=M⊤∇˜θL+ ( ∇θM)⊤∇˜θL. (20)
+
+However, we explicitly discard the second term (∇θ M )⊤.This is not merely a computational simplification, but a deliberate design choice to decouple geometric deforma-tion from parameterization drift . In geometric optimiza-tion, the gradient of the loss typically contains two com-ponents: a normal component that changes the shape, and a tangential component that merely slides vertices along the curve without altering geometry. The term (∇θ M )⊤
+
+couples these effects. By treating the parameterization {ti}
+
+(and thus M ) as locally frozen, we enforce a robust induc-tive bias: the optimizer focuses solely on minimizing the rendering loss via shape deformation, preventing patholog-ical vertex clustering or tangential drift. 
+
+8.3. Spectral Analysis: Subspace Constraint 
+
+The smoothing effect of our method stems from the rank-deficient nature of the projection F . The matrix B maps the 4-dimensional control point space to the N -dimensional vertex space. Consider the Singular Value Decomposition (SVD) of the basis matrix B. Since B has at most rank 4, the projection operator F has a null space of dimension 
+
+N − 4 (assuming N > 4). This implies that our proxy acts as a strict low-rank ge-ometric filter . Any high-frequency variation in the vertex gradient ∇θ L that falls into this null space is mathemati-cally eliminated during the backpropagation step ∇θ ˜L ≈
+
+F ⊤(. . . ). Unlike a standard low-pass filter which atten-uates frequencies based on a cutoff, the B´ ezier projection fundamentally restricts the degrees of freedom of the solu-tion to the cubic polynomial subspace. This improves the condition number of the optimization problem by removing high-frequency noise directions from the loss landscape. 
+
+8.4. Implementation Details and Robustness 
+
+Our fitting procedure adapts to the stroke complexity to ensure numerical stability. For strokes with sparse ver-tices ( N ≤ degree + 1 ), global least-squares fitting is ill-conditioned. In these cases, we construct a Catmull–Rom spline through the vertices and convert each segment into an equivalent cubic B´ ezier curve to ensure C1 continuity. For strokes with sufficient vertices ( N > degree + 1 ), we perform a global least-squares fit of an n-th degree B´ ezier curve. We solve the linear system Bc ≈ P using a normal-ized chord-length parameterization. Throughout optimiza-tion, we monitor the symmetric Chamfer distance between the polyline and the B´ ezier proxy to ensure the representa-tion remains faithful. 0.0 0.2 0.4 0.6 0.8 1.0 
+
+> x (normalized)
+> 0.0
+> 0.2
+> 0.4
+> 0.6
+> 0.8
+> 1.0
+> y
+> Target
+> Init
+> Direct
+> Bézier
+
+Figure 8. Trajectory comparison. Direct optimization (orange) overfits to noise. B´ ezier proxy (magenta) projects the solution onto the cubic polynomial subspace. 0.0 0.1 0.2 0.3 0.4 0.5  
+
+> Normalized Frequency
+> 10 1
+> 10 0
+> Spectral Magnitude (log)
+> D:90%
+> B:90%
+> Direct spectrum
+> Bézier spectrum
+> Direct energy
+> Bézier energy
+> 0
+> 20
+> 40
+> 60
+> 80
+> 100
+> Cumulative Energy (%)
+
+Figure 9. Gradient Spectrum. Spectral analysis confirms that the proxy operator M ⊤ nullifies gradient components associated with high-frequency spatial variation. 
+
+To empirically demonstrate the smoothing and regular-izing effect of the B´ ezier proxy, we conduct a toy exper-iment. We define a smooth ground-truth stroke and add i.i.d. Gaussian noise ( N (0 , 0.05 2)) to its vertices, creating a noisy target. We then initialize a stroke and optimize its control points for 200 iterations (learning rate 0.3) to fit this noisy target, comparing two methods: (i) direct optimiza-tion of the vertices, and (ii) optimization through our B´ ezier proxy. As shown in Fig. 8, direct optimization quickly overfits to the noise, producing a visually jagged stroke. The B´ ezier proxy, however, ignores the high-frequency jitter and recov-ers a smooth curve that faithfully captures the underlying structure of the clean target. The gradient spectrum anal-ysis (Fig. 9) confirms our theoretical intuition: the B´ ezier proxy significantly dampens high-frequency components of the gradient update, thus stabilizing the optimization and promoting structurally sound results.

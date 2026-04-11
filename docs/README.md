@@ -6,69 +6,69 @@
 </div>
 
 ## 每次日报
-- 最新运行日期：2026-04-10
-- 运行时间：<span class="dpr-runtime" data-beijing="04-11 03:55 (UTC+8)" data-utc="04-10 19:55 UTC">04-11 03:55 (UTC+8) / 04-10 19:55 UTC</span>
+- 最新运行日期：2026-04-11
+- 运行时间：<span class="dpr-runtime" data-beijing="04-12 04:26 (UTC+8)" data-utc="04-11 20:26 UTC">04-12 04:26 (UTC+8) / 04-11 20:26 UTC</span>
 - 运行状态：成功
 - 本次总论文数：17
 - 精读区：6
 - 速读区：11
 
 ### 今日简报（AI）
-今日精读6篇、速读11篇AI前沿论文，聚焦创新研发、隐私保护与模型训练优化。AI对研发创新的重组影响与用户提示的字符级差分隐私保护值得关注。关注AI如何促进跨领域创新，同时留意个人数据保护技术的最新进展。
-- 详情：[/202604/10/README](/202604/10/README)
+今日精研17篇AI论文，聚焦人格建模与变分神经元等前沿方向。EpiPersona的人格投影方法与Transformer变分神经元研究最具突破性。普通读者可关注人类对齐语言模型进展，这将改变AI助手交互体验。
+- 详情：[/202604/11/README](/202604/11/README)
 
 ### 精读区论文标签
-1. [Bridging Distant Ideas: the Impact of AI on R&D and Recombinant Innovation](/202604/10/2604.02189v1-bridging-distant-ideas-the-impact-of-ai-on-rd-and-recombinant-innovation)  
-   标签：评分：9.0/10、query:dl-cv
-   evidence：AI对创新的影响
-2. [Protecting User Prompts Via Character-Level Differential Privacy](/202604/10/2603.26032v1-protecting-user-prompts-via-character-level-differential-privacy)  
+1. [EpiPersona: Persona Projection and Episode Coupling for Pluralistic Preference Modeling](/202604/11/2603.28197v1-epipersona-persona-projection-and-episode-coupling-for-pluralistic-preference-modeling)  
    标签：评分：8.0/10、query:dl-cv
-   evidence：使用差分隐私保护大语言模型用户提示
-3. [Can Large Language Models Self-Correct in Medical Question Answering? An Exploratory Study](/202604/10/2604.00261v1-can-large-language-models-self-correct-in-medical-question-answering-an-exploratory-study)  
+   evidence：大语言模型偏好适应框架
+2. [Variational Neurons in Transformers for Language Modeling](/202604/11/2603.28219v1-variational-neurons-in-transformers-for-language-modeling)  
    标签：评分：8.0/10、query:dl-cv
-   evidence：医疗问答中的LLM自我纠正
-4. [VOSR: A Vision-Only Generative Model for Image Super-Resolution](/202604/10/2604.03225v1-vosr-a-vision-only-generative-model-for-image-super-resolution)  
+   evidence：Transformer前馈计算中的变分神经元
+3. [Compressing Transformer Language Models via Matrix Product Operator Decomposition: A Case Study on PicoGPT](/202604/11/2603.28534v1-compressing-transformer-language-models-via-matrix-product-operator-decomposition-a-case-study-on-picogpt)  
    标签：评分：8.0/10、query:dl-cv
-   evidence：仅视觉的图像修复生成模型
-5. [Your Pre-trained Diffusion Model Secretly Knows Restoration](/202604/10/2604.04924v1-your-pre-trained-diffusion-model-secretly-knows-restoration)  
+   evidence：通过矩阵算子分解压缩Transformer模型
+4. [GA-GS: Generation-Assisted Gaussian Splatting for Static Scene Reconstruction](/202604/11/2604.04331v1-ga-gs-generation-assisted-gaussian-splatting-for-static-scene-reconstruction)  
    标签：评分：8.0/10、query:dl-cv
-   evidence：预训练扩散模型用于修复
-6. [This Treatment Works, Right? Evaluating LLM Sensitivity to Patient Question Framing in Medical QA](/202604/10/2604.05051v1-this-treatment-works-right-evaluating-llm-sensitivity-to-patient-question-framing-in-medical-qa)  
+   evidence：扩散模型修复遮挡区域
+5. [Single-Stage Signal Attenuation Diffusion Model for Low-Light Image Enhancement and Denoising](/202604/11/2604.05727v1-single-stage-signal-attenuation-diffusion-model-for-low-light-image-enhancement-and-denoising)  
    标签：评分：8.0/10、query:dl-cv
-   evidence：LLM响应一致性评估
+   evidence：图像修复扩散
+6. [DiffHDR: Re-Exposing LDR Videos with Video Diffusion Models](/202604/11/2604.06161v1-diffhdr-re-exposing-ldr-videos-with-video-diffusion-models)  
+   标签：评分：8.0/10、query:dl-cv
+   evidence：基于视频扩散的LDR到HDR转换
 
 ### 速读区论文标签
-1. [Retrieval-Augmented Generation Based Nurse Observation Extraction](/202604/10/2603.26046v1-retrieval-augmented-generation-based-nurse-observation-extraction)  
+1. [Concept Training for Human-Aligned Language Models](/202604/11/2603.29123v1-concept-training-for-human-aligned-language-models)  
    标签：评分：8.0/10、query:dl-cv
-   evidence：检索增强生成用于医疗观察提取
-2. [InstaVSR: Taming Diffusion for Efficient and Temporally Consistent Video Super-Resolution](/202604/10/2603.26134v1-instavsr-taming-diffusion-for-efficient-and-temporally-consistent-video-super-resolution)  
+   evidence：面向人类对齐的语言模型概念监督
+2. [Distilling Human-Aligned Privacy Sensitivity Assessment from Large Language Models](/202604/11/2603.29497v1-distilling-human-aligned-privacy-sensitivity-assessment-from-large-language-models)  
    标签：评分：8.0/10、query:dl-cv
-   evidence：基于扩散的视频超分辨率
-3. [DataFlex: A Unified Framework for Data-Centric Dynamic Training of Large Language Models](/202604/10/2603.26164v1-dataflex-a-unified-framework-for-data-centric-dynamic-training-of-large-language-models)  
+   evidence：大模型蒸馏用于隐私评估
+3. [Training-Free Dynamic Upcycling of Expert Language Models](/202604/11/2603.29765v1-training-free-dynamic-upcycling-of-expert-language-models)  
    标签：评分：8.0/10、query:dl-cv
-   evidence：大语言模型数据训练统一框架
-4. [MemBoost: A Memory-Boosted Framework for Cost-Aware LLM Inference](/202604/10/2603.26557v1-memboost-a-memory-boosted-framework-for-cost-aware-llm-inference)  
+   evidence：大模型领域专业知识增强
+4. [SNEAK: Evaluating Strategic Communication and Information Leakage in Large Language Models](/202604/11/2603.29846v1-sneak-evaluating-strategic-communication-and-information-leakage-in-large-language-models)  
    标签：评分：8.0/10、query:dl-cv
-   evidence：用于成本感知LLM推理的内存增强框架
-5. [IDEA2: Expert-in-the-loop competency question elicitation for collaborative ontology engineering](/202604/10/2604.01344v1-idea2-expert-in-the-loop-competency-question-elicitation-for-collaborative-ontology-engineering)  
+   evidence：大模型战略通信基准
+5. [IndustryCode: A Benchmark for Industry Code Generation](/202604/11/2604.02729v1-industrycode-a-benchmark-for-industry-code-generation)  
    标签：评分：7.0/10、query:dl-cv
-   evidence：在协作本体工程中集成大语言模型
-6. [ReFlow: Self-correction Motion Learning for Dynamic Scene Reconstruction](/202604/10/2604.01561v1-reflow-self-correction-motion-learning-for-dynamic-scene-reconstruction)  
+   evidence：工业代码生成的LLM基准
+6. [BadgeX: IoT-Enhanced Wearable Analytics Meets LLMs for Collaborative Learning](/202604/11/2604.04093v1-badgex-iot-enhanced-wearable-analytics-meets-llms-for-collaborative-learning)  
    标签：评分：7.0/10、query:dl-cv
-   evidence：动态场景重建框架
-7. [Analysis of LLM Performance on AWS Bedrock: Receipt-item Categorisation Case Study](/202604/10/2604.01615v1-analysis-of-llm-performance-on-aws-bedrock-receipt-item-categorisation-case-study)  
+   evidence：创新的IoT-LLM集成用于学习分析
+7. [PATHFINDER: Multi-objective discovery in structural and spectral spaces](/202604/11/2604.04194v1-pathfinder-multi-objective-discovery-in-structural-and-spectral-spaces)  
    标签：评分：7.0/10、query:dl-cv
-   evidence：LLM性能评估
-8. [Do We Need Bigger Models for Science? Task-Aware Retrieval with Small Language Models](/202604/10/2604.01965v1-do-we-need-bigger-models-for-science-task-aware-retrieval-with-small-language-models)  
+   evidence：新颖性驱动的探索框架
+8. [Conversational Control with Ontologies for Large Language Models: A Lightweight Framework for Constrained Generation](/202604/11/2604.04450v1-conversational-control-with-ontologies-for-large-language-models-a-lightweight-framework-for-constrained-generation)  
    标签：评分：7.0/10、query:dl-cv
-   evidence：使用小语言模型的任务感知检索
-9. [PRISM: Probability Reallocation with In-Span Masking for Knowledge-Sensitive Alignment](/202604/10/2604.01682v1-prism-probability-reallocation-with-in-span-masking-for-knowledge-sensitive-alignment)  
+   evidence：LLM输出控制的新框架
+9. [Overcoming the "Impracticality" of RAG: Proposing a Real-World Benchmark and Multi-Dimensional Diagnostic Framework](/202604/11/2604.02640v1-overcoming-the-impracticality-of-rag-proposing-a-real-world-benchmark-and-multi-dimensional-diagnostic-framework)  
    标签：评分：6.0/10、query:dl-cv
-   evidence：语言模型的知识敏感对齐
-10. [AI in Insurance: Adaptive Questionnaires for Improved Risk Profiling](/202604/10/2604.02034v1-ai-in-insurance-adaptive-questionnaires-for-improved-risk-profiling)  
+   evidence：RAG评估框架
+10. [Differentiable Stroke Planning with Dual Parameterization for Efficient and High-Fidelity Painting Creation](/202604/11/2604.02752v1-differentiable-stroke-planning-with-dual-parameterization-for-efficient-and-high-fidelity-painting-creation)  
    标签：评分：6.0/10、query:dl-cv
-   evidence：创新性LLM保险应用
-11. [Answering the Wrong Question: Reasoning Trace Inversion for Abstention in LLMs](/202604/10/2604.02230v1-answering-the-wrong-question-reasoning-trace-inversion-for-abstention-in-llms)  
+   evidence：用于笔触渲染的双参数化
+11. [Information-Regularized Constrained Inversion for Stable Avatar Editing from Sparse Supervision](/202604/11/2604.02883v1-information-regularized-constrained-inversion-for-stable-avatar-editing-from-sparse-supervision)  
    标签：评分：6.0/10、query:dl-cv
-   evidence：LLM推理轨迹反转
+   evidence：稀疏监督下的头像编辑
 

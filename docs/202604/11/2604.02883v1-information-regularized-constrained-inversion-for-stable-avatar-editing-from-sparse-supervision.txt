@@ -1,0 +1,947 @@
+Title: Information-Regularized Constrained Inversion for Stable Avatar Editing from Sparse Supervision
+
+URL Source: https://arxiv.org/pdf/2604.02883v1
+
+Published Time: Mon, 06 Apr 2026 00:36:41 GMT
+
+Number of Pages: 14
+
+Markdown Content:
+# Information-Regularized Constrained Inversion for Stable Avatar Editing from Sparse Supervision 
+
+Zhenxiao Liang 1 Qixing Huang 1
+
+# Abstract 
+
+Editing animatable human avatars typically re-lies on sparse supervision—often a few edited keyframes—yet naively fitting a reconstructed avatar to these edits frequently causes identity leakage and pose-dependent temporal flicker. We argue that these failures are best understood as an ill-conditioned inversion: the available edited constraints do not sufficiently determine the la-tent directions responsible for the intended edit. We propose a conditioning-guided edited recon-struction framework that performs editing as a constrained inversion in a structured avatar latent space, restricting updates to a low-dimensional, part-specific edit subspace to prevent unintended identity changes. Crucially, we design the edit-ing constraints during inversion by optimizing a conditioning objective derived from a local linearization of the full decoding-and-rendering pipeline, yielding an edit-subspace information matrix whose spectrum predicts stability and drives frame reweighting / keyframe activation. The resulting method operates on small subspace matrices and can be implemented efficiently (e.g., via Hessian-vector products), and improves stabil-ity under limited edited supervision. 
+
+# 1 Introduction 
+
+Reconstructing high-quality animatable 3D human avatars from sparse observations, such as a short monocular clip or a small set of images, is an increasingly popular task in visual computing. Recent progress is driven by explicit, dif-ferentiable representations—notably 3D Gaussian Splatting (3DGS) (Kerbl et al., 2023)—combined with pose-driven de-formation, enabling photo-realistic rendering and animation. A growing set of work reconstructs animatable human Gaus-sians from monocular or sparse-view videos by learning a canonical representation together with pose-conditioned 
+
+> 1
+
+Department of Computer Science, University of Texas at Austin. 
+
+Preprint. April 6, 2026. 
+
+Figure 1. Task Overview. Given a source monocular video (1st row) and sparse edited keyframes (2nd row), our method produces temporally stable avatar edits that preserve identity, along with per-keyframe importance weights (3rd row). The edited avatar supports downstream applications such as novel view synthesis and animation (4th row). 
+
+deformation (Qian et al., 2024b; Hu et al., 2024; Moreau et al., 2024; Li et al., 2024; Jiang et al., 2023a). Many pipelines further exploit structured canonical spaces an-chored to a parametric body model (e.g., SMPL) (Loper et al., 2015) to improve pose generalization and local con-trol, and some incorporate learned priors to make inversion and reconstruction robust under sparse and inconsistent ob-servations (B ¨uhler et al., 2025; Dong et al., 2025; Wang et al., 2025). 1
+
+> arXiv:2604.02883v1 [cs.CV] 3 Apr 2026 Information-Regularized Constrained Inversion for Stable Avatar Editing from Sparse Supervision
+
+Although reconstruction has advanced rapidly, practical ap-plications frequently call for a desired property: edited re-construction . Here, a user specifies an appearance edit (e.g., garment or shoe replacement) on only a few keyframes, and the system must propagate the edit consistently to the entire pose sequence without distorting identity or intro-ducing temporal flicker. A common approach is to apply strong 2D diffusion-based editors to obtain edited images and then refit a 3D representation to match them, often with additional multi-view consistency constraints (Wang et al., 2024; Palandra et al., 2024; Chen et al., 2024b; Haque et al., 2023; Dong & Wang, 2023). Interactive pipelines may treat key views as a user control handle to steer editing strength and preference (Wen et al., 2025). However, in the sparse-keyframe regime, naively fitting a reconstructed avatar to a small number of edited frames routinely exhibits two failure modes: (i) identity leakage , where optimization drifts beyond the intended edit region and alters identity-defining attributes; and (ii) pose/time inconsistency , where the edit looks plausible on edited keyframes but degrades under pose change, producing view-dependent artifacts and frame-to-frame flicker. We argue that these failures are not merely implementation issues, but symptoms of an ill-conditioned inversion . Edited reconstruction typically starts from a base identity latent 
+
+zbase obtained by inversion, and editing updates this latent to satisfy sparse edited constraints. With only a few edited keyframes, many latent directions can explain the super-vised frames equally well while behaving very differently under unseen poses, making the inverse problem sensitive to noise, mask imperfections, and modeling mismatch. This motivates the desired goal in which edited reconstruction should be treated as a constrained inversion problem whose stability is governed by inversion conditioning; crucially, the editing constraints themselves should be designed dur-ing inversion. 
+
+Inversion conditioning for edited reconstruction. We propose a framework that performs editing as a constrained inversion in a structured avatar latent space. First, we restrict edits to a low-dimensional, part-specific edit subspace (e.g., garments or shoes), which reduces degrees of freedom and limits leakage. Second, rather than treating keyframes as a heuristic pre-processing choice, we associate each candi-date frame with a continuous constraint weight and optimize these weights jointly with the edit code. Our key tool is a conditioning objective derived from a local linearization of the full decoding-and-rendering pipeline, yielding an 
+
+edit-subspace information matrix whose spectrum predicts inversion stability. By maximizing a spectral condition-ing criterion (e.g., log-determinant) inside the inversion loop, the method reallocates supervision toward the most stabilizing constraints; in this view, “keyframes” emerge 
+
+as active constraints induced by inversion-time constraint design. Although information-theoretic criteria are well-established for view selection and data acquisition in re-construction (Pan et al., 2022; Jiang et al., 2023b; Wilson et al., 2025), our use is different: we do not choose cam-era views to improve reconstruction coverage, but allocate 
+
+sparse edited supervision to stabilize an edit-code inversion system. A practical advantage of our formulation is efficiency. All conditioning quantities live in the low-dimensional edit sub-space, so optimization operates on small r × r matrices (with r ≪ d) where d is the latent dimension. The re-quired second-order regularization terms can be computed without constructing high-dimensional Jacobians, e.g., via Hessian-vector products, and cached per sequence. More-over, the edit subspace can be learned from a modest number of paired original/edited assets, enabling data-efficient part control without training a massive, universally general 3D editing model. In summary, we make the following contributions: • Edited reconstruction as stable constrained inversion. 
+
+We formulate sparse-keyframe avatar editing after recon-struction as a constrained inversion in a structured latent space rendered by a differentiable avatar pipeline. • Inversion-time constraint design via conditioning. We introduce an information-regularized optimization that jointly learns an edit code and per-frame constraint weights by optimizing the spectral conditioning of an edit-subspace information matrix, improving stability under sparse edited supervision. • Efficient, data-light realization. Our conditioning anal-ysis operates on small subspace matrices and can be im-plemented efficiently (e.g., via Hessian-vector products and caching); the edit subspace can be learned from lim-ited paired edits, reducing the need for heavy training resources. 
+
+# 2 Related Work 
+
+Animatable Human Avatars with Gaussian Splatting. 3D Gaussian Splatting (3DGS) provides an explicit, differen-tiable representation that enables high-fidelity rendering at interactive rates (Kerbl et al., 2023). Building on 3DGS, sev-eral methods reconstruct animatable humans from monoc-ular or multi-view videos by learning canonical Gaussians together with pose-driven deformation fields (Qian et al., 2024b; Hu et al., 2024; Moreau et al., 2024; Li et al., 2024; Jiang et al., 2023a). These methods primarily target re-construction (novel view/novel pose synthesis) and do not address the unique instability that arises when only a few frames receive explicit user edits. Recent pipelines increasingly incorporate structured canoni-cal spaces (e.g., UV-aligned maps anchored to a parametric body model such as SMPL) to improve pose generalization 2Information-Regularized Constrained Inversion for Stable Avatar Editing from Sparse Supervision 
+
+and enable local control (Loper et al., 2015; B ¨uhler et al., 2025). MoGA (Dong et al., 2025) further highlights the value of a generative avatar prior and formulates monocular reconstruction as inversion into a learned latent space. Simi-larly, TeRA (Wang et al., 2025) studies text-guided avatar generation in a structured latent diffusion space. In contrast, our goal is edited reconstruction : given a base reconstruc-tion/inversion, we propagate sparse keyframe edits across the pose sequence while preserving identity and suppress-ing flicker, without training a large, universally general 3D editing model. 
+
+Garment-Aware and Layered Avatar Representations. Aparallel line of work explicitly disentangles garments from the underlying body to support try-on and garment-level editing. Layered Gaussian avatars separate clothing and body into different layers to improve tracking and facilitate clothing transfer (Lin et al., 2024; Gong et al., 2024). GGA-vatar reconstructs garment-separated 3DGS avatars from monocular video through template-based separation (Chen, 2024), while Disco4D models clothing assets as Gaussians on an SMPL-X body for disentangled 4D human generation and animation (Pang et al., 2024). Gaussian-based virtual try-on further integrates 2D VTON signals with 3DGS edit-ing pipelines to enable garment replacement (Chen et al., 2024a; Cao et al., 2024). We do not claim novelty in gar-ment separation or try-on per se . Instead, our contribution is orthogonal: we study how to impose and allocate sparse edited supervision so that a reconstruction-first avatar can be edited stably under new poses/time, even when the user only edits a few frames. 
+
+Multi-View / Video-Consistent 3D Editing. A common paradigm for 3D editing is to obtain edited images using powerful 2D diffusion editors, then fit a 3D representation to match these edited views while maintaining cross-view consistency. For 3DGS, GaussianEditor (Wang et al., 2024) and GSEdit (Palandra et al., 2024) optimize Gaussians un-der diffusion guidance for text-driven edits, and EditSplat improves view-consistency via multi-view fusion guidance and attention-guided trimming (Lee et al., 2025). DGE ex-plicitly decomposes the pipeline into multi-view consistent 2D editing followed by direct 3DGS fitting for improved efficiency (Chen et al., 2024b). Analogous ideas exist for NeRF editing, where view-consistent constraints are prop-agated from key views using geometry-aware correspon-dences (Haque et al., 2023; Dong & Wang, 2023). Several very recent works emphasize sparse-view or single-frame guided 3D editing via foundation models. Tinker produces consistent multi-view edits from one or two input images without per-scene optimization (Zhao et al., 2025). EditCast3D propagates a single-frame edit with video gen-eration models and performs view selection before recon-struction (Qu et al., 2025). InstructMix2Mix distills a 2D diffusion editor into a pretrained multi-view diffusion model to improve consistency under sparse-view editing (Gilo & Litany, 2025). Bengtson et al. (Bengtson et al., 2025) en-force cross-view consistency during diffusion sampling via a training-free guidance loss. SplatPainter focuses on in-teractive 3DGS authoring from 2D edits via feedforward updates and test-time training (Zheng et al., 2025), while InterGSEdit introduces user-interactive key-view selection for controllable 3DGS editing (Wen et al., 2025). Our setting differs in both supervision and mechanism .Rather than generating a fully edited multi-view dataset prior to reconstruction or distilling a multi-view diffusion model, we assume a reconstruction-first avatar (with a dif-ferentiable renderer) and treat editing as a constrained inver-sion in a low-dimensional edit subspace. Crucially, we opti-mize per-frame constraint weights within inversion using a conditioning objective derived from a local linearization of the rendering pipeline. This turns “keyframes” into active constraints that emerge from inversion-time constraint de-sign, directly targeting stability (reduced leakage and flicker) under sparse edited supervision. 
+
+Information-Theoretic View Selection and Optimal Ex-perimental Design. Information gain and optimal experi-mental design (OED) criteria (e.g., log-determinant or mini-mum eigenvalue objectives) are widely used for view selec-tion in active reconstruction and uncertainty-aware radiance fields (Pan et al., 2022; Jiang et al., 2023b). POp-GS brings OED-style uncertainty quantification and next-best-view se-lection to 3DGS (Wilson et al., 2025). These works indicate that spectral criteria are well-established for data acquisi-tion . Our use is different: we do not select camera views to improve reconstruction coverage. Instead, we reuse the OED lens to analyze and improve the conditioning of an edit-code inversion system in an avatar pipeline, and we allocate sparse edited supervision via differentiable weights to stabilize edited reconstruction. 
+
+# 3 Method 
+
+We study stable edited reconstruction of animatable human avatars. Given a base reconstructed avatar and sparse edited supervision (typically a few edited frames with localized masks), our goal is to produce a single edited avatar repre-sentation whose renderings match the desired edits across the entire sequence while avoiding identity leakage and pose-dependent temporal flicker. Our key idea is to treat editing as a constrained inversion in a structured UV-feature residual parameterization and to explicitly optimize the conditioning of this inversion. Con-cretely, we (i) restrict edit updates to a low-dimensional edit code v that is decoded by a pretrained residual UV decoder gψ (thus constraining edits to the range of gψ ), (ii) impose masked editing constraints that fit the edited region while preserving the non-edited region, and (iii) design / reweight these constraints during inversion using a spec-tral objective derived from a local linearization of the full 3Information-Regularized Constrained Inversion for Stable Avatar Editing from Sparse Supervision 
+
+decoding-and-rendering pipeline. 
+
+3.1 Differentiable Avatar Rendering Pipeline 
+
+We assume a differentiable, animatable rendering pipeline 
+
+yt = f (v, θ t) ∈ Rm, (1) where v ∈ Rr is a global editing code shared across frames, 
+
+θt denotes the frame-specific driving state (pose parame-ters, cameras, and optionally illumination), and yt denotes rendered observations (RGB and optionally depth/normal). 
+
+Residual UV parameterization. A base reconstruction produces a canonical UV feature map Ubase . We model editing as adding a decoded residual UV feature map: 
+
+U (v) = Ubase + gψ (v), gψ (0) = 0. (2) Here gψ is a pretrained and frozen MLP decoder that maps a low-dimensional edit code to a UV-aligned residual feature map. The constraint gψ (0) = 0 ensures that v = 0 recovers the base reconstruction exactly. The full rendering pipeline is then 
+
+U = U (v), Gt = A(U, θ t), yt = R(Gt), (3) i.e., f := R ◦ A ◦ U (·). A includes canonical-to-posed deformation and Gaussian attribute prediction, and R is a differentiable Gaussian splatting renderer. We define the base rendering as 
+
+ybase  
+
+> t
+
+:= f (0, θ t) = R(A(Ubase , θ t)) . (4) 
+
+3.2 Constrained Editing Setup 
+
+We consider a candidate pool of frames C ⊆ { 1, · · · , T }.For each t ∈ C, edited supervision consists of an edited target yedit  
+
+> t
+
+and a diagonal edit mask Mt ∈ Rm×m selecting the edited region. We denote M t := I − Mt.
+
+Edit code. Instead of a linear latent subspace zbase +P v , we directly optimize a low-dimensional edit code v ∈ Rr that is decoded into a residual UV map by the frozen decoder 
+
+gψ in Eq. (2) . This implicitly restricts edits to the structured manifold defined by gψ , reducing identity leakage. For each candidate frame t ∈ C, define ˜yt := f (v, θ t) and the per-frame loss 
+
+ℓt(v) := D(Mt ˜yt, M tyedit  
+
+> t
+
+)+ λid D(M t ˜yt, M tybase  
+
+> t
+
+), (5) where the distance function D is a weighted sum of pixel-wise L1 RGB loss and perceptual LPIPS, and the first term fits the edited region and the second preserves non-edited regions. 
+
+3.3 Inversion Conditioning via Edit-Code Info-Matrix 
+
+Even with a low-dimensional edit code, sparse edited con-straints may yield unstable inversions: some edit directions remain weakly observed, leading to pose-dependent arti-facts. We diagnose and control this via a local linearization around v = 0 (the base). We locally linearize the renderer: 
+
+f (v, θ t) ≈ f (0, θ t) + Jtv, (6) where Jt := ∂f (v,θ t) 
+
+> ∂v v=0
+
+∈ Rm×r . The masked edit-code Jacobian is At := MtJt ∈ Rm×r . Under a Gauss-Newton approximation, the local curvature in edit-code space is 
+
+Ht := A⊤ 
+
+> t
+
+At ∈ Rr×r, Ht ⪰ 0. (7) Given nonnegative per-frame constraint weights w =
+
+{wt}t∈C , define the edit-code precision matrix 
+
+S(w) := Λ 0 + X
+
+> t∈C
+
+wtHt, Λ0 ≻ 0. (8) Since r is small, conditioning analysis in S(w) ∈ Rr×r is efficient. 
+
+3.4 Information-Regularized Constrained Inversion 
+
+We integrate inversion conditioning into edited reconstruc-tion by jointly optimizing the edit code v and the constraint weights w. Specifically, we minimize 
+
+min  
+
+> v,w
+
+L(v, w ) := X
+
+> t∈C
+
+wtℓt(v) + vT Λ0v
+
+− λcond log det 
+
+
+
+Λ0 + X
+
+> t∈C
+
+wtHt
+
+
+
+, s.t. w ∈ ∆K , (9) where ∆K := {wt ≥ 0, P 
+
+> t∈C
+
+wt = K} encodes an effective supervision budget over candidate constraints and 
+
+vT Λ0v is the prior regularization term for edit vector v. To make keyframes emerge from optimization rather than being heuristically pre-selected, we parameterize weights using logits {at} and a temperature τ : wt = K · Softmax (at/τ ).Directly optimizing (9) is nonconvex due to the renderer. We adopt an alternating scheme that is stable in practice: 
+
+(1) Update the edit code v (constrained inversion). With weights w fixed, we minimize 
+
+min 
+
+> v
+
+X
+
+> t
+
+wtℓt(v) + vT Λ0v. (10) We optimize v via conditioning-aware update, 
+
+v ← v − η S (w)−1∇v
+
+ X 
+
+> t
+
+wtℓt(v) + vT Λ0v
+
+
+
+, (11) where the calculation of S(W )−1 is efficient since S(w) ∈
+
+Rr×r and r ≪ m.4Information-Regularized Constrained Inversion for Stable Avatar Editing from Sparse Supervision 
+
+Figure 2. Overview of our pipeline. 
+
+(2) Update the weights w (inversion-time constraint de-sign). With v fixed, we update logits {at} (hence w) to trade off fitting pressure and conditioning reward. A key advantage of log det S(w) is its closed-form gradient: 
+
+∂∂w t
+
+log det S(w) = Tr  S(w)−1Ht
+
+ . (12) Therefore, the partial derivative of (9) w.r.t. wt is 
+
+∂L
+
+∂w t
+
+= ℓt(v) − λcond Tr  S(w)−1Ht
+
+ . (13) Intuitively, ℓt(v) acts as a fitting cost: frames with larger residuals are down-weighted under gradient descent. In con-trast, the information term provides a conditioning reward with marginal gain Tr( S(w)−1Ht), which promotes frames that improve conditioning. Overall, the weight update re-allocates the supervision budget toward frames with lower-than-average ℓt(v) − λcond Tr( S(w)−1Ht), i.e., frames that are both easier to fit and more informative. Since S(w) is only r × r, computing log det S(w) and 
+
+Tr( S−1Ht) is efficient. It is common for a portion of the frames not to have the edited version in the inputs. For those, we simply set ℓt(v) = 0 .
+
+Efficient estimation of Ht. Directly forming the Jacobian 
+
+Jt is infeasible, but we only require the small matrix Ht ∈
+
+Rr×r, defined as Ht := A⊤ 
+
+> t
+
+At with At := MtJt and Jt =  
+
+> ∂f (v,θ t)
+> ∂v v=0
+
+. We compute Ht via Hessian–vector products (HVPs) of the least-squares surrogate 
+
+ϕt(v) := 12 Mt
+
+ f (v, θ t) − f (0 , θ t) 22. (14) Since the residual rt(v) = Mt(f (v, θ t) − f (0 , θ t)) satisfies 
+
+rt(0) = 0 , the Hessian at v = 0 reduces exactly to the Gauss–Newton (Jacobian-Gram) matrix: 
+
+∇2ϕt(0) = J⊤ 
+
+> t
+
+M ⊤ 
+
+> t
+
+MtJt = Ht.
+
+Thus, for any q ∈ Rr , Htq can be obtained by an HVP 
+
+∇2ϕt(0) q. Since r ≪ m, we explicitly construct Ht by applying HVPs to the basis vectors {ei}ri=1 .
+
+Discrete keyframes. Although our method optimizes con-tinuous weights, a discrete set of keyframes can be ex-tracted for interpretability and downstream applications (e.g., interactive refinement of the reconstruction) by se-lecting K = TopK ({wt}, K ).
+
+3.5 Learning Part-specific Residual UV Decoder from Paired Mesh/Render Edits 
+
+Given a dataset of paired 3D assets {(Morig  
+
+> i
+
+, Medit  
+
+> i
+
+)}Ni=1 for a particular edit type g (e.g., garment or shoes), where each pair shares the same identity, we pretrain a part-specific residual UV decoder gψg and per-pair edit codes {vi}. Let 
+
+U orig  
+
+> i
+
+denote the UV feature map reconstructed from Morig 
+
+> i
+
+(serving as Ubase for that pair), and define the edited render-ing under code vi by 
+
+˜y(i) 
+
+> t
+
+(vi) := R
+
+
+
+A(U orig  
+
+> i
+
++ gψg (vi), θ i,t )
+
+
+
+. (15) We train gψg by minimizing a multi-view version of the masked edit objective (Eq. 5) on rendered pairs: 
+
+min  
+
+> ψg,{vi}
+> N
+
+X
+
+> i=1
+
+X
+
+> t∈V i
+
+
+
+D(M (g) 
+
+> i,t
+
+˜y(i) 
+
+> t
+
+(vi), M (g) 
+
+> i,t
+
+y(i),edit  
+
+> t
+
+)+λid D(M (g) 
+
+> i,t
+
+˜y(i) 
+
+> t
+
+(vi), M (g) 
+
+> i,t
+
+y(i),orig  
+
+> t
+
+)
+
+
+
++ λv
+
+X
+
+> i
+
+∥vi∥22,
+
+(16) where y(i),orig  
+
+> t
+
+:= R(A(U orig  
+
+> i
+
+, θ i,t )) is the base rendering and M (g) 
+
+> i,t
+
+is the part mask for edit type g. We enforce 
+
+gψg (0) = 0 by adding a small penalty ∥gψg (0)∥22, encour-aging exact recovery of the base avatar when v = 0.At inference time, we freeze gψg and optimize only the edit code v (and weights w) using our information-regularized objective Eq. 9. 
+
+# 4 Analysis 
+
+In this section, we provide a local analysis of the 
+
+information-regularized constrained inversion objective in 5Information-Regularized Constrained Inversion for Stable Avatar Editing from Sparse Supervision 
+
+Eq. (9), explaining why maximizing log det S(w) improves edit-code accuracy under inconsistent supervision. The key message is that, under valid local linearization and noisy / inconsistent edited targets, optimizing log det S(w) per-forms a D-optimal constraint design in the edit-code space ,which provably shrinks the uncertainty (and hence improves the accuracy) of the recovered edit code. 
+
+4.1 Local Linearization Modeling 
+
+Recall our residual UV parameterization U (v) = Ubase +
+
+gψ (v) with gψ (0) = 0, and the induced differentiable ren-derer yt = f (v, θ t). The base rendering is ybase  
+
+> t
+
+= f (0, θ t).For each candidate frame t ∈ C , define the masked edit residual 
+
+bt := Mt
+
+ yedit  
+
+> t
+
+− ybase 
+
+> t
+
+ ∈ Rm. (17) Using the local linearization in Eq. 6, let 
+
+Jt := ∂f (v, θ t)
+
+∂v v=0
+
+∈ Rm×r , (18) where At := MtJt ∈ Rm×r and Ht := A⊤ 
+
+> t
+
+At ⪰ 0.We assume that the masked residual is explained by an (un-known) ground-truth edit code v⋆ ∈ Rr plus inconsistency noise εt and a (bounded) linearization remainder rt:
+
+bt = Atv⋆ + εt + rt(v⋆). (19) Given weights w, we consider the latent code ˆv(w) obtained by the (linearized) weighted ridge estimator 
+
+ˆv(w) := arg min 
+
+> v∈Rr
+
+X
+
+> t∈C
+
+wt∥Atv − bt∥22 + v⊤Λ0v. (20) 
+
+4.2 Main Results 
+
+Our main theorem relies on the following assumptions. 
+
+Bounded second-order remainder. There exists β ≥ 0
+
+such that for all t ∈ C and all v ∈ Rr ,
+
+∥rt(v)∥2 ≤ β
+
+2 ∥v∥22. (21) 
+
+Inconsistent supervision as heteroscedastic Gaussian noise. Conditioned on weights w = {wt}t∈C , the noise terms are independent across t and satisfy 
+
+εt ∼ N  0, 1
+
+wt
+
+I, (22) with the convention that wt = 0 removes the corresponding constraint (i.e., infinite variance). Thus, wt directly allocates a precision budget between candidate constraints. 
+
+Budgeted weights and bounded curvature. The weights satisfy w ∈ ∆K := {wt ≥ 0, P 
+
+> t∈C
+
+wt = K}. Moreover, 
+
+Λ0 ⪰ λ0I with λ0 > 0, and ∥Ht∥2 ≤ L for all t.Define the edit-code information matrix 
+
+S(w) := Λ 0 + X
+
+> t∈C
+
+wtHt. (23) 
+
+Theorem 4.1. Under the assumptions above, let ˆv(w) de-note the solution to Eq. 20. Then: 
+
+(i) Posterior precision. If rt ≡ 0 and v⋆ ∼ N (0 , Λ−10 ), then the posterior is Gaussian: 
+
+v⋆ |  {bt}t∈C , w  ∼ N  μ(w), S (w)−1, (24) 
+
+so the posterior covariance is exactly S(w)−1.
+
+(ii) MSE bound with inconsistency and linearization error. 
+
+Under the same Gaussian prior and the true model bt =
+
+Atv⋆ + εt + rt(v⋆), we have 
+
+E∥ˆv(w)−v⋆∥22
+
+ ≤ 2 Tr  S(w)−1 + β2LK 2
+
+2λ20
+
+E∥v⋆∥42
+
+,
+
+(25) 
+
+where the expectation is over (v⋆, {εt}).Moreover, for v⋆ ∼ N (0 , Λ−10 ),
+
+E∥v⋆∥42
+
+ =  Tr(Λ −10 )2 + 2 Tr(Λ −20 ) ≤ r(r + 2) 
+
+λ20
+
+.
+
+(iii) Det-opt as a surrogate for Trace-opt. For any SPD matrix S ∈ Rr×r, AM–GM implies 
+
+Tr( S−1) ≥ r det( S)−1/r . (26) 
+
+Hence, maximizing det( S) decreases a universal lower bound on the A-optimal criterion Tr( S−1). Moreover, if the condition number κ(S) := λmax (S)/λ min (S) is bounded by κ, then 
+
+Tr( S−1) ≤ r κ (r−1) /r det( S)−1/r . (27) 
+
+In our setting, since Λ0 ⪰ λ0I, w ∈ ∆K , and ∥Ht∥2 ≤ L,we have 
+
+κ(S(w)) ≤ λmax (Λ 0) + KL λ0
+
+=: κ, (28) 
+
+which is independent of w. Substituting into Eq. 25 yields 
+
+E∥ˆv(w) − v⋆∥22
+
+ ≤ C0 det( S(w)) −1/r + C1, (29) 
+
+where C0, C 1 are constants independent of w.
+
+Remark (identity preservation outside the mask). The analysis extends to Eq. 5 by augmenting each frame as 
+
+˜At := 
+
+ MtJt√λid ¯MtJt
+
+
+
+, ˜bt := 
+
+Mt(yedit  
+
+> t
+
+− ybase  
+
+> t
+
+)0
+
+
+
+,
+
+replacing Ht by ˜Ht = ˜A⊤ 
+
+> t
+
+˜At. The same log det -based conditioning conclusions follow verbatim. 6Information-Regularized Constrained Inversion for Stable Avatar Editing from Sparse Supervision 
+
+# 5 Experiments 
+
+We evaluate stable edited reconstruction from sparse su-pervision : given a base reconstructed avatar (latent zbase )and a pose/camera sequence {θt}Tt , the user provides only a few visually edited keyframes with localized masks, the goal is to recover a single edited avatar . Our method optimizes an edit code in a low-dimensional part-specific subspace and jointly designs per-frame constraint weights via the condi-tioning objective derived from the edit-subspace information matrix S(w).
+
+5.1 Datasets and Visual Edit Supervision 
+
+It is difficult to find an off-the-shelf dataset that contains dy-namic human motion with both the original and the edited 
+
+sequences. More importantly, obtaining consistent ground truth for appearance edits is notoriously hard in real cap-tures: once an edit is applied in the physical world, the cap-ture conditions inevitably change, which breaks the strict frame-to-frame and view-to-view correspondence required for reliable evaluation. Therefore, we adopt two comple-mentary evaluation settings. 
+
+Synthetic setting with pseudo-ground-truth editing. We reconstruct 3DGS-Avatar (Qian et al., 2024a) to recon-structed the human avatar from ZJU-MoCap (Peng et al., 2021; Fang et al., 2021), a multiview human motion dataset. We then construct a controlled edited target by applying localized material edits in the canonical avatar space and re-rendering the edited avatar for all views and frames, yield-ing a perfectly aligned pseudo ground truth with consistent edits. During evaluation, we only provide a subset of the edited sequence from a single camera pose as input to the evalu-ated method, and test on the held-out frames/views, which serve as the testing set. This setting enables quantitative comparisons. 
+
+In-the-wild setting. We use a casually captured monocu-lar sequence (Jiang et al., 2022) and manually edit a few keyframes via pretrained M-LLM. We then compare differ-ent methods qualitatively in terms of how well they propa-gate the edits. While this setting better matches our target use case, it is impossible to obtain a true ground truth for the edited appearance. 
+
+Baselines. We compare against three adapted baselines: 
+
+3DGS-Avatar (Qian et al., 2024a), DGE (Chen et al., 2024b), and IDOL (Zhuang et al., 2024). 3DGS-Avatar is not an editor; we use it as an edit-as-reconstruction baseline by fine-tuning the animatable avatar on all frames while replac-ing supervision on edited keyframes. DGE is single-view and static; we initialize from the reconstructed canonical Gaussians, update only the shared appearance using losses aggregated over all edited keyframes, and animate the re-sult over the full sequence. IDOL performs canonical UV-texture editing; we reconstruct from a single reference frame                                   
+
+> Method LPIPS e↓PSNR e↑LPIPS b↓WE e↓WE b↓
+> 3DGSAvatar 0.162 23.41 0.071 0.048 0.036 DGE 0.214 20.87 0.132 0.089 0.074 IDOL 0.187 22.05 0.098 0.063 0.051 Ours 0.128 25.62 0.043 0.031 0.024
+> Table 1. Results on our benchmark with sparse supervision (5 uniform keyframes). We report edit fidelity (masked), leakage (outside mask), and temporal stability (warping error). Subscripts
+> eand bdenote edited and background regions, respectively.
+
+and optimize only the canonical texture to match all edited keyframes. We select these baselines due to the lack of fully dynamic, monocular, keyframe-edited open-source meth-ods; together they cover reconstruction-, 3DGS-editing-, and canonical-texture-based paradigms. 
+
+Metrics. Following previous works, we evaluate the model performance in the following metrics: PSNR and LPIPS similarity between the rendered output ˜yt and the ground-truth edited image yedit  
+
+> t
+
+within the edited region; unintended changes outside the edited region using LPIPS on the com-plement region; pose/time consistency via warping error (WE). We warp ˜yt to frame t + 1 through optical flow and compute LPIPS residuals inside the edited region. 
+
+5.2 Main Results Quantitative results. Table 1 summarizes results on unseen test identities under sparse edited supervision. We report edit fidelity (masked), leakage (outside mask), and temporal stability (warping error). Our method obtains larger gains in the harder regime ( K = 4 ), supporting our claim that sparse edited reconstruction is fundamentally ill-conditioned without conditioning-aware constraint design. See appendix for detailed settings. 
+
+Qualitative results. Figure 3 visualizes typical failure modes. Without conditioning-aware constraint allocation, baselines tend to overfit the few edited frames using unsta-ble latent directions, leading to pose-dependent artifacts and temporal flicker; identity leakage is most visible on faces and unedited garments. Our method produces edits that remain consistent across pose change with minimal drift outside the edited region. 
+
+Keyframe activation emerges from optimization. We visualize the learned weights {wt}. which show that opti-mization activates frames that (i) reveal informative views of the edited part and (ii) improve the spectral conditioning of S(w). This supports that “keyframes” should be treated as designed constraints rather than a pre-processing choice. 
+
+Robustness to Imperfect / Inconsistent Supervision. In practice, edited keyframes produced by reference-driven 2D editors are often not perfectly consistent due to stochas-ticity, occlusions, and mask imperfections. We therefore evaluate robustness under controlled corruption of sparse supervision. 7Information-Regularized Constrained Inversion for Stable Avatar Editing from Sparse Supervision                        
+
+> Figure 3. Edited keyframes and renderings at unseen time steps are shown. The first row contains an incorrect edit, while the second row exhibits inconsistent editing appearance, where Edit2
+> introduces an arm tattoo. Method LPIPS full ↓WE edit ↓log det S(w)↑
+> Full 0.082 0.031 4.21
+> A1 0.095 0.047 3.05 A2 0.111 0.058 4.07 A3 0.107 0.039 4.13
+> Table 2. Ablation study. See Sec. 5.3 for details.
+
+5.3 Ablations 
+
+We evaluate different components of Eq. (9). 
+
+A1: Conditioning/weights. Remove information regular-ization ( λcond = 0 ) and use uniform weights wt = K/ |C| 
+
+to isolate the role of log det S(w). A2: Structured edit parameterization. Compare our pretrained (optionally part-/edit-type-specific) residual UV decoder gψ (i.e., U =
+
+Ubase + gψ (v)) to (i) no restriction—directly optimizing a free UV residual ∆U with U = Ubase +∆ U , and (ii) generic parameterizations of the same code dimension, PCA linear decoder Bv , to probe structured control vs. leakage and instability. A3: Identity term. Set λid = 0 to measure identity leakage, especially outside edited regions. We find that the full model consistently outperforms these variants across all metrics, indicating that conditioning-aware constraint allocation, structured edit parameterization, identity preservation, and the learned prior are all critical under sparse supervision. 
+
+# 6 Conclusion, Limitations and Future Work 
+
+We presented a conditioning-guided framework for stable edited reconstruction of animatable human avatars. Starting from a base reconstruction UV feature map Ubase , we pa-rameterize the edits with a low-dimensional code v decoded by a frozen residual UV decoder gψ (with gψ (0) = 0), and jointly optimize v together with keyframe weights that improve the conditioning of the edit-code inversion sys-tem. This conditioning-aware allocation yields more reliable propagation of sparse edits across poses and time while lim-   
+
+> Figure 4. We set the supervision budget to K=3 over five can-didate keyframes. As optimization progresses, the weight mass shifts away from an obviously incorrect edit (frame 5), and sub-sequently from a frame with inconsistent appearance (frame 4, hat mismatch). The final selection concentrates on frames 1–3, yielding a consistent keyframe set.
+
+iting identity drift, without training a large-scale 3D editing foundation model. Our approach relies on local linearization for conditioning signals and can degrade under very large edits or noisy/inconsistent masks and targets, motivating iterative re-linearization, uncertainty-aware weighting, and improved mask estimation. Future work includes adaptive keyframe acquisition, instance-adaptive/nonlinear edit man-ifolds that retain Jacobian-based conditioning analysis, and tighter integration with learned priors. The approach relies on local linearization around the base latent to derive conditioning signals; very large edits may violate this assumption, motivating iterative re-linearization or multi-stage selection strategies. Performance also de-pends on mask and target quality: noisy masks or view-inconsistent edited targets can degrade both inversion and keyframe design, suggesting robustness extensions such as uncertainty-aware weighting and improved mask estimation. In addition, our deformation model does not explicitly cap-ture complex cloth dynamics or topology changes (e.g., long, highly non-rigid garments), which may require additional dynamics modeling or stronger multi-frame supervision for physically plausible geometry changes. Promising directions include adaptive keyframe acquisition (requesting additional edits where constraints are predicted to be most useful), nonlinear or instance-adaptive edit sub-spaces (replacing Pg with a conditional basis while retaining local Jacobian analysis), and tighter integration with learned priors (interpreting stronger priors as shaping the effective regularization in the constrained inversion). 8Information-Regularized Constrained Inversion for Stable Avatar Editing from Sparse Supervision 
+
+# References 
+
+Bengtson, J., Nilsson, D., Lee, D. I., and Kahl, F. 3d-consistent multi-view editing by diffusion guidance. 
+
+arXiv preprint arXiv:2511.22228 , 2025. B ¨uhler, M. C., Yuan, Y., Li, X., Huang, Y., Nagano, K., and Iqbal, U. Dream, lift, animate: From single im-ages to animatable gaussian avatars. arXiv preprint arXiv:2507.15979 , 2025. Cao, Y., Hadi, M., Pan, L., and Liu, Z. Gs-vton: Con-trollable 3d virtual try-on with gaussian splatting. arXiv preprint arXiv:2410.05259 , 2024. Chen, H., Huang, Y., Huang, H., Ge, X., and Shao, D. Gaussianvton: 3d human virtual try-on via multi-stage gaussian splatting editing with image prompting. arXiv preprint arXiv:2405.07472 , 2024a. Chen, J. Ggavatar: Reconstructing garment-separated 3d gaussian splatting avatars from monocular video. arXiv preprint arXiv:2411.09952 , 2024. Chen, M., Laina, I., and Vedaldi, A. Dge: Direct gaussian 3d editing by consistent multi-view editing. In ECCV ,2024b. arXiv:2404.18929. Dong, J. and Wang, Y.-X. Vica-nerf: View-consistency-aware 3d editing of neural radiance fields. In NeurIPS ,2023. arXiv:2402.00864. Dong, Z., Duan, L., Song, J., Black, M. J., and Geiger, A. Moga: 3d generative avatar prior for monocular gaussian avatar reconstruction. In ICCV , 2025. arXiv:2507.23597. Fang, Q., Shuai, Q., Dong, J., Bao, H., and Zhou, X. Re-constructing 3d human pose by watching humans in the mirror. In CVPR , 2021. Gilo, D. and Litany, O. Instructmix2mix: Consistent sparse-view editing through multi-view model personalization. 
+
+arXiv preprint arXiv:2511.14899 , 2025. Gong, J., Ji, S., Foo, L. G., Chen, K., Rahmani, H., and Liu, J. Laga: Layered 3d avatar generation and customization via gaussian splatting. arXiv preprint arXiv:2405.12663 ,2024. Haque, A., Tancik, M., Efros, A. A., Holynski, A., and Kanazawa, A. Instruct-nerf2nerf: Editing 3d scenes with instructions. In ICCV , 2023. arXiv:2303.12789. Hu, S., Hu, T., and Liu, Z. Gauhuman: Articulated gaussian splatting from monocular human videos. In CVPR , 2024. arXiv:2312.02973. Jiang, T., Chen, X., Song, J., and Hilliges, O. Instantavatar: Learning avatars from monocular video in 60 seconds. In 
+
+CVPR , 2023a. arXiv:2212.10550. Jiang, W., Yi, K. M., Samei, G., Tuzel, O., and Ranjan, A. Neuman: Neural human radiance field from a single video. In Proceedings of the European conference on computer vision (ECCV) , 2022. Jiang, W., Lei, B., and Daniilidis, K. Fisherrf: Active view selection and uncertainty quantification for radi-ance fields using fisher information. arXiv preprint arXiv:2311.17874 , 2023b. Kerbl, B., Kopanas, G., Leimk ¨uhler, T., and Drettakis, G. 3d gaussian splatting for real-time radiance field rendering. 
+
+arXiv preprint arXiv:2308.04079 , 2023. Lee, D. I. et al. Editsplat: Multi-view fusion and attention-guided optimization for view-consistent 3d scene editing. In CVPR , 2025. arXiv:2412.11520. Li, Z., Zheng, Z., Wang, L., and Liu, Y. Animatable gaussians: Learning pose-dependent gaussian maps for high-fidelity human avatar modeling. In CVPR , 2024. arXiv:2311.16096. Lin, S., Li, Z., Su, Z., Zheng, Z., Zhang, H., and Liu, Y. Layga: Layered gaussian avatars for animatable clothing transfer. arXiv preprint arXiv:2405.07319 , 2024. Loper, M., Mahmood, N., Romero, J., Pons-Moll, G., and Black, M. J. SMPL: A skinned multi-person linear model. 
+
+ACM Transactions on Graphics (Proc. SIGGRAPH Asia) ,34(6):248:1–248:16, 2015. Moreau, A., Song, J., Dhamo, H., Shaw, R., Zhou, Y., and P ´erez-Pellitero, E. Human gaussian splatting: Real-time rendering of animatable avatars. In CVPR , 2024. arXiv:2311.17113. Palandra, F., Sanchietti, A., Baieri, D., and Rodol `a, E. Gsedit: Efficient text-guided editing of 3d objects via gaussian splatting. arXiv preprint arXiv:2403.05154 ,2024. Pan, X., Lai, Z., Song, S., and Huang, G. Activenerf: Learn-ing where to see with uncertainty estimation. In ECCV ,2022. arXiv:2209.08546. Pang, H. E., Liu, S., Cai, Z., Yang, L., Zhang, T., and Liu, Z. Disco4d: Disentangled 4d human generation and animation from a single image. arXiv preprint arXiv:2409.17280 , 2024. Peng, S., Zhang, Y., Xu, Y., Wang, Q., Shuai, Q., Bao, H., and Zhou, X. Neural body: Implicit neural representa-tions with structured latent codes for novel view synthesis of dynamic humans. In CVPR , 2021. Qian, Z., Wang, S., Mihajlovic, M., Geiger, A., and Tang, S. 3dgs-avatar: Animatable avatars via deformable 3d gaussian splatting. 2024a. 9Information-Regularized Constrained Inversion for Stable Avatar Editing from Sparse Supervision 
+
+Qian, Z., Wang, S., Mihajlovic, M., Geiger, A., and Tang, S. 3dgs-avatar: Animatable avatars via deformable 3d gaussian splatting. In CVPR , 2024b. arXiv:2312.09228. Qu, H., Zhang, R., Luo, S., Qi, L., Zhang, Z., Liu, X., Sen-gupta, R., and Chen, T. Editcast3d: Single-frame-guided 3d editing with video propagation and view selection. 
+
+arXiv preprint arXiv:2510.13652 , 2025. Wang, J., Fang, J., Zhang, X., Xie, L., and Tian, Q. Gaus-sianeditor: Editing 3d gaussians delicately with text in-structions. In CVPR , 2024. arXiv:2311.16037. Wang, Y., Zhuang, Y., Zhang, J., Wang, L., Zeng, Y., Cao, X., Zuo, X., and Zhu, H. Tera: Rethinking text-guided realistic 3d avatar generation. In ICCV , 2025. arXiv:2509.02466. Wen, M., Wu, S., Wang, K., and Liang, D. In-tergsedit: Interactive 3d gaussian splatting editing with 3d geometry-consistent attention prior. arXiv preprint arXiv:2507.04961 , 2025. Wilson, J., Almeida, M., Mahajan, S., Labrie, M., Ghaffari, M., Ghasemalizadeh, O., Sun, M., Kuo, C.-H., and Sen, A. Pop-gs: Next best view in 3d-gaussian splatting with p-optimality. In CVPR , 2025. arXiv:2503.07819. Zhao, C., Li, X., Feng, T., Zhao, Z., Chen, H., and Shen, C. Tinker: Diffusion’s gift to 3d—multi-view consistent editing from sparse inputs without per-scene optimization. 
+
+arXiv preprint arXiv:2508.14811 , 2025. Zheng, Y., Tan, H., Zhang, K., Wang, P., Guibas, L., Wet-zstein, G., and Yifan, W. Splatpainter: Interactive author-ing of 3d gaussians from 2d edits via test-time training. 
+
+arXiv preprint arXiv:2512.05354 , 2025. Zhuang, Y., Lv, J., Wen, H., Shuai, Q., Zeng, A., Zhu, H., Chen, S., Yang, Y., Cao, X., and Liu, W. Idol: Instant pho-torealistic 3d human creation from a single image, 2024. URL https://arxiv.org/abs/2412.14963 .10 Information-Regularized Constrained Inversion for Stable Avatar Editing from Sparse Supervision 
+
+# A Proof for Theorem 4.1 
+
+We prove items (i)–(iii) in Theorem 4.1. Throughout we use the local linear model 
+
+bt = Atv⋆ + εt + rt(v⋆), t ∈ C , (30) and the precision-weighted noise model εt ∼ N (0 , 1 
+
+> wt
+
+I), independent across t.
+
+Stacked form. Let C = {t1, . . . , t n} and define the stacked matrices/vectors 
+
+Aw := 
+
+
+
+√wt1 At1
+
+...
+
+√wtn Atn
+
+ ∈ R(mn )×r , bw := 
+
+
+
+√wt1 bt1
+
+...
+
+√wtn btn
+
+ ∈ Rmn . (31) Define similarly the stacked remainder and noise 
+
+rw(v⋆) := 
+
+
+
+√wt1 rt1 (v⋆)
+
+...
+
+√wtn rtn (v⋆)
+
+ , ˜ε := 
+
+
+
+√wt1 εt1
+
+...
+
+√wtn εtn
+
+ . (32) By construction, ˜ε ∼ N (0 , I ) and the stacked model is 
+
+bw = Awv⋆ + ˜ ε + rw(v⋆). (33) Moreover, A⊤ 
+
+> w
+
+Aw = P 
+
+> t∈C
+
+wtA⊤ 
+
+> t
+
+At = P 
+
+> t∈C
+
+wtHt.
+
+Closed-form solution and information matrix. The weighted ridge estimator in Eq. (20) is equivalently 
+
+ˆv(w) = arg min  
+
+> v∈Rr
+
+∥Awv − bw∥22 + v⊤Λ0v. (34) The normal equations yield 
+
+ˆv(w) = S(w)−1A⊤ 
+
+> w
+
+bw, S(w) := Λ 0 + A⊤ 
+
+> w
+
+Aw = Λ 0 + X
+
+> t∈C
+
+wtHt. (35) 
+
+A.1 Proof of (i): posterior precision 
+
+Assume the linearized model rt ≡ 0 and the Gaussian prior v⋆ ∼ N (0 , Λ−10 ). Then (33) becomes bw|v⋆ ∼ N (Awv⋆, I ).Bayes’ rule gives 
+
+p(v | bw) ∝ exp  − 12 ∥bw − Awv∥22
+
+ exp  − 12 v⊤Λ0v (36) 
+
+∝ exp  − 12
+
+v⊤(Λ 0 + A⊤ 
+
+> w
+
+Aw)v − 2v⊤A⊤ 
+
+> w
+
+bw
+
+ . (37) Completing the square shows p(v | bw) is Gaussian with precision S(w), hence posterior covariance is S(w)−1.
+
+A.2 Proof of (ii): MSE bound with noise + remainder 
+
+Define the linear-model estimator (posterior mean/MAP under rw ≡ 0)
+
+ˆvlinear (w) := S(w)−1A⊤ 
+
+> w
+
+(Awv⋆ + ˜ ε), (38) and write the actual estimator as 
+
+ˆv(w) = ˆ vlinear (w) + ∆ r (w), ∆r (w) := S(w)−1A⊤ 
+
+> w
+
+rw(v⋆). (39) Using ∥x + y∥2 ≤ 2∥x∥2 + 2 ∥y∥2 and taking expectation over (v⋆, ˜ε),
+
+E∥ˆv(w) − v⋆∥22 ≤ 2E∥ˆvlinear (w) − v⋆∥22 + 2 E∥∆r (w)∥22. (40) 11 Information-Regularized Constrained Inversion for Stable Avatar Editing from Sparse Supervision 
+
+Step 1: bounding E∥ˆvlinear (w) − v⋆∥2. Under rw ≡ 0, ˆvlinear (w) is the posterior mean in a Gaussian linear model, hence 
+
+E(ˆ vlinear (w) − v⋆)(ˆ vlinear (w) − v⋆)⊤ = S(w)−1, ⇒ E∥ˆvlinear (w) − v⋆∥22 = Tr( S(w)−1). (41) 
+
+Step 2: bounding E∥∆r (w)∥2. Since Λ0 ⪰ λ0I, we have S(w) ⪰ Λ0 ⪰ λ0I and thus 
+
+∥S(w)−1∥2 ≤ 1
+
+λ0
+
+. (42) Moreover, ∥Ht∥2 ≤ L implies ∥At∥22 = ∥A⊤ 
+
+> t
+
+At∥2 = ∥Ht∥2 ≤ L and hence ∥At∥2 ≤ √L. Using the quadratic remainder bound (21), 
+
+∥rt(v⋆)∥2 ≤ β
+
+2 ∥v⋆∥22 ⇒ ∥rw(v⋆)∥2 ≤
+
+sX
+
+> t
+
+wt · β
+
+2 ∥v⋆∥22 = √K · β
+
+2 ∥v⋆∥22. (43) A direct bound on ∆r gives 
+
+∥∆r (w)∥2 = ∥S(w)−1A⊤ 
+
+> w
+
+rw(v⋆)∥2 ≤ ∥ S(w)−1∥2 · ∥ A⊤ 
+
+> w
+
+∥2 · ∥ rw(v⋆)∥2
+
+≤ 1
+
+λ0
+
+· ∥ Aw∥2 · ∥ rw(v⋆)∥2 ≤ 1
+
+λ0
+
+·
+
+q
+
+∥A⊤ 
+
+> w
+
+Aw∥2 · ∥ rw(v⋆)∥2
+
+≤ 1
+
+λ0
+
+·
+
+s X
+
+> t
+
+wtHt 2
+
+· ∥ rw(v⋆)∥2 ≤ 1
+
+λ0
+
+· √KL ·
+
+√K β
+
+2 ∥v⋆∥22
+
+
+
+= βK √L
+
+2λ0
+
+∥v⋆∥22. (44) Squaring and taking expectation yields 
+
+E∥∆r (w)∥22 ≤ β2LK 2
+
+4λ20
+
+E∥v⋆∥42. (45) Combining (40) and (45) proves (25). 
+
+Gaussian fourth moment. If v⋆ ∼ N (0 , Λ−10 ), then E∥v⋆∥42 = (Tr(Λ −10 )) 2 + 2Tr(Λ −20 ). Using Λ0 ⪰ λ0I gives 
+
+Tr(Λ −10 ) ≤ r/λ 0 and Tr(Λ −20 ) ≤ r/λ 20, hence E∥v⋆∥42 ≤ r(r + 2) /λ 20.
+
+A.3 Trace–determinant inequality and proof of (iii) Lemma A.1 (Trace–determinant inequality) . Let X ∈ Rr×r be symmetric positive definite. Then 
+
+Tr( X−1) ≤ r λ max (X)r−1
+
+det( X) . (46) Applying the lemma to X = S(w) and using λmax (S(w)) ≤ λmax (Λ 0) + P 
+
+> t
+
+wtλmax (Ht) ≤ λmax (Λ 0) + KL yields the determinant-based bound (29) . Since the right-hand side is monotonically decreasing in det( S(w)) and all other terms are independent of w, any maximizer of log det S(w) over w ∈ ∆K minimizes this upper bound, proving item (iii). 
+
+# B Dataset Details 
+
+B.1 Base Inversion: From a Monocular Sequence to a UV Feature Map 
+
+Our editing pipeline operates in a structured UV-feature space and therefore requires a base UV feature map Ubase recovered from the input monocular sequence. We obtain Ubase by first reconstructing an animatable human avatar with a canonical 3D Gaussian representation, and then reprojecting (“UV-aligning”) the canonical Gaussians into the UV feature-map domain. 
+
+Step 1: Canonical avatar reconstruction. Given a monocular video, we run a reconstruction method (e.g., a 3DGS-Avatar style pipeline) to obtain: (i) a canonical set of Gaussians Gcan = {gk}Nk=1 (positions and appearance-related attributes), and (ii) a pose-conditioned deformation / animation module that maps the canonical Gaussians to each frame t. This step provides a stable canonical anchor for subsequent UV-space editing. 12 Information-Regularized Constrained Inversion for Stable Avatar Editing from Sparse Supervision 
+
+Step 2: Gaussian reprojection to UV space. For each canonical Gaussian gk, we compute a UV coordinate (uk, v k)
+
+by associating it to the parametric body template (e.g., SMPL/SMPL-X) used in reconstruction. Concretely, we find the corresponding point on the template surface (e.g., via nearest-point or barycentric association on the canonical template mesh) and read its UV atlas coordinate. We then rasterize / splat Gaussian attributes into a discrete UV grid to form Ubase :
+
+Ubase (p) = 
+
+P 
+
+> k
+
+ωk(p) ak
+
+P 
+
+> k
+
+ωk(p) + ϵ , (47) where p indexes a UV pixel, ak denotes the attribute/feature vector of Gaussian gk (e.g., color/opacity or learned features), and ωk(p) is a UV-space splatting weight (e.g., bilinear weights or a small Gaussian kernel centered at (uk, v k)). The reprojection mapping is kept fixed during editing, so the optimization only updates UV-space features (and/or a low-dimensional edit code) while preserving the canonical correspondence structure. 
+
+B.2 Quantitative Benchmark Construction for Table 1 
+
+Table 1 reports quantitative results under sparse edited supervision on unseen test identities . Since real captures do not provide perfectly aligned “before/after” edited ground truth, we construct a controlled benchmark from ZJU-MoCap by combining (i) multiview capture for geometric alignment and (ii) text-prompt-based editing for realistic appearance changes. 
+
+Overview. For each identity, we start from the original ZJU-MoCap multiview sequence (images, calibrated cameras, and poses). We select a single timestamp t0 (fixed pose) as the edit acquisition instant , and use Gemini 2.5 Flash to generate prompt-based edits on the multiview images at t0. After manual consistency filtering, we fit an edited canonical avatar to these multiview edited images, and render the fitted edited avatar across all frames/poses to obtain temporally aligned “ground-truth” edited renderings for evaluation. 
+
+Step 1: Choose a fixed instant for editing. For each subject, we pick a time instant t0 where the target part (e.g., coat/hat/headwear) is well visible across views. We then collect the multiview set {Iorig 
+
+> t0,c
+
+}Cc=1 from ZJU-MoCap at that instant. 
+
+Step 2: Multiview text-prompt-based editing with Gemini 2.5 Flash. We feed each view image Iorig  
+
+> t0,c
+
+into Gemini 2.5 Flash with a scene-specific prompt (Sec. B.3) to obtain candidate edited images {Iedit 
+
+> t0,c
+
+}. Because generative editors can be stochastic and may introduce cross-view inconsistencies, we generate multiple candidates per view and then manually select a subset that is visually consistent across viewpoints (e.g., consistent color/material/shape of the edited part, and no unintended changes to identity/background/lighting). 
+
+Step 3: Fitting an edited canonical avatar to obtain ground truth. Using the selected multiview edited set at t0, we perform a high-quality fitting step to obtain an edited canonical representation (e.g., edited canonical Gaussians or an edited UV feature map). In practice, we keep the original deformation/animation module (learned from the original sequence) fixed, and optimize only the canonical appearance-related parameters to match {Iedit 
+
+> t0,c
+
+} at the fixed pose t0. We then render this fitted edited avatar for all frames t and evaluation views c, producing aligned ground-truth edited images {Igt 
+
+> t,c
+
+} for quantitative comparison. 
+
+Evaluation protocol under sparse supervision. To simulate sparse edited supervision, we provide only a small set of edited keyframes from a single input camera (monocular supervision). We report: (i) edit fidelity inside the edited mask, (ii) 
+
+leakage outside the mask (unintended changes), and (iii) temporal stability measured by warping error. We highlight the harder supervision budget regime (e.g., K = 4 ) in Table 1. 
+
+B.3 Gemini 2.5 Flash Prompts 
+
+We list the prompts used to produce the edited supervision in our qualitative/quantitative scenarios: 
+
+(1) Coat → T-shirt.             
+
+> Change the blue coat into white T-shirt, keep human identity, background and lighting unchanged.
+
+13 Information-Regularized Constrained Inversion for Stable Avatar Editing from Sparse Supervision 
+
+(2) Blue hat → red hat with a yellow star. 
+
+Change the blue hat into red hat with a yellow star on the front, keep human identity, background and lighting unchanged. 
+
+(3) Headphone → red knitted hat (keep white mask unchanged). 
+
+Change the white headphone into red knitted hat, keep human identity, background and lighting unchanged, don’t change the white mask. 
+
+14

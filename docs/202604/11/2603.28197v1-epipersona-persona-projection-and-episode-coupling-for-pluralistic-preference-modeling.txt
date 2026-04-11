@@ -1,0 +1,831 @@
+Title: EpiPersona: Persona Projection and Episode Coupling for Pluralistic Preference Modeling
+
+URL Source: https://arxiv.org/pdf/2603.28197v1
+
+Published Time: Tue, 31 Mar 2026 02:14:18 GMT
+
+Number of Pages: 20
+
+Markdown Content:
+# EpiPersona: Persona Projection and Episode Coupling for Pluralistic Preference Modeling 
+
+Yujie Zhang 1 Weikang Yuan 1 Zhuoren Jiang 1 Pengwei Yan 1
+
+## Abstract 
+
+Pluralistic alignment is essential for adapting large language models (LLMs) to the diverse preferences of individuals and minority groups. However, existing approaches often mix stable personal traits with episode-specific factors, lim-iting their ability to generalize across episodes. To address this challenge, we introduce EpiPer-sona , a framework for explicit persona–episode coupling . EpiPersona first projects noisy pref-erence feedback into a low-dimensional persona space, where similar personas are aggregated into shared discrete codes. This process separates en-during personal characteristics from situational signals without relying on predefined preference dimensions. The inferred persona representation is then coupled with the current episode, enabling episode-aware preference prediction. Extensive experiments show that EpiPersona consistently outperforms the baselines. It achieves notable per-formance gains in hard episodic-shift scenarios, while remaining effective with sparse preference data. 
+
+## 1. Introduction 
+
+Aligning artificial intelligence with human preferences has been a crucial point of both theoretical and applied research for AI systems (Kirk et al., 2024a; Zhang et al., 2024; Zhu et al., 2025; Guan et al., 2025; Xu et al., 2025). However, most existing approaches treat human preferences as uni-form, overlooking the heterogeneity of human preferences (Li et al., 2025; Oh et al., 2025). There is an increasing need for systems that can meet the wide range of social and moral values found in real societies (Zheng et al., 2023; Kirk et al., 2024b; Chen et al., 2025). Addressing the preferences of individuals and minority groups is therefore essential, making pluralistic alignment (Poddar et al., 2024; Chen   
+
+> 1Zhejiang University. Correspondence to: Zhuoren Jiang
+> <jiangzhuoren@zju.edu.cn >.
+> Preprint. March 31, 2026.
+
+et al., 2025; Ryan et al., 2025) a vital step toward building human-centered AI systems. As large language models increasingly demonstrate the po-tential for mentalistic capabilities (Xie et al., 2024; Cross et al., 2025; Riemer et al., 2025), there is a growing demand for them to understand and adapt to individuals’ preferences (Hagendorff, 2024; Sorensen et al., 2025). Existing studies have sought the pairwise comparison approach (e.g., ‘Which answer do you prefer?’) to identify personalized preferences due to its user-friendliness (Zheng et al., 2023; Kirk et al., 2024b; Ryan et al., 2025; Balepur et al., 2025; Li et al., 2025; Poddar et al., 2024). In terms of preference modeling, ap-proaches can be categorized into non-parametric modeling and parametric modeling. Non-parametric modeling lever-ages historical retrieval (Zollo et al., 2024) or text-based preference summarization (Balepur et al., 2025; Ryan et al., 2025) to infer the personalized preference. While intuitive, this approach is less effective at higher-level abstractions and efficient compression as preferences are particularly im-plicit and complex (Jang et al., 2023; Balepur et al., 2025). 
+
+Parametric modeling compresses long-term interaction his-tories into a semantic space, such as predefined preference dimensions (Oh et al., 2025; Li et al., 2025) (e.g., harm-lessness, helpfulness, and humor) or context compression (Zhao et al., 2023b; Poddar et al., 2024) for downstream tasks such as pluralistic reward learning (Bradley & Terry, 1952). However, the unique challenges remain unsolved. Two interconnected challenges are highlighted: 
+
+First , existing methods mix stable personal traits with tempo-rary episodic signals in the representation, failing to separate 
+
+stable traits from dynamic episodic influences. As a result, static traits are not disentangled, limiting cross-episode gen-eralization. Second , prevailing methods rely on predefined dimensions to model preferences. Human preference is bet-ter understood as a latent semantic space to be discovered (Poddar et al., 2024), while predefined dimensions constrain its richness and introduce priori biases. To address these challenges, we propose persona projec-tion , which disentangles stable traits (i.e., the persona) from episode-specific preference feedback. It is motivated by the insight that individuals’ preferences are driven by their la-tent and stable personas. For example (see Figure 1), a user 1
+
+> arXiv:2603.28197v1 [cs.AI] 30 Mar 2026
+
+A in a work decision scenario and user B in an online shop-ping scenario may both prefer concise and direct responses; their feedback thus reflects the same efficiency-driven per-sona. Formally, our method projects individuals’ preference feedback from the high-dimensional token space X ⊂ RD
+
+into a low-dimensional persona space Zp ⊂ Rd (d ≪ D), enabling feedback x ∈ X with similar latent personas to be aggregated into shared persona codes zp ∈ Z p. In other words, we learn a mapping x 7 → zp. This mapping function converts the originally redundant and noisy feedback into a combinatorial persona code, enabling robust generalization across individuals and episodes. Building on persona projection, we introduce EpiPersona, a method for PERSONA –EPI sode coupling. It constructs persona codes automatically without relying on predefined dimensions by introducing parameterized abductive reason-ing and VQ-based mapping (Van Den Oord et al., 2017). After disentangling personas, we further couple them with the current episode, capturing both stable persona and situa-tional factors, enabling robust prediction of cross-episode preferences. To thoroughly assess EpiPersona’s ability to capture indi-vidual pluralistic preferences, we conducted experiments across tasks, including LLM-as-a-judge and pluralistic re-ward learning. In the unseen-user setting, our method con-sistently outperforms the baselines, achieving a notable im-provement in challenging episodic-shift scenarios. A closer look at EpiPersona reveals that: a) In challenging episodic-shift scenarios, EpiPersona shows more robust generaliza-tion; its performance degrades by only 0.043, compared to 0.177 and 0.144 drops for SOTA baselines. b) Even when user preference data is limited, EpiPersona can accurately infer preferences from minimal information, highlighting its adaptability. 
+
+## 2. Related work 
+
+Pluralistic alignment adapts the preferences of diverse groups, especially minority populations, thereby maximiz-ing the collective benefits (Zollo et al., 2024) and promoting fairness across heterogeneous user communities (Kirk et al., 2024b;a). Studies show that even high-performing mod-els struggle to satisfy preferences across different regions, cultures, and topics (Kirk et al., 2024b). These challenges underscore the diversity and complexity of human prefer-ences. Due to the sparseness of individual preference data (Oh et al., 2025; Li et al., 2025), existing approaches use human feedback in the form of pairwise preference compar-isons (Zheng et al., 2023; Poddar et al., 2024; Ryan et al., 2025; Balepur et al., 2025; Li et al., 2025; Kirk et al., 2024b). Prior studies employ the following methods to model plu-ralistic preferences: 
+
+Non-parametric modeling. Preference summarization (text-based). Preference dimensions are often defined as such attributes as helpfulness, honesty, and harmlessness (Askell et al., 2021). However, simplified dimensions may not be able to capture the diversity of human preferences (Kirk et al., 2024a). Studies (Ryan et al., 2025; Balepur et al., 2025) utilize preference attribution methods to ex-tract individual preferences. Among them, SynthesizeMe (Ryan et al., 2025) uses bootstrap reasoning on limited user interaction data and verifies inferred preferences on the val-idation set to synthesize the personas. PI (Balepur et al., 2025) leverages abductive reasoning on preference data to infer users’ underlying needs and interests, and then gener-ates outputs tailored to these inferred characteristics. They can be adaptive to in-context learning, such as LLM-as-a-judge optimizing (Gu et al., 2024) and personal LLM (Ryan et al., 2025; Li et al., 2025; Balepur et al., 2025; Du et al., 2025). Retrieval-augmented generation (RAG). Personal-LLM (Zollo et al., 2024) combines context learning with historical information retrieval to produce the personalized responses. In contrast, EpiPersona employs the parameter-ized modeling approach to globally and abstractly represent personalized preferences. 
+
+Parametric modeling. Parametrized preferences have been used for personalized reward model training (Zhao et al., 2023b; Poddar et al., 2024) and personal LLM fine-tuning (Huang et al., 2024). GPO (Zhao et al., 2023b) adds a few-shot preference module on top of the base LLM and learns to predict group preference scores from historical user data. VPL (Poddar et al., 2024) compresses historical user pref-erence data into a parameterized latent distribution using the VAE module. Predefined preference dimensions. AM-PLe (Oh et al., 2025) proposed a multi-dimensional reward function. It employs a posterior update method to model user preferences in a multi-dimensional manner and pre-dict preference scores. Additionally, existing research (Li et al., 2025) constructs a comprehensive preference space from users’ behavioral and descriptive information, such as psychological models of fundamental needs. In con-trast, EpiPersona disentangles stable personas from episode-specific preference feedback and does not require predefined preference dimensions. 
+
+## 3. Problem Setting 
+
+Let U denote a population of individuals and E the space of episodes. Each individual u ∈ U may participate in multiple episodes e ∈ E , where each episode is associated with a query qe. For a given episode e, the system presents a set of candidate responses {τ (i) 
+
+> e
+
+}Ki=1 . We assume that preferences are generated by an underlying, unobserved reward function: 
+
+Ru(τe) → R, (1) 2Episode 1: I need to      
+
+> decide today
+> whether to adopt a
+> new surgical tool.
+> Give me a quick
+> recommendation.
+> Episode 1: I want to
+> buy a drawing
+> software that I can
+> start using quickly.
+> Any
+> recommendations?
+> Response 1: Go ahead if …;
+> otherwise, delay and run a
+> small trial first.
+> Response 2: There are many
+> options. You could compare
+> the following 10 software…
+> Response 1: Choose X or Y,
+> since they’re user -friendly,
+> fully featured ...
+> Response 2: This tool has
+> many features. … Study each
+> module before deciding
+
+A
+
+B  
+
+> Preference feedback space D
+> Xdp
+
+× NA
+
+× NB Updated by 
+
+x
+
+x 
+
+> Persona space
+> Latent persona
+> Latent Persona modeling uZ(6)
+> p
+
+z(6) (4) (1) 
+
+( , , , )... p p pz z z(5) (6) (7) 
+
+( , , , )... p p pz z z
+
+> Persona code
+> EpiPersona -B
+> EpiPersona -A
+> Persona -episode coupling
+> Persona projection u
+
+Z:uZ:uZu
+
+Ze
+
+Enc 
+
+Dec 
+
+> Episode -
+> specific
+> Preference
+> Reward
+> score
+
+e   
+
+> :episode :response
+
+e
+
+> Latent persona
+
+Figure 1. We propose EpiPersona , which first maps the preference feedback space X into a persona space Zp. Based on an individual’s historical preference information, we model the individual’s latent persona Zu. We further introduce two variants of EpiPersona that couple persona Zu with episode context e for preference prediction: EpiPersona-A , which is tailored to inferring individuals’ episode-specific preferences in a plug-and-play manner, and EpiPersona-B , which is designed for pluralistic reward learning. 
+
+which reflects the utility assigned to response τe by individ-ual u under episode e.
+
+Observed feedback. The reward function Ru is not di-rectly observable. Instead, for each individual u and episode 
+
+e, we observe noisy pairwise preference feedback of the form: 
+
+x = ( τ (i) 
+
+> e
+
+, τ (j) 
+
+> e
+
+, y e), (2) where ye ∈ { 0, 1}. ye = 1 indicates τ (i) 
+
+> e
+
+is preferred over 
+
+τ (j) 
+
+> e
+
+in episode e. We denote the collection of observations for individual u as: 
+
+Xu = {(τ (i) 
+
+> e
+
+, τ (j) 
+
+> e
+
+, y e) | e ∈ E u}. (3) 
+
+Latent persona assumption. We define the episode-related response τe and a latent persona Zu of individual 
+
+u. We assume that the underlying reward function can be modeled as: 
+
+Ru(τe) ˆ = R(Zu, τ e) ∈ R, (4) where R(·, ·) is an estimated reward function. The latent per-sona Zu is unobserved but can be inferred from observable features Xu:
+
+Zu ∼ p(Zu | Xu). (5) 
+
+## 4. Method 
+
+We present an overview of EpiPersona in Figure 1. First, we disentangle individuals’ stable persona traits from their pref-erence feedback via persona projection, mapping feedback with similar personas into a shared latent space (Section 4.1). Subsequently, the model couples the inferred latent persona with the specific episodes to enable contextualized prefer-ence prediction (Section 4.2). The EpiPersona achieves persona disentanglement through parameterized abductive reasoning (Section 4.3) and vector-quantized mapping (Sec-tion 4.4), automatically constructing a structured persona space without requiring predefined preference dimensions. 
+
+4.1. Persona projection Formulation and assumptions. We assume that each observed preference feedback x ∈ Xu from individual u
+
+is jointly determined by the episode-specific responses τe
+
+and a latent, stable persona Zu. Formally, the preference formation process can be expressed as 
+
+x ∼ p(· | Zu, τ (i) 
+
+> e
+
+, τ (j) 
+
+> e
+
+). (6) 
+
+Latent persona modeling. Specifically, we model an in-dividual’s persona Zu as a latent variable that potentially follows a multimodal distribution, reflecting that a single in-dividual may exhibit multiple persona patterns (Chen et al., 2025). Concretely, we represent the latent persona of indi-vidual u as a set of persona codes: 
+
+Zu = { zp | zp ∈ Z p } (7) where each zp corresponds to a stable persona code. Cru-cially, each persona code zp lies in a shared persona space 
+
+Zp, which is common to all individuals. To further represent the persona code zp, we leverage the individual’s feedback 
+
+x ∈ Xu. Specifically, we map feedback instance x into the persona code zp ∈ Z p via a persona projection function g:
+
+g : x 7 → zp, zp ∈ Z p ⊂ Rd, (8) 3where d ≪ D and D is the dimension of the original feed-back x ∈ RD . It learns to automatically construct the persona space. In this way, Zu = { g(x) | x ∈ Xu } ⊆ Z p captures the sta-ble yet diverse persona traits of an individual, while ground-ing them in the shared persona space Zp. This shared space 
+
+Zp is also jointly updated from feedback across all individ-uals, enabling it to retain collective universality. We realize the mapping g through parameterized abductive reasoning 
+
+(Section 4.3) and VQ-based mapping (Section 4.4). The overall persona projection mapping function is illustrated in Figure 2. 
+
+Objective of persona projection. In summary, the objec-tive of persona projection is to map episode-specific feed-back x into a low-dimensional persona code zp ∈ Z u. This process aim to disentangle stable persona from episodic variability. 
+
+4.2. Persona-episode coupling 
+
+Based on persona projection, we couple the user persona Zu
+
+with episode-related context to model an individual’s prefer-ences. This process captures how an individual’s persona may be activated in an episode. We propose two modeling variants tailored to different downstream scenarios: 
+
+EpiPersona-A: This method generates a natural language description of the individual preference under the episode 
+
+e. Note that the input only includes the latent persona Zu
+
+(based on historical preference) and episode e. It allows the generated Pref e to be used in a plug-and-play manner, such as judging the individuals’ potential choices. Formally, the process is defined as: Pref e = gψ (Zu, e ) (9) where gψ is a transformer-based language model trained with an NTP (Radford et al., 2018) objective. The output follows a JSON format containing keys such as persona ,
+
+value , identification , intent , style , etc. Detailed comparison of EpiPersona-A with related methods is in Appendix A.6. 
+
+EpiPersona-B: The reward is modeled via a Bradley-Terry preference comparison (Bradley & Terry, 1952) based on latent persona Zu:
+
+Rθ (Zu, τ e) = W⊤ϕ hθ (Zu, τ e) (10) where hθ is an encoder producing episode-persona coupled representation, ϕ is an optional nonlinear transformation, W
+
+maps the representation to a scalar reward. More detailed model architecture is shown as Figure 5 in the Appendix. For the inference algorithm, see the Alg.1 and 2 in the Appendix. 
+
+4.3. Parameterized abductive reasoning 
+
+To realize the persona projection, we approach this using ab-ductive reasoning (Peirce, 1934; Balepur et al., 2025; Ryan et al., 2025), which seeks the plausible persona for observed data. Building on this idea, we introduce parameterized ab-ductive reasoning, which estimates an individual’s persona by comparing choices. The estimated persona r is repre-sented as a learnable vector and does not require the LLM to generate a human-readable reasoning trace. Formally, 
+
+λ(P, τ (i) 
+
+> e
+
+, τ (j) 
+
+> e
+
+, y e) 7 → r , (11) where P denotes the prompt that elicits the model to infer the persona underlying the user’s choice, λ is the LLM-based encoder. The estimated persona r captures the poten-tial rationale behind why the individual prefers one response over another. At this stage, r is still instance-level and not 
+
+shared across users. …                          
+
+> …
+> Compressed
+> Windows
+> VQ -based mapping
+> …
+> inject
+> Parameterized
+> abductive reasoning
+> Persona
+> space dpPersona
+> code ()(){1, ,}2arg min wmmPpwz−‖‖uZ
+> Latent persona ( ) ()
+> (,,,)ijeeey
+> 
+
+Figure 2. Overview of the persona projection mapping. 
+
+4.4. VQ-based mapping 
+
+Building on parameterized abductive reasoning, we further map the estimated persona r into a shared persona space using a VQ-based mapping, thereby capturing a shared insight. The procedure is as follows: 
+
+Variable persona compressed window. Let the estimated persona r ∈ Rd be injected into compressed windows as an embedding. The resulting window representation is then projected into a shared representation space via fθ (·), yield-ing w(w) = fθ (r). Each window w thus encapsulates a latent estimated persona derived from observed individual feedback. Both the window length and the embedded vec-tors within the window are flexibly configurable. 
+
+Persona codebook. We then map these windows onto a set of learnable persona code zp, without assuming the predefined dimensions. Where P denotes the codebook size. The persona space Zp is defined as: 
+
+Zp = {z(1)  
+
+> p
+
+, z (2)  
+
+> p
+
+, . . . , z (P ) 
+
+> p
+
+}, zp ∈ Rd (12) 4Nearest-neighbor quantization. Let the windows of u
+
+be defined as W ∈ Rn×d, where n denotes the number of windows for user u. w(w) is quantized by selecting the nearest persona code from Zp:
+
+m∗(w) = arg min   
+
+> m∈{ 1,...,P }
+
+∥w(w) − z(m) 
+
+> p
+
+∥2. (13) The corresponding persona code is then defined as: 
+
+Zu =  z(m∗(w))
+
+> p
+
+nw=1 . (14) 
+
+Commitment loss. To ensure the encoder output remains close to the assigned code, we utilize the commitment loss: 
+
+Lcommit = 1
+
+n
+
+> n
+
+X
+
+> w=1
+
+∥w(w) − sg (z(w) 
+
+> p
+
+)∥2, (15) where sg [·] denotes the stop-gradient operator. 
+
+Exponential moving average update. We adopt an ex-ponential moving average scheme to stabilize codebook learning. For each persona code z(m) 
+
+> p
+
+, we maintain an EMA count Nm and an EMA embedding Em. At each update step, we first accumulate statistics over the current batch: 
+
+Nm ← γN m + (1 − γ)
+
+> n
+
+X
+
+> w=1
+
+I
+
+h
+
+m∗(w) = m
+
+i
+
+, (16) 
+
+Em ← γE m + (1 − γ)
+
+> n
+
+X
+
+> w=1
+
+I
+
+h
+
+m∗(w) = m
+
+i 
+
+w(w)
+
+,
+
+(17) where γ ∈ (0 , 1) is the EMA decay rate and I[·] denotes the indicator function. The persona code is then updated as: 
+
+z(m) 
+
+> p
+
+← Em
+
+Nm
+
+. (18) 
+
+## 5. Experiment 
+
+5.1. Experiment setting Baselines. We compare EpiPersona against two cate-gories of methods: a) Non-parametric preference modeling. 
+
+These methods model preferences using natural language and can be adapted to downstream LLMs in a plug-and-play manner: SynthesizeME (Ryan et al., 2025) synthesizes personas through LLM-based bootstrap reasoning and val-idation; PersonalLLM (Zollo et al., 2024) retrieves simi-lar interactions as in-context examples to adapt to individ-ual preferences; PI (Balepur et al., 2025) infers personas from preference feedback and incorporates them into con-text for alignment. b) Parametric preference modeling. 
+
+GPO (Zhao et al., 2023b) uses a transformer to predict pref-erences conditioned on context samples; VPL (Poddar et al., 2024) employs a VAE to model individual preferences as latent distributions; PAL (Chen et al., 2025) leverages ideal points in a latent preference space with mixture modeling for pluralistic alignment; Bradley-Terry (BT) (Bradley & Terry, 1952) learns reward scores from pairwise compar-isons without personalization. Detailed descriptions of all baselines are provided in Appendix A.4. 
+
+Tasks We evaluate on two tasks that assess different as-pects of personalized preference modeling: a) LLM-as-a-judge. Following existing work (Ryan et al., 2025), this task evaluates the ability to generate natural language de-scriptions of individual preferences. Given an individual’s historical pairwise preference data and the current episode, the model generates the individual’s preference in natu-ral language, which is then used by an LLM judge to pre-dict which of two candidate responses the individual would prefer. This task is designed for EpiPersona-A and non-parametric baselines. To ensure robustness, we permute the order of candidate responses, effectively doubling the testset size. b) Pluralistic reward learning. This task eval-uates the ability to predict fine-grained preference scores. Given an individual’s historical pairwise preference data, the current episode and a response candidate, the model pre-dicts the utility score for that response. Following standard practice (Zhao et al., 2023a; Chen et al., 2025), we evaluate on pairwise comparisons and report accuracy. This task is designed for EpiPersona-B and parametric baselines. See Appendix A.1 for the complete task formulation. 
+
+Datasets Prism (Kirk et al., 2024b) is a values & contro-versy guided human feedback dataset that links the sociode-mographics and stated preferences of 1,500 participants from 75 countries. The dataset includes pairwise compari-son feedback, where participants evaluate multiple model re-sponses in the same conversational context, enabling person-alized and context-aware model alignment analysis. Arena 
+
+(Zheng et al., 2023) is a large-scale crowdsourced bench-mark where individuals interact with two anonymous LLMs simultaneously and choose their preferred response without knowing the models’ identities. By capturing individual preference signals in real conversational settings, the dataset enables evaluation of how well models adapt to diverse individual expectations. Dataset setting. Notably, the dataset contains no overlapping individuals between the train and test sets. Moreover, the historical and current samples do not share overlapping conversations. This setup ensures we evaluate on unseen 
+
+individuals with unseen conversations, which aligns with real-world scenarios. The distribution and characteristics of the dataset are shown in Appendix A.3. 5Implementation setup Fine-tuning is performed using the LoRA method applied to the main linear layers. The VQ codebook is initialized using K-means, and the commit loss weight is set to 0.2. λ is consistent with the finetuned backbone model used. Additional settings for EpiPersona-A: For downstream evaluation (LLM-as-a-Judge), LLMs including GPT-OSS-120B and Llama-3.3-70B-Instruct are employed. The backbone model used is Llama-3.1-8B. Ad-ditional settings for EpiPersona-B: The backbone model used is Llama-3.1-8B and Llama-3.2-3B. Additional imple-mentation details are provided in Appendix A.5. 
+
+5.2. Results 
+
+We evaluate EpiPersona from two aspects: 1) Performance validation of EpiPersona-A and EpiPersona-B , and 2) Con-tribution of each component to preference modeling. 
+
+EpiPersona-A improves LLMs’ ability to judge person-alized preferences. As shown in Table 1, we compare EpiPersona-A with non-parametric preference modeling approaches. Compared to the RAG-based method Personal-LLM , our approach achieves performance gains, improving by approximately 3% on the Prism dataset and approxi-mately 3.6% on the Arena dataset. We attribute this im-provement to two main limitations of RAG-based methods. 
+
+First , retrieving and concatenating historical interactions sig-nificantly increases the input length, which poses challenges for effective context utilization by large language models. 
+
+Second , it tends to focus on localized or recent individual information, potentially overlooking individuals’ global and relatively stable preferences. In contrast, state-of-the-art methods such as SynthesizeMe 
+
+and PI generate global individual personas based on histori-cal interactions. While effective in capturing static individ-ual traits, these approaches are less capable of adapting to episode-dependent preference variations. Our method bal-ances contextualized preferences and static personas by pre-dicting episode-specific preferences conditioned on a latent persona. Moreover, parametric individual history modeling enables effective preference compression and abstraction, improving generalization and robustness. 
+
+EpiPersona-B improves performance on pluralistic re-ward learning. As shown in Table 2, we compare EpiPersona-B (ours) with parametric preference modeling methods on pluralistic reward learning. EpiPersona-B con-sistently achieves higher or comparable performance than other baselines, demonstrating the effectiveness of disen-tangling the persona from episode-related information via persona projection. Specifically, while VPL and PAL model latent individual information, their performance are sensi-tivity to context and model size. In contrast, EpiPersona-B shows robust preference prediction, achieving the highest scores on Prism with both Llama-3.2-3B and Llama-3.1-8B, and leading performance on Arena for Llama-3.1-8B. 
+
+Ablation of EpiPersona. To validate the contribution of each component in EpiPersona, we conduct ablation stud-ies on the LLM-as-a-judge task across both datasets using EpiPersona-A. Table 3 presents the results comparing two main ablation variants. 
+
+Ablation variant 1: Text-based preference modeling (w/o modeling preference on latent persona) includes global per-sona prediction , which summarizes the text-based persona from the historical information, and episode-specific prefer-ence prediction , which couples the text-based persona with the episode to predict the episode-specific preference (see prompt in Appendix A.10.4). 
+
+Ablation variant 2: Parametric preference modeling 
+
+represents individual preferences with a latent persona Zu.To assess the contribution of specific components, we con-ducted ablation studies by removing the VQ-based mapping (w/o VQ-based mapping ) and parametric abductive reason-ing ( w/o param. abductive reasoning ) modules. Component-wise analysis. For ablation variant 1 (Text-based preference modeling) , using the stable global per-sona achieves moderate performance. Adding episode-specific preference prediction with different LLMs brings minor improvements, suggesting that text-based approaches alone have limited ability to capture episode-level pref-erences For instances, despite using different LLMs (e.g. Llama-3.1-8B and GPT-OSS-120B) as generators and fine-tuning the models to adapt from stable personas to dynamic preferences (with distilled Llama-3.1-8B), it still fails to achieve superior performance. For ablation variant 2 (Parametric preference modeling) ,representing individual preferences with a latent persona Zu
+
+boosts performance. Ablation studies show that removing the VQ-based mapping or the parametric abductive reason-ing module reduces accuracy, confirming that each com-ponent contributes to overall performance. Our full model achieves the highest scores, indicating that parametric mod-eling with explicit latent personas enhances robustness com-pared to text-based approaches. 
+
+5.3. Analysis 
+
+We analyze episode generalization from three perspectives: (1) episode similarity , (2) the number of individual pref-erence feedback instances , i.e. , reflecting the data distri-bution, and (3) window size , i.e. , the number of observable preference feedback instances, treated as a hyperparameter. 
+
+Analysis of episode similarity effects. Episode similar-ity refers to the similarity between an individual’s current 6Table 1. Comparison on LLM-as-a-judge task. Values are percentages with standard deviations (95% CI). 
+
+PRISM ARENA 
+
+GPT-OSS-120B LLAMA -3.3-70B GPT-OSS-120B LLAMA -3.3-70B RANDOM 50% 50% 50% 50% LLM AS A JUDGE (B ASE MODEL ) 56.30 ± 1.26% 55.90 ± 1.22% 64.36 ± 3.91% 64.18 ± 3.91% 
+
+SYNTHESIZE ME (GPT-OSS-120B) 57.24 ± 1.27% 57.67 ± 1.27% 64.89 ± 4.11% 64.39 ± 3.93% 
+
+SYNTHESIZE ME (L LAMA -3.1-8B) 57.27 ± 1.28% 56.86 ± 1.26% 63.83 ± 4.26% 64.17 ± 3.85% 
+
+PI (GPT-OSS-120B) 54.00 ± 1.37% 57.22 ± 1.28% 61.72 ± 4.78% 63.28 ± 3.98% 
+
+PI (L LAMA -3.1-8B) 57.48 ± 1.28% 56.58 ± 1.36% 63.06 ± 4.13% 63.97 ± 3.97% 
+
+PERSONAL LLM ( DEMO NUM =1) 54.39 ± 1.26% 55.81 ± 1.24% 59.71 ± 4.10% 59.33 ± 4.09% 
+
+PERSONAL LLM ( DEMO NUM =3) 56.29 ± 1.38% 56.42 ± 1.25% 62.01 ± 4.13% 63.13 ± 3.89% 
+
+PERSONAL LLM ( DEMO NUM =5) 56.46 ± 1.34% 56.21 ± 1.24% 62.43 ± 4.97% 64.13 ± 3.92% 
+
+EPI PERSONA -A 59.38 ± 1.25% 59.15 ± 1.30% 66.07 ± 3.98% 65.01 ± 3.90% 0.1 0.2 0.3 0.4 
+
+Episode-history similarity 
+
+0.525 
+
+0.550 
+
+0.575 
+
+0.600 
+
+0.625       
+
+> Performance (Acc)
+> y/x= 0.043
+> y/x= 0.144
+> y/x= 0.178
+> Low similarity
+> High
+> similarity
+
+AEpiPersona 
+
+SynthesizeMe 
+
+PI 
+
+10 20 30 
+
+Feedback pairs num. (per indiv.) 
+
+0.5 
+
+0.6 
+
+0.7 
+
+> Performance (Acc)
+
+BEpiPersona 
+
+SynthesizeMe 
+
+PI 
+
+5 15 20 30 45 60 
+
+Window size 
+
+0.52 
+
+0.54 
+
+0.56 
+
+0.58 
+
+0.60 
+
+0.62 
+
+> Performance (Acc)
+
+C
+
+0
+
+20 
+
+40 
+
+60 
+
+80 
+
+100 
+
+> Sample density (%)
+
+Figure 3. Evaluation of EpiPersona under the influence of different factors. (A) Episode similarity : performance under high vs. low similarity, showing smaller drops for EpiPersona under the episode-shift scenario. (B) Number of preference feedback instances : model performance across users with varying amounts of historical feedback, highlighting advantages in sparse scenarios. (C) Window size :effect of the number of observable preference feedback instances on EpiPersona. 
+
+Table 2. Comparison of the pluralistic reward model learning. Values are percentages with standard deviations (95% CI). 
+
+PRISM ARENA 
+
+LLAMA -3.2-3B LLAMA -3.1-8B LLAMA -3.2-3B LLAMA -3.1-8B GPO 55.26 ± 1.25% 56.48 ± 1.24% 53.87 ± 4.14% 56.69 ± 4.05% 
+
+VPL 58.26 ± 1.75% 58.23 ± 1.75% 56.69 ± 5.81% 54.93 ± 5.71% 
+
+PAL 56.81 ± 1.75% 54.23 ± 1.73% 60.56 ± 5.63% 56.69 ± 5.81% 
+
+BT 56.58 ± 1.47% 57.11 ± 1.55% 51.94 ± 5.31% 54.06 ± 5.42% 
+
+OURS 59.60 ± 1.76% 58.54 ± 1.76% 59.57 ± 5.67% 57.45 ± 5.12% 
+
+episode and their historical preference episodes. Low sim-ilarity indicates a large episodic gap and shift (i.e., an 
+
+episode-shift scenario ), implying that historical episodes are less informative to the current sample. Episode sim-ilarity is computed using Qwen3-Embedding . As shown in Figure 3(A), the results reveal two interesting findings. 
+
+Finding 1 : EpiPersona, SynthesizeMe , and PI all perform better under high episode similarity, suggesting that similar contexts help models more accurately infer individual pref-erences. This also indicates that samples in the episode-shift scenario are relatively hard. Finding 2 : Under low episode 
+
+Table 3. Ablation study on EpiPersona. 
+
+PRISM ARENA 
+
+ABLATION VARIANT 1: TEXT -BASED PREFERENCE MODELING 
+
+Global persona prediction 
+
+> ONLY STABLE PERSONA GPT
+
+-OSS -120 B 57.54 ± 1.15% 64.05 ± 4.13% 
+
+Episode-specific preference prediction  
+
+> WITH DISTILLED
+
+LLAMA -3.1-8B 56.98 ± 1.38% 62.52 ± 4.08% 
+
+> WITH GPT
+
+-OSS -120 B 56.82 ± 1.63% 63.04 ± 4.15%  
+
+> WITH
+
+LLAMA -3.1-8B 55.96 ± 1.26% 61.27 ± 4.00% 
+
+ABLATION VARIANT 2: PARAMETER -BASED PREFERENCE MODELING W/O VQ-BASED MAPPING 57.56 ± 1.13% 62.66 ± 4.01% 
+
+> W
+
+/O PARAM . ABDUCTIVE REASONING 57.99 ± 1.13% 64.36 ± 4.01% 
+
+EPI PERSONA (O URS ) 59.38 ± 1.25% 66.07 ± 3.98% 
+
+similarity, our method shows a smaller performance drop, demonstrating its ability to handle unseen episodes and im-prove generalization during inference: our model drops only 
+
+0.043 , compared to 0.178 and 0.144 for the other methods. In the episode-shift scenario, our method outperforms the state-of-the-art by 6% .7Analysis of instance number. As shown in Figure 3(B), across varying ranges of user preference counts, our method maintains consistently competitive performance compared to the baselines. The benefits of EpiPersona are especially apparent when user preferences are sparse. These two analyses collectively validate EpiPersona’s strong generalization capability: it maintains robust performance under both episodic distribution shift and data scarcity, out-performing SOTA baselines in both challenging settings. 
+
+Analysis of window size (observable preference feed-back). As shown in Figure 3(C), we further examined the performance of EpiPersona with different visible win-dow sizes. The results show that even with relatively small window sizes, the model maintains consistent performance. These findings suggest that EpiPersona can effectively uti-lize relatively sparse historical information. In practical applications, where user history is often short or partially missing, the model’s ability to perform reasonably well with a small window size supports its applicability in such scenarios. More results are presented in Appendix A.9. 
+
+## 6. Conclusion 
+
+We introduced EpiPersona, a novel method for pluralistic alignment that jointly models stable personas and dynamic episodes. By projecting individual preference feedback into a low-dimensional, shared persona space via parameterized abductive reasoning and vector quantization, our method effectively disentangles enduring personal traits from sit-uational variations. Extensive experiments on real-world personalized datasets demonstrate that EpiPersona outper-forms existing parametric and non-parametric baselines in both LLM-as-judge and pluralistic reward learning tasks. The result shows that the proposed persona-episode cou-pling can adapt to the episode-shift and sparsity scenarios. 
+
+## Impact Statement 
+
+This paper advances pluralistic alignment in large language models by disentangling stable user traits from situational context. Our goal is to help AI systems better serve diverse populations, particularly when user data is sparse or pref-erences shift across contexts. Robust preference modeling can reduce “one-size-fits-all” alignment failures and bet-ter accommodate heterogeneous values and communication needs. The proposed method provides a modeling frame-work that may support personalization research and reward learning. As with any personalization technology, certain consider-ations warrant attention: (1) Privacy: Persona represen-tations may unintentionally encode sensitive attributes or enable inference of private information from behavioral traces. (2) Responsible deployment: Like other prefer-ence modeling techniques, our method should be deployed thoughtfully to avoid potential misuse in manipulative or surveillance contexts. To mitigate these risks, we use publicly available research benchmarks (Prism and Arena) that have undergone peer review and ethics review with established privacy protec-tions. We strictly adhere to dataset usage agreements and do not collect new user data. We emphasize that our method is intended for scientific research to advance understand-ing of pluralistic alignment, and we will release it under a restrictive license that encourages responsible use while preventing misuse. We believe this work contributes positively to building more inclusive AI systems. As personalized alignment meth-ods continue to develop, we encourage the community to advance complementary research on privacy-preserving per-sonalization techniques, fairness evaluation across demo-graphic groups and episodic contexts, and best practices for responsible deployment. 
+
+## References 
+
+Askell, A., Bai, Y., Chen, A., Drain, D., Ganguli, D., Henighan, T. J., Jones, A., Joseph, N., Mann, B., Das-sarma, N., Elhage, N., Hatfield-Dodds, Z., Hernan-dez, D., Kernion, J., Ndousse, K., Olsson, C., Amodei, D., Brown, T. B., Clark, J., McCandlish, S., Olah, C., and Kaplan, J. A general language assistant as a laboratory for alignment. ArXiv , abs/2112.00861, 2021. URL https://api.semanticscholar. org/CorpusID:244799619 .Balepur, N., Padmakumar, V., Yang, F., Feng, S., Rudinger, R., and Boyd-Graber, J. L. Whose boat does it float? im-proving personalization in preference tuning via inferred user personas. In Che, W., Nabende, J., Shutova, E., and Pilehvar, M. T. (eds.), Proceedings of the 63rd Annual Meeting of the Association for Computational Linguis-tics (Volume 1: Long Papers) , pp. 3371–3393, Vienna, Austria, July 2025. Association for Computational Lin-guistics. ISBN 979-8-89176-251-0. doi: 10.18653/v1/ 2025.acl-long.168. URL https://aclanthology. org/2025.acl-long.168/ .Bradley, R. A. and Terry, M. E. Rank analysis of incom-plete block designs: I. the method of paired comparisons. 
+
+Biometrika , 39(3/4):324–345, 1952. Chen, D., Chen, Y., Rege, A., Wang, Z., and Vinayak, R. K. PAL: Sample-efficient personalized reward mod-eling for pluralistic alignment. In The Thirteenth In-ternational Conference on Learning Representations ,82025. URL https://openreview.net/forum? id=1kFDrYCuSu .Cross, L., Xiang, V., Bhatia, A., Yamins, D. L., and Haber, N. Hypothetical minds: Scaffolding theory of mind for multi-agent tasks with large language models. In The Thirteenth International Conference on Learning Repre-sentations , 2025. Du, B., Ye, Z., Wu, Z., Monika, J., Zhu, S., Ai, Q., Zhou, Y., and Liu, Y. Valuesim: Generating backstories to model in-dividual value systems. arXiv preprint arXiv:2505.23827 ,2025. Gu, J., Jiang, X., Shi, Z., Tan, H., Zhai, X., Xu, C., Li, W., Shen, Y., Ma, S., Liu, H., et al. A survey on llm-as-a-judge. arXiv preprint arXiv:2411.15594 , 2024. Guan, J., Wu, J., Li, J.-N., Cheng, C., and Wu, W. Asurvey on personalized alignment–the missing piece for large language models in real-world applications. arXiv preprint arXiv:2503.17003 , 2025. Hagendorff, T. Mapping the ethics of generative ai: A comprehensive scoping review. Minds and Machines , 34 (4):39, 2024. Huang, Q., Liu, X., Ko, T., Wu, B., Wang, W., Zhang, Y., and Tang, L. Selective prompting tuning for personal-ized conversations with LLMs. In Ku, L.-W., Martins, A., and Srikumar, V. (eds.), Findings of the Association for Computational Linguistics: ACL 2024 , pp. 16212– 16226, Bangkok, Thailand, August 2024. Association for Computational Linguistics. doi: 10.18653/v1/2024. findings-acl.959. URL https://aclanthology. org/2024.findings-acl.959/ .Jang, J., Kim, S., Lin, B. Y., Wang, Y., Hessel, J., Zettle-moyer, L., Hajishirzi, H., Choi, Y., and Ammanabrolu, P. Personalized soups: Personalized large language model alignment via post-hoc parameter merging. arXiv preprint arXiv:2310.11564 , 2023. Kirk, H. R., Vidgen, B., R ¨ottger, P., and Hale, S. A. The benefits, risks and bounds of personalizing the alignment of large language models to individuals. Nature Machine Intelligence , 6(4):383–392, 2024a. Kirk, H. R., Whitefield, A., Rottger, P., Bean, A. M., Mar-gatina, K., Mosquera-Gomez, R., Ciro, J., Bartolo, M., Williams, A., He, H., et al. The prism alignment dataset: What participatory, representative and individualised hu-man feedback reveals about the subjective and multi-cultural alignment of large language models. Advances in Neural Information Processing Systems , 37:105236– 105344, 2024b. Li, J.-N., Guan, J., Wu, S., Wu, W., and Yan, R. From 1,000,000 users to every user: Scaling up personal-ized preference for user-level alignment. arXiv preprint arXiv:2503.15463 , 2025. Oh, M., Lee, S., and Ok, J. Comparison-based active prefer-ence learning for multi-dimensional personalization. In Che, W., Nabende, J., Shutova, E., and Pilehvar, M. T. (eds.), Proceedings of the 63rd Annual Meeting of the Association for Computational Linguistics (Volume 1: Long Papers) , pp. 33145–33166, Vienna, Austria, July 2025. Association for Computational Linguistics. ISBN 979-8-89176-251-0. doi: 10.18653/v1/2025.acl-long. 1590. URL https://aclanthology.org/2025. acl-long.1590/ .Peirce, C. S. Collected papers of charles sanders peirce ,volume 5. Harvard University Press, 1934. Poddar, S., Wan, Y., Ivison, H., Gupta, A., and Jaques, N. Personalizing reinforcement learning from human feedback with variational preference learning. Advances in Neural Information Processing Systems , 37:52516– 52544, 2024. Radford, A., Narasimhan, K., Salimans, T., Sutskever, I., et al. Improving language understanding by generative pre-training. 2018. Riemer, M., Ashktorab, Z., Bouneffouf, D., Das, P., Liu, M., Weisz, J. D., and Campbell, M. Position: Theory of mind benchmarks are broken for large language models. In Forty-second International Conference on Machine Learning Position Paper Track , 2025. Ryan, M. J., Shaikh, O., Bhagirath, A., Frees, D., Held, W., and Yang, D. SynthesizeMe! inducing persona-guided prompts for personalized reward models in LLMs. In Che, W., Nabende, J., Shutova, E., and Pilehvar, M. T. (eds.), Proceedings of the 63rd Annual Meeting of the Association for Computational Linguistics (Volume 1: Long Papers) , pp. 8045–8078, Vienna, Austria, July 2025. Association for Computational Linguistics. ISBN 979-8-89176-251-0. doi: 10.18653/v1/2025.acl-long. 397. URL https://aclanthology.org/2025. acl-long.397/ .Sorensen, T., Mishra, P., Patel, R., Tessler, M. H., Bakker, M. A., Evans, G., Gabriel, I., Goodman, N., and Rieser, V. Value profiles for encoding human variation. In Pro-ceedings of the 2025 Conference on Empirical Methods in Natural Language Processing , pp. 2047–2095, 2025. Van Den Oord, A., Vinyals, O., et al. Neural discrete rep-resentation learning. Advances in neural information processing systems , 30, 2017. 9Xie, C., Chen, C., Jia, F., Ye, Z., Lai, S., Shu, K., Gu, J., Bibi, A., Hu, Z., Jurgens, D., et al. Can large language model agents simulate human trust behavior? Advances in neural information processing systems , 37:15674–15729, 2024. Xu, Y., Zhang, J., Salemi, A., Hu, X., Wang, W., Feng, F., Zamani, H., He, X., and Chua, T.-S. Personalized generation in large model era: A survey. arXiv preprint arXiv:2503.02614 , 2025. Zhang, Z., Rossi, R. A., Kveton, B., Shao, Y., Yang, D., Zamani, H., Dernoncourt, F., Barrow, J., Yu, T., Kim, S., et al. Personalization of large language models: A survey. 
+
+arXiv preprint arXiv:2411.00027 , 2024. Zhao, C., Zhao, H., He, M., Zhang, J., and Fan, J. Cross-domain recommendation via user interest alignment. In 
+
+Proceedings of the ACM web conference 2023 , pp. 887– 896, 2023a. Zhao, S., Dang, J., and Grover, A. Group preference opti-mization: Few-shot alignment of large language models. In NeurIPS 2023 Workshop on Instruction Tuning and Instruction Following , 2023b. Zheng, L., Chiang, W.-L., Sheng, Y., Zhuang, S., Wu, Z., Zhuang, Y., Lin, Z., Li, Z., Li, D., Xing, E., et al. Judging llm-as-a-judge with mt-bench and chatbot arena. Ad-vances in neural information processing systems , 36: 46595–46623, 2023. Zhu, M., Weng, Y., Yang, L., and Zhang, Y. Personality alignment of large language models. In The Thirteenth International Conference on Learning Representations ,2025. Zollo, T. P., Siah, A. W. T., Ye, N., Li, A., and Namkoong, H. Personalllm: Tailoring llms to individual preferences. In 
+
+Pluralistic Alignment Workshop at NeurIPS 2024 , 2024. 10 A. Appendix 
+
+A.1. Task design Task 1: LLM-as-a-Judge. We note that Eq. 19 defines a general evaluation paradigm rather than a model-specific design. In this paradigm, an LLM is prompted to infer a natural-language description of an individual user’s preference based on historical interactions Xu, optionally conditioned on the current episode e. This formulation is applicable to a broad class of 
+
+non-parametric baselines that rely on in-context prompting. Pref = G(Xu, e ) or Pref = G(Xu) (19) The generated preference Pref is expressed in natural language and summarizes the individual’s persona or preference. Subsequently, preference and a set of candidate responses {τ1, τ 2} are provided to a large language model acting as a judge. The judge predicts which response the user is more likely to select: 
+
+ˆye = arg max   
+
+> τ∈{ τ1,τ 2}
+
+P(ye = 1 | Pref , τ ). (20) This task is mainly designed for EpiPersona-A and non-parametric preference modeling, following the LLM-as-a-judge evaluation paradigm. 
+
+Task 2: Pluralistic Reward Learning. Let u denote an individual user with latent persona Zu, and let e denote the current episode. The user’s historical preference information is summarized as Xu. Given a candidate response τ under episode e,the goal is to predict whether the user would select this response. We model the individual-specific utility of a response via a reward function 
+
+Rθ (Zu, τ ), (21) where Zu captures stable persona traits inferred from Xu, and τ denotes the response content. Following the Bradley-Terry formulation, the probability that the user selects τ under episode e is defined as 
+
+P (ye = 1 | Zu, τ ) = exp  Rθ (Zu, τ )
+
+1 + exp  Rθ (Zu, τ ) . (22) The training data consists of tuples (Xu, e, τ, y e), where ye ∈ { 0, 1} indicates whether the user selects the response. The model is trained by minimizing the negative log-likelihood over the observed labels. At inference time, Rθ (Zu, τ ) serves as a scalar utility score for ranking candidate responses. Model performance is evaluated using accuracy (Acc). This task is primarily designed for EpiPersona-B and parametric preference modeling. 
+
+A.2. Contribution 
+
+Our work makes three key contributions: 1. Disentangled persona modeling. We propose persona projection , which separates stable individual traits (latent personas) from episode-specific preference feedback, addressing the limitation of prior methods that mix stable traits with temporary episodic signals. 2. Flexible, combinatorial latent persona modeling. We introduce a parameterized abductive reasoning and VQ-based mapping approach to automatically construct persona codes without relying on predefined dimensions, capturing latent semantics of human preferences. 3. Episode-coupled preference prediction. We develop EpiPersona , which couples personas with situational episode information, enabling robust prediction of cross-episode preferences. Experiments show that EpiPersona generalizes well to unseen users and episodic-shift scenarios while remaining effective with limited preference data. 11 20 40             
+
+> Value
+> 0
+> 25
+> 50
+> 75
+> 100
+> Count
+> 103
+> 16
+> 52110201
+> Arena - Hist. sample/user
+> 10 20 30
+> Value
+> 0
+> 50
+> 100
+> 150
+> 200
+> Count
+> 37
+> 111
+> 201
+> 174
+> 79 72
+> 32
+> 10 43
+> Prism - Hist. sample/user
+
+Figure 4. The distribution of the history samples per user. 
+
+A.3. Dataset construction 
+
+We follow the existing study (Ryan et al., 2025) in adopting their dataset split (train, validation, and test sets) as well as the division of each individual’s historical and current data to ensure more consistent and continuous experimental validation. These two datasets compile the high-quality and challenging individual data to serve as a benchmark for personalized alignment. The distribution of historical sample numbers per individual is shown in Figure 4. The statistics of user numbers and historical/current pairs for both datasets are summarized in Table 4. 
+
+Table 4. Statistics of user numbers and historical/current pairs for Arena and Prism datasets. 
+
+ARENA PRISM 
+
+USER NUM HIST /CUR PAIRS USER NUM HIST /CUR PAIRS 
+
+TRAIN 23 202/103 280 4192/2177 VALIDATION 19 155/80 65 973/514 TEST 89 514/ 284 378 5816/ 3033 
+
+A.4. Baselines 
+
+a) Non-parametric preference modeling. These methods model individuals’ preferences using natural language , and therefore can be directly adapted to downstream LLMs in a plug-and-play manner. SynthesizeME (Ryan et al., 2025): Integrate LLM-based bootstrap reasoning, validation-driven persona synthesis, example selection, and prompt optimization, forming a framework for individual persona modeling. PersonalLLM (Zollo et al., 2024): Retrieve similar interactions based on embeddings and adds a small number of individual feedback samples as contextual examples, enabling the LLM to dynamically adapt to individual preferences during generation and mitigating data sparsity without additional fine-tuning. 
+
+PI (Balepur et al., 2025): PI abductively infers individuals’ personas from their preferences over selected and rejected outputs, and then incorporates these personas into the context to assess whether they can effectively guide the model toward outputs that align with individuals’ likely choices. 
+
+b) Parametric preference modeling. GPO (Zhao et al., 2023b): (Group preference optimization) is a transformer-based few-shot preference model that divides each training group’s preference data into context and target samples, learning to predict target preferences conditioned on the context. VPL (Poddar et al., 2024): (Variational Preference Learning) employs a VAE to model individual preferences as latent variables, inferring each individual’s hidden preference distribution from a small amount of feedback, and then conditioning the reward model on this distribution to achieve personalized alignment with diverse individual preferences. PAL (Chen et al., 2025): (Pluralistic Alignment Framework) The PAL framework leverages the ideal point of individuals (which represents each individual’s preference as a point in a latent preference space) combined with mixture modeling to learn a unified latent reward representation from diverse human preferences, thereby achieving few-shot generalizable pluralistic alignment for heterogeneous individual preferences. Bradley-Terry Reward Model (Bradley & Terry, 1952): The Bradley-Terry Reward Model learns latent reward scores from pairwise comparisons, modeling the probability of one output being preferred over another without using personalized historical information. We fine-tune the models on the training set to fit the distribution of the dataset. 12 A.5. Implementation details 
+
+The maximum input length for forming abductive reasoning is 1600 tokens, while the current context and response have a maximum length of 1024 tokens (EpiPersona-B). Training parameters include a per-device batch size of 2, gradient accumulation steps of 2, learning rate of 5e-6, weight decay of 0.01, warmup steps of 100, and bf16 mixed-precision training enabled. Training is conducted on eight NVIDIA H20 GPUs. LoRA is implemented with parameters set as r = 8 ,lora alpha = 32 , lora dropout = 0 .1. EpiPersona-A Distills Qwen-2.5-72B for personal, episode-specific reasoning, using a JSON dictionary format with fields such as persona , value , preferred style , and intent (see prompt in Appendix A.10.1). We set codebook size 16 for Arena and 64 for Prism. Due to the limited size of the Arena dataset, we first pre-trained the transformer-based model on the Prism dataset (for EpiPersona-A) to stabilize training. 
+
+A.6. Comparison of preference modeling methods across core capabilities 
+
+We formalize the core capabilities of preference modeling as: human-observable and interpretable (Human-O/I), machine-understandable (Machine-U), compression capability (Compact-C), and global preference abstraction capability (Global-A). 
+
+Text-based summarization and RAG offer interpretability but provide weaker compression, learnability, and abstraction, which may undesirably focus on users’ isolated and fragmented information. Parameterized preference modeling excels in learnability and abstraction but is less observable and plug-and-play. Predefined dimensions compress preferences into dense vectors, aiding learning and interpretability, yet rely heavily on manual design, limiting flexibility. Our approach proposes a learnable personalized preference attribution (EpiPersona-A) that capitalizes on the strengths of these four capabilities. Specifically, Machine-understandable: EpiPersona-A parameterizes users’ static personas employing Parameterized abductive reasoning and User prototype mapping; Compression capability: Parameterized static personas serve as a highly compressed representation of user preferences, preventing loss of persona information via text summarization; Global preference abstraction capability: EpiPersona-A provides a macro-level, abstract characterization of user personalities, instead of isolated or fragmented local information; Human-observable and interpretable: Dynamic preferences are predicted in textual form, making them plug-and-play compatible with any LLM.                          
+
+> Table 5. Comparing various preference modeling methods in terms of key attributes. Predef.: Predefined dimensions; Text-based sum.: text-based preference summarization; Parametrized.: Parametrized modeling; EpiPersona-A: Our proposed method.
+> METHOD HUMAN -O/I MACHINE -U COMPACT -C GLOBAL -A
+> TEXT -BASED SUM .!---
+> PARAMETRIZED .-!!!
+> PREDEF .!!!-
+> RAG !---
+> EPI PERSONA -A !!!!
+
+A.7. Figure of model details 
+
+Figure 5 illustrates the detailed architecture of our model, including the parameterized abductive reasoning module and the VQ-based mapping mechanism. 
+
+A.8. Inference algorithm 
+
+We summarize the inference procedure for EpiPersona. Given user preference feedback and an episode, the algorithms first encode feedback using parameterized abductive reasoning and convert it to latent persona representations via VQ-based mapping. We then generate either episode-specific preferences (EpiPersona-A) or reward scores for candidate responses (EpiPersona-B) (see algorithm 1 and 2). 
+
+A.9. Window size experiment 
+
+To investigate the impact of window size, we conduct experiments on EpiPersona with varying window sizes on arena dataset, as shown in Figure 6. On the Arena dataset, the model maintains stable performance with window sizes between 15 and 60. These results suggest that it is robust across a range of window sizes. 13 …
+
+> …
+
+Dec 
+
+> guide
+> Episode -
+> specific
+> preference
+> Compressed
+> Windows
+> VQ -based mapping
+> …
+> inject
+> …
+> …
+> VQ -based mapping
+
+(B) EpiPersona -B
+
+(A) EpiPersona -A                
+
+> Enc
+> Enc
+> Parameterized
+> abductive reasoning
+> Persona
+> space dpPersona code ()(){1, ,}2arg min wmmPpwz−‖‖
+
+Figure 5. Model architecture details (parameterized abductive reasoning and VQ-based mapping). 
+
+Algorithm 1 EpiPersona-A: Persona-episode coupled preference generation 
+
+Input: observed feedback Xu for user u, episode e
+
+Encode feedback: Ru = {λ(P, x ) | x ∈ Xu} // param. abductive reasoning Inject representations into windows: W = window (Ru) // inject Ru to fixed-length windows Compute latent persona set via VQ mapping: Zu = g(W )
+
+Generate personalized preference: P ref e = gψ (Zu, e )
+
+Format P ref e as JSON with keys: persona, value, identification, intent, style 
+
+Output: P ref e
+
+Algorithm 2 EpiPersona-B: Episode-aware persona-based reward modeling 
+
+Input: observed feedback Xu for user u, episode e, candidate responses {τ (i) 
+
+> e
+
+}Ki=1 
+
+Encode feedback with parameterized abductive reasoning: Ru = {λ(P, x ) | x ∈ Xu}
+
+Inject representations into windows: W = window (Ru)
+
+Compute latent persona set via VQ mapping: Zu = g(W )
+
+for each candidate response τ (i) 
+
+> e
+
+do 
+
+Compute episode-persona representation: h = hθ (Zu, τ (i) 
+
+> e
+
+, e )
+
+Compute reward: Rθ (Zu, τ (i) 
+
+> e
+
+, e ) = W ⊤ϕ(h)
+
+end for Output: {Rθ (Zu, τ (i) 
+
+> e
+
+, e )}Ki=1 20 40 60     
+
+> Window size
+> 0.60
+> 0.65
+> 0.70
+> Acc
+> 515 30 45 60
+
+Arena 
+
+> 95% CI
+> Acc
+
+Figure 6. Window size experiment on EpiPerona (Arena). 
+
+14 A.10. Prompt 
+
+This section lists the prompts used for modeling user beliefs and preferences, including: 1. Prompt for fine-grained belief and preference extraction; 2. LLM-as-a-Judge Prompt for EpiPersona-A; 3. LLM-as-a-Judge Prompt with Retrieval Augmentation; 4. Text-based Episode-specific Preference Prediction Prompt (used in ablation test) ;5. Parameterized Abductive Reasoning Prompt ( P); 6. EpiPersona-A Prompt for episode-specific context coupled with user representation Zu.1. Prompt for fine-grained belief and preference extraction (guidance for EpiPersona-A) 
+
+Given the dialogue context below and two possible responses| one selected by the user and one not: Dialogue context: {context} Chosen answer: {chosen} Rejected answer: {rejected} ---Task---Analyze the user’s selection and extract explicitly defined preference elements. ---Definitions---The extracted preferences should be divided into the following categories: 1. Stable preferences (long-term, consistent traits): persona: the user’s personality or character traits. value: the user’s values, opinions, or attitudes. identification: the user’s social identity, role, or profession if inferable. 2. Dynamic preferences (context-dependent and situational): style: the user’s preferred expression style, tone, or format. intent: the user’s goal or intention in choosing the response. ---Rules---1. If a preference element cannot be inferred, return None. 2. Do not guess or invent information beyond what can be reasonably inferred from the context. 3. The output must be strictly formatted as JSON and must not contain comments. ---Output Format---{"stable_preferences": {"persona": "<persona>", "value": "<value>", "identification": "<identification>" }, "dynamic_preferences": {"style": "<style>", "intent": "<intent>" }}
+
+15 2. LLM-as-a-Judge Prompt (EpiPersona-A) 
+
+Your input fields are: 1. conversation (str): The conversation context leading up to the completions. 2. first_completion (str): The first of the two candidate responses. 3. second_completion (str): The second of the two candidate responses. Your output fields are: 1. reasoning (str): A brief explanation of the judgment. 2. preference (str): The response more likely to be preferred by the user. The value must be one of: "First" or "Second". All interactions follow the structure below. [[ ## conversation ## ]] {conversation} [[ ## first_completion ## ]] {first_completion} [[ ## second_completion ## ]] {second_completion} The output must be a valid JSON object with the following structure: {"reasoning": "<reasoning>", "preference": "<First | Second>" }Your objective: Given a conversation and two responses generated by different models, determine which response the human user is more likely to prefer. The user you are judging for has the following preference profile: === {user_preference} === Consider the user’s persona and preferences carefully, and make a rational, preference-consistent judgment. 
+
+16 3. LLM-as-a-Judge Prompt with Retrieval Augmentation 
+
+User History (Retrieved Demonstrations): ---User’s historical selection i (can be used as a reference if relevant): [[ ## conversation ## ]] {demo_conversation_i} [[ ## first_completion ## ]] {demo_first_completion_i} [[ ## second_completion ## ]] {demo_second_completion_i} User’s choice: "First" or "Second" (The above block may repeat for multiple retrieved demonstrations.) Current Dialogue Context: {conversation} Candidate Responses: [[ ## first_completion ## ]] {first_completion} [[ ## second_completion ## ]] {second_completion} Task: Given the current dialogue context and the user’s historical selections, infer which candidate response the user is more likely to choose. You should support your judgment by reasoning about how the current responses relate to patterns observed in the user’s history. Output Format: The output must be a valid JSON object and contain no additional text. {"preference": "<First | Second>" }
+
+17 4. Prompt for Text-based Preference Modeling (Episode-specific Preference Prediction) 
+
+Given the user’s historical stable preferences and the current context, infer the Stable preferences and Dynamic preferences that are relevant to the specific episode. Historical Stable Preferences: {stable_preferences} Current Context: {context} Definitions: 1. Stable preferences (long-term, consistent traits): - persona: the user’s personality or character traits. - value: the user’s values, opinions, or attitudes. - identification: the user’s social identity, role, or profession (if inferable). 2. Dynamic preferences (context-dependent and situational): - style: the user’s preferred style, tone, or format of expression. - intent: the user’s immediate goal or purpose in this context. Rules: - Infer only preferences that are reasonably supported by the historical data and the current context. - If a preference element cannot be inferred, set its value to null. - Do not introduce unsupported assumptions. - The output must be valid JSON and contain no extra text. Output Format: {"related_stable_preferences": {"persona": "<persona>", "value": "<value>", "identification": "<identification>" }, "dynamic_preferences": {"style": "<style>", "intent": "<intent>" }}
+
+18 5. Parameterized Abductive Reasoning ( P)
+
+Task: Given a dialogue context and two alternative responses|one chosen by the user and one rejected|identify the stable preference implied by the user’s selection. Definition of Stable Preference: A stable preference reflects enduring aspects of the user’s persona, values, or identity. Such preferences are transferable across dialogue contexts and are unlikely to change due to short-term or situational factors. Inputs: Dialogue Context: {context} Chosen Answer: {chosen} Rejected Answer: {rejected} Inference Objective: Infer the stable preference that best explains why the chosen answer was preferred over the rejected one. If no stable preference can be reasonably inferred, return an empty string. Output Format: The output must be a valid JSON object and contain no additional text. {"stable_preferences": "<preference or empty string>" }
+
+19 6. EpiPersona-A Prompt for Episode-specific Context (Coupled with Zu)
+
+Given the current context, infer Stable preferences and Dynamic preferences relevant to the specific context. Context: {context} Respond ONLY in the following JSON structure: {"related_stable_preferences": {"persona": "<persona>", "value": "<value>", "identification": "<identification>" }, "dynamic_preferences": {"style": "<style>", "intent": "<intent>" }}
+
+20
