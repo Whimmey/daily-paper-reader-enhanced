@@ -1,0 +1,683 @@
+Title: Justified or Just Convincing? Error Verifiability as a Dimension of LLM Quality
+
+URL Source: https://arxiv.org/pdf/2604.04418v2
+
+Published Time: Fri, 10 Apr 2026 00:28:27 GMT
+
+Number of Pages: 29
+
+Markdown Content:
+# Justified or Just Convincing? Error Verifiability as a Dimen-sion of LLM Quality 
+
+Xiaoyuan Zhu 1∗ Kimberly Le Truong 2 Riccardo Fogliato 3 Gokul Swamy 2
+
+Weijian Zhang 4 Minglai Yang 4 Longtian Ye 4 Bangya Liu 4 Minghao Liu 4
+
+Andrew Ilyas 2 Zhiwei Steven Wu 21University of Southern California 2Carnegie Mellon University 
+
+> 3
+
+Microsoft Core AI 42077AI 
+
+# Abstract 
+
+As LLMs are deployed in high-stakes settings, users must judge the correct-ness of individual responses, often relying on model-generated justifica-tions such as reasoning chains or explanations. Yet, no standard measure exists for whether these justifications help users distinguish correct answers from incorrect ones. We formalize this idea as error verifiability and propose 
+
+vbal , a balanced metric that measures whether justifications enable raters to accurately assess answer correctness, validated against human raters who show high agreement. We find that neither common approaches, such as post-training and model scaling, nor more targeted interventions rec-ommended improve verifiability. We introduce two methods that succeed at improving verifiability: reflect-and-rephrase (RR) for mathematical rea-soning and oracle-rephrase (OR) for factual QA, both of which improve verifiability by incorporating domain-appropriate external information. Together, our results establish error verifiability as a distinct dimension of response quality that does not emerge from accuracy improvements alone and requires dedicated, domain-aware methods to address. 
+
+# 1 Introduction 
+
+Large language models (LLMs) are increasingly being deployed in high-stakes domains, where it is crucial for users to understand the justification behind an LLM’s response. Within some domains, justifications produced by LLMs, whether in the form of a reasoning chain, explanation, or supporting arguments, have become treated as evidence that can support a medical diagnosis (Liu et al., 2025; Tu et al., 2024), legal decision (Zheng et al., 2025; Fan et al., 2026), or scientific research (Gottweis et al., 2025; Lu et al., 2024). Additionally, some have started to use LLM-generated natural-language explanations as an interpretability tool for model predictions and dataset patterns (Singh et al., 2024) and for describing models’ own internal computations (Li et al., 2026). Despite this reliance on LLM-produced justifications, there are no standard measures of how capable a model is at producing justifications. Standard benchmarks only evaluate models by aggregate accuracy (Hendrycks et al., 2021; Wang et al., 2024; Cobbe et al., 2021; Lightman et al., 2023; Lin et al., 2022b). Furthermore, recent work suggests that these justifications are unreliable guides: explanations rarely enable users to verify AI predictions (Fok & Weld, 2024), can inflate confidence in incorrect answers even when they add no informational value (Steyvers et al., 2025), may not faithfully reflect the model’s actual reasoning process (Turpin et al., 2023; Lanham et al., 2023), and can be sycophantic, favoring responses that match user beliefs over truthful ones (Sharma et al., 2025). This body of work calls for better verification methods for LLM justifications (Barez et al., 2025). Rather than how the justification may reflect the model’s confidence or its true thinking process, we focus on how it impacts the downstream user. 
+
+> ∗
+
+Correspondence: xzhu9839@usc.edu . Code: https://github.com/xyzhu123/Verifiability 
+
+1
+
+> arXiv:2604.04418v2 [cs.HC] 9 Apr 2026
+
+We formalize this measure as error verifiability (§4), which assesses whether a reader can accurately determine whether a provided answer is correct given an LLM’s justification. We consider a justification high quality if it improves a user’s ability to discriminate correct from incorrect answers, and low quality if it misleads users into accepting incorrect answers or rejecting correct ones. To operationalize error verifiability while isolating the effect of the justification, we propose vbal , a metric balanced across two conditions: the correctness of the model’s response and a reader’s baseline judgment without any justification. We instantiate 
+
+vbal using LLM-as-a-judge raters as a scalable approach to measuring verifiability. We conducted a human subject study to assess how human participants use justifications and found high agreement between human raters and LLMs. Further, we found that existing models lead to poor error verifiability across both LLM and human raters, demonstrating that verifiability is an ongoing, practical challenge (§6). Then, a natural question is whether existing approaches to improving model quality yield better justifications, and whether alternative methods can improve error verifiability. Across mathematical reasoning and factual knowledge QA benchmarks, we demonstrate that nei-ther common approaches (post-training (§7.1) and model scaling (§7.2)) nor more targeted interventions (stylistic rephrasing (§8.1) and calibrated linguistic confidence (§8.3) improve verifiability. We introduce two methods that succeed in improving verifiability: reflect-and-rephrase (RR) for mathematical reasoning (§8.1) and oracle-rephrase (OR) for factual knowledge QA (§8.2). We present these methods as early demonstrations that verifiability can be improved through the incorporation of domain-appropriate external information. Be-cause these methods are domain-specific and require some external information, extending them to broader settings and developing training-time approaches that directly optimize for verifiability remain open challenges. Across these analyses, we highlight three key findings: • Verifiability does not follow accuracy. Post-training and model scaling greatly improve accuracy but do not change or worsen verifiability. This degradation is concentrated on wrong answers, exactly where verifiability matters most. • Surface-level modifications are insufficient. Neither stylistic rephrasing nor calibrated linguistic confidence improves verifiability; changing how a justification is presented, without changing what information it contains, does not help raters catch errors. • Effective improvement requires domain-appropriate external information. Both our proposed improvement methods go beyond information in the original justification. For math, RR cross-checks against alternative samples to surface inconsistencies that flag errors; for factual QA, OR uses external fact-checking to supply verification signals the model itself cannot provide. Together, our results establish error verifiability as a distinct dimension of response quality: • We formalize error verifiability and propose vbal , a balanced metric that measures whether justifications help raters correctly judge the correctness of model answers. • We conduct a comprehensive evaluation, showing that post-training, model scaling, stylistic rephrasing, and confidence calibration all fail to consistently improve verifiability. • We introduce two methods that improve verifiability for mathematical reasoning and factual knowledge QA by injecting domain-appropriate external information. 
+
+# 2 Related Works 
+
+Overreliance on AI explanations. Several studies show that AI explanations increase user agreement with model outputs regardless of correctness (Bansal et al., 2021; Kim et al., 2025; Steyvers et al., 2025), and that interventions such as cognitive forcing functions (Bu c¸ inca et al., 2021) or reliance calibration (Bo et al., 2025; Schemmer et al., 2023) reduce overreliance without improving appropriate reliance. Fok & Weld (2024) argue that explanations rarely yield complementary human-AI performance because they do not support correctness verification, and Ibrahim et al. (2025) argue that RLHF amplifies overconfidence. These works diagnose overreliance and test behavioral interventions but do not offer a formal metric for whether justifications help users distinguish correct from incorrect answers; 2we address this with vbal and show that improving verifiability requires incorporating domain-appropriate external information. 
+
+Simulatability of explanations. Simulatability asks whether an explanation helps users predict what a model will do (Hase & Bansal, 2020; Chen et al., 2023). Recent work extends this notion to pragmatic perturbations (Hong & Roth, 2026), generation tasks (Limpijankit et al., 2025), and training-time objectives (Hase & Potts, 2026). Mayne et al. (2026) find that frontier models exhibit privileged self-knowledge that does not translate into verifiable justifications. Simulatability evaluates whether explanations help predict model behavior under counterfactual inputs, whereas verifiability directly measures the trust decision users face in deployment: whether a justification helps judge the correctness of a given answer. 
+
+Detecting LLM errors. Prover-Verifier Games train models to produce legible reasoning that transfers to human verifiers (Kirchner et al., 2024; Kim & Lee, 2026). Process super-vision (Lightman et al., 2023), listener-aware fine-tuning (Stengel-Eskin et al., 2024), and self-verification pipelines (Dhuliawala et al., 2023) each target error detection from a dif-ferent angle. Zhou et al. (2026) show that presentation format alone affects error detection rates, and Aggarwal et al. (2026) find that CoT verifiability does not correlate with accuracy. These approaches modify training procedures or model architectures to improve reasoning legibility. In contrast, we formalize verifiability as a post-hoc evaluation criterion indepen-dent of how the model was trained, and show that inference-time rephrasing with external information can improve it without retraining. 
+
+# 3 Problem Formulation 
+
+Setting. Justifications j generated by an LLM often serve as the primary signal available for determining if an LLM’s answer a to a question can be trusted. We evaluate whether the justification leads users to the correct verdict. Let π be an LLM. Given a question q, π(q)
+
+produces a response r = ( j, a) sampled from a distribution induced by π. The justification, j
+
+is often represented by the reasoning chain or explanation displayed to the user preceding the LLM’s answer. j does not include any hidden chain-of-thought that the model may use internally but is not revealed to the user. We assume there exists some ground truth answer and denote the correctness of a by G ∈ { 0, 1 }, where G = 1 if and only if a is correct. 
+
+Rater and evaluation settings. We consider two evaluation settings that differ in the information available to the rater. A rater can be a third-party LLM or a human that receives information about a response and produces a binary judgment y ∈ { 0, 1 } indicating whether they believe a is correct. Under the Answer-Only (AO) setting, the rater receives 
+
+(q, a) and outputs y0 ∈ { 0, 1 }, representing verification based solely on the answer. Under the Answer+Justification (AJ) setting, the rater receives (q, j, a) and outputs yj ∈ { 0, 1 },representing verification with access to j. The specific rater configurations used for AO and AJ may vary by application; we discuss our choice and its implications in §6. Two special cases are worth noting. First, the same rater may serve in both settings; c0 then reflects the rater’s baseline judgment, and vbal measures whether the justification shifts that judgment toward or away from the correct verdict. Second, the AO and AJ raters may share the same model but differ in evaluation strategy (e.g., with or without reasoning tokens). This can be viewed as a single rater adopting different levels of deliberation rather than two distinct raters; the difference in strategy isolates the contribution of the justification from that of additional reasoning effort. Let c0 and cj denote the correctness in the AO and AJ settings respectively. 
+
+c0 = 1[y0 = G], cj = 1[yj = G].
+
+c0 = 1 indicates that the AO setting yields a correct verdict, and cj = 0 indicates that the AJ setting yields an incorrect verdict. 
+
+Why c0 and cj? One might evaluate justification quality by looking at cj alone, but cj does not indicate whether the correct verdict was driven by the justification or by the rater’s 3own ability. A high cj may simply mean the answer was easy to verify regardless of the justification, while a low cj may reflect either a misleading justification or an inherently difficult instance. Conditioning on c0 partitions instances by their verification difficulty without access to the justification, so that a good metric must account for both cases: justifications that help on otherwise-hard instances ( c0 = 0) and justifications that preserve correct outcomes on easy ones ( c0 = 1). 
+
+# 4 Measuring Verifiability with vbal 
+
+We define verifiability as the degree to which a justification j enables a rater to assess the correctness of a. A highly verifiable justification exposes errors when the answer is wrong and confirms correctness when it is right. We operationalize this definition through vbal .
+
+Four verification scenarios. The pair (G, c0) partitions responses into four scenarios based on the ground-truth correctness and the baseline verification outcome. Interpreting the AO judgment as a binary classifier with label G yields the scenarios: true positive (TP), true negative (TN), false positive (FP), and false negative (FN). The role of the justification differs across these scenarios: in the FP and FN cells, the justification must provide enough signal to overcome the difficulty that the baseline setting reveals, while in the TP and TN cells, it must not degrade an otherwise correct verification outcome. 
+
+vbal : balanced verifiability. We define vbal (Balanced Verifiability) as the average correct-ness of the rater under AJ across the four scenarios: 
+
+vFP = Ecj G = 0, c0 = 0 , vTN = Ecj G = 0, c0 = 1 ,
+
+vFN = Ecj G = 1, c0 = 0 , vTP = Ecj G = 1, c0 = 1 ,
+
+Vbal = 14 (vFP + vTN + vFN + vTP ) .By assigning equal weight to each cell, vbal is balanced on two conditions: the correctness of the model’s response ( G), so that a rater must genuinely detect errors rather than simply agree with a usually-correct model; and the baseline verification outcome ( c0), so that the metric disentangles the contribution of the justification from the baseline difficulty of each instance. For example, if a model is correct on 90% of questions, a rater who blindly accepts every answer already achieves 90% overall accuracy, even without reading any justification. An unbalanced metric would assign this rater a high score despite its inability to detect errors. vbal avoids this by weighting the incorrect-answer cells equally with the correct-answer cells. Equal weighting ensures that performance on error detection and correctness confirmation, as well as on easy and hard instances, contributes equally to the final score. A 
+
+vbal of 0.5 corresponds to random-level verification; a value of 1.0 indicates that justifications are always associated with correct verification regardless of the baseline AO outcome. 
+
+# 5 Experimental Design 
+
+Tasks and benchmarks. We focus on two logical reasoning tasks: mathematical reasoning and factual knowledge QA. For mathematical reasoning, we use GSM8K (Cobbe et al., 2021) and MATH500 (Lightman et al., 2023); GSM8K contains grade-school arithmetic word problems, while MATH500 covers competition-level problems spanning algebra, geometry, and number theory, providing a range of difficulty levels. For factual knowledge QA, we use MMLU (Hendrycks et al., 2021), MMLU-Pro (Wang et al., 2024), and TruthfulQA (Lin et al., 2022b); MMLU and MMLU-Pro provide broad academic coverage at different difficulties, while TruthfulQA specifically targets questions where models tend to produce confident but incorrect answers, providing a natural stress test for verifiability. For each benchmark, we randomly sample 200 questions. Details on response generation, ground-truth labeling, and data processing are provided in Appendix J. 4LLM-as-a-judge raters. Since collecting human judgments at scale is infeasible, we use LLM-as-a-judge as a surrogate for the rater R. We employ three models from distinct provider families: GPT-4.1-mini, Claude-Haiku-4.5, and Gemini-2.5-Flash-Lite. All raters operate with temperature 0.0. We evaluate two rater modes in single-turn evaluation: direct 
+
+with no thinking tokens allocated, and thinking , which allocates a 256-token scratchpad be-fore a forced response. Rater configurations and prompts are provided in Appendix J.4. Full model names and API identifiers for all models used in this work are listed in Appendix I. 
+
+# 6 Validating LLM-as-a-Judge with a Human Study 
+
+We validate LLM-as-a-judge as a surrogate for human raters with a human study comparing LLM and human judgments on a sample of MATH500 responses. We use this study to determine which rater configurations most closely approximate human behavior for computing vbal . The full implementation details are in Appendix K. 
+
+Setup. We sample 40 questions and their corresponding responses from MATH500 at difficulty levels 3–4, corresponding to American Mathematics Competition (AMC) 10/12 level, stratified into 10 items per verification scenario using direct AO labels. We recruit 19 undergraduate students who passed a placement test on mathematical and English reading skills. Each participant rates 8 AO and 8 AJ items, interleaved to prevent ordering effects; each item appears in at most one setting per participant. Three LLM raters (GPT-4.1-mini, Claude-Haiku-4.5, and Gemini-2.5-Flash-Lite) evaluate all 40 items under four settings: AO ,
+
+AJ , and their thinking-mode counterparts AO-CoT and AJ-CoT . We measure agreement with Cohen’s κ (Cohen, 1960) on all (LLM, human) judgment pairs. 
+
+6.1 Results Table 1: LLM–human κ and accuracy.                
+
+> AO AO-CoT AJ AJ-CoT
+> κ0.065 0.481 0.501 0.488 Acc (LLMs) 0.550 0.850 0.848 0.908 Acc (Human) 0.836 —0.809 —
+
+Table 1 reports accuracy and LLM–human 
+
+κ for all four settings, averaged across LLM raters. We focus on κ as the primary align-ment measure; full per-rater results are in Appendix K.10. 
+
+LLM raters approximate participants when capability is matched. In the AO setting, direct LLM judgments show near-zero agreement with participants ( κ = 0.065) and much lower accuracy (0.550 vs. 0.836), indicating a capability mismatch. Adding reasoning (AO-CoT) raises both accuracy (0.850) and agreement ( κ = 0.481), bringing LLM behavior closer to that of participants. In the AJ setting, direct AJ and AJ-CoT achieve similar agreement ( κ = 0.501 vs. 0.488); unlike AO, adding reasoning does not meaningfully increase alignment. 
+
+Justifications do not always help and can hurt. For participants, who already perform well under AO (0.836), justifications slightly decrease accuracy to 0.809, adding little signal beyond what they can assess independently. In contrast, LLM raters in the direct AO setting achieve only 0.550, but direct AJ raises accuracy to 0.848, showing that justifications help substantially when the baseline is weaker. These findings imply that justifications are most useful when they provide information the rater would not otherwise have, motivating conditioning on c0 when measuring verifiability. 
+
+Informing the evaluation protocol. Based on these results, we adopt AO-CoT for the AO setting and direct AJ for the AJ setting in all subsequent experiments, as each most closely matches participant behavior ( κ = 0.481 and 0.501). Under this protocol, c0 from AO-CoT partitions instances by verification difficulty from the answer alone, and cj from direct AJ measures outcomes when the justification is available (§3). vbal then captures whether justifications are associated with better or worse outcomes across this partition. 
+
+vbal is compatible with any (AO, AJ) configuration; practitioners may choose other settings depending on the use case. 5Base SFT DPO Instruct             
+
+> 0.0
+> 0.2
+> 0.4
+> 0.6
+> 0.8 vbal / Accuracy
+> max vbal =0.108
+> GSM8K
+> max vbal =0.146
+> MATH500
+> max vbal =0.086
+> MMLU
+> max vbal =0.106
+> MMLU-Pro Tulu3.1 OLMo2 vbal Accuracy Base SFT DPO Instruct Base SFT DPO Instruct Base SFT DPO Instruct
+
+Figure 1: vbal and accuracy across post-training checkpoints for Tulu3.1-8B and OLMo2-7B. 0.30 0.60 0.90         
+
+> 0.60
+> 0.75 vbal GSM8K
+> 0.30 0.60 0.90
+> MATH500
+> 0.30 0.60 0.90
+> MMLU
+> 0.30 0.60 0.90
+> MMLU-Pro
+> 0.30 0.60 0.90
+> TruthfulQA Accuracy DeepSeek-V3 Llama3.1-8b Llama4-Maverick OLMo2-7b Qwen3-8b Tulu3.1-8b grok-4
+
+Figure 2: Accuracy vs. vbal across models and datasets. 
+
+# 7 Does Improving Model Capability Improve Verifiability? 
+
+We examine whether standard approaches to improving model capability, namely post-training (§7.1) and model scaling (§7.2), also improve verifiability. 
+
+7.1 Post-Training Does Not Consistently Improve Verifiability Setup. To isolate the effect of post-training on verifiability, we track two open-weight model families, Tulu3.1-8B and OLMo2-7B, at four stages of their training pipeline: the pre-trained Base checkpoint, supervised fine-tuning ( SFT ), direct preference optimization (DPO ), and the final released Instruct model. For each (checkpoint, benchmark) pair, we report vbal averaged over the three LLM raters. Full results are in Appendix A. 
+
+Accuracy improves substantially; verifiability remains stagnant. Figure 1 plots accuracy and vbal across four post-training stages. Accuracy rises from Base to Instruct (up to +0.56 on GSM8K for Tulu3.1-8B). vbal , by contrast, changes little throughout post-training and is non-monotonic: on GSM8K, for instance, vbal peaks at SFT and then declines after DPO. 
+
+Preference optimization masks errors harder to detect. A per-cell analysis (Appendix A) reveals that the drop in vbal between SFT and DPO is concentrated on the incorrect answers (FP and TN cells). On GSM8K, for example, the FP score of Tulu3.1-8B drops from 0.717 at SFT to 0.602 after DPO. This suggests that by improving the surface fluency of all responses, preference optimization makes the justifications accompanying incorrect answers look more convincing, thereby removing cues that a rater could otherwise use to flag errors. 
+
+7.2 Stronger Models Do Not Always Have Better Verifiability Setup. We extend the analysis beyond single model families to compare seven models across different scales and providers: three open-weight 7–8B models (Llama3.1-8B, Tulu3.1-8B, OLMo2-7B) and four frontier models (Qwen3, DeepSeek-V3, Llama4-Maverick, Grok-4). Each model is evaluated on all five benchmarks, with vbal averaged over the three LLM raters. See a detailed breakdown of the results in Appendix B. 6Higher accuracy does not result in higher verifiability. Figure 2 plots accuracy against vbal 
+
+for every (model, dataset) pair. If stronger models produced more verifiable justifications, we would expect models with higher accuracy to also achieve higher vbal . Instead, the opposite trend holds consistently across all five benchmarks: the most accurate models tend to rank among the lowest in vbal , while weaker models such as OLMo2-7B often achieve the highest vbal . This pattern persists on both mathematical reasoning and factual knowledge benchmarks. 
+
+Stronger models lose verifiability on incorrect answers. The per-cell breakdown (Ap-pendix B) shows that the vbal gap between stronger and weaker models is concentrated in the FP and TN cells, both involving incorrect answers. On GSM8K, for example, frontier models such as Qwen3 and Llama4-Maverick see large drops in FP and TN scores relative to smaller models, while TP scores remain comparable across all models. The same pattern holds on MATH500 and MMLU. Verifiability consistency also varies across models: OLMo2-7B maintains relatively stable vbal across benchmarks, while Qwen3 performs well on some but poorly on others despite similar accuracy levels. The disconnect between accuracy and verifiability highlights substantial room to improve verifiability without compromising performance. Moreover, the tendency of post-training and larger models to reduce verifiability raises questions about the effectiveness of current training approaches. 
+
+# 8 Improving Verifiability 
+
+Our findings in §7 motivate more targeted interventions. We consider rephrasing methods, a low-cost inference-time approach to improving LLM responses (Madaan et al., 2023; Deng et al., 2024; Ning et al., 2024; Shu et al., 2023), as well as confidence-focused rephrasing including linguistic calibration (§8.3) and selective rephrasing based on confidence (Ap-pendix H). However, all these methods fail to improve verifiability. We find that effective interventions must account for domain-specific needs and propose separate rephrasing techniques for mathematical benchmarks (§8.1) and factual knowledge QA (§8.2). This setting is formalized as follows: given a response (a, j), we produce (a, j′) where the final answer a is preserved and only the justification j is modified, with the goal of improving verifiability without altering model predictions. 
+
+8.1 Mathematical Benchmarks Stylistic rephrase baselines. Prior work shows that reducing the difficulty of LLM ex-planations reduces overreliance on incorrect predictions (Vasconcelos et al., 2023) and that restructuring explanations into more readable formats improves human error detec-tion (Zhou et al., 2026). Following these findings, we design three baseline rephrasing methods that modify justification style to reduce cognitive effort for raters: Structured 
+
+(S TRUCT .) reorganizes into a step-by-step numbered format, Professional (P ROF .) improves structural clarity and term consistency through formal rewriting, and Simplified (S IMPL .) simplifies language and removes redundancy. Full prompts are in Appendix C. 
+
+Reflect-and-rephrase. We additionally introduce reflect-and-rephrase (RR), which builds on the hypothesis that inconsistencies across multiple responses reveal potential errors. The method proceeds in two steps: • Reflect : a rephrase model analyzes the target response against k alternative responses, producing a reflection on where the responses agree or diverge. • Rephrase : the rephrase model rewrites the justification conditioned on this reflection, surfacing inconsistencies as explicit uncertainty markers. Prompts are in Appendix D. Unless stated otherwise, we use Tulu3.1-8B to rephrase. 7Table 2: vbal across all benchmarks ( ∆ vs. Base). Per-cell results in Appendix F.           
+
+> Model MATH500 GSM8K MMLU TruthfulQA
+> Llama3.1-8B Base 0.763 0.773 0.625 0.636 PROF .∆
+
++0.028 −0.040 +0.029 +0.009 STRUCT . ∆ +0.012 −0.047 +0.037 +0.022 SIMPL . ∆ +0.002 −0.080 +0.043 +0.026   
+
+> RR ∆
+
++0.040 +0.027 +0.036 +0.007     
+
+> OR ∆——
+
++0.086 +0.069       
+
+> Tulu3.1-8B Base 0.778 0.757 0.657 0.685 PROF .∆
+
+−0.003 −0.023 +0.009 −0.004 STRUCT .. ∆ −0.010 −0.030 +0.002 +0.013 SIMPL . ∆ −0.017 −0.059 +0.000 +0.002   
+
+> RR ∆
+
++0.024 +0.048 +0.000 −0.069     
+
+> OR ∆——
+
++0.066 +0.038       
+
+> OLMo2-7B Base 0.734 0.736 0.640 0.670 PROF .∆
+
++0.026 −0.015 +0.019 −0.011 STRUCT . ∆ +0.030 −0.017 +0.013 −0.014 SIMPL . ∆ +0.020 −0.058 +0.002 −0.011   
+
+> RR ∆
+
++0.061 +0.083 +.006 −.027     
+
+> OR ∆——
+
++0.045 +0.026 
+
+Results. Stylistic rephrasing methods, which aim to reduce cognitive effort without alter-ing content, yield inconsistent vbal changes (Table 2). All baselines decrease vbal for every model on GSM8k (up to −0.080), with small, mixed effects on MATH500. In contrast, RR produces consistent gains across all (model, dataset) pairs, with improvements concentrated in the FP and TN cells (Appendix F), suggesting that RR primarily helps raters identify incorrect responses, without deteriorating verifiability for the correct answers. 
+
+8.2 Factual Knowledge QA Verifiability improvement methods do not transfer across domains. While RR consis-tently improves verifiability on mathematical benchmarks, this does not transfer to factual knowledge QA (Table 2). Neither the baselines nor RR yield consistent vbal gains across models and datasets. We hypothesize that this discrepancy arises from the nature of the justifications. Mathematical reasoning involves calculations and logical deductions whose correctness can be checked for inconsistencies, providing RR with a reliable error signal. In contrast, factual QA justifications decompose into individual factual claims, each still requiring verification. Without sufficient information to verify these claims, the model cannot reliably detect errors. 
+
+Oracle fact checking enables verifiability. To test our hypothesis that factual QA re-quires external verification signals, we investigate whether supplying the rephrasing model with external information to verify individual factual claims provides as the missing sig-nal. We implement this idea with oracle rephrase (OR): given a justification, we extract its atomic claims, verify each against an oracle model, judged as C ORRECT , I NCORRECT ,or N OT VERIFIABLE , and rewrite the justification with explicit inline annotations for any flagged claims. We use a strong model, Claude-Sonnet-4.5, as the fact checker. Full experi-mental details are in Appendix E. OR yields consistent vbal improvements across both datasets and all three models (Table 2). This supports our hypothesis that factual errors invisible to the rephrasing model become detectable once oracle verification is provided, and that external verification is necessary for factual QA tasks. Further, different domains, such as mathematics and factual QA require different approaches to improve verifiability. 
+
+8.3 Calibrated Confidence Does Not Improve Verifiability 
+
+Beyond stylistic rephrasing, we also consider calibrating the linguistic confidence expressed by a response to match the model’s internal certainty (Lin et al., 2022a; Xiong et al., 2024). 8This approach draws from prior work suggesting that if the model is wrong, rephrasing the response to sound uncertain may help raters discount it. However, we find that LLMs often do not know when they are wrong, making calibrating linguistic confidence not a useful method. The full rephrase prompt is provided in Appendix C. 
+
+Internal confidence measures. We consider three measures of model confidence: NLL , the average negative log-likelihood of the response tokens; Verbalized , a self-reported confidence score on [0, 1 ] elicited from the model after generating the response (Yang et al., 2024); and 
+
+P(true) , the probability the model assigns to “True” when prompted with “Is the above answer correct?” about its own response (Kadavath et al., 2022). 
+
+Procedure. For each measure, we rank responses by confidence and rephrase the bottom-
+
+k% to express uncertainty, while preserving the original information and conclusion. We sweep k from 0% to 100% and measure vbal at each threshold. If calibrated confidence were useful, the optimal k should fall at an intermediate value, producing a vbal peak where only truly uncertain responses are hedged. Of course, this relies on the assumption that an LLM should be uncertain when its answer is incorrect. 
+
+Results. The optimal k does not cluster at intermediate values (Figure 3). In most settings, the peak falls at an extreme ( k=100% or k=0%), and the absolute vbal improvement over the baseline is small (typically below 0.02). This means that uniformly rephrasing all responses to sound uncertain is at least as effective as selectively targeting the least-confident ones. Current internal confidence measures lack the discriminative signal to identify which responses would benefit from hedging: the na ¨ıve strategy of hedging every justification already captures the limited gain that uncertain phrasing provides. 
+
+# 9 Conclusion 
+
+This work formalizes error verifiability and introduces vbal , a balanced metric that measures whether LLM-generated justifications help raters judge answer correctness. Across seven models and five benchmarks, we find that post-training and model scaling yield large accu-racy gains but leave verifiability flat or worse, particularly on incorrect answers. Stylistic rephrasing and calibrated linguistic confidence are similarly ineffective: changing presenta-tion without changing content does not help raters detect errors. In contrast, our proposed methods, reflect-and-rephrase (RR) and oracle-rephrase (OR), consistently improve vbal by supplying domain-appropriate external information. A human study validates our LLM-as-a-judge protocol and confirms that the verifiability gap is a practical challenge. These results suggest that current training paradigms produce models that grow more persuasive as they become more capable, without a corresponding increase in error detectability. As LLMs are deployed in high-stakes domains, verifiability should be treated as a first-class evaluation criterion alongside accuracy. 
+
+Limitations and future work. While our study establishes key insights, several limitations highlight promising directions for future research. First, our improvement methods are domain-specific. Developing unified approaches that generalize across domains remains an open challenge. Second, although our human study supports the LLM-as-a-judge protocol, the scale of human evaluation is limited; larger evaluations across diverse user populations would strengthen confidence in these findings. Such evaluations could also enable enable controlled analysis of how verifiability depends jointly on justification content and model capability (e.g., by comparing identical justifications across models). Third, our evaluation focuses on mathematical reasoning and factual knowledge QA, but other settings, such as code generation, medical QA, and legal reasoning, may present different challenges and methodologies. Finally, all proposed methods operate at inference time via post-hoc rephrasing; developing training-time objectives that directly optimize for verifiability, and extending these methods to open-domain settings where reliable ground truth is unavailable, are important future directions. 9References 
+
+Shashank Aggarwal, Ram Vikas Mishra, and Amit Awekar. Evaluating chain-of-thought reasoning through reusability and verifiability, 2026. URL https://arxiv.org/abs/2602. 17544 . 3 Gagan Bansal, Tongshuang Wu, Joyce Zhou, Raymond Fok, Besmira Nushi, Ece Kamar, Marco Tulio Ribeiro, and Daniel S. Weld. Does the whole exceed its parts? the effect of ai explanations on complementary team performance, 2021. URL https://arxiv.org/abs/ 2006.14779 . 2 Fazl Barez, Tung-Yu Wu, Iv ´an Arcuschin, Michael Lan, Vincent Wang, Noah Siegel, Nicolas Collignon, Clement Neo, Isabelle Lee, Alasdair Paren, Adel Bibi, Robert Trager, Dami-ano Fornasiere, John Yan, Yanai Elazar, and Yoshua Bengio. Chain-of-thought is not explainability. Preprint, alphaXiv , 2025. URL https://www.alphaxiv.org/abs/2025.02v1 .1Jessica Y. Bo, Sophia Wan, and Ashton Anderson. To rely or not to rely? evaluating interventions for appropriate reliance on large language models, 2025. URL https: //arxiv.org/abs/2412.15584 . 2 Zana Bu c¸ inca, Maja Barbara Malaya, and Krzysztof Z. Gajos. To trust or to think: Cognitive forcing functions can reduce overreliance on ai in ai-assisted decision-making. Proceedings of the ACM on Human-Computer Interaction , 5(CSCW1):1–21, April 2021. ISSN 2573-0142. doi: 10.1145/3449287. URL http://dx.doi.org/10.1145/3449287 . 2 Yanda Chen, Ruiqi Zhong, Narutatsu Ri, Chen Zhao, He He, Jacob Steinhardt, Zhou Yu, and Kathleen McKeown. Do models explain themselves? counterfactual simulatability of natural language explanations, 2023. URL https://arxiv.org/abs/2307.08678 . 3 Karl Cobbe, Vineet Kosaraju, Mohammad Bavarian, Mark Chen, Heewoo Jun, Lukasz Kaiser, Matthias Plappert, Jerry Tworek, Jacob Hilton, Reiichiro Nakano, Christopher Hesse, and John Schulman. Training verifiers to solve math word problems, 2021. URL 
+
+https://arxiv.org/abs/2110.14168 . 1, 4 Jacob Cohen. A coefficient of agreement for nominal scales. Educational and Psychological Mea-surement , 20:37 – 46, 1960. URL https://api.semanticscholar.org/CorpusID:15926286 .5Yihe Deng, Weitong Zhang, Zixiang Chen, and Quanquan Gu. Rephrase and respond: Let large language models ask better questions for themselves, 2024. URL https://arxiv. org/abs/2311.04205 . 7 Shehzaad Dhuliawala, Mojtaba Komeili, Jing Xu, Roberta Raileanu, Xian Li, Asli Celiky-ilmaz, and Jason Weston. Chain-of-verification reduces hallucination in large language models, 2023. URL https://arxiv.org/abs/2309.11495 . 3 Yu Fan, Jingwei Ni, Jakob Merane, Yang Tian, Yoan Hermstr ¨uwer, Yinya Huang, Mubashara Akhtar, Etienne Salimbeni, Florian Geering, Oliver Dreyer, Daniel Brunner, Markus Leippold, Mrinmaya Sachan, Alexander Stremitzer, Christoph Engel, Elliott Ash, and Joel Niklaus. Lexam: Benchmarking legal reasoning on 340 law exams, 2026. URL 
+
+https://arxiv.org/abs/2505.12864 . 1 Raymond Fok and Daniel S. Weld. In search of verifiability: Explanations rarely enable complementary performance in ai-advised decision making. 2024. URL https://arxiv. org/abs/2305.07722 . 1, 2 Juraj Gottweis, Wei-Hung Weng, Alexander Daryin, Tao Tu, Anil Palepu, Petar Sirkovic, Artiom Myaskovsky, Felix Weissenberger, Keran Rong, Ryutaro Tanno, Khaled Saab, Dan Popovici, Jacob Blum, Fan Zhang, Katherine Chou, Avinatan Hassidim, Burak Gokturk, Amin Vahdat, Pushmeet Kohli, Yossi Matias, Andrew Carroll, Kavita Kulkarni, Nenad Tomasev, Yuan Guan, Vikram Dhillon, Eeshit Dhaval Vaishnav, Byron Lee, Tiago R D Costa, Jos ´e R Penad ´es, Gary Peltz, Yunhan Xu, Annalisa Pawlosky, Alan Karthikesalingam, 10 and Vivek Natarajan. Towards an ai co-scientist, 2025. URL https://arxiv.org/abs/ 2502.18864 . 1 Peter Hase and Mohit Bansal. Evaluating explainable ai: Which algorithmic explanations help users predict model behavior?, 2020. URL https://arxiv.org/abs/2005.01831 . 3 Peter Hase and Christopher Potts. Counterfactual simulation training for chain-of-thought faithfulness, 2026. URL https://arxiv.org/abs/2602.20710 . 3 Dan Hendrycks, Collin Burns, Steven Basart, Andy Zou, Mantas Mazeika, Dawn Song, and Jacob Steinhardt. Measuring massive multitask language understanding, 2021. URL 
+
+https://arxiv.org/abs/2009.03300 . 1, 4 Pingjun Hong and Benjamin Roth. Do llm self-explanations help users predict model behavior? evaluating counterfactual simulatability with pragmatic perturbations, 2026. URL https://arxiv.org/abs/2601.03775 . 3 Lujain Ibrahim, Katherine M. Collins, Sunnie S. Y. Kim, Anka Reuel, Max Lamparth, Kevin Feng, Lama Ahmad, Prajna Soni, Alia El Kattan, Merlin Stein, Siddharth Swaroop, Ilia Sucholutsky, Andrew Strait, Q. Vera Liao, and Umang Bhatt. Measuring and mitigating overreliance is necessary for building human-compatible ai, 2025. URL https://arxiv. org/abs/2509.08010 . 2 Yuki Ichihara, Yuu Jinnai, Tetsuro Morimura, Kaito Ariu, Kenshi Abe, Mitsuki Sakamoto, and Eiji Uchibe. Evaluation of best-of-n sampling strategies for language model alignment, 2025. URL https://arxiv.org/abs/2502.12668 . 19 Saurav Kadavath, Tom Conerly, Amanda Askell, Tom Henighan, Dawn Drain, Ethan Perez, Nicholas Schiefer, Zac Hatfield-Dodds, Nova DasSarma, Eli Tran-Johnson, Scott Johnston, Sheer El-Showk, Andy Jones, Nelson Elhage, Tristan Hume, Anna Chen, Yuntao Bai, Sam Bowman, Stanislav Fort, Deep Ganguli, Danny Hernandez, Josh Jacobson, Jackson Kernion, Shauna Kravec, Liane Lovitt, Kamal Ndousse, Catherine Olsson, Sam Ringer, Dario Amodei, Tom Brown, Jack Clark, Nicholas Joseph, Ben Mann, Sam McCandlish, Chris Olah, and Jared Kaplan. Language models (mostly) know what they know, 2022. URL https://arxiv.org/abs/2207.05221 . 9 Zhewei Kang, Xuandong Zhao, and Dawn Song. Scalable best-of-n selection for large language models via self-certainty, 2025. URL https://arxiv.org/abs/2502.18581 . 19 Sunnie S. Y. Kim, Jennifer Wortman Vaughan, Q. Vera Liao, Tania Lombrozo, and Olga Russakovsky. Fostering appropriate reliance on large language models: The role of explanations, sources, and inconsistencies. In Proceedings of the 2025 CHI Conference on Human Factors in Computing Systems , pp. 1–19. ACM, April 2025. doi: 10.1145/3706598. 3714020. URL http://dx.doi.org/10.1145/3706598.3714020 . 2 Yegon Kim and Juho Lee. Mitigating legibility tax with decoupled prover-verifier games, 2026. URL https://arxiv.org/abs/2602.23248 . 3 Jan Hendrik Kirchner, Yining Chen, Harri Edwards, Jan Leike, Nat McAleese, and Yuri Burda. Prover-verifier games improve legibility of llm outputs, 2024. URL https://arxiv. org/abs/2407.13692 . 3 Tamera Lanham, Anna Chen, Ansh Radhakrishnan, Benoit Steiner, Carson Denison, Danny Hernandez, Dustin Li, Esin Durmus, Evan Hubinger, Jackson Kernion, Kamil ˙e Luko ˇsi ¯ut ˙e, Karina Nguyen, Newton Cheng, Nicholas Joseph, Nicholas Schiefer, Oliver Rausch, Robin Larson, Sam McCandlish, Sandipan Kundu, Saurav Kadavath, Shannon Yang, Thomas Henighan, Timothy Maxwell, Timothy Telleen-Lawton, Tristan Hume, Zac Hatfield-Dodds, Jared Kaplan, Jan Brauner, Samuel R. Bowman, and Ethan Perez. Measuring faithfulness in chain-of-thought reasoning, 2023. URL https://arxiv.org/abs/2307. 13702 . 1 Belinda Z. Li, Zifan Carl Guo, Vincent Huang, Jacob Steinhardt, and Jacob Andreas. Training language models to explain their own computations. 2026. URL https://arxiv.org/abs/ 2511.08579 . 1 11 Hunter Lightman, Vineet Kosaraju, Yura Burda, Harri Edwards, Bowen Baker, Teddy Lee, Jan Leike, John Schulman, Ilya Sutskever, and Karl Cobbe. Let’s verify step by step, 2023. URL https://arxiv.org/abs/2305.20050 . 1, 3, 4 Marvin Limpijankit, Yanda Chen, Melanie Subbiah, Nicholas Deas, and Kathleen McKeown. Counterfactual simulatability of llm explanations for generation tasks, 2025. URL https: //arxiv.org/abs/2505.21740 . 3 Stephanie Lin, Jacob Hilton, and Owain Evans. Teaching models to express their uncertainty in words, 2022a. URL https://arxiv.org/abs/2205.14334 . 8 Stephanie Lin, Jacob Hilton, and Owain Evans. Truthfulqa: Measuring how models mimic human falsehoods, 2022b. URL https://arxiv.org/abs/2109.07958 . 1, 4 Xiaohong Liu, Hao Liu, Guoxing Yang, Zeyu Jiang, Shuguang Cui, Zhaoze Zhang, Huan Wang, Liyuan Tao, Yongchang Sun, Zhu Song, Tianpei Hong, Jin Yang, Tianrun Gao, Jiangjiang Zhang, Xiaohu Li, Jing Zhang, Ye Sang, Zhao Yang, Kanmin Xue, Song Wu, Ping Zhang, Jian Yang, Chunli Song, and Guangyu Wang. A generalist medical language model for disease diagnosis assistance. Nature Medicine , 31:932 – 942, 2025. URL https: //api.semanticscholar.org/CorpusID:275425003 . 1 Chris Lu, Cong Lu, Robert Tjarko Lange, Jakob Foerster, Jeff Clune, and David Ha. The ai scientist: Towards fully automated open-ended scientific discovery, 2024. URL https: //arxiv.org/abs/2408.06292 . 1 Aman Madaan, Niket Tandon, Prakhar Gupta, Skyler Hallinan, Luyu Gao, Sarah Wiegr-effe, Uri Alon, Nouha Dziri, Shrimai Prabhumoye, Yiming Yang, Shashank Gupta, Bod-hisattwa Prasad Majumder, Katherine Hermann, Sean Welleck, Amir Yazdanbakhsh, and Peter Clark. Self-refine: Iterative refinement with self-feedback, 2023. URL 
+
+https://arxiv.org/abs/2303.17651 . 7 Harry Mayne, Justin Singh Kang, Dewi Gould, Kannan Ramchandran, Adam Mahdi, and Noah Y. Siegel. A positive case for faithfulness: Llm self-explanations help predict model behavior, 2026. URL https://arxiv.org/abs/2602.02639 . 3 Xuefei Ning, Zinan Lin, Zixuan Zhou, Zifu Wang, Huazhong Yang, and Yu Wang. Skeleton-of-thought: Prompting llms for efficient parallel generation, 2024. URL https://arxiv. org/abs/2307.15337 . 7 Max Schemmer, Niklas Kuehl, Carina Benz, Andrea Bartos, and Gerhard Satzger. Appropri-ate reliance on ai advice: Conceptualization and the effect of explanations. In Proceedings of the 28th International Conference on Intelligent User Interfaces , pp. 410–422. ACM, March 2023. doi: 10.1145/3581641.3584066. URL http://dx.doi.org/10.1145/3581641.3584066 .2Mrinank Sharma, Meg Tong, Tomasz Korbak, David Duvenaud, Amanda Askell, Samuel R. Bowman, Newton Cheng, Esin Durmus, Zac Hatfield-Dodds, Scott R. Johnston, Shauna Kravec, Timothy Maxwell, Sam McCandlish, Kamal Ndousse, Oliver Rausch, Nicholas Schiefer, Da Yan, Miranda Zhang, and Ethan Perez. Towards understanding sycophancy in language models, 2025. URL https://arxiv.org/abs/2310.13548 . 1 Lei Shu, Liangchen Luo, Jayakumar Hoskere, Yun Zhu, Yinxiao Liu, Simon Tong, Jindong Chen, and Lei Meng. Rewritelm: An instruction-tuned large language model for text rewriting, 2023. URL https://arxiv.org/abs/2305.15685 . 7 Chandan Singh, Jeevana Priya Inala, Michel Galley, Rich Caruana, and Jianfeng Gao. Rethinking interpretability in the era of large language models. 2024. URL https: //arxiv.org/abs/2402.01761 . 1 Elias Stengel-Eskin, Peter Hase, and Mohit Bansal. Lacie: Listener-aware finetuning for confidence calibration in large language models, 2024. URL https://arxiv.org/abs/ 2405.21028 . 3 12 Mark Steyvers, Heliodoro Tejeda, Aakriti Kumar, Catarina Belem, Sheer Karny, Xinyue Hu, Lukas W. Mayer, and Padhraic Smyth. What large language models know and what people think they know. Nature Machine Intelligence , 7(2):221–231, January 2025. ISSN 2522-5839. doi: 10.1038/s42256-024-00976-7. URL http://dx.doi.org/10.1038/ s42256-024-00976-7 . 1, 2 Nisan Stiennon, Long Ouyang, Jeff Wu, Daniel M. Ziegler, Ryan Lowe, Chelsea Voss, Alec Radford, Dario Amodei, and Paul Christiano. Learning to summarize from human feedback, 2022. URL https://arxiv.org/abs/2009.01325 . 19 Amir Taubenfeld, Tom Sheffer, Eran Ofek, Amir Feder, Ariel Goldstein, Zorik Gekhman, and Gal Yona. Confidence improves self-consistency in llms. In Findings of the Association for Computational Linguistics: ACL 2025 , pp. 20090–20111. Association for Computational Linguistics, 2025. doi: 10.18653/v1/2025.findings-acl.1030. URL http://dx.doi.org/10. 18653/v1/2025.findings-acl.1030 . 19 Tao Tu, Anil Palepu, Mike Schaekermann, Khaled Saab, Jan Freyberg, Ryutaro Tanno, Amy Wang, Brenna Li, Mohamed Amin, Nenad Tomasev, Shekoofeh Azizi, Karan Singhal, Yong Cheng, Le Hou, Albert Webson, Kavita Kulkarni, S Sara Mahdavi, Christopher Semturs, Juraj Gottweis, Joelle Barral, Katherine Chou, Greg S Corrado, Yossi Matias, Alan Karthikesalingam, and Vivek Natarajan. Towards conversational diagnostic ai, 2024. URL https://arxiv.org/abs/2401.05654 . 1 Miles Turpin, Julian Michael, Ethan Perez, and Samuel R. Bowman. Language models don’t always say what they think: Unfaithful explanations in chain-of-thought prompting, 2023. URL https://arxiv.org/abs/2305.04388 . 1 Helena Vasconcelos, Matthew J ¨orke, Madeleine Grunde-McLaughlin, Tobias Gerstenberg, Michael Bernstein, and Ranjay Krishna. Explanations can reduce overreliance on ai systems during decision-making. 2023. URL https://arxiv.org/abs/2212.06823 . 7 Yubo Wang, Xueguang Ma, Ge Zhang, Yuansheng Ni, Abhranil Chandra, Shiguang Guo, Weiming Ren, Aaran Arulraj, Xuan He, Ziyan Jiang, Tianle Li, Max Ku, Kai Wang, Alex Zhuang, Rongqi Fan, Xiang Yue, and Wenhu Chen. Mmlu-pro: A more robust and challenging multi-task language understanding benchmark, 2024. URL https://arxiv. org/abs/2406.01574 . 1, 4 Miao Xiong, Zhiyuan Hu, Xinyang Lu, Yifei Li, Jie Fu, Junxian He, and Bryan Hooi. Can llms express their uncertainty? an empirical evaluation of confidence elicitation in llms, 2024. URL https://arxiv.org/abs/2306.13063 . 8 Daniel Yang, Yao-Hung Hubert Tsai, and Makoto Yamada. On verbalized confidence scores for llms, 2024. URL https://arxiv.org/abs/2412.14737 . 9 Lucia Zheng, Neel Guha, Javokhir Arifov, Sarah Zhang, Michal Skreta, Christopher D. Manning, Peter Henderson, and Daniel E. Ho. A reasoning-focused legal retrieval benchmark. In Proceedings of the Symposium on Computer Science and Law on ZZZ , CSLAW ’25, pp. 169–193. ACM, March 2025. doi: 10.1145/3709025.3712219. URL http://dx.doi. org/10.1145/3709025.3712219 . 1 Runtao Zhou, Giang Nguyen, Nikita Kharya, Anh Totti Nguyen, and Chirag Agarwal. Improving human verification of llm reasoning through interactive explanation interfaces. 2026. URL https://arxiv.org/abs/2510.22922 . 3, 7 13 Appendix Table of Contents 
+
+§A Full Post-Training Checkpoint Results . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 14 §B Full Cross-Model Comparison Results . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 14 §C Stylistic Rephrase Prompts . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 14 §D Reflect-and-Rephrase Prompts . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 17 §E Oracle Rephrase Prompts . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 18 §F Full Rephrase Results . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 19 §G Calibrated Confidence Detailed Results . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 19 §H Best-of-n Selection Analysis . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 19 §I Model Names and API Identifiers . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 21 §J Response Preparation and Ground-Truth Grading Details . . . . . . . . . . . . . . . . . . . . . . . . . . 21 §K Human Study and Platform Implementation Details . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 24 
+
+# A Full Post-Training Checkpoint Results 
+
+Tables 3 and 4 report accuracy, vbal , and the four per-cell scores (FP, TN, FN, TP) for each post-training checkpoint, averaged over the three LLM raters. The main paper (Figure 1) plots only accuracy and vbal .Table 3: Post-training checkpoint results for Tulu3.1-8B across four benchmarks. All values averaged over three LLM raters.                                                                                                        
+
+> Dataset Stage Acc vbal FP TN FN TP
+> GSM8K Base 0.324 0.737 0.703 0.897 0.633 0.716 SFT 0.659 0.854 0.717 0.872 0.872 0.955 DPO 0.822 0.823 0.602 0.824 0.889 0.977 Instruct 0.882 0.839 0.656 0.830 0.897 0.974 MATH500 Base 0.157 0.691 0.724 0.937 0.398 0.706 SFT 0.306 0.755 0.626 0.899 0.626 0.869 DPO 0.451 0.779 0.602 0.847 0.754 0.913 Instruct 0.488 0.782 0.606 0.871 0.743 0.909 MMLU Base 0.415 0.557 0.298 0.842 0.312 0.777 SFT 0.604 0.624 0.286 0.902 0.386 0.922 DPO 0.638 0.649 0.299 0.838 0.531 0.927 Instruct 0.628 0.648 0.320 0.835 0.494 0.941 MMLU-Pro Base 0.253 0.572 0.413 0.908 0.217 0.750 SFT 0.338 0.656 0.485 0.915 0.324 0.901 DPO 0.397 0.681 0.427 0.893 0.508 0.897 Instruct 0.384 0.700 0.514 0.862 0.532 0.891
+
+# B Full Cross-Model Comparison Results 
+
+Tables 5 and 6 report accuracy, vbal , and the four per-cell scores (FP, TN, FN, TP) for all seven models, averaged over the three LLM raters. The main paper (Figure 2) plots only accuracy and vbal .
+
+# C Stylistic Rephrase Prompts 
+
+Below are the full prompts used for each stylistic rephrase method. In each case, {question }
+
+and {response } are replaced with the original question and model response. 
+
+Structured.   
+
+> Original Question: {question }
+> Original Response: {response }
+
+14 Table 4: Post-training checkpoint results for OLMo2-7B across four benchmarks. All values averaged over three LLM raters. 
+
+Dataset Stage Acc vbal FP TN FN TP 
+
+GSM8K Base 0.308 0.672 0.442 0.909 0.569 0.766 SFT 0.614 0.799 0.612 0.857 0.821 0.905 DPO 0.749 0.782 0.574 0.808 0.844 0.904 Instruct 0.754 0.781 0.541 0.820 0.870 0.892 MATH500 Base 0.143 0.653 0.639 0.945 0.285 0.742 SFT 0.222 0.719 0.713 0.924 0.439 0.800 DPO 0.317 0.773 0.717 0.886 0.668 0.820 Instruct 0.329 0.765 0.710 0.907 0.622 0.821 MMLU Base 0.358 0.601 0.476 0.908 0.239 0.779 SFT 0.499 0.631 0.415 0.912 0.337 0.860 DPO 0.562 0.648 0.402 0.891 0.412 0.888 Instruct 0.563 0.654 0.479 0.844 0.405 0.890 MMLU-Pro Base 0.150 0.582 0.549 0.929 0.204 0.646 SFT 0.259 0.656 0.580 0.950 0.287 0.808 DPO 0.273 0.666 0.510 0.928 0.394 0.833 Instruct 0.286 0.678 0.581 0.919 0.364 0.848 
+
+Table 5: Full results for seven models on mathematical reasoning benchmarks. All values averaged over three LLM raters. 
+
+Dataset Model Acc vbal FP TN FN TP 
+
+GSM8K Llama3.1-8B 0.779 0.804 0.595 0.764 0.893 0.963 Tulu3.1-8B 0.882 0.788 0.506 0.768 0.898 0.982 OLMo2-7B 0.754 0.760 0.469 0.723 0.886 0.962 Qwen3 0.978 0.653 0.157 0.355 0.927 0.967 DeepSeek-V3 0.959 0.569 0.073 0.263 0.950 0.991 Llama4-Maverick 0.972 0.640 0.223 0.429 0.916 0.991 Grok-4 0.927 0.627 0.071 0.500 0.942 0.997 MATH500 Llama3.1-8B 0.465 0.764 0.618 0.803 0.756 0.877 Tulu3.1-8B 0.488 0.782 0.606 0.871 0.743 0.909 OLMo2-7B 0.329 0.765 0.710 0.907 0.622 0.821 Qwen3 0.980 0.516 0.000 0.175 0.921 0.969 DeepSeek-V3 0.985 0.567 0.014 0.287 0.971 0.997 Llama4-Maverick 0.903 0.833 0.779 0.812 0.803 0.936 Grok-4 0.787 0.765 0.515 0.733 0.854 0.957 
+
+Task: Rewrite the response as a sequence of clearly numbered steps so that each step can be read and verified independently. Specifically: - Break the reasoning into numbered steps (Step 1, Step 2, ...) - Each step should contain exactly one atomic reasoning action: one calculation, one factual claim, or one logical deduction - Make implicit steps explicit --- if the original skips an intermediate calculation or assumption, add it as its own numbered step - Each step should be one to two sentences and self-contained - Do NOT add new reasoning, change any values, or alter the conclusion Important: Keep the final answer exactly the same (after ‘####’ if present), placed after the last numbered step. Rephrased Response: 
+
+Professional. 
+
+Original Question: {question }
+
+Original Response: {response }
+
+Task: Rewrite the response in a professional, precise style while preserving the exact same reasoning steps and final answer. Specifically: - Use consistent terminology throughout (do not alternate between synonyms for the same concept) 
+
+15 Table 6: Full results for seven models on factual knowledge QA benchmarks. All values averaged over three LLM raters. 
+
+Dataset Model Acc vbal FP TN FN TP 
+
+MMLU Llama3.1-8B 0.624 0.629 0.329 0.657 0.583 0.949 Tulu3.1-8B 0.628 0.648 0.320 0.835 0.494 0.941 OLMo2-7B 0.563 0.654 0.479 0.844 0.405 0.890 Qwen3 0.712 0.639 0.426 0.568 0.635 0.925 DeepSeek-V3 0.833 0.563 0.052 0.275 0.932 0.995 Llama4-Maverick 0.771 0.590 0.166 0.353 0.853 0.987 Grok-4 0.716 0.539 0.073 0.198 0.899 0.988 MMLU-Pro Llama3.1-8B 0.404 0.626 0.382 0.706 0.505 0.912 Tulu3.1-8B 0.384 0.700 0.514 0.862 0.532 0.891 OLMo2-7B 0.286 0.678 0.581 0.919 0.364 0.848 Qwen3 0.506 0.663 0.359 0.662 0.711 0.921 DeepSeek-V3 0.794 0.620 0.175 0.394 0.923 0.988 Llama4-Maverick 0.800 0.639 0.304 0.440 0.841 0.971 Grok-4 0.694 0.615 0.166 0.423 0.889 0.983 TruthfulQA Llama3.1-8B 0.553 0.640 0.295 0.720 0.606 0.940 Tulu3.1-8B 0.390 0.667 0.321 0.923 0.473 0.951 OLMo2-7B 0.418 0.669 0.399 0.833 0.512 0.934 Qwen3 0.660 0.673 0.602 0.792 0.448 0.851 DeepSeek-V3 0.833 0.572 0.103 0.400 0.811 0.977 Llama4-Maverick 0.724 0.603 0.179 0.548 0.725 0.961 Grok-4 0.777 0.553 0.074 0.277 0.876 0.987 
+
+- Add clear logical connectives to link reasoning steps (e.g., ‘therefore’, ‘it follows that’, ‘consequently’, ‘since’) - Use formal, neutral language --- avoid colloquial phrasing, filler words, and informal constructions - Ensure each sentence is precise and unambiguous - Do NOT add new reasoning steps, change any values, or alter the conclusion Important: Keep the final answer exactly the same (after ‘####’ if present). Rephrased Response: 
+
+Simplified. 
+
+Original Question: {question }
+
+Original Response: {response }
+
+Task: Rewrite the response to be more concise by removing redundancy, while preserving every distinct reasoning step and the final answer. Specifically, remove: - Restatements of the question or prior steps - Filler phrases (e.g., ‘It is important to note that’, ‘As we can see’, ‘Therefore, we can conclude that’) - Repetition of values or facts already stated earlier - Transitional padding that does not add logical content Keep: - Every distinct reasoning step, even if expressed more briefly - All numerical values and intermediate calculations - The logical structure and order of the original reasoning Do NOT remove any step that contributes to reaching the final answer, and do NOT change any values or the conclusion. Important: Keep the final answer exactly the same (after ‘####’ if present). Rephrased Response: 
+
+Uncertain (used for calibrated confidence). 
+
+Original Question: {question }
+
+Original Response: {response }
+
+16 Task: Rewrite the response to express genuine uncertainty. Convey the same information and conclusion, but acknowledge uncertainty where reasonable. Preserve any final answer markers (e.g., ‘####’) and their content. Rephrased Response: 
+
+# D Reflect-and-Rephrase Prompts 
+
+The reflect-and-rephrase (RR) method is a two-round pipeline. In the first round ( Reflect ), the rephrase model receives the target response alongside k alternative responses and produces an analysis of agreements and discrepancies. In the second round ( Rephrase ), the model rewrites the justification conditioned on this analysis. In both prompts, {question },
+
+{response }, and {alternatives } are replaced with the actual inputs. 
+
+Reflect prompt. 
+
+You are a helpful assistant that helps a reader judge whether the main response’s answer is correct. Your role is to analyze responses and surface potential errors, uncertainties, and points a reader should verify. Question: {question }
+
+Main Response: {response }
+
+Alternative Responses: {alternatives }
+
+Analyze the main response, using the alternatives as evidence: 1. Do the final answers agree or disagree? 2. What are the key steps or assumptions in the main response? Are they different from the alternatives? Could any of them be wrong? 3. If there are differences between responses, which reasoning seems more reliable? 4. How confident should we be in the main response? Is it likely correct, uncertain, or likely wrong? If uncertain or likely wrong, identify the specific problematic step(s) and what the correct steps might be. Analysis: 
+
+Rephrase prompt. 
+
+You are a helpful assistant that rewrites responses to help readers judge whether the response’s answer is correct. Your goal is to make potential errors and uncertainties visible, not to persuade the reader that the answer is right. Question: {question }
+
+Original Response: {response }
+
+Analysis: {analysis }
+
+Rewrite the original response to help readers judge whether the answer is correct. The rewrite should NOT be a persuasive proof. Instead, it should: - Explain the reasoning transparently - Surface potential failure points identified in the analysis - If the analysis found likely errors, note them in the steps - If any steps, facts, or assumptions are uncertain, express them tentatively rather than assertively Rules: - Keep the same final answer (preserve any #### markers exactly) - Write as a self-contained explanation---don’t mention the analysis or alternatives Rephrased Response: 
+
+17 E Oracle Rephrase Prompts 
+
+The oracle rephrase (OR) method is a three-step pipeline. In Step 1, the rephrase model (Tulu3.1-8B) extracts all verifiable claims from the justification. In Step 2, an oracle model (Claude-Sonnet-4.5) independently judges each claim as C ORRECT , I NCORRECT ,or N OT VERIFIABLE . In Step 3, the rephrase model rewrites the justification with explicit inline annotations at flagged claims. Below are the prompts for each step; {question } and 
+
+{response } are replaced with the actual inputs. 
+
+Step 1: Claim extraction (rephrase model). 
+
+You are a helpful assistant that extracts claims from a response for fact-checking. QUESTION: {question }
+
+RESPONSE: {response }
+
+Extract all the claims made in the response that can potentially be verified or checked. Focus on: - Factual statements (numbers, dates, definitions, properties) - Reasoning steps and logical inferences - Mathematical calculations and their results - Causal claims (X causes Y, X leads to Y) - References to concepts, rules, or principles Format your output using EXACTLY this format, with each claim on its own line: CLAIM #1: [First claim text here] CLAIM #2: [Second claim text here] ... Each claim should be self-contained and understandable without the full context. Claims: 
+
+Step 2: Claim verification (oracle model). This prompt is issued once per extracted claim. 
+
+{claim } and {claim index } are replaced with the claim text and its index. 
+
+You are an expert fact-checker and reasoning verifier. ORIGINAL QUESTION: {question }
+
+CLAIM TO VERIFY (Claim # {claim index }): {claim }
+
+CONTEXT (the full response this claim comes from): {response }
+
+Your task is to judge whether this claim is correct, incorrect, or not verifiable. Provide your judgment in the following format: JUDGMENT: [CORRECT / INCORRECT / NOT VERIFIABLE] EXPLANATION: [Brief explanation of why you made this judgment] Guidelines: - CORRECT: The claim is factually accurate and logically sound. - INCORRECT: The claim contains a factual error, calculation mistake, or logical flaw. - NOT VERIFIABLE: The claim cannot be verified without additional context or external knowledge, or it is a matter of interpretation/opinion. Be concise but precise in your explanation. Focus on the specific issue if incorrect. Your response: 
+
+Step 3: Rephrase with oracle notes (rephrase model). {oracle notes } is replaced with the formatted claim–judgment pairs from Step 2. 
+
+You are a helpful assistant that rewrites responses to help readers judge correctness. An oracle verifier has analyzed the claims in the response. Your task is to incorporate this verification information into a clear, readable rewrite. 
+
+18 0.70 
+
+> 0.75 0.80
+> 0.85 MATH500
+
+Tulu3.1 OLMo2 Llama3.1           
+
+> 020 40 60 80 100
+> 0.55
+> 0.60
+> 0.65
+> 0.70
+> 0.75 MMLU -Pro
+> 020 40 60 80 100
+
+% of responses rephrased (least -confident first )       
+
+> 020 40 60 80 100
+> vbal NLL Verbalized P(true)
+
+Figure 3: Effect of calibrating linguistic confidence on vbal across three models and bench-marks (MATH500, MMLU, MMLU-Pro). Each curve sweeps the fraction k of least-confident responses that were rephrased to express uncertainty; ×, ×, × mark the k maximizing vbal 
+
+for each confidence method. Optima predominantly cluster around k=100%, suggesting that uniform hedging is as effective as targeted uncertainty calibration. 
+
+QUESTION: {question }
+
+ORIGINAL RESPONSE: {response }
+
+ORACLE VERIFICATION RESULTS: {oracle notes }
+
+Rewrite the ORIGINAL RESPONSE with oracle verification notes EXPLICITLY shown. Guidelines: - Keep the original response’s structure and final answer. - For claims marked CORRECT: State them as-is, no annotation needed. - For claims marked INCORRECT: Add an explicit note in parentheses or brackets right after the claim, showing the issue. Format: (NOTE: [issue description]) - For claims marked NOT VERIFIABLE: Add an explicit note in parentheses or brackets. Format: (NOTE: This claim could not be verified) - The oracle notes should be VISIBLE and EXPLICIT---do NOT fold them naturally into the text. - Preserve the final answer marker (e.g., ####) exactly. Rephrased Response: 
+
+# F Full Rephrase Results 
+
+Tables 7 and 8 report the complete per-cell vbal breakdowns (FP, TN, FN, TP) for all rephrase methods. The main paper (Table 2) reports only vbal for compactness. 
+
+# G Calibrated Confidence Detailed Results H Best-of-n Selection Analysis 
+
+Best-of-n selection is a common inference-time strategy in which a model generates n
+
+candidate responses and a scoring function selects the best one (Stiennon et al., 2022; Kang et al., 2025; Taubenfeld et al., 2025; Ichihara et al., 2025). We test whether best-of-n selection can improve verifiability. For each question, we generate 20 candidate responses and 19 Table 7: Full per-cell results for rephrase methods on mathematical benchmarks ( ∆ relative to Base). 
+
+Model vbal FP TN FN TP 
+
+MATH500 
+
+Llama3.1-8B Base 0.763 0.652 0.762 0.729 0.907 PROF . ∆ +0.028 +0.057 +0.077 −0.019 −0.004 STRUCT . ∆ +0.012 +0.034 +0.090 −0.033 −0.041 SIMPL . ∆ +0.002 +0.031 +0.082 −0.072 −0.036 RR ∆ +0.040 +0.114 +0.113 −0.050 −0.019 Tulu3.1-8B Base 0.778 0.642 0.820 0.741 0.911 PROF . ∆ −0.003 −0.033 −0.007 +0.027 +0.002 STRUCT . ∆ −0.010 +0.029 +0.038 −0.076 −0.032 SIMPL . ∆ −0.017 −0.001 +0.027 −0.074 −0.019 RR ∆ +0.024 +0.066 +0.046 −0.011 −0.005 OLMo2-7B Base 0.734 0.677 0.883 0.549 0.826 PROF . ∆ +0.026 −0.035 −0.000 +0.083 +0.056 STRUCT . ∆ +0.030 +0.039 +0.017 +0.050 +0.013 SIMPL . ∆ +0.020 −0.015 +0.009 +0.052 +0.033 RR ∆ +0.061 +0.056 +0.007 +0.107 +0.073 
+
+GSM8K 
+
+Llama3.1-8B Base 0.773 0.562 0.781 0.809 0.938 PROF . ∆ −0.040 −0.186 +0.034 −0.017 +0.007 STRUCT . ∆ −0.047 −0.179 +0.060 −0.067 −0.001 SIMPL . ∆ −0.080 −0.190 +0.024 −0.141 −0.015 RR ∆ +0.027 +0.071 +0.024 +0.001 +0.012 Tulu3.1-8B Base 0.757 0.424 0.827 0.827 0.951 PROF . ∆ −0.023 −0.075 −0.008 −0.014 +0.006 STRUCT . ∆ −0.030 −0.061 −0.005 −0.048 −0.008 SIMPL . ∆ −0.059 −0.099 −0.006 −0.106 −0.026 RR ∆ +0.048 +0.182 −0.031 +0.033 +0.008 OLMo2-7B Base 0.736 0.521 0.774 0.762 0.889 PROF . ∆ −0.015 −0.082 +0.003 −0.001 +0.020 STRUCT . ∆ −0.017 −0.114 +0.023 +0.013 +0.008 SIMPL . ∆ −0.058 −0.174 −0.010 −0.059 +0.009 RR ∆ +0.083 +0.168 +0.025 +0.087 +0.054 
+
+randomly sample n=5; a selection strategy then picks one. We evaluate on MATH500 and MMLU-Pro with three response models (Llama3.1-8B, Tulu3.1-8B, OLMo2-7B), using Gemini-2.5-Flash-Lite as the LLM rater. Each configuration is repeated across 10 random experiments of 200 questions; Table 9 reports mean accuracy and vbal .We test nine selection strategies: R ANDOM uniformly samples one candidate; M IN /M AX 
+
+LEN . selects the shortest or longest response; M IN /M AX STEPS selects the response with fewest or most reasoning steps; B EST NLL selects the response with lowest negative log-likelihood under the response model; B EST P(T RUE ) selects the response with the highest model-estimated probability of correctness; B EST VERB . C ONF . selects the response with the highest verbalized confidence; and M ODEL SEL . prompts the response model to directly choose the best response. No selection strategy consistently improves vbal across all models and datasets (Table 9). Although B EST P(T RUE ) raises the MATH500 accuracy of Tulu3.1-8B by +0.088, the cor-responding vbal barely changes ( +0.006). In several cases, higher accuracy comes at the cost of lower vbal : on MATH500, B EST P(T RUE ) improves the accuracy of Llama3.1-8B by 
+
++0.040 while reducing vbal by −0.050. Similarly, M IN LEN . degrades vbal for Tulu3.1-8B on MATH500 by −0.104 while improving it for OLMo2-7B by +0.051. Overall, these results support our finding that accuracy and verifiability are distinct dimensions of response quality, and that selecting for one does not reliably improve the other. 20 Table 8: Full per-cell results for rephrase methods on factual knowledge QA benchmarks ( ∆
+
+relative to Base). 
+
+Model vbal FP TN FN TP 
+
+MMLU 
+
+Llama3.1-8B Base 0.625 0.293 0.679 0.585 0.944 PROF . ∆ +0.029 +0.058 +0.092 −0.031 −0.004 STRUCT . ∆ +0.037 +0.072 +0.062 +0.013 +0.001 SIMPL . ∆ +0.043 +0.090 +0.115 −0.031 −0.002 RR ∆ +0.036 +0.069 +0.049 +0.004 +0.021 OR ∆ +0.086 +0.216 +0.139 −0.023 +0.014 Tulu3.1-8B Base 0.657 0.397 0.796 0.517 0.918 PROF . ∆ +0.009 +0.006 +0.030 −0.003 +0.000 STRUCT . ∆ +0.002 −0.051 −0.032 +0.085 +0.007 SIMPL . ∆ +0.000 −0.013 +0.015 −0.005 +0.004 RR ∆ +0.000 +0.023 −0.076 +0.035 +0.020 OR ∆ +0.066 +0.191 +0.029 −0.001 +0.046 OLMo2-7B Base 0.640 0.483 0.835 0.370 0.872 PROF . ∆ +0.019 −0.008 −0.003 +0.067 +0.020 STRUCT . ∆ +0.013 −0.058 −0.074 +0.140 +0.042 SIMPL . ∆ +0.002 −0.026 −0.010 +0.026 +0.019 RR ∆ +0.006 −0.072 −0.129 +0.168 +0.059 OR ∆ +0.045 +0.094 −0.033 +0.083 +0.038 
+
+TruthfulQA 
+
+Llama3.1-8B Base 0.636 0.311 0.707 0.612 0.914 PROF . ∆ +0.009 −0.024 +0.087 −0.036 +0.011 STRUCT . ∆ +0.022 −0.010 +0.055 +0.021 +0.020 SIMPL . ∆ +0.026 +0.046 +0.087 −0.034 +0.005 RR ∆ +0.007 −0.101 −0.016 +0.100 +0.043 OR ∆ +0.069 +0.075 +0.145 +0.014 +0.043 Tulu3.1-8B Base 0.685 0.420 0.892 0.510 0.917 PROF . ∆ −0.004 −0.037 −0.003 +0.014 +0.009 STRUCT . ∆ +0.013 −0.062 −0.101 +0.172 +0.044 SIMPL . ∆ +0.002 −0.026 −0.022 +0.039 +0.015 RR ∆ −0.069 −0.225 −0.105 +0.052 +0.002 OR ∆ +0.038 +0.048 +0.028 +0.037 +0.039 OLMo2-7B Base 0.670 0.446 0.819 0.531 0.884 PROF . ∆ −0.011 −0.024 +0.023 −0.042 −0.002 STRUCT . ∆ −0.014 −0.071 +0.000 +0.005 +0.010 SIMPL . ∆ −0.011 −0.010 −0.000 −0.026 −0.007 RR ∆ −0.027 −0.167 −0.082 +0.096 +0.047 OR ∆ +0.026 −0.001 +0.046 +0.013 +0.045 
+
+# I Model Names and API Identifiers 
+
+Table 10 lists all models used in this work along with their API identifiers and roles. 
+
+# J Response Preparation and Ground-Truth Grading Details 
+
+J.1 Preparing (q, j, a) per Task 
+
+All models are prompted using their standard chat format without any task-specific system prompt engineering. Each response is expected to contain a free-form justification followed by a final answer, constituting the (j, a) pair. For models that expose internal reasoning (e.g., extended thinking), only the content surfaced to the user is used as j; any internal scratchpad is excluded, consistent with the definition in Section 3. The final answer a is extracted from the response for use in grading, as described below. 21 Table 9: Best-of-5 selection results on MATH500 and MMLU-Pro ( ∆ vs. R ANDOM ). Values are means over 10 experiments of 200 questions each. M ODEL SEL . was not evaluated on MMLU-Pro. 
+
+Llama3.1-8B Tulu3.1-8B OLMo2-7B Selection Acc vbal Acc vbal Acc vbal 
+
+MATH500 
+
+RANDOM 0.430 0.762 0.446 0.797 0.310 0.717 MIN LEN . ∆ −0.004 +0.010 −0.012 −0.104 +0.020 +0.051 MAX LEN . ∆ −0.022 +0.001 +0.020 +0.043 +0.004 +0.012 MIN STEPS ∆ −0.010 −0.029 −0.010 −0.043 +0.004 +0.070 MAX STEPS ∆ −0.010 +0.026 +0.040 +0.037 +0.038 +0.047 BEST NLL ∆ +0.000 +0.000 +0.000 +0.000 +0.000 +0.000 BEST P(T RUE ) ∆ +0.040 −0.050 +0.088 +0.006 +0.040 +0.010 BEST VERB . C ONF . ∆ −0.032 −0.003 +0.046 +0.026 +0.006 +0.003 MODEL SEL . ∆ +0.041 −0.014 +0.018 +0.019 +0.008 +0.005 
+
+MMLU-Pro 
+
+RANDOM 0.388 0.623 0.382 0.681 0.247 0.648 MIN LEN . ∆ +0.043 +0.013 −0.007 +0.037 +0.008 +0.010 MAX LEN . ∆ −0.040 −0.024 −0.021 −0.036 +0.032 +0.013 MIN STEPS ∆ +0.033 +0.006 −0.006 +0.044 +0.004 −0.016 MAX STEPS ∆ −0.001 −0.015 −0.012 −0.008 +0.016 +0.027 BEST NLL ∆ +0.051 −0.011 +0.025 +0.020 +0.021 +0.008 BEST P(T RUE ) ∆ +0.030 −0.029 +0.021 +0.002 +0.062 +0.060 BEST VERB . C ONF . ∆ +0.007 −0.014 +0.040 +0.013 +0.011 +0.017 MODEL SEL . ∆ — — — — — —
+
+Table 10: Mapping between model names used in this paper and their API identifiers. 
+
+Paper Name API Identifier Role 
+
+GPT-4.1-mini gpt-4.1-mini-2025-04-14 Rater Claude-Haiku-4.5 claude-haiku-4-5-20251001 Rater Gemini-2.5-Flash-Lite gemini-2.5-flash-lite Rater GPT-5.2 gpt-5.2-2025-12-11 Grading Claude-Sonnet-4.5 claude-sonnet-4-5 Fact checker Llama3.1-8B meta-llama/Llama-3.1-8B-Instruct Response model Tulu3.1-8B allenai/Llama-3.1-Tulu-3.1-8B Response / Rephrase model OLMo2-7B allenai/OLMo-2-1124-7B-Instruct Response model Qwen3 Qwen/Qwen3-8B Response model DeepSeek-V3 deepseek-chat Response model Llama4-Maverick meta-llama/Llama-4-Maverick-17B-128E-Instruct Response model Grok-4 grok-4 Response model 
+
+J.2 Ground-Truth Grading Pipeline 
+
+The grading pipeline differs by task type. 
+
+Factual knowledge QA (MMLU, MMLU-Pro, TruthfulQA). All factual knowledge QA benchmarks use single-stage rule-based grading ( gt ). The model’s response is parsed via regex to extract the selected letter choice (A–D for MMLU and TruthfulQA; A–J for MMLU-Pro), which is then compared against the provided answer key. If no letter choice can be extracted, the response is marked incorrect. 
+
+Mathematical reasoning (GSM8K, MATH500). Mathematical responses are graded via a two-stage pipeline ( gt verified ), since free-form answers may be expressed in varied but equivalent forms. 
+
+Stage 1 — Rule-based parsing. A regex-based parser first attempts to extract a final numerical or algebraic answer from the response. If the extracted answer matches the gold answer by 22 string normalization (e.g., stripping whitespace, commas, and “$” symbols), G is set to 1 and the response is not passed to Stage 2. 
+
+Stage 2 — Model-based parsing and grading (gt verified). Responses for which Stage 1 fails to confirm correctness are re-processed by GPT-5.2 (temperature 0.0). The model first parses whether the response is complete and extracts the final answer (parsing prompt), then compares it against the gold answer for mathematical equivalence (comparison prompt). G
+
+is set to 1 if and only if the parsed answer is deemed equivalent to the gold answer. The full prompts are given in Section J.3 below. 
+
+J.3 GPT-5.2 Prompts Answer parsing prompt. 
+
+You are analyzing a math response to extract the final answer. Response: {response }
+
+Task: Determine if this response is FINISHED (has a complete final answer) or UNFINISHED (cut off, incomplete, or missing a final answer). Rules: 1. A response is FINISHED if it clearly states a final numerical or mathematical answer. 2. A response is UNFINISHED if there is no clear final answer stated. If FINISHED, extract the final answer exactly as it appears (just the value, no ‘‘The answer is’’ prefix). If UNFINISHED, output ‘‘N/A’’. Output format (exactly one line): FINISHED: 〈answer 〉 OR UNFINISHED: N/A 
+
+Answer comparison prompt. 
+
+You are comparing two mathematical answers to determine if they are equivalent. Parsed answer from response: {parsed answer }
+
+Gold (correct) answer: {gold answer }
+
+Task: Are these two answers mathematically equivalent? Rules: 1. Consider mathematical equivalence, not string equality. 2. Ignore formatting differences (spaces, commas in numbers, etc.). Reply with ONLY ‘‘Yes’’ or ‘‘No’’. 
+
+J.4 LLM-as-a-Judge Configurations and Prompts 
+
+All three rater models (GPT-4.1-mini, Claude-Haiku-4.5, Gemini-2.5-Flash-Lite) share the same prompts and decoding configuration: temperature 0.0, maximum 30 output tokens. 
+
+Direct mode (single-turn). The rater receives a single prompt and replies with Yes or No. 
+
+AO prompt: 
+
+Question: {question }
+
+Response: The answer is {answer }.Does the response give the correct answer to the question? Please reply directly with only a SINGLE Yes or No. Output: 
+
+AJ prompt: 
+
+Question: {question }
+
+Response: {full response }
+
+Does the response give the correct answer to the question? Please reply directly with only a SINGLE Yes or No. Output: 
+
+23 Thinking mode (two-turn, AO only). The AO setting uses a two-turn exchange to elicit a scratchpad before the forced verdict. The AJ setting uses the same direct prompt as above (thinking mode does not apply to AJ). 
+
+Turn 1 — reasoning prompt (up to 256 tokens):   
+
+> Question: {question }
+> Response: The answer is {answer }.Does the response give the correct answer to the question? Think step by step about whether this answer is correct.
+
+Turn 2 — forced verdict prompt (up to 30 tokens):  
+
+> Based on your reasoning above, is the answer correct? Reply with only a SINGLE Yes or No. Output:
+
+The model’s Turn 1 output is appended to the conversation as an assistant turn before Turn 2 is issued, so the final Yes/No verdict is conditioned on the full scratchpad. 
+
+# K Human Study and Platform Implementation Details 
+
+This appendix documents the human study setup and technical implementation used to collect human judgments for AO (Answer-Only) and AJ (Answer+Justification). It is intended to support reproducibility and auditing. 
+
+K.1 Study Overview (Purpose and Design) Objective. The human study evaluates whether human verifiability patterns under AO vs. AJ align with those obtained from LLM-as-a-judge, and provides human-grounded mea-surements for AO/AJ correctness judgments and related subjective signals (e.g., confidence, helpfulness). 
+
+Key design constraints. 
+
+• Each participant completes a mixed session containing both AO and AJ items. • No participant sees the same math item more than once (i.e., an item never appears in both AO and AJ for the same participant). • Each math item is targeted to appear at least 3 times in AO and at least 3 times in AJ across all collected sessions. • AO/AJ items are interleaved to reduce systematic position effects (Section K.5). 
+
+K.2 Participant Recruitment and Screening 
+
+Participants were openly recruited through online platforms as well as internal university channels. To ensure that participants met the minimum mathematical reasoning and English comprehension requirements for the main study, we applied a pre-screening test before enrollment. The pre-test consisted of six items in total: five MATH500 problems and one GSM8K problem. For each item, participants were shown the problem together with an LLM-generated Answer+Justification , and were asked to determine whether the LLM’s response was correct and, if incorrect, to identify the step at which the error occurred. Only participants who answered at least 4 out of 5 MATH500 items correctly and the 1 GSM8K 
+
+item correctly were admitted to the main experiment. All participants in the final study were university students. To protect participant privacy, we did not collect additional personal identifying information beyond what was necessary to administer the study. 
+
+K.3 Platform Overview 
+
+We collect data using an in-house online annotation system. The platform is implemented with a React 19 + TypeScript frontend and a Node.js/Express backend. Data are stored in a 24 MySQL relational database. Participants enter the study via a unique invitation link and complete the session entirely in-browser. 
+
+K.4 Item Bank 
+
+The study uses item bank, which contains 41 items :• 40 MATH500 responses stratified into four categories (TP/TN/FP/FN), 10 per category . Each item includes a math question, a model response (justification), and an extracted final answer. • 1 attention check item (GSM-CHECK ). 
+
+K.5 Session Templates 
+
+K.5.1 Template Structure 
+
+We pre-generate a finite set of fixed session templates . Each template contains 17 items :• 16 math items sampled from the 40-item MATH500 pool, with 4 items per category 
+
+(TP/TN/FP/FN). • 1 attention check item (GSM-CHECK ). 
+
+K.5.2 AO/AJ Assignment Within a Template 
+
+Within each template, the 16 math items are split evenly: • AO (Answer-Only): show question + extracted final answer only (no justification). • AJ (Answer+Justification): show question + full model justification + extracted final answer. 
+
+Alternation. The 16 math items are arranged in a strictly alternating pattern: 
+
+AJ → AO → AJ → AO → . . . so each template contains exactly 8 AO and 8 AJ math items. 
+
+Attention check insertion. The GSM-CHECK item is always presented in AJ format and inserted at a random even index (0-indexed even positions), i.e., one of positions 0, 2, 4, 6, 8, 10, 12, 14, which correspond to the 1st, 3rd, 5th, 7th, 9th, 11th, 13th, or 15th item in a 1-indexed display. The insertion does not change the relative alternation pattern among the 16 math items. 
+
+K.5.3 Cross-Template Coverage Constraints and “Compensation” Scheduling 
+
+We generate 20 templates in total (T1–T20), where T1–T15 are the initial batch and T16–T20 are a supplemental batch. 
+
+Coverage target. Across all templates used in data collection, each of the 40 math items is targeted to appear at least: 
+
+AO ≥ 3 and AJ ≥ 3. 
+
+Supplemental templates (T16–T20). The supplemental batch is constructed using a priority compensation algorithm: • If an item is under-covered in AO, it is preferentially assigned to an AO slot. • If an item is under-covered in AJ, it is preferentially assigned to an AJ slot. This process continues until all items reach the AO ≥3 and AJ ≥3 targets, subject to template constraints (16 math items per template; 4 per category; AO/AJ alternation). 25 K.5.4 Participant-to-Template Assignment 
+
+Each participant is assigned to exactly one template, recorded in the database field 
+
+mixTemplateId . A given template is assigned to at most one participant (i.e., templates are not reused), unless a session is released/reset due to termination or invalidation. 
+
+K.6 Study Flow and Timing 
+
+Participants proceed through the following states: 1. Consent. [Welcome, and thank you for considering participation in this study. The purpose of this study is to understand how everyday users determine whether a proposed answer to a math problem is correct based on the information provided. The information provided will include either the AI’s answer to the math question alone, or the AI’s answer together with its explanation. During the study, you will see a series of math questions with proposed answers; in some cases, you will also see a justification. Your task is to decide whether the proposed answer is correct or incorrect using only the information provided in this study. What You Will Do Read each math question and its justification, if provided. For each question, determine whether the provided answer is correct or incorrect. For some questions, rate how helpful the provided justification was in making your decision. Time Commitment The study is expected to take approximately 45–50 minutes. Risks or Discomforts We do not expect any notable risks. This study involves only problem-solving or reading-based judgment tasks. Voluntary Participation Your participation is completely voluntary. You may stop participating at any time without penalty. If you choose to stop, you may simply close the page. Privacy and Data Use We will record your responses and response times. We will not collect any personally identifying information as part of this research. Participant Requirements Do not use scratch paper, calculators, search engines, chatbots, or any other external tools. Rely only on the content provided in this study. Complete the task using your own judgment only. Do not switch tabs, take screenshots, or copy content. Any violations will automatically terminate the session] 
+
+2. Instructions. [You will verify whether proposed answers to math problems are correct. You will review 16 math questions with 3 minutes per question. Each question has the AI’s proposed answer. Your task is to determine whether each proposed answer is correct or incorrect.] 
+
+3. Active. Participants answer all 17 items. 4. Completed. Participants submit and exit the study. 
+
+K.6.1 Per-Item Interaction (Two-Stage) 
+
+Each item is answered in two consecutive stages. 
+
+Stage 1: Correctness judgment. Participants view the item content (AO or AJ) and re-spond: 
+
+Correct / Incorrect (whether the model’s proposed answer is correct) Timing: • Soft limit: 3 minutes . After 3 minutes, the timer turns red and displays a warning. • Hard limit: 4 minutes . At 4 minutes the platform auto-submits Stage 1, sets 
+
+timedOut=true , and records the latest selection if present (otherwise null ). 26 Stage 2: Subjective ratings. After Stage 1 is locked, participants provide ratings (all required): • Confidence (all settings): 5-point scale (1 = Very Uncertain, 5 = Very Confident). • Helpfulness (AJ only): 5-point scale (1 = Very Unhelpful, 5 = Very Helpful). Timing: • Soft limit: 60 seconds .• Hard limit: 90 seconds (auto-submit). 
+
+K.6.2 Compensation 
+
+Participant-facing compensation text. 
+
+[Participants were informed that the study used a tiered compensation scheme, with a maximum payment of RMB 100. Completing the study and meeting the basic response requirements guaranteed a base payment of RMB 60. Additional compensation was described as being primarily based on overall judgment accuracy; participants were told that those who responded carefully throughout the study, achieved relatively high accuracy, and completed the subjective ratings conscientiously could receive higher compensation, with average total payment around RMB 70 and a maximum of RMB 100. Participants were also informed that failure to participate seriously—for example, failing the attention check, using external tools, or providing responses that clearly did not meet the task requirements—could result in no compensation. The instruction page further reminded participants to make judgments independently based only on the information shown on the screen, to avoid submitting answers excessively quickly, especially in AO items without justifications, and to complete all subjective ratings carefully, as these were also considered in the overall quality assessment.] 
+
+Tiering policy 
+
+Internally, participant compensation was tied strongly to judgment accuracy: participants with higher overall accuracy received higher pay, all else being equal. In addition, moderate violations that did not trigger automatic session termination (i.e., fewer than three severe violations) could still reduce compensation. Compensation could also be lowered for behav-ioral patterns indicative of low-quality participation, including excessively short response times and mechanical subjective ratings with little or no variation across items. Thus, final payment was determined by a combination of overall judgment accuracy, compliance with study rules, and response-quality signals collected during the session. 
+
+K.7 Attention Check 
+
+The session includes one attention check item ( GSM-CHECK ). The model’s response contains an obvious error, and the correct meta-judgment is that the model’s answer is incorrect (i.e., the participant should respond Incorrect ). • Passing criterion: participant selects Incorrect .• Recorded as: participant sessions.passedAttentionCheck .• Presentation: always in AJ format (full justification visible). • Position: inserted at a random even index; across templates, the position distribu-tion spans the set {1st, 3rd, 5th, 7th, 9th, 11th, 13th, 15th }.
+
+K.8 Data Integrity and Anti-Cheating Mechanisms 
+
+K.8.1 Violation Monitoring 
+
+The platform logs potential violations in the violation events table. Each event type is assigned a severity level: 27 Event type Description Severity                 
+
+> tab switch Switch to another browser tab Severe
+> visibility hidden Window minimized/hidden Severe
+> screenshot attempt Screenshot attempt detected Severe
+> window blur Window loses focus Moderate
+> copy attempt Copy action detected Moderate
+> paste attempt Paste action detected Moderate
+> right click Right-click menu opened Moderate
+> devtools open Developer tools opened Moderate
+
+Table 11: Violation events monitored by the platform. 
+
+Auto-termination rule. If a participant accumulates 3 or more severe violations (tab switch ,
+
+visibility hidden , screenshot attempt ), the platform automatically terminates the session (status="terminated" ). 
+
+K.8.2 Session Reset and Template Reuse 
+
+If a session is terminated or otherwise invalidated, the corresponding template may be released and reassigned to a new participant (Section K.5). 
+
+K.9 Data Logging Schema 
+
+Per-item responses are stored in item responses . Key fields include:              
+
+> Field Meaning
+> participantId Unique participant identifier
+> itemId Item ID (e.g., TP01, FN05, GSM-CHECK)
+> category TP/TN/FP/FN/GSM-CHECK
+> condition AO or AJ
+> questionIndex Item position in the sequence (0-indexed)
+> responseCorrect Stage 1 judgment (true/false/null)
+> rtSeconds Stage 1 response time (seconds)
+> timedOut Whether Stage 1 auto-submitted due to timeout
+> helpfulness Stage 2 helpfulness (AJ only; 1–5)
+> confidenceRating Stage 2 confidence (all; 1–5)
+> confidenceRtSeconds Stage 2 response time (seconds)
+> submittedAt Submission timestamp
+
+Table 12: Core fields recorded for each item response. Session-level metadata (e.g., attention check status, termination status) are stored in 
+
+participant sessions .
+
+K.10 Inter-Rater Agreement Results 
+
+Table 13 reports correctness accuracy against ground truth and LLM–human Cohen’s κ for each LLM rater individually across all four evaluation settings, together with their average and the human baseline. κ is computed over all (LLM, human) judgment pairs pooled across the 40 items. Human judgments are available only for AO and AJ settings; κ is therefore undefined for the human row. 
+
+K.11 A.8 Collection Status (Snapshot) 
+
+At the time of reporting, data collection status is summarized below: 28 Cohen’s κ Accuracy Rater AO AO-CoT AJ AJ-CoT AO AO-CoT AJ AJ-CoT 
+
+claude-haiku-4-5 −0.060 0.515 0.529 0.484 0.475 0.900 0.795 0.925 
+
+gemini-2.5-flash-lite 0.217 0.436 0.535 0.479 0.650 0.775 0.875 0.875 
+
+gpt-4.1-mini 0.039 0.491 0.438 0.501 0.525 0.875 0.875 0.925 LLM (avg.) 0.065 0.481 0.501 0.488 0.550 0.850 0.848 0.908 Human — — — — 0.836 — 0.809 —
+
+Table 13: Per-rater Cohen’s κ (vs. human judgments) and ground-truth accuracy across all four evaluation settings on the 40-item human study benchmark. Human judgments are collected only under the AO and AJ settings; κ is not applicable for the human row. 
+
+Metric Value 
+
+Completed participants 19 Mean completion time (minutes) 27.2 Completion time range (minutes) 16.4 – 40.4 Attention check pass rate 100% (19/19) Participants with 0 violations 12 (63%) Participants with ≥1 violation 7 (37%) Total answered items (incl. GSM-CHECK) 306 
+
+Table 14: Data collection snapshot. 29

@@ -6,69 +6,69 @@
 </div>
 
 ## 每次日报
-- 最新运行日期：2026-04-11
-- 运行时间：<span class="dpr-runtime" data-beijing="04-12 04:26 (UTC+8)" data-utc="04-11 20:26 UTC">04-12 04:26 (UTC+8) / 04-11 20:26 UTC</span>
+- 最新运行日期：2026-04-12
+- 运行时间：<span class="dpr-runtime" data-beijing="04-13 04:22 (UTC+8)" data-utc="04-12 20:22 UTC">04-13 04:22 (UTC+8) / 04-12 20:22 UTC</span>
 - 运行状态：成功
 - 本次总论文数：17
 - 精读区：6
 - 速读区：11
 
 ### 今日简报（AI）
-今日精研17篇AI论文，聚焦人格建模与变分神经元等前沿方向。EpiPersona的人格投影方法与Transformer变分神经元研究最具突破性。普通读者可关注人类对齐语言模型进展，这将改变AI助手交互体验。
-- 详情：[/202604/11/README](/202604/11/README)
+今日聚焦大语言模型蒸馏与多模态技术，精读6篇核心论文，涵盖模型优化与跨模态能力恢复。多样性感知的KL散度蒸馏与选择性跨模态蒸馏技术为提升模型性能提供了新思路。关注多模态AI模型的实际应用进展，这些技术将推动更自然的人机交互体验。
+- 详情：[/202604/12/README](/202604/12/README)
 
 ### 精读区论文标签
-1. [EpiPersona: Persona Projection and Episode Coupling for Pluralistic Preference Modeling](/202604/11/2603.28197v1-epipersona-persona-projection-and-episode-coupling-for-pluralistic-preference-modeling)  
+1. [Diversity-Aware Reverse Kullback-Leibler Divergence for Large Language Model Distillation](/202604/12/2604.00223v1-diversity-aware-reverse-kullback-leibler-divergence-for-large-language-model-distillation)  
    标签：评分：8.0/10、query:dl-cv
-   evidence：大语言模型偏好适应框架
-2. [Variational Neurons in Transformers for Language Modeling](/202604/11/2603.28219v1-variational-neurons-in-transformers-for-language-modeling)  
+   evidence：新颖的大模型蒸馏方法
+2. [LinguDistill: Recovering Linguistic Ability in Vision- Language Models via Selective Cross-Modal Distillation](/202604/12/2604.00829v1-lingudistill-recovering-linguistic-ability-in-vision--language-models-via-selective-cross-modal-distillation)  
    标签：评分：8.0/10、query:dl-cv
-   evidence：Transformer前馈计算中的变分神经元
-3. [Compressing Transformer Language Models via Matrix Product Operator Decomposition: A Case Study on PicoGPT](/202604/11/2603.28534v1-compressing-transformer-language-models-via-matrix-product-operator-decomposition-a-case-study-on-picogpt)  
+   evidence：视觉语言模型语言能力恢复方法
+3. [Narrative Fingerprints: Multi-Scale Author Identification via Novelty Curve Dynamics](/202604/12/2604.01073v1-narrative-fingerprints-multi-scale-author-identification-via-novelty-curve-dynamics)  
    标签：评分：8.0/10、query:dl-cv
-   evidence：通过矩阵算子分解压缩Transformer模型
-4. [GA-GS: Generation-Assisted Gaussian Splatting for Static Scene Reconstruction](/202604/11/2604.04331v1-ga-gs-generation-assisted-gaussian-splatting-for-static-scene-reconstruction)  
+   evidence：信息论新颖性曲线用于作者识别
+4. [3D-Fixer: Coarse-to-Fine In-place Completion for 3D Scenes from a Single Image](/202604/12/2604.04406v1-3d-fixer-coarse-to-fine-in-place-completion-for-3d-scenes-from-a-single-image)  
    标签：评分：8.0/10、query:dl-cv
-   evidence：扩散模型修复遮挡区域
-5. [Single-Stage Signal Attenuation Diffusion Model for Low-Light Image Enhancement and Denoising](/202604/11/2604.05727v1-single-stage-signal-attenuation-diffusion-model-for-low-light-image-enhancement-and-denoising)  
+   evidence：从单图像完成3D场景
+5. [3D Smoke Scene Reconstruction Guided by Vision Priors from Multimodal Large Language Models](/202604/12/2604.05687v1-3d-smoke-scene-reconstruction-guided-by-vision-priors-from-multimodal-large-language-models)  
    标签：评分：8.0/10、query:dl-cv
-   evidence：图像修复扩散
-6. [DiffHDR: Re-Exposing LDR Videos with Video Diffusion Models](/202604/11/2604.06161v1-diffhdr-re-exposing-ldr-videos-with-video-diffusion-models)  
+   evidence：结合LLM视觉先验与3D重建
+6. [Leveraging Image Editing Foundation Models for Data-Efficient CT Metal Artifact Reduction](/202604/12/2604.05934v1-leveraging-image-editing-foundation-models-for-data-efficient-ct-metal-artifact-reduction)  
    标签：评分：8.0/10、query:dl-cv
-   evidence：基于视频扩散的LDR到HDR转换
+   evidence：图像编辑用于伪影减少
 
 ### 速读区论文标签
-1. [Concept Training for Human-Aligned Language Models](/202604/11/2603.29123v1-concept-training-for-human-aligned-language-models)  
+1. [Friends and Grandmothers in Silico: Localizing Entity Cells in Language Models](/202604/12/2604.01404v1-friends-and-grandmothers-in-silico-localizing-entity-cells-in-language-models)  
    标签：评分：8.0/10、query:dl-cv
-   evidence：面向人类对齐的语言模型概念监督
-2. [Distilling Human-Aligned Privacy Sensitivity Assessment from Large Language Models](/202604/11/2603.29497v1-distilling-human-aligned-privacy-sensitivity-assessment-from-large-language-models)  
+   evidence：LLM中实体选择性神经元定位
+2. [Infeasibility Aware Large Language Models for Combinatorial Optimization](/202604/12/2604.01455v1-infeasibility-aware-large-language-models-for-combinatorial-optimization)  
    标签：评分：8.0/10、query:dl-cv
-   evidence：大模型蒸馏用于隐私评估
-3. [Training-Free Dynamic Upcycling of Expert Language Models](/202604/11/2603.29765v1-training-free-dynamic-upcycling-of-expert-language-models)  
+   evidence：用于组合优化的大语言模型
+3. [From Understanding to Erasing: Towards Complete and Stable Video Object Removal](/202604/12/2604.01693v1-from-understanding-to-erasing-towards-complete-and-stable-video-object-removal)  
    标签：评分：8.0/10、query:dl-cv
-   evidence：大模型领域专业知识增强
-4. [SNEAK: Evaluating Strategic Communication and Information Leakage in Large Language Models](/202604/11/2603.29846v1-sneak-evaluating-strategic-communication-and-information-leakage-in-large-language-models)  
+   evidence：基于扩散模型的视频物体移除
+4. [AA-SVD : Anchored and Adaptive SVD for Large Language Model Compression](/202604/12/2604.02119v1-aa-svd--anchored-and-adaptive-svd-for-large-language-model-compression)  
    标签：评分：8.0/10、query:dl-cv
-   evidence：大模型战略通信基准
-5. [IndustryCode: A Benchmark for Industry Code Generation](/202604/11/2604.02729v1-industrycode-a-benchmark-for-industry-code-generation)  
+   evidence：基于锚定SVD的大语言模型压缩
+5. [HistoFusionNet: Histogram-Guided Fusion and Frequency-Adaptive Refinement for Nighttime Image Dehazing](/202604/12/2604.03800v1-histofusionnet-histogram-guided-fusion-and-frequency-adaptive-refinement-for-nighttime-image-dehazing)  
    标签：评分：7.0/10、query:dl-cv
-   evidence：工业代码生成的LLM基准
-6. [BadgeX: IoT-Enhanced Wearable Analytics Meets LLMs for Collaborative Learning](/202604/11/2604.04093v1-badgex-iot-enhanced-wearable-analytics-meets-llms-for-collaborative-learning)  
+   evidence：新颖的图像修复方法
+6. [GROUNDEDKG-RAG: Grounded Knowledge Graph Index for Long-document Question Answering](/202604/12/2604.04359v1-groundedkg-rag-grounded-knowledge-graph-index-for-long-document-question-answering)  
    标签：评分：7.0/10、query:dl-cv
-   evidence：创新的IoT-LLM集成用于学习分析
-7. [PATHFINDER: Multi-objective discovery in structural and spectral spaces](/202604/11/2604.04194v1-pathfinder-multi-objective-discovery-in-structural-and-spectral-spaces)  
+   evidence：用于RAG的 grounded 知识图谱
+7. [CPT: Controllable and Editable Design Variations with Language Models](/202604/12/2604.04380v1-cpt-controllable-and-editable-design-variations-with-language-models)  
    标签：评分：7.0/10、query:dl-cv
-   evidence：新颖性驱动的探索框架
-8. [Conversational Control with Ontologies for Large Language Models: A Lightweight Framework for Constrained Generation](/202604/11/2604.04450v1-conversational-control-with-ontologies-for-large-language-models-a-lightweight-framework-for-constrained-generation)  
+   evidence：用于设计生成的语言模型
+8. [Justified or Just Convincing? Error Verifiability as a Dimension of LLM Quality](/202604/12/2604.04418v2-justified-or-just-convincing-error-verifiability-as-a-dimension-of-llm-quality)  
    标签：评分：7.0/10、query:dl-cv
-   evidence：LLM输出控制的新框架
-9. [Overcoming the "Impracticality" of RAG: Proposing a Real-World Benchmark and Multi-Dimensional Diagnostic Framework](/202604/11/2604.02640v1-overcoming-the-impracticality-of-rag-proposing-a-real-world-benchmark-and-multi-dimensional-diagnostic-framework)  
+   evidence：大语言模型质量评估
+9. [Rethinking Exposure Correction for Spatially Non-uniform Degradation](/202604/12/2604.04136v1-rethinking-exposure-correction-for-spatially-non-uniform-degradation)  
    标签：评分：6.0/10、query:dl-cv
-   evidence：RAG评估框架
-10. [Differentiable Stroke Planning with Dual Parameterization for Efficient and High-Fidelity Painting Creation](/202604/11/2604.02752v1-differentiable-stroke-planning-with-dual-parameterization-for-efficient-and-high-fidelity-painting-creation)  
+   evidence：空间校正图像重建
+10. [Justified or Just Convincing? Error Verifiability as a Dimension of LLM Quality](/202604/12/2604.04418v1-justified-or-just-convincing-error-verifiability-as-a-dimension-of-llm-quality)  
    标签：评分：6.0/10、query:dl-cv
-   evidence：用于笔触渲染的双参数化
-11. [Information-Regularized Constrained Inversion for Stable Avatar Editing from Sparse Supervision](/202604/11/2604.02883v1-information-regularized-constrained-inversion-for-stable-avatar-editing-from-sparse-supervision)  
+   evidence：大模型错误可验证性评估
+11. [Paper Espresso: From Paper Overload to Research Insight](/202604/12/2604.04562v1-paper-espresso-from-paper-overload-to-research-insight)  
    标签：评分：6.0/10、query:dl-cv
-   evidence：稀疏监督下的头像编辑
+   evidence：LLM驱动的研究分析平台
 

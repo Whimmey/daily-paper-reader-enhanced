@@ -1,0 +1,259 @@
+Title: Leveraging Image Editing Foundation Models for Data-Efficient CT Metal Artifact Reduction
+
+URL Source: https://arxiv.org/pdf/2604.05934v1
+
+Published Time: Wed, 08 Apr 2026 01:23:42 GMT
+
+Number of Pages: 10
+
+Markdown Content:
+# LEVERAGING IMAGE EDITING FOUNDATION MODELS FOR DATA-EFFICIENT CT METAL ARTIFACT REDUCTION 
+
+# Ahmet Rasim Emirdagi S¨ uleyman Aslan Mısra Yavuz G¨ orkay Aydemir Yunus Bilge Kurt Nasrin Rahimi Burak Can Biner M. Akın Yılmaz Codeway AI Research 
+
+# Abstract 
+
+Metal artifacts from high-attenuation implants severely de-grade CT image quality, obscuring critical anatomical structures and posing a challenge for standard deep learn-ing methods that require extensive paired training data. We propose a paradigm shift: reframing artifact reduction as an in-context reasoning task by adapting a general-purpose vision-language diffusion foundation model via parameter-efficient Low-Rank Adaptation (LoRA). By leveraging rich visual priors, our approach achieves effective artifact sup-pression with only 16 to 128 paired training examples re-ducing data requirements by two orders of magnitude. Cru-cially, we demonstrate that domain adaptation is essential for hallucination mitigation; without it, foundation mod-els interpret streak artifacts as erroneous natural objects (e.g., waffles or petri dishes). To ground the restoration, we propose a multi-reference conditioning strategy where clean anatomical exemplars from unrelated subjects are provided alongside the corrupted input, enabling the model to exploit category-specific context to infer uncorrupted anatomy. Extensive evaluation on the AAPM CT-MAR benchmark demonstrates that our method achieves state-of-the-art performance on perceptual and radiological-feature metrics . This work establishes that foundation models, when appropriately adapted, offer a scalable alternative for interpretable, data-efficient medical image reconstruc-tion. Code is available at https://github.com/ ahmetemirdagi/CT-EditMAR .
+
+# 1. Introduction 
+
+Computed Tomography (CT) is a cornerstone of modern di-agnostic imaging due to its speed, accessibility, and high spatial resolution. However, high-density metallic implants such as orthopedic hardware and dental fillings introduce severe image degradations known as metal artifacts. These artifacts arise from beam hardening, photon starvation, and scattering, manifesting as streaking and shadowing pat-terns [30, 39]. Consequently, soft-tissue regions adjacent to metal implants are often rendered non-diagnostic, limiting clinical utility in routine and post-operative scenarios [4]. Early metal artifact reduction (MAR) approaches fo-cused on acquisition-level strategies, including gantry an-gle adjustment, increased tube voltage, and dual-energy CT [30]. While effective in specific scenarios, these methods are limited by clinical constraints regarding ra-diation dose, noise, and scan protocols. Subsequent projection-domain correction methods explicitly target metal-corrupted sinogram regions using interpolation or in-painting strategies [14, 24]. Iterative reconstruction frame-works further incorporate physical imaging models of poly-chromatic X-ray spectra and noise statistics to improve con-sistency [6, 33]. However, these methods rely heavily on accurate metal segmentation and access to raw projection data. Moreover, model mismatch and severe photon star-vation often lead to residual artifacts and secondary distor-tions, limiting robustness with large implants [9]. Recent research has shifted toward data-driven deep learning approaches, which learn artifact suppression di-rectly from large paired datasets. The most capable meth-ods operate in the dual domain, enforcing consistency be-tween raw sinogram measurements and reconstructed im-age space [18, 35]. Although effective, such approaches carry a critical clinical limitation: raw sinogram data is rarely preserved or accessible in hospital PACS systems, where only reconstructed CT volumes are stored. This re-duces the number of dual-domain methods for research of curiosities with limited translational value. Image-domain methods avoid this constraint, but have historically underperformed their dual-domain counterparts as they lack the geometric consistency enforced by sino-gram supervision. Both paradigms, however, share a more fundamental bottleneck: their reliance on tens of thou-sands of paired training examples, which demands signif-icant computational infrastructure and must be repeated for each scanner protocol and implant type. To address this data bottleneck, recent works have ex-
+
+> arXiv:2604.05934v1 [cs.CV] 7 Apr 2026
+
+plored unsupervised and GAN-based architectures [17, 37] and generative approaches such as diffusion models [31]. While these methods reduce annotation costs, they often suffer from anatomical hallucinations, training instability, and prohibitive inference times. There remains a critical need for a framework combining data efficiency with struc-tural fidelity. Foundation models offer a natural path toward this dual requirement. Large-scale foundation models pretrained on internet-scale visual corpora have demonstrated remark-able generalization across image understanding and gen-eration tasks [25, 27, 29]. Their ability to encode rich structural priors like lighting, texture, geometry, and se-mantic contexts from billions of natural images has moti-vated a wave of medical imaging adaptations. Models such as MedSAM [22] and BiomedCLIP [45] show that foun-dation model representations transfer surprisingly well to clinical domains even without medical pretraining, while SAM-Med2D [5] and related work demonstrate competitive segmentation with minimal labelled data. Critically, this transfer does not require full retraining: parameter-efficient fine-tuning (PEFT) methods [2, 3, 8, 16, 20], Low-Rank Adaptation (LoRA) [13] in particular, adapt billion-parameter models to new tasks by injecting small low-rank weight residuals while keeping the back-bone frozen. LoRA has been shown to match full fine-tuning quality on downstream tasks with as few as 1–5% of the trainable parameters, and its compact checkpoint size makes it practical to train and deploy separate adapters per scanner protocol or implant type. Recent work has shown that pre-trained image editing foundation models can be adapted for few-shot image restoration via parameter-efficient fine-tuning within different domains by requir-ing just only 16 to 128 paired examples for tasks such as denoising, deraining, and dehazing or video interpola-tion [28, 43]. Building on this emerging paradigm, we in-vestigate whether such adaptation can extend to the clini-cally important and structurally challenging problem of CT metal artifact reduction. Despite these advances, the appli-cation of generative foundation models to CT artifact cor-rection remains largely unexplored: prior MAR methods are purpose-built networks trained from scratch, inheriting none of the structural priors embedded in large pretrained models. We address this gap by adapting Qwen-Image-Edit 2511 [40], a 20 B-parameter vision-language diffusion model trained for general image editing, to CT metal arti-fact removal via LoRA fine-tuning on as few as 16 paired slices. Our experiments on the AAPM CT-MAR bench-mark [11] show that the proposed approach can suppress metal artifacts effectively with as few as 16 paired training examples, which is roughly two orders of magnitude less than what conventional supervised methods typically re-
+
+> Figure 1. Overview of our framework
+
+quire, while preserving anatomical plausibility and achiev-ing competitive perceptual quality scores against special-ized baselines. Our contributions are: • We are the first to adapt a general-purpose image editing foundation model for CT metal artifact reduction, demon-strating that rich visual priors transfer effectively to CT without domain-specific pretraining. • We propose a reference-conditioned fine-tuning strategy that incorporates clean patient-matched CT slices as aux-iliary inputs, enabling anatomy-aware restoration without sinogram access. • We achieve state-of-the-art perceptual quality on the AAPM CT-MAR benchmark using only 16–128 training pairs, establishing a new data-efficiency frontier for clin-ical MAR deployment. 
+
+# 2. Methods 
+
+## 2.1. Problem Formulation 
+
+To leverage the generative priors of instruction-conditioned image editing foundation models, we formulate metal ar-tifact reduction as a conditional image restoration task. As illustrated in Figure 1, given a metal-corrupted CT slice Isrc ∈ RH×W , a set of K clean reference slices 
+
+R = {r1, . . . , r K } drawn from clean CT slices from other patients in the training set (unrelated subjects), used as style/anatomy exemplars, and a textual instruction T
+
+(e.g., “Remove metal artifacts” ), the goal is to estimate an artifact-reduced slice ˆItrg via a parameterized mapping 
+
+ˆItrg = Fθ (Isrc , R, T) , (1) where Fθ should suppress metal-induced streaking and shading while preserving anatomical structures in unaf-fected regions and reconstructing artifact-corrupted areas consistent with the surrounding context. The reference set 
+
+R provides patient-specific anatomical context without re-quiring access to raw sinogram data, making the formula-tion directly applicable to standard clinical PACS images. When no reference slices are available, the framework re-duces to the reference-free special case Fθ (Isrc , T).
+
+## 2.2. Model and Parameter-Efficient Adaptation 
+
+To approximate the restoration function Fθ , we adopt Qwen-Image-Edit [40], an instruction-conditioned image editing model built on a 20-billion parameter diffusion transformer (DiT) pretrained at scale on natural images. Unlike formulations that treat restoration purely as pixel-wise regression, Qwen-Image-Edit frames restoration as a conditional generation problem: given a corrupted input and a textual instruction describing the desired correction, the model generates a restored image by conditioning its gener-ative backbone on both the visual input and the instruction. This allows the model to exploit learned structural priors to fill artifact-corrupted regions in a manner that is globally consistent with the surrounding anatomy. Fine-tuning all parameters of this backbone is computa-tionally expensive and prone to overfitting in the low-data regimes typical of paired clinical CT datasets. We therefore employ Low-Rank Adaptation (LoRA) [13], a parameter-efficient fine-tuning strategy that injects trainable low-rank update matrices into the frozen pretrained backbone. Formally, for a pretrained weight matrix W0 ∈ Rd×k
+
+(e.g., in an attention projection layer), LoRA freezes W0
+
+and parameterizes the weight update as ∆W = BA , where 
+
+B ∈ Rd×r , A ∈ Rr×k, and r ≪ min( d, k ) is the adapta-tion rank. The forward pass becomes 
+
+h = W0x + αr BA x, (2) where x is the layer input and α is a constant scaling factor. Following standard practice, A is initialized from a random Gaussian distribution and B is initialized to zero, so that 
+
+∆W = 0 at the start of training and the pretrained represen-tations are preserved; only A and B are optimized. This re-duces the number of trainable parameters by orders of mag-nitude relative to full fine-tuning, enabling stable adaptation from as few as 16 paired training examples while retaining the rich visual priors of the pretrained backbone. 
+
+## 2.3. Reference Conditioning Strategies 
+
+To supply the model with clean anatomical context, we as-semble a reference set R = {r1, . . . , r 5} of five metal-free CT slices drawn from different patients in a held-out refer-ence pool. We investigate two strategies for incorporating 
+
+R into the single-step inference call. 
+
+Multi-image conditioning The Qwen-Image-Edit back-bone is a vision-language model that natively accepts a se-quence of images as a multi-image prompt. We exploit this capability by passing the artifact-corrupted slice and all five references as a single six-image list: 
+
+ˆI = D Fθ
+
+ [E(Isrc ), E(r1), . . . , E(r5)] , T multi 
+
+ , (3) where the prompt Tmulti explicitly labels each image (“Im-age 1 is the CT scan with metal artifacts . . . Images 2–6 are clean reference CTs”). All six images are processed in a sin-gle forward pass through the transformer; the cross-image attention inherent to the VLM architecture allows the model to draw structural cues directly from the references. 
+
+Grid-concatenation conditioning As a simpler baseline, we tile the six images into a 2 × 3 pixel grid (each cell resized to 256 × 256 ) and pass the resulting 512 × 768 com-posite as a single RGB image. The prompt Tgrid describes the layout (“The input is a 2×3 grid. Top-left is the CT scan . . . the other five cells are clean reference CTs”), relying on the model’s spatial understanding rather than explicit multi-image tokens. No architectural change is required; the grid is treated as an ordinary single-image edit. 
+
+## 2.4. Self-ensembling 
+
+Diffusion models are stochastic at inference time. To reduce this variance for our best configuration, we run the multi-image model M = 10 times with different random seeds and average the resulting pixel-space outputs: 
+
+ˆIens = 1
+
+M
+
+> M
+
+X
+
+> n=1
+
+D Fθ
+
+ [E(Isrc ), E(r1), . . . , E(r5)] , T multi , s n
+
+ ,
+
+(4) where sn denotes the seed for run n. This is a test-time technique independent of the conditioning strategy. 
+
+## 2.5. Training 
+
+Data preparation. Training pairs are derived from our CT-MAR dataset of paired artifact-corrupted and clean CT volumes. Each slice is windowed to the HU range 
+
+[−500 , 1300] and linearly mapped to an 8-bit PNG ( 512 ×
+
+512 pixels). The upper bound of 1300HU intention-ally saturates metal implant voxels, which typically ex-ceed 3000HU, to a uniform maximum intensity; since the restoration target is the artifact-corrupted soft tissue rather than the implant itself, no clinically relevant information is lost by this saturation. The noisy slice serves as the edit image and the clean slice as the reconstruction target. For the reference-conditioned variants (Section 2.3), five additional metal-free reference slices from other patients are appended to each training example. We study four training-set sizes: 
+
+N ∈ { 16 , 32 , 64 , 128 } pairs. 
+
+Loss function We adopt the flow-matching supervised fine-tuning objective (FlowMatchSFT) [7, 19]. For a train-Table 1. Quantitative comparison on the 1,000-sample CT-MAR test set. Bold : best among trained models. Underline: second best among trained models. VAE ceiling is not a trained MAR model — it encodes and decodes clean GT images without any diffusion, representing the theoretical upper bound imposed by the VAE bottleneck. 
+
+Method PSNR (dB) ↑ SSIM ↑ FID ↓ FID-Rad ↓ LPIPS ↓ LPIPS-Rad ↓
+
+Baselines ADN [17] 31.38 0.8507 59.09 0.0600 0.1841 0.1708 RISE-MAR [21] 32.61 0.8514 66.12 0.0673 0.1776 0.1744 OSCNet+ [36] 37.74 0.8832 31.60 0.0241 0.1531 0.0931 Qwen-Image-Edit Zero-Shot 4.21 0.1325 193.66 0.832 0.3706 0.7609 Ours LoRA ( N =128, r = 64, no refs) 31.61 0.8717 5.81 0.0038 0.1062 0.0437 LoRA ( N =128, r = 64, multi-refs) 34.60 0.8829 4.91 0.0031 0.0926 0.0371 
+
+LoRA ( N =128, r = 64, multi-refs, ens-10) 35.51 0.8966 5.33 0.0037 0.0972 0.0391 Upper bound VAE ceiling 38.57 0.9313 0.74 0.0002 0.0375 0.0080 ing pair (x0, x 1) where x1 is the clean latent and x0 is pure noise, the training signal at interpolation time t is: 
+
+L = Et, x 0, x 1 ∥vθ (xt, t, E(Isrc ), T ) − (x1 − x0)∥22 ,xt = (1 − t) x0 + t x 1, (5) where vθ is the transformer’s predicted velocity field and 
+
+E(Isrc ) is the VAE-encoded noisy input provided as edit conditioning. All backbone parameters are frozen; only the LoRA weights are updated. 
+
+Optimisation All models are trained with AdamW (learning rate 10 −4, no scheduler) for a fixed budget of 750 gradient steps. To equalize the step budget across dataset sizes, the dataset is repeated ⌈750 /N ⌉ times so that each model performs the same total number of parameter up-dates regardless of N . Gradient checkpointing is enabled throughout. Training is conducted on two NVIDIA H100 GPUs (one model per GPU, sequential jobs per GPU). 
+
+LoRA configuration LoRA adapters are applied to the DiT backbone at all attention query, key, and value projections in both the image stream ( to q , to k ,
+
+to v , to out .0) and the cross-stream modulation lay-ers ( add q proj , add k proj , add v proj , to add out ), as well as the image and text MLP/modulation heads (img mlp .net .2, img mod .1, txt mlp .net .2, txt mod .1)meaning 12 module types in total. The rank r is ablated over {16 , 32 , 64 , 128 }; all other LoRA hyperparameters use the DiffSynth-Studio defaults. 
+
+# 3. Experiments 
+
+## 3.1. Dataset 
+
+This work utilizes the AAPM CT Metal Artifact Reduc-tion (CT-MAR) Grand Challenge benchmark [1, 11]. The dataset is generated using a hybrid simulation framework [26] combining publicly available clinical CT images [10, 42], clinical images from Massachusetts General Hospital, and simulated metallic implants using the CatSim simulator in the XCIST toolkit [41]. Notably, the clinical CT images underlying the AAPM benchmark are drawn primarily from the NIH DeepLesion dataset [42], ensuring that the patient anatomical distribution overlaps with the training domain of several baselines evaluated in Section 3.2. For evaluation we hold out 1 000 slices drawn from the ten body categories, with no overlap between train-ing and test indices. The training subsets consist of N ∈{16 , 32 , 64 , 128 } pairs sampled uniformly from the remain-ing slices. All images are windowed to the HU range [−500 , 1300] 
+
+and converted to 8-bit PNG for training and evaluation. For experiments with reference conditioning, up to five metal-free target slices from the same anatomical category (but different people) are associated with each test sample. 
+
+## 3.2. Baselines 
+
+We compare against three representative image-domain MAR methods, all evaluated using their publicly released pretrained weights: 
+
+ADN [17] Artifact Disentanglement Network, trained on the DeepLesion dataset. Inputs are converted from HU to attenuation coefficients (att = HU /1000 × 0.192 + 0 .192) ,clipped to [0 , 0.5] , and normalized to [−1, 1] before infer-ence. 
+
+RISE-MAR [21] A residual iterative self-enhancement net-work pretrained on body CT. HU values are normalized to 
+
+[0 , 1] using the model’s training range [−1024 , 3072] .
+
+OSCNet / OSCNet+ [34, 36] Orientation-shared convolu-tional network with a sinogram-consistency prior approxi-mated by image-domain inpainting (OpenCV TELEA [32]) of the metal region. Trained on the SynDeepLesion bench-mark. The metal mask is derived by thresholding the raw Figure 2. Visual comparison of artifact reduction methods. (a) Noisy inputs, (b) ADN, (c) Rise-MAR, (d) OSCNet+ and (e) Our recon-structions. The bottom row shows the absolute error maps relative to the ground truth. Note how our method significantly reduces streak artifacts while preserving anatomical structure. 
+
+HU volume at HU > 2000 , dilated with a 7 × 7 elliptical kernel. Since the AAPM CT-MAR benchmark itself derives its patient images from DeepLesion [42], ADN and OSCNet+ [17, 34, 36] operate on a familiar anatomical distribution; the primary difference lies in the metal artifact simulation pipeline rather than the source patient anatomy, making the comparison fair. 
+
+No-LoRA (zero-shot). To quantify the contribution of do-main adaptation, we additionally evaluate the base Qwen-Image-Edit model with no fine-tuning whatsoever, apply-ing the same input representation and inference pipeline as our adapted models. This zero-shot configuration produces severely degraded outputs, confirming that the foundation model’s natural-image priors do not transfer to CT metal artifact reduction without adaptation. 
+
+Reference Point We additionally report a reference point which is the VAE round-trip (clean GT encoded and de-coded without any diffusion or LoRA) as the theoretical up-per bound imposed by the VAE bottleneck. 
+
+## 3.3. Evaluation Metrics 
+
+We evaluate on six complementary metrics computed on the full 1,000-image test set. Peak Signal-to-Noise Ratio (PSNR) [15] and Structural Similarity Index (SSIM) [38] measure pixel-level fidelity on grayscale CT images. Be-cause pixel agreement alone can be high even when di-agnostically relevant structures are over-smoothed or dis-torted, we additionally report feature-based realism met-rics. Fr´ echet Inception Distance (FID) [12] assesses distributional similarity using features from an ImageNet-pretrained InceptionV3, and Learned Perceptual Image Patch Similarity (LPIPS) [44] measures perceptual dis-tance using an ImageNet-pretrained VGG backbone. To      
+
+> Table 2. Training set size ablation with rank r=64 (no reference conditioning). As r=64 achieved the highest PSNR score on its own ablation. Bold : best per metric.
+
+N PSNR ↑ SSIM ↑ FID ↓ FID-R ↓ LPIPS ↓ LPIPS-R ↓
+
+16 28.25 0.8272 7.18 0.0050 0.1232 0.0649 32 30.14 0.8535 5.91 0.0038 0.1033 0.0432 64 31.41 0.8681 5.22 0.0033 0.0951 0.0388 128 31.61 0.8717 5.81 0.0038 0.1062 0.0437        
+
+> Table 3. LoRA rank ablation with N=128 training pairs (no refer-ence conditioning). As N=128 achieved the highest PSNR score on its own ablation. Bold : best per metric.
+
+r PSNR ↑ SSIM ↑ FID ↓ FID-R ↓ LPIPS ↓ LPIPS-R ↓
+
+16 25.60 0.7603 9.45 0.0073 0.2049 0.1320 32 26.85 0.7792 7.85 0.0057 0.1773 0.0985 
+
+64 31.61 0.8717 5.81 0.0038 0.1062 0.0437 
+
+128 30.49 0.8588 7.48 0.0056 0.1076 0.0552 make these feature distances domain-aware for radiology, we compute FID-Rad and LPIPS-Rad by replacing the feature extractors with networks pretrained on RadIma-geNet [23], so the comparisons are performed in a repre-sentation space tuned to radiological semantics (e.g., organ boundaries, soft-tissue contrast, and bone structure) rather than natural-image cues. Noisy Input Baseline Model Ground Truth   
+
+> (a) Baseline model output showing a hallucinated petri dish.
+> Noisy Input Baseline Model Ground Truth
+> (b) Baseline model output showing a hallucinated waffle.
+> Figure 3. Visual demonstration of domain misalignment. Foun-dation models without LoRA adaptation hallucinate natural image features (petri dish, waffle) into CT reconstructions due to metal streak artifacts.
+
+# 4. Results & Discussion 
+
+## 4.1. Ablation Study Setup 
+
+We conduct two ablation studies to isolate the effect of LoRA rank r and training set size N , fixing all other hy-perparameters. Both experiments use the no-reference-conditioning setting to ensure a clean, controlled compar-ison. 
+
+## 4.2. Need for Domain Adaptation 
+
+Table 1 reveals that, the zero-shot evaluation of the base Qwen-Image-Edit model without any LoRA fine-tuning yields severely degraded outputs, with a PSNR of just 4.21 dB, an FID of 193.66, and an LPIPS-Rad of 0.7609. As shown in Figure 3, the model actively hallucinates natu-ral image content into the reconstruction: metal streak arti-facts, which radiate outward in spoke-like patterns visually similar to certain natural image textures, are interpreted as objects such as a petri dish or waffle (Figures 3a and 3b). These hallucinated structures could be mistaken for gen-uine anatomy, rendering the outputs non-diagnostic. Cru-cially, LoRA fine-tuning on as few as 16 paired examples eliminates this behavior entirely, underscoring that the bot-tleneck is domain alignment rather than representational ca-pacity: the pretrained backbone already possesses the struc-tural priors needed for high-quality restoration but requires targeted adaptation to apply them in the CT domain. 
+
+## 4.3. VAE Ceiling 
+
+We report the VAE round-trip ( encoding and decoding clean ground-truth images without any diffusion or LoRA)     
+
+> Table 4. Reference conditioning strategy comparison at N=128 ,and r=64 . Methods: None, Grid = Grid-concat, Multi = Multi-image. Bold : best per metric.
+
+Method PSNR SSIM FID FID-Rad LPIPS LPIPS-Rad None 31.61 0.8717 5.81 0.0038 0.1062 0.0437 Grid 28.18 0.8256 7.31 0.0040 0.1083 0.0539 Multi 34.60 0.8829 4.91 0.0031 0.0926 0.0371 
+
+as the theoretical upper bound imposed by the lossy VAE bottleneck of the Qwen-Image-Edit backbone, standing at 38.57 dB PSNR, 0.9313 SSIM, and 0.0080 LPIPS-Rad. No method operating through this VAE can exceed these values regardless of adapter quality. Our best ensemble configuration (ens-10) reaches 35.51 dB PSNR and 0.8966 SSIM, trailing OSCNet+ by 2.2 dB on PSNR. We attribute this gap primarily to OSCNet+’s use of sinogram-consistency supervision, which is unavailable to any purely image-domain method. Critically, on every perceptual and domain-aware metric our ensemble substan-tially outperforms all baselines, suggesting that OSCNet+’s PSNR advantage reflects regression-to-the-mean behaviour rather than superior anatomical fidelity. The remaining gap to the VAE ceiling is attributable to the inherent information loss of the VAE bottleneck rather than to limitations of the learned adapter. 
+
+## 4.4. LoRA Rank Ablation 
+
+Table 3 reports performance as a function of LoRA rank 
+
+r ∈ {16 , 32 , 64 , 128 } with N =128 training pairs. Per-formance improves substantially and monotonically from 
+
+r=16 to r=64 , with PSNR rising from 25.60dB to 31.61dB, SSIM from 0.7603 to 0.8717, and LPIPS-Rad from 0.1320 to 0.0437. At low ranks ( r ∈ { 16 , 32 }), the adapter lacks sufficient capacity to redirect the backbone’s generative be-haviour toward CT-domain restoration, producing outputs that retain visible streak artifacts. The sharp jump be-tween r=32 and r=64 suggests the latter crosses a capac-ity threshold at which the adapter can simultaneously sup-press metal-induced corruption and preserve surrounding anatomy. Notably, increasing the rank further to r=128 yields a regression across all metrics (PSNR 30.49dB, FID 7.48, LPIPS-Rad 0.0552). We attribute this to the narrowness of the training distribution: with only N =128 pairs, the adapter is exposed to a highly limited range of anatomical configurations and artifact patterns, and a rank-128 adapter has sufficient capacity to overfit to this narrow distribu-tion rather than learning a general restoration mapping that transfers to unseen test slices. Lower ranks act as an im-plicit regulariser, constraining the adapter to capture only the dominant modes of the restoration mapping that are re-liably represented even in small training sets. We fix r=64 
+
+as our default for all subsequent experiments. 
+
+## 4.5. Training Set Size Ablation 
+
+Table 2 reports performance as a function of training set size N ∈ { 16 , 32 , 64 , 128 } with rank r=64 . Even at N =16 
+
+pairs the adapted model achieves LPIPS-Rad of 0.0649, al-ready outperforming all three specialist baselines on this metric despite their training on orders of magnitude more data. This confirms that the foundation model’s pretrained visual priors provide a powerful initialisation that partially substitutes for labelled supervision. Performance improves consistently with N , with PSNR reaching 31.61dB and LPIPS-Rad 0.0437 at N =128 ,though marginal gains diminish at larger dataset sizes: the PSNR gain from N =64 to N =128 is only 0.20dB, com-pared to 1.27dB from N =32 to N =64 . This saturation suggests the adapter approaches the limits of what r=64 
+
+can learn from the available supervision before N =128 is reached, and that further data scaling would yield diminish-ing returns without a corresponding increase in rank. We fix 
+
+N =128 for all remaining experiments. 
+
+## 4.6. Comparison with Baselines 
+
+Table 1 summarises the full comparison. We highlight the following observations per metric family. PSNR and SSIM. OSCNet+ achieves the highest PSNR (37.74 dB) among all trained models, benefiting from its sinogram-consistency prior and training on a large synthetic dataset. Our en-semble variant achieves 35.51 dB, ranking second over-all, while our single-sample configurations (31.61–34.60 dB) are comparable to ADN and RISE-MAR. The SSIM trend mirrors PSNR: our ensemble achieves the best SSIM (0.8966) of any trained model, including OSCNet+, indi-cating superior preservation of structural contrast and local texture. 
+
+4.6.1. FID & FID-Rad 
+
+Our methods achieve dramatically lower FID and FID-Rad scores than all baselines. The best single-sample config-uration (multi-refs, no ensembling) reaches FID 4.91 and FID-Rad 0.0031, compared to OSCNet+’s 31.60 and 0.0241 respectively corresponding near 6× improvement in dis-tributional realism. This gap is striking given that OSC-Net+ leads on PSNR, and underscores a fundamental ten-sion in image restoration evaluation: pixel-fidelity metrics reward regression-to-the-mean behavior, which suppresses fine structural detail, whereas distributional metrics reward perceptual realism. Our foundation model approach avoids this regression by leveraging generative priors to produce outputs that lie within the manifold of real CT images. 
+
+4.6.2. LPIPS and LPIPS-Rad. 
+
+The perceptual distance results reinforce the FID findings. Our multi-reference single-sample model achieves the best LPIPS (0.0926) and LPIPS-Rad (0.0371) of any trained model, outperforming OSCNet+ by a factor of approxi-mately 1.7× on LPIPS and 2.5× on LPIPS-Rad. The domain-aware LPIPS-Rad metric, which uses a ResNet50 pretrained on 165 radiological categories, is particularly in-formative for clinical utility: it measures perceptual similar-ity in the representation space used by downstream medical AI systems. Our method’s strong performance here sug-gests that the restored images are not merely visually plau-sible but diagnostically consistent with real CT anatomy. 
+
+4.6.3. Reference Conditioning 
+
+Table 4 compares the two reference conditioning strategies against the no-reference baseline. Multi-image condition-ing achieves the best results across all metrics, most no-tably a PSNR of 34.60dB meaning a huge gain of 3.0dB over the no-reference baseline alongside the lowest FID-Rad (0.0031) and LPIPS-Rad (0.0371) of any single-sample configuration. Grid-concatenation conditioning, by contrast, performs poorly, falling below even the no-reference baseline on ev-ery metric despite having access to the same five clean ref-erence slices. We attribute this to two compounding failure modes. First, resizing each of the six images to 256 ×256 
+
+before tiling reduces the effective resolution of both the artifact-corrupted input and the reference slices by a fac-tor of four relative to the native 512 ×512 input, discarding precisely the fine-grained structural detail that references are intended to supply. Second, the spatial layout of the grid introduces ambiguity: the model must infer from a text prompt alone which cell is the restoration target and which are exemplars, relying on spatial understanding that was never explicitly trained for this configuration. In the multi-image conditioning strategy, by contrast, each image is encoded independently at full resolution and the prompt unambiguously labels the role of each token se-quence, allowing the cross-image attention mechanism of the VLM backbone to draw structural cues directly and without resolution loss. The failure of grid-concatenation therefore serves as an important negative result, demonstrating that simply pro-viding reference images is insufficient and that the manner in which they are integrated into the model’s context win-dow is critical to whether anatomical cues can be exploited effectively. 
+
+## 4.7. Self-ensembling 
+
+To reduce stochastic variance at inference time, we apply self-ensembling over independent samples, averaging the resulting pixel-space outputs (Section 2.4). As shown in Ta-ble 1, this yields substantial pixel-fidelity gains: PSNR im-proves from 34.60dB to 35.51dB (+0.91dB) and SSIM from 0.8829 to 0.8966, making the ensemble the strongest image-domain trained model on both measures, within 3.1dB of the VAE ceiling. However, ensembling incurs a modest cost on distributional metrics (FID rises from 4.91 to 5.33 and LPIPS from 0.0926 to 0.0972) reflecting the known trade-off between variance reduction and perceptual sharp-ness. Which regime is preferable depends on the down-stream task: ensembling suits quantitative workflows, while the single-sample configuration may be preferred when di-agnostic sharpness is critical. Notably, even the ensembled outputs retain dramatically better perceptual scores than all specialist baselines. 
+
+## 4.8. Qualitative Evaluation 
+
+To stress-test each method under challenging conditions, Figure 2 presents a heavily corrupted abdominal slice (noisy-input PSNR of 17.83dB) containing two high-attenuation metal implants connected by severe streak arti-facts. ADN and RISE-MAR both attenuate streak intensity but leave clearly visible residual artifacts along the origi-nal trajectories, with little soft-tissue recovery in the artifact shadow. OSCNet+ achieves better streak suppression, yet faint directional artifacts and bright implant-region residu-als persist. Our method produces a visually clean reconstruction in which streak artifacts are almost entirely eliminated and the underlying abdominal anatomy is clearly delineated, with metal implant regions replaced by anatomically plau-sible tissue rather than bright residuals. The absolute error maps (bottom row) corroborate these observations: baseline errors concentrate along streak trajectories, whereas ours are substantially lower and spatially uniform, confined pri-marily to sharp anatomical boundaries. Notably, all three baselines were trained on orders of magnitude more paired data than our 128-pair training set, and RISE-MAR [21] in particular was trained on substantially milder corruption ( 34,dB input PSNR), likely explaining its poor generaliza-tion to this severity level. Despite this data and distribution advantage, none fully resolves the artifact pattern suggest-ing that additional supervision alone does not compensate for the lack of strong generative priors under severe corrup-tion. 
+
+# 5. Conclusion 
+
+We have presented a data-efficient framework for CT metal artifact reduction that adapts a general-purpose image edit-ing foundation model via LoRA fine-tuning, requiring as few as 16 paired training examples to achieve competitive performance. At its core, our approach reframes artifact reduction as a multimodal reasoning problem: rather than learning a pixel-wise regression, the model is guided by a natural language instruction that communicates the intent of the restoration. This allows the model’s semantic under-standing to inform where and how to intervene, effectively grounding its generative priors to prevent the anatomical hallucinations common in unadapted foundation models. Multi-image reference conditioning extends this fur-ther, enabling the model to perform explicit in-context anatomical reasoning, comparing the artifact-corrupted in-put against clean exemplars to infer logically consistent tis-sue structures in affected regions. LoRA adaptation thus serves as a bridge, redirecting pretrained visual reason-ing capabilities toward the clinical domain without discard-ing the structural priors that make that reasoning powerful. Our method substantially outperforms specialist baselines on perceptual and domain-aware metrics. These results suggest that the reasoning capabilities of vision-language models transfer effectively to clinical restoration, offering a scalable, reasoning-centric alternative to purpose-built net-works for low-data deployment. 
+
+Limitations. Our evaluation is conducted entirely on the AAPM CT-MAR benchmark, which relies on synthetically simulated metal implants rather than real clinical acquisi-tions. While this benchmark is widely adopted and reflects realistic artifact patterns, the sim-to-real gap means that per-formance on genuine clinical CT volumes remains to be ver-ified. Additionally, all experiments use a single foundation model (Qwen-Image-Edit), so it is unclear how much of the observed benefit is specific to this architecture versus gen-eral to instruction-conditioned diffusion models. Finally, the ensembling configuration requires ten forward passes at inference time, which may be prohibitive in latency-sensitive clinical settings without dedicated hardware. 
+
+Future work. The most pressing next step is validation on real clinical CT data, including a prospective reader study with radiologists to assess diagnostic utility beyond auto-mated metrics. Natural extensions include applying the framework to other artifact types (motion blur, beam hard-ening, reconstruction noise), exploring alternative founda-tion model backbones to disentangle architectural contri-butions from pretrained priors, and extending to 3D volu-metric inference to exploit inter-slice context. On the data side, active learning or uncertainty-guided sample selection could further reduce the annotation burden. References 
+
+[1] AAPM CT-MAR Grand Challenge Team. Aapm ct metal artifact reduction grand challenge benchmark tool. https : / / github . com / xcist / example / tree / main / AAPM _ datachallenge/ , 2025. 4 [2] Ahmet Bilican, M. Akın Yılmaz, A. Murat Tekalp, and R. G¨ okberk Cinbis ¸. Exploring sparsity for pa-rameter efficient fine tuning using wavelets. preprint arXiv:2505.12532 , 2025. 2 [3] Shubhankar Borse, Shreya Kadambi, Nilesh Prasad Pandey, Kartikeya Bhardwaj, Viswanath Ganapathy, Sweta Priyadarshi, Risheek Garrepalli, Rafael Es-teves, Munawar Hayat, and Fatih Porikli. FouRA: Fourier low-rank adaptation. In The Thirty-eighth An-nual Conference on Neural Information Processing Systems , 2024. 2 [4] C.-H. Chang, H.-N. Wu, C.-H. Hsu, and H.-H. Lin. Virtual monochromatic imaging with projection-based material decomposition algorithm for metal artifacts reduction in photon-counting detector computed to-mography. PLoS ONE , 18(3):e0282900, 2023. 1 [5] Junlong Cheng, Jin Ye, Zhongying Deng, Jianpin Chen, Tianbin Li, Haoyu Wang, Yanzhou Su, Ziyan Huang, Jilong Chen, Lei Jiang, Hui Sun, Junjun He, Shaoting Zhang, Min Zhu, and Yu Qiao. Sam-med2d. 
+
+arXiv preprint arXiv:2308.16184 , 2023. 2 [6] Bruno De Man, Johan Nuyts, Patrick Dupont, et al. An iterative maximum-likelihood polychromatic algo-rithm for ct. IEEE Transactions on Medical Imaging ,20(10):999–1008, 2001. 1 [7] Patrick Esser, Sumith Kulal, Andreas Blattmann, Tim Dockhorn, Jonas M¨ uller, Harry Lorenz, Yam Zhang, Robin Caplette, and Robin Rombach. Scaling rectified flow transformers for high-resolution image synthe-sis. In International Conference on Machine Learn-ing , 2024. 3 [8] Ziqi Gao, Qichao Wang, Aochuan Chen, Zijing Liu, Bingzhe Wu, Liang Chen, and Jia Li. Parameter-efficient fine-tuning with discrete fourier transform. In Forty-first International Conference on Machine Learning , 2024. 2 [9] Lars Gjesteby, Bruno De Man, Yannan Jin, et al. Metal artifact reduction in ct: Where are we after four decades? IEEE Access , 4:5826–5849, 2016. 1 [10] Nir Goren, James Avery, Thomas Dowrick, Eleanor Mackle, Anna Witkowska-Wrobel, and David Holder. Multi-frequency electrical impedance tomography and neuroimaging data in stroke patients. Scientific Data , 5:180112, 2018. 4 [11] E. Haneda, N. Peters, J. Zhang, et al. Aapm ct metal artifact reduction grand challenge. Medical Physics ,52(10):e70050, 2025. 2, 4 [12] Martin Heusel, Hubert Ramsauer, Thomas Un-terthiner, Bernhard Nessler, and Sepp Hochreiter. Gans trained by a two time-scale update rule converge to a local nash equilibrium. In Advances in Neural Information Processing Systems , 2017. 5 [13] Edward J Hu, Yelong Shen, Phillip Wallis, et al. Lora: Low-rank adaptation of large language models. In 
+
+ICLR , 2022. 2, 3 [14] W. A. Kalender, R. Hebel, and J. Ebersberger. Reduc-tion of ct artifacts caused by metallic implants. Radi-ology , 164(2):576–577, 1987. 1 [15] Onur Keles ¸, M. Akın Yılmaz, A. Murat Tekalp, Cansu Korkmaz, and Zafer Do˘ gan. On the computation of psnr for a set of images or video. In 2021 Picture Coding Symposium (PCS) , pages 1–5, 2021. 5 [16] Dawid Jan Kopiczko, Tijmen Blankevoort, and Yuki M Asano. VeRA: Vector-based random matrix adaptation. In The Twelfth International Conference on Learning Representations , 2024. 2 [17] Haofu Liao, Wei-An Lin, S. Kevin Zhou, and Jiebo Luo. Adn: Artifact disentanglement network for unsu-pervised metal artifact reduction. IEEE Transactions on Medical Imaging , 39(3):634–643, 2020. 2, 4, 5 [18] Wei-An Lin, Haofu Liao, Cheng Peng, et al. Dudonet: Dual domain network for ct metal artifact reduction. In CVPR , pages 10512–10521, 2019. 1 [19] Yaron Lipman, Ricky T. Q. Chen, Heli Ben-Hamu, Maximilian Nickel, and Matt Le. Flow matching for generative modeling. In International Conference on Learning Representations , 2023. 3 [20] Shih-Yang Liu, Chien-Yi Wang, Hongxu Yin, Pavlo Molchanov, Yu-Chiang Frank Wang, Kwang-Ting Cheng, and Min-Hung Chen. Dora: Weight-decomposed low-rank adaptation. In ICML , 2024. 2 [21] Chenglong Ma, Zilong Li, Yuanlin Li, Jing Han, Jun-ping Zhang, Yi Zhang, Jiannan Liu, and Hongming Shan. Radiologist-in-the-loop self-training for gener-alizable ct metal artifact reduction. IEEE Transactions on Medical Imaging , 44(6):2504–2514, 2025. 4, 8 [22] Jun Ma, Yuting He, Feifei Li, Lin Han, Chenyu You, and Bo Wang. Segment anything in medical images. 
+
+Nat. Commun. , 15(1):654, 2024. 2 [23] Xueyan Mei, Zelong Liu, Philip M. Robson, Brett Marinelli, Mingqian Huang, Amish Doshi, Adam Ja-cobi, Chendi Cao, Katherine E. Link, Thomas Yang, et al. Radimagenet: An open radiologic deep learning research dataset for effective transfer learning. Radi-ology: Artificial Intelligence , 4(5):e210315, 2022. 5 [24] Esther Meyer, Rainer Raupach, Michael Lell, Bern-hard Schmidt, and Marc Kachelrieß. Normalized metal artifact reduction (nmar) in computed tomogra-phy. Medical Physics , 37(10):5482–5493, 2010. 1 [25] OpenAI. GPT-4 technical report. Technical report, OpenAI, 2023. 2 [26] N. Peters, E. Haneda, J. Zhang, et al. A hybrid train-ing database and evaluation benchmark for assessing metal artifact reduction methods for x-ray ct imaging. 
+
+Medical Physics , 52(10):e70020, 2025. 4 [27] Alec Radford, Jong Wook Kim, Chris Hallacy, Aditya Ramesh, Gabriel Goh, Sandhini Agarwal, Girish Sas-try, Amanda Askell, Pamela Mishkin, Jack Clark, Gretchen Krueger, and Ilya Sutskever. Learning trans-ferable visual models from natural language supervi-sion. In International Conference on Machine Learn-ing , pages 8748–8763. PMLR, 2021. 2 [28] Nasrin Rahimi, Mısra Yavuz, Burak Can Biner, Yunus Bilge Kurt, Ahmet Rasim Emirda˘ gı, S¨ uleyman Aslan, G¨ orkay Aydemir, M. Akın Yılmaz, and A. Mu-rat Tekalp. Edit2interp: Adapting image founda-tion models from spatial editing to video frame in-terpolation with few-shot learning. arXiv preprint arXiv:2603.15003 , 2026. 2 [29] Robin Rombach, Andreas Blattmann, Dominik Lorenz, Patrick Esser, and Bj¨ orn Ommer. High-resolution image synthesis with latent diffusion mod-els. In IEEE/CVF Conference on Computer Vision and Pattern Recognition , pages 10684–10695, 2022. 2 [30] Mark Selles, Jochen A C van Osch, Mario Maas, Mar-tijn F Boomsma, and Ruud H H Wellenberg. Ad-vances in metal artifact reduction in CT images: A review of traditional and novel metal artifact reduc-tion techniques. Eur. J. Radiol. , 170(111276):111276, 2024. 1 [31] Yang Song, Liyue Shen, Lei Xing, and Stefano Er-mon. Solving inverse problems in medical imaging with score-based generative models. In ICLR , 2022. 2 [32] Alexandru Telea. An image inpainting technique based on the fast marching method. Journal of Graph-ics Tools , 9(1):23–34, 2004. 4 [33] Ge Wang, D. L. Snyder, J. A. O’Sullivan, and M. W. Vannier. Iterative deblurring for metal artifact reduc-tion in ct. IEEE Transactions on Medical Imaging , 15 (5):657–664, 1996. 1 [34] Hong Wang, Qi Xie, Yuexiang Li, Yawen Huang, Deyu Meng, and Yefeng Zheng. Orientation-shared convolution representation for CT metal artifact learn-ing. In Lecture Notes in Computer Science , pages 665–675. Springer Nature Switzerland, Cham, 2022. 4, 5 [35] Hong Wang, Yuexiang Li, Haimiao Zhang, Deyu Meng, and Yefeng Zheng. Indudonet+: A deep un-folding dual domain network for metal artifact reduc-tion in ct images. Medical Image Analysis , 85:102729, 2023. 1 [36] Hong Wang, Qi Xie, Dong Zeng, Jianhua Ma, Deyu Meng, and Yefeng Zheng. Oscnet: Orientation-shared convolutional network for ct metal artifact learning. 
+
+IEEE Transactions on Medical Imaging , 43(1):489– 502, 2024. 4, 5 [37] Jianing Wang, Yiyuan Zhao, Jack H Noble, and Benoit M Dawant. Conditional generative adversarial networks for metal artifact reduction in CT images of the ear. Med. Image Comput. Comput. Assist. Interv. ,11070:3–11, 2018. 2 [38] Zhou Wang, Alan C. Bovik, Hamid R. Sheikh, and Eero P. Simoncelli. Image quality assessment: From error visibility to structural similarity. IEEE Transac-tions on Image Processing , 13(4):600–612, 2004. 5 [39] Tamar Willson. CT and SPECT/CT Artefacts , page 1–4. Springer International Publishing, 2023. 1 [40] Chenfei Wu, Jiahao Li, Jingren Zhou, Junyang Lin, et al. Qwen-image technical report. arXiv preprint arXiv:2508.02324 , 2025. 2, 3 [41] Mingye Wu, Paul FitzGerald, Jiayong Zhang, W Paul Segars, Hengyong Yu, Yongshun Xu, and Bruno De Man. Xcist—an open access x-ray/ct simulation toolkit. Physics in Medicine &; Biology , 67(19): 194002, 2022. 4 [42] Ke Yan, Xiaosong Wang, Le Lu, and Ronald M. Sum-mers. Deeplesion: Automated mining of large-scale lesion annotations and universal lesion detection with deep learning. Journal of Medical Imaging , 5(3): 036501, 2018. 4, 5 [43] M. Akın Yılmaz, Ahmet Bilican, Burak Can Biner, and A. Murat Tekalp. Edit2restore: Few-shot image restoration via parameter-efficient adaptation of pre-trained editing models. arXiv preprint arXiv:2601.03391 , 2026. 2 [44] Richard Zhang, Phillip Isola, Alexei A. Efros, Eli Shechtman, and Oliver Wang. The unreasonable ef-fectiveness of deep features as a perceptual metric. In IEEE Conference on Computer Vision and Pattern Recognition , pages 586–595, 2018. 5 [45] Sheng Zhang, Yanbo Xu, Naoto Usuyama, Han-wen Xu, Jaspreet Bagga, Robert Tinn, Sam Preston, Rajesh Rao, Mu Wei, Naveen Valluri, Cliff Wong, Matthew P. Lungren, Tristan Naumann, and Hoifung Poon. A multimodal biomedical foundation model trained from fifteen million image–text pairs. NEJM AI , 2(1), 2024. 2
