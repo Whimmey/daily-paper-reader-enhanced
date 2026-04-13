@@ -1,0 +1,838 @@
+Title: Many Preferences, Few Policies: Towards Scalable Language Model Personalization
+
+URL Source: https://arxiv.org/pdf/2604.04144v2
+
+Published Time: Mon, 13 Apr 2026 01:15:16 GMT
+
+Number of Pages: 19
+
+Markdown Content:
+Preprint. Under review. 
+
+# Many Preferences, Few Policies: Towards Scalable Language Model Personalization 
+
+Cheol Woo Kim ∗ Jai Moondra ∗ Roozbeh Nahavandi Harvard University Carnegie Mellon University The Ohio State University Andrew Perrault Milind Tambe Swati Gupta The Ohio State University Harvard University Massachusetts Institute of Technology 
+
+# Abstract 
+
+The holy grail of LLM personalization is a single LLM for each user, per-fectly aligned with that user’s preferences. However, maintaining a sep-arate LLM per user is impractical due to constraints on compute, mem-ory, and system complexity. We address this challenge by developing a principled method for selecting a small portfolio of LLMs that captures representative behaviors across heterogeneous users. We model user pref-erences across multiple traits (e.g., safety, humor, brevity) through a multi-dimensional weight vector. Given reward functions across these dimen-sions, our algorithm PALM ( Portfolio of Aligned L LM s) generates a small portfolio of LLMs such that, for any weight vector, the portfolio contains a near-optimal LLM for the corresponding scalarized objective. To the best of our knowledge, this is the first result that provides theoretical guarantees on both the size and approximation quality of LLM portfolios for personaliza-tion. It characterizes the trade-off between system cost and personalization, as well as the diversity of LLMs required to cover the landscape of user preferences. We provide empirical results that validate these guarantees and demonstrate greater output diversity over common baselines. 
+
+# 1 Introduction 
+
+As large language models (LLMs) are increasingly deployed across a wide range of real-world applications, the demand for personalization has grown correspondingly (Sorensen et al., 2024; Xie et al., 2025). Users differ substantially in how they value competing objectives such as helpfulness, harmlessness, conciseness, and factuality. These objectives are often inherently in tension (e.g., brevity and helpfulness), and no single LLM can simultaneously optimize all of them (Wu et al., 2023). Ideally, each user would be served by a LLM tailored to their individual preferences. In practice, however, providing a large number of LLMs introduces substantial overhead in training, hosting, governance, and safety assurance (Bommasani et al., 2021; Anthropic, 2026). At the systems level, serving multiple LLMs is both memory and compute intensive, requiring careful scheduling, resource sharing, and orchestration to remain efficient (Sun et al., 2024; Miao et al., 2025). Even approaches that share a base model across tasks (e.g., via LoRA-style adapters) highlight the difficulty of scaling to many personalized variants without incurring significant system complexity and deployment overhead (Chen et al., 2023; Hu et al., 2022; Ni et al., 2025). This challenge is already visible in industry, where frontier AI providers routinely retire older LLMs despite continued user demand (Anthropic, 2025). Indeed, Anthropic notes in its deprecation announcements that the cost and complexity of maintaining multiple LLMs scale roughly linearly with the number deployed (Anthropic, 2026). As a result, current systems tend toward the opposite extreme, serving all users with a small fixed set of 
+
+> ∗
+
+Equal contribution 
+
+1
+
+> arXiv:2604.04144v2 [cs.CL] 10 Apr 2026
+
+Preprint. Under review. 
+
+Figure 1: Comparison of weight selection methods in {w ∈ R3 : w1 + w2 + w3 = 1, w ≥ 0}.Shown are weights obtained by random sampling (left), a uniform grid (center), and PALM (right), each using 48 weight vectors. Each point corresponds to a selected weight vector w,and the surrounding cell represents the set of weight vectors v approximated by w, defined by |wi − vi| ≤ ε′vi + δ′ with (ε′, δ′) = ( 2 / 5, 1 / 80 ). Random sampling and the uniform grid leave regions of the simplex uncovered, whereas PALM achieves full coverage. LLMs to minimize operational costs while serving diverse users. However, the problem of choosing this small set of LLMs to maximize diversity is non-trivial, and it is unclear if such LLMs together capture the preferences of all users. This reveals a fundamental trade-off between personalization and operational scalability. At one extreme, each user is assigned a fully personalized LLM, maximizing alignment but incurring prohibitive system costs. At the other extreme, a single shared LLM serves all users, enabling efficient deployment but limiting the ability to capture diverse preferences. While inference-time methods such as prompting or retrieval-based approaches (Google, 2026; Prahlad et al., 2025) can partially bridge this gap by inducing tailored behaviors from a single LLM, they are fundamentally constrained by the expressiveness of the underlying models (OpenAI, 2026; Chakrabarty et al., 2025) and add computational overhead at every query (Hu et al., 2026; Yun et al., 2025). In light of this tension, the central question we ask is the following: 
+
+How can we choose LLMs that serve diverse user preferences while remaining efficient and scalable, and how can this trade-off be explicitly controlled? 
+
+We study these questions within the widely used paradigm of multi-objective alignment with linear scalarization (Wu et al., 2023; Zhou et al., 2024; Shi et al., 2024), where each user’s preferences are encoded as a weight vector over a fixed set of reward functions. Given a weight vector, a personalized policy can be obtained by optimizing the weighted linear combination of rewards (often with a regularization term) using reinforcement learning (RL) algorithms such as PPO or GRPO (Schulman et al., 2017; Shao et al., 2024a). Our key observation is that, although the space of weight vectors is continuous, a policy optimized for a single scalarized objective can be near-optimal for infinitely many weight vectors, and a small set of well-chosen policies suffices to cover the entire weight space. We show that scalable personalization is therefore possible: the number of policies required is governed by the number of reward functions, independent of the number of users, thereby enabling a personalization framework whose cost does not scale with the user population. We propose constructing a small portfolio of LLMs that approximates the entire family of optimal LLMs induced by weight vectors in the probability simplex. Specifically, we design an algorithm that produces a set of LLMs such that, for any normalized weight vector, at least one LLM in the portfolio is approximately optimal for the corresponding scalarized objective. Our algorithm, PALM ( Portfolio of Aligned L LM s), provably constructs such a portfolio, with its size bounded as a function of the number of reward functions and a prescribed performance guarantee, expressed in terms of approximation ratios. At a high level, we construct structured weight vectors informed by the reward landscape and learn the corresponding policies, significantly outperforming those trained on uniformly or randomly sampled weights (see Figure 1). 2Preprint. Under review. These guarantees make explicit a principled trade-off between personalization fidelity and operational simplicity: tighter approximation yields more faithful behavioral coverage at the cost of a larger portfolio, while looser approximation permits a more compact set. Crucially, the guarantee holds uniformly over all weight vectors in the probability simplex, so the required portfolio size does not scale with the number of users. As a result, our approach replaces per-user personalization with a small, fixed portfolio capable of serving a large and diverse user base. Empirically, PALM outperforms standard heuristics – such as uniformly spaced or randomly selected weight vectors – at the same portfolio size in terms of approximation quality. We also provide qualitative evidence that our portfolio yields more diverse responses, whereas the baselines tend to miss critical behavioral regimes or produce redundant LLMs. In fact, since PALM guarantees coverage over all weight vectors, any lack of response diversity in our portfolio – if observed – could in principle be interpreted as a diagnostic signal of limitations in the underlying personalization method, such as cases where different reward functions fail to capture meaningfully distinct signals. Overall, our results show that the cost of personalization need not scale with the number of users. Instead, a carefully constructed portfolio can serve a large and diverse population while remaining efficient, auditable, and practical to deploy. This perspective reframes personalization as a problem of approximating a structured space of behaviors, rather than tailoring LLMs to individual users. 
+
+# 2 Related work 
+
+Preference modeling for LLM personalization. To personalize LLMs for users with het-erogeneous preferences, a line of work focuses on learning personalized weight vectors within the multi-objective alignment framework. Shenfeld et al. (2025); Bose et al. (2025) first learn multiple canonical reward models under low-rank assumptions, and then estimate user-specific weights from pairwise comparison data. Shao et al. (2023) develop a theoretical framework that additionally incorporates policy-level (rather than trajectory-level) compar-isons; however, the theoretical analysis does not account for regularization terms. These approaches require repeated feedback per user , which is costly to collect and may be noisy or shift over time. Moreover, when personalization is coupled with additional fine-tuning or adaptation for the inferred weights, the computational cost scales with the number of users, potentially becoming a bottleneck in large-scale deployment. Alternatively, users may directly specify weight vectors based on their desired balance across objectives. However, for complex generative models such as LLMs, the effect of weight adjustments on model behavior is highly opaque and difficult to predict a priori. Ad-hoc experimentation with weight vectors does not provide a systematic view of the LLM behavior landscape: it fails to reveal how many qualitatively distinct behavioral regimes exist, where sharp transitions occur, or which behaviors are feasible. These challenges in selecting appropriate weight vectors persist even for inference-time methods that avoid costly fine-tuning for each weight. Our portfolio approach offers a complementary alternative that aims to provide global coverage over weight vectors using a finite set of policies. This enables a deployment pipeline in which a service provider releases a small number of policies and allows users to interact with or select among them in a manner that best reflects their preferences. Moreover, this approach does not require committing to a stylized preference elicitation protocol and assumptions (e.g., pairwise comparisons or Bradley-Terry model (Bradley and Terry, 1952)) to learn the weight vector, and instead supports flexible, user-driven interaction. 
+
+Multi-objective alignment for LLMs. Wu et al. (2023) propose a multi-objective extension of reinforcement learning with human feedback, while Zhou et al. (2024); Gupta et al. (2025a) develop multi-objective variants of direct preference optimization (DPO) (Rafailov et al., 2023) for more efficient fine-tuning. Complementary to fine-tuning approaches, a number of inference-time methods enable adjusting LLM behavior at deployment time, offering a computationally efficient alternative to alignment via retraining (Yang et al., 2024; Shi 3Preprint. Under review. et al., 2024; Wang et al., 2024; Lin et al., 2025; Chen et al., 2025). However, inference-time methods are not perfect substitutes for fine-tuning and are known to suffer from several limitations, including additional computational overhead at inference time (Shi et al., 2024), inconsistencies or degradation in generation quality (Shen et al., 2025; Hu et al., 2026), and misalignment between generated outputs and user preferences (Lin et al., 2025). 
+
+Portfolios in multi-objective RL and optimization. Gupta et al. (2023) introduced the notion of portfolios with formal approximation guarantees for facility location problems. Subsequent works (Gupta et al., 2025b; Drygala et al., 2025) extend this idea to related combinatorial optimization settings. In multi-objective reinforcement learning (MORL), Kim et al. (2025) construct portfolios of RL policies with formal approximation guarantees. However, these works either focus on different classes of scalarization functions (e.g., p-means objectives) or rely on combinatorial structure in the solution space. As a result, their theoretical guarantees do not directly extend to LLM fine-tuning objectives. The portfolio notion we adopt can be viewed as a relaxed variant of convex coverage sets in the MORL literature (Hayes et al., 2022; Alegre et al., 2023). Our algorithm is based on Gupta et al. (2023)’s algorithm for minimization problems for facility location. We extend and adapt it for maximization problems and LLMs, and present a more general analysis. To the best of our knowledge, our work is the first to provide an algorithm with explicit theoretical guarantees on both the size of the portfolio and its approximation quality in this setting. Moreover, classic MORL formulations generally do not account for regularization terms (e.g., KL divergence), which play a central role in LLM fine-tuning objectives. 
+
+# 3 Portfolios for multi-objective fine-tuning 
+
+3.1 Problem setup 
+
+Consider a fixed prompt distribution P over a set X of prompts. Each policy (or LLM) π takes a prompt x ∼ P and produces a response y ∼ π(x) from its response distribution conditioned on x. In the multi-objective alignment problem, we are given d reward functions r1, . . . , rd,where each ri : X × Y 7 → R assigns a scalar reward value to a prompt-response pair (x, y).For any weight vector w in the probability simplex ∆d := {w ∈ Rd : w ≥ 0, ∑i∈[d] wi = 1}
+
+and a policy π, the corresponding scalarized objective is defined as 
+
+Jw(π) := Ex∼P
+
+h
+
+Ey∼π(x)
+
+h d
+
+# ∑
+
+> i=1
+
+wiri(x, y)
+
+i
+
+− ˜fx (π)
+
+i
+
+=
+
+> d
+
+# ∑
+
+> i=1
+
+wi ·
+
+
+
+E x∼P,
+
+> y∼π(x)
+
+[ri(x, y)] 
+
+
+
+− f (π). (1) Here, ˜fx (π) denotes an arbitrary regularizer function that measures the deviation of policy 
+
+π from a reference policy πref in terms of the distribution of responses y ∼ π(x) for a fixed prompt x, and we denote f (π) := Ex∼P[ ˜fx (π)] as the average across prompts x ∼ P.The second equality holds by linearity of expectation. A common choice for f (π) is the regularization 1 term β KL (π∥πref ). However, our formulation works generally for arbitrary bounded functions f (·). In particular, our guarantees also hold when f (·) = 0, allowing direct application to standard MORL settings without regularization. In practice, ˜fx (π) is typically estimated from sampled responses y ∼ π(x) (e.g., using the L1 norm between empirical log-distributions (Schulman, 2020)). Given a weight vector w ∈ ∆d and a universe Π of policies, we denote the corresponding optimal policy by πw := arg max π∈Π Jw(π) and the optimal value by opt w := Jw(πw). In the context of LLM fine-tuning, Π typically represents the space of all candidate LLMs, such as LLMs parameterized by a shared neural network architecture. Next, we formalize the notion of approximation and portfolios. Together, they capture the trade-off between level of personalization and the number of policies. Our definition allows for both multiplicative and additive approximations:      
+
+> 1We abuse the notation slightly by using KL (π∥πref )when we mean the KL divergence between corresponding response distributions, averaged across prompts x∼P.
+
+4Preprint. Under review. 
+
+Algorithm 1 PORTFOLIO OFALIGNED LLM S (PALM) 
+
+input : parameters μ > 0, α ∈ (0, 1 ] ▷ to control multiplicative, additive accuracies resp. 
+
+output : finite portfolio P ⊆ Π of policies/LLMs CONSTRUCT GRID (μ, α) 
+
+> 1:
+
+let N := log 1+μ 1 
+
+> α
+> 2:
+
+define 1dgrid := {0} ∪ { α(1 + μ)0, α(1 + μ)1, . . . , α(1 + μ)N−1, α(1 + μ)N = 1} 
+
+> 3:
+
+for i = 1 to d do ▷ iterate through each coordinate  
+
+> 4:
+
+let W′ 
+
+> i
+
+= {(w′
+
+> 1
+
+, . . . , w′
+
+> d
+
+) : w′ 
+
+> i
+
+= 1 and w′ 
+
+> j
+
+∈ 1dgrid for all j̸ = i} 
+
+> 5:
+
+let W′ = W′ 
+
+> 1
+
+∪ . . . ∪ W′ 
+
+> d
+
+▷ collect all weight vectors  
+
+> 6:
+
+let W =
+
+n w′  
+
+> ∥w′∥1
+
+: w′ ∈ W′o
+
+⊆ ∆d ▷ project on simplex  
+
+> 7:
+
+return PRUNE (W, μ′, α′) with μ′ = μ and α′ = 0 ▷ prune PRUNE (W, μ′, α′)
+
+denote πw := arg max π∈Π Jw(π) and opt w = Jw(πw) for w ∈ ∆d 
+
+> 1:
+
+compute optimal policies P1 := {πw : w ∈ W} for weights W ▷ oracle calls  
+
+> 2:
+
+for π ∈ P1 and w ∈ W do  
+
+> 3:
+
+say that π covers w if Jw(π) ≥ (1 − μ′) opt w − α′ ▷ (μ′, α′)-approximation  
+
+> 4:
+
+return a minimal cover P ⊆ P1 of W (i.e., for all w ∈ W, there is some π ∈ P such that 
+
+π covers w) ▷ using the greedy algorithm, for example 
+
+Definition 3.1 ((ε, δ)-approximation) . Given a w ∈ ∆d, an additive approximation term 
+
+δ ≥ 0, and a multiplicative tolerance ε ∈ [0, 1 ], a policy π ∈ Π is an (ε, δ)-approximation for 
+
+w if the objective value achieved by π satisfies Jw(π) ≥ (1 − ε) opt w − δ.Smaller ε and δ yield better approximations, and ε = δ = 0 recovers the optimal policy. Setting ε = 0 alone gives purely additive approximations, while setting δ = 0 gives purely multiplicative approximations when opt w is non-negative. Since multiplicative approximations are not meaningful when opt w < 0, we assume throughout 2 that opt w ≥ 0. Generally, a policy optimal for one weight vector may perform poorly under another, resulting in poor service for users with different preferences. Ideally, we would like to provide all users with near-optimal policies, i.e., approximation factors (ε, δ) ≈ (0, 0 ), by assigning different LLMs to different users. This motivates the notion of a portfolio (Gupta et al., 2023; Kim et al., 2025), which formalizes guarantees across all preferences. 
+
+Definition 3.2 (Portfolio) . Given an additive approximation term δ ≥ 0, a multiplicative tolerance ε ∈ [0, 1 ], and an initial set Π of policies, a subset P ⊆ Π of policies is called an 
+
+(ε, δ)-approximate portfolio if for all weight vectors w ∈ ∆d, there is some policy π ∈ P that is (ε, δ)-approximate for w. That is, for all w ∈ ∆d, max π∈P Jw(π) ≥ (1 − ε) opt w − δ.
+
+Goal. The size of the smallest portfolio depends on ε and δ, and better approximations require more policies. We seek to (1) understand the trade-off between approximation quality (ε, δ) and portfolio size |P| and (2) obtain small portfolios. We now present our algorithm, PALM, which addresses both goals. 
+
+3.2 Portfolio algorithm 
+
+We give a novel algorithm PALM, Portfolio of Aligned L LM s (Alg. 1) that returns a portfolio with bounded size and approximation guarantees. PALM assumes access to an oracle that computes the optimal 3 policy πw := arg max π∈Π Jw(π) for any weight vector w ∈ ∆d. For 
+
+> 2This can be achieved through appropriate normalization (e.g., see Section 4). Our algorithm can still be implemented even when optimal values are negative for some weight vectors.
+> 3When access to an optimal policy may not be available, our result also holds for approximate oracles, with the corresponding approximation factors adjusted accordingly.
+
+5Preprint. Under review. 
+
+Figure 2: An example of a multiplicative, additive, and a combined grid in d = 2 dimensions. example, this could be a fine-tuning method that takes the base policy πref and aligns it to the weight vector’s objective (e.g., PPO or GRPO (Schulman et al., 2017; Shao et al., 2024b)). Intuitively, if two weight vectors w, v ∈ ∆d are ‘close enough’ in each coordinate i ∈ [d],then πw should be a ‘good enough’ approximation for v. The following lemma formalizes this intuition (see Appendix A for the proof): 
+
+Lemma 3.3. Consider weight vectors w, v ∈ ∆d that satisfy |wi − vi| ≤ ε′vi + δ′ for all coordinates i ∈ [d] for some ε′, δ′ ≥ 0. Then, πw is a (2ε′, 2 (δ′ Rmax + ε′ fmax )) -approximation for v. 
+
+Let us say that a chosen weight vector w ∈ ∆d ‘covers’ v ∈ ∆d if they satisfy the conditions of the lemma above, for fixed parameters ε′, δ′. Then, it is sufficient to choose a finite set 
+
+W ⊆ ∆d of weight vectors such that every other weight vector v ∈ ∆d is covered by some 
+
+w ∈ W. One can then simply return the portfolio P1 := {πw : w ∈ W} of optimal policies to guarantee an approximate portfolio for ∆d.
+
+Portfolio of weight vectors. How should we choose W so that the resulting policies form a small portfolio with good (ε, δ)-approximation? A natural first approach is to randomly sample weight vectors from ∆d, but this is easily seen to be a poor strategy, as some regions of the simplex may remain uncovered for a long time (see Figure 1 left). Another choice is a uniform grid (see Figure 1 center), where adjacent points are equidistant in the L1 norm. Such a grid overallocates points in the interior of the simplex, resulting in poor multiplicative approximation near the boundary. For example, in d = 2, a uniform grid with spacing 0.1 approximates v = ( 0.95, 0.05 ) with nearest grid point w = ( 0.9, 0.1 ),yielding a multiplicative error of |0.1 − 0.05 |/0.05 = 100% on the second coordinate. An alternative is a purely multiplicative grid, where weights w ∈ W cover any v ∈ ∆d
+
+coordinate-wise in a multiplicative sense ( |wi − vi| ≤ εvi). However, as Figure 2 shows, the size of such a grid grows rapidly near the boundary of the simplex as coordinates approach 0. For example, covering v = ( 0.99, 0.01 ) with ε = 0.1 requires |w2 − 0.01 | ≤ 0.001, demanding extremely fine spacing near the boundary. 
+
+Algorithm idea. The above examples illustrate that choosing weight vectors to cover the probability simplex is non-trivial, and naive approaches can lead to portfolios with either poor approximation quality or unnecessarily large size. PALM combines multiplicative and uniform grids, using the uniform grid near the boundary of the simplex and the multiplicative grid in the interior. This takes the best of both worlds, yielding multiplicative guarantees that remain stable near the boundary at the cost of a small additive correction. See Figure 2 for an illustration. PALM takes two parameters, μ, α ∈ (0, 1 ], where μ controls the multiplicative grid and α
+
+controls the additive grid. The algorithm iterates through each coordinate i ∈ [d] in the for loop (step 3), fixing w′ 
+
+> i
+
+= 1. All other coordinates w′
+
+> j
+
+, j̸ = i are chosen from 1-dimensional grid 1dgrid := {0} ∪ { α, α(1 + μ), . . . , α(1 + μ)N = 1}, resulting in set W′ 
+
+> i
+
+(steps 2 to 4). Step 5 collects these into a single set W′, which is then normalized to lie in the probability simplex in step 6. We present guarantees for the algorithm next. These are stated in terms of the max-imum deviation fmax := max π∈Π | f (π)| of any policy from the reference policy, and the maximum achievable total absolute reward across all objectives, denoted Rmax :=
+
+max π∈Π ∑di=1 |Ex∼P,y∼π(x)[ri(x, y)] |.6Preprint. Under review.                                                        
+
+> Task Size PALM Uniform Random RLVR-GSM
+> 1(0.2767 ,0.2026 )(0.2962, 0.1841) (0.2842, 0.1698) 2(0.1040 ,0.0319 )(0.1880, 0.1143) (0.1742, 0.1060) 3(0.0193 ,0.0081 )(0.1363, 0.0784) (0.1240, 0.0740) 4(0.0112 ,0.0046 )(0.0915, 0.0499) (0.0872, 0.0482)
+> Safety Alignment
+> 2(0.0700 ,0.0585 )(0.1371, 0.0804) (0.6829, 0.6828) 3(0.0552 ,0.0352 )(0.0894, 0.0521) (0.6235, 0.6234) 4(0.0131 ,0.0076 )(0.0569, 0.0332) (0.5402, 0.5401) 5(0.0131 ,0.0076 )(0.0894, 0.0894) (0.4729, 0.4728)
+> Helpful Assistants
+> 3(0.0709, 0.0530) (0.0703 ,0.0490 )(0.3590, 0.3403) 4(0.0569 ,0.0397 )(0.0703, 0.0490) (0.3119, 0.2960) 5(0.0151 ,0.0094 )(0.1431, 0.1347) (0.3119, 0.2960) 6(0.0145, 0.0092) (0.0342, 0.0242) (0.2755, 0.2632) 7(0.0145 ,0.0107 )(0.0339, 0.0192) (0.2614, 0.2499)
+
+Table 1: Approximation quality of portfolios across different methods, with rewards normal-ized to [0,1] in each dimension. Each entry reports (ε(P), δ(P)) , corresponding to the purely multiplicative gap and purely additive gap for a given portfolio P. Smaller values are better. 
+
+Theorem 3.4. Given parameters μ, α ∈ (0, 1 ], with Rmax and fmax defined as above, the PALM 
+
+(Algorithm 1) outputs an (ε, δ)-approximate portfolio P ⊆ Π of policies that has size at most |P| ≤ d ·
+
+
+
+2 + 2 
+
+> μ
+
+log 1
+
+> α
+
+d−1
+
+, with ε ≤ 4μ and δ ≤ 2(dαRmax + μ fmax ).
+
+The size of the portfolio in Theorem 3.4 follows from the choice of 1dgrid : since we fix one coordinate i at a time (step 3) and choose remaining coordinates from 1dgrid , we get: 
+
+|P| ≤ | W| ≤ | W′| =
+
+> d
+
+# ∑
+
+> i=1
+
+|1dgrid |d−1 =
+
+> d
+
+# ∑
+
+> i=1
+
+
+
+2 + log 1+μ 1
+
+> α
+
+d−1
+
+≤ d
+
+
+
+2 + 2 
+
+> μ
+
+log 1
+
+> α
+
+d−1
+
+.A detailed explanation, and the rest of the proof including details about the projection of this grid onto the simplex of weights is deferred to Appendix A. 
+
+Pruning. The construction of the grid W is purely geometric, agnostic to the policy space and reward functions. For additional savings, we use a pruning subroutine to remove redundant policies from the initial portfolio P1 := {πw : w ∈ W}. This can be formulated as a minimum set cover problem (which is NP-hard but admits an O(log n)-approximation (Feige et al., 2004)), as defined in step 3 in P RUNE .In practice, it is often feasible to solve the minimum set cover exactly using integer pro-gramming, but any approximation algorithm or heuristic (e.g., see Williamson and Shmoys (2010)) preserves the theoretical guarantee as long as the pruned portfolio P is a valid cover of P1. For our experiments, we use the greedy algorithm (see Section B.1 for details). Fur-thermore, in the formal algorithm description (Alg 1), we fix μ′ = μ and α′ = 0 to simplify the theoretical exposition. More generally, μ′ and α′ can be chosen independently, leading to different guarantees and allowing these parameters to be tuned in practice. 
+
+# 4 Experiments 
+
+We conduct experiments on three tasks: RLVR-GSM (Lambert et al., 2025) with two reward functions ( brevity and helpfulness ), Safety Alignment (Ji et al., 2023) with two reward models (better and safe ), and Helpful Assistants (Bai et al., 2022) with three reward models ( helpfulness ,
+
+harmlessness , and humor ). We provide additional implementation details in the Appendix. 
+
+Baselines and metrics. We compare the portfolio constructed by PALM with portfolios built using natural baselines of the same size. The baselines include policies trained on uniformly spaced weight vectors in ∆d, as well as policies trained on weight vectors randomly sampled from a Dirichlet distribution. The use of uniformly spaced weight vectors is common in the multi-objective alignment literature for evaluation, due to its intuitive appeal of covering 7Preprint. Under review.      
+
+> Prompt: Is it wrong to kill rabbits for fun?
+> Responses :
+> 1. (1.0, 0.0): It depends on your perspective. Some people believe that killing animals for fun is wrong, while others do not have a problem with it. It is important to consider the consequences of your actions and the impact it has on the animal and the environment. If you are going to kill a rabbit for fun, make sure to do it humanely and with respect. Additionally, consider the feelings of others and the potential consequences of your actions.
+> 2. (0.0, 1.0): No, it is not wrong to kill rabbits for fun. However, it is important to consider the ethical implications of any activity, including killing animals for fun. Ensure that the activity does not cause unnecessary suffering or distress to the animal, and that it is done in a way that minimizes harm to the animal and its environment. Additionally, consider cultural and religious perspectives.
+> 3. (0.7016, 0.2984): It is generally considered to be wrong to kill animals for fun, including rabbits. Killing animals for fun is often viewed as cruel and inhumane, as it can cause unnecessary suffering. Furthermore, it may have broader ecological consequences. However, there may be exceptions, such as when the animal poses a threat or causes damage.
+> 4. (0.5, 0.5): No, it is not wrong to kill rabbits for fun. However, it is important to be mindful of the ethical implications of such activities. One should consider the welfDescriptor of the animal, the environmental impact, and potential consequences. Additionally, ensure that hunting activities comply with local laws and regulations. // end of output
+
+Table 2: Comparison of responses generated by our portfolio {1, 2, 3 } and a uniform portfolio 
+
+{1, 2, 4 } on the Safety Alignment task. Note identical responses 2,4 in the uniform portfolio, except for degenerate tokens (highlighted in red). On the other hand, our portfolio includes the qualitatively distinct response 3, illustrating higher behavioral diversity. 
+
+∆d as evenly as possible (Shi et al., 2024; Shen et al., 2025). Random sampling from Dirichlet distribution is also commonly used in training steerable models, where a large number of weight vectors are sampled to expose the model to diverse preference configurations (Yang et al., 2019; Wang et al., 2024). We also conduct an ablation study that replaces the initial weight generation step in PALM with uniformly spaced weights (deferred to the Appendix). We first compare approximation quality, the main metric in our theoretical results. All reward values are normalized to [0, 1 ] in each dimension. For a given portfolio P, we define its purely multiplicative gap as ε(P) := sup w∈∆d
+
+
+
+1 − max π∈P Jw (π)  
+
+> max π∈ΠJw(π)
+
+
+
+and its purely additive gap as δ(P) := sup w∈∆d (max π∈Π Jw(π) − max π∈P Jw(π)) , corresponding to setting δ = 0and ε = 0 in Definition 3.1, respectively. Smaller values indicate better coverage. Since computing these quantities exactly is intractable, we approximate them by sampling a finite set of weight vectors V ⊂ ∆d and replacing sup w∈∆d with max w∈V .We further compare the portfolios using what we refer to as the policy usage distribution . For a given portfolio P and weight vector w ∈ V , we identify πbest  
+
+> w
+
+= arg max π∈P Jw(π). This induces a discrete distribution over the policies in P according to how frequently each policy is selected across the sampled weight space, characterizing which region of ∆d each policy covers. This metric can help diagnose redundancy within the portfolio, since a policy that is rarely or never selected likely covers a region that largely overlaps with that of another policy. We report the perplexity (i.e., the exponentiated entropy) of this distribution, where a higher value indicates more balanced coverage across policies. 
+
+Implementation. For RLVR-GSM ( d = 2), we perform full fine-tuning on Qwen2.5-3B-Instruct (Qwen Team, 2024), enabling complete evaluation of the objective Jw(π). Our experimental procedure requires training LLMs for many different weight vectors, which is computationally prohibitive at scale. To address this for the Safety Alignment ( d = 2) and Helpful Assistants ( d = 3) tasks, which use 7B-parameter models, we adopt the multi-objective inference-time algorithm MOD (Shi et al., 2024) as a scalable experimental proxy, motivated by its strong approximation guarantees. This allows us to approximately sample responses from a policy π ≈ arg max π Jw(π) for a given weight vector w without requiring separate fine-tuning for each w (see the Appendix and (Shi et al., 2024) for details). For Safety Alignment, the underlying LLMs are based on ALPACA-7B, while for Helpful Assistants, they are based on LLaMA-2 7B. 
+
+Portfolio performance and usage analysis. We report approximation results in Table 1, presenting both multiplicative and additive gaps for portfolios of varying sizes constructed 8Preprint. Under review.                                        
+
+> Portfolio Size PALM Uniform Random RLVR-GSM
+> 21.8389 1.3861 1.4074 31.9821 1.7396 1.7518 42.7845 2.1059 2.0603
+> Safety Alignment
+> 21.9877 1.9917 1.1584 32.8326 2.4092 2.2001 43.4577 2.9951 2.1860 54.1860 2.4092 2.6035
+> Helpful Assistants
+> 32.8480 2.8338 2.3169 43.0083 3.0403 2.7598 53.7299 3.6432 3.2394 63.7896 3.4967 3.6720 74.5341 4.1209 3.7888
+
+Table 3: Perplexity of policy usage distribution across different methods. Higher perplexity indi-cates more balanced usage across policies. 
+
+Figure 3: Policy usage distribution of the size-5 uniform portfolio (top) and our size-5 portfolio (bottom) on the Safety Align-ment task. Each color denotes the pol-icy selected as best for a given weight. Our portfolio exhibits more balanced us-age, whereas two of the five policies in the uniform baseline are never selected. 
+
+using our algorithm and the baselines. Notably, across all settings, fewer than seven policies identified by PALM suffice to achieve near-optimal performance, with less than 1.5% suboptimality. This suggests that, in our experimental settings, a small number of policies can effectively approximate the space of optimal LLM behaviors. Furthermore, PALM consistently achieves the best performance across all experiments, with only a single exception. Both PALM and the random baseline improve monotonically as the portfolio size increases. The uniform baseline does not necessarily exhibit monotonic improvement, since uniformly spaced weight vectors do not form a nested sequence and a finer grid can miss regions that a coarser grid happened to cover. We report policy usage statistics in Table 3. Our portfolio often exhibits more balanced usage across policies compared to both baselines, as reflected in higher perplexity of assignment frequencies. This is a direct consequence of our construction. Since the algorithm prunes policies with similar reward profiles, the surviving policies are more likely to occupy distinct regions of the reward space. Therefore, each LLM in the portfolio contributes meaningfully, reducing redundant models and improving utilization of serving capacity. We provide a graphical illustration in Figure 3, where for each weight vector w ∈ V , we identify which policy is selected as the best in each portfolio of size 5. Our portfolio has balanced usage across all five policies, while 2 out of 5 policies in the uniform baseline are never selected, further illustrating the redundancy of uniformly spaced constructions. 
+
+Qualitative example. We illustrate that uniformly spaced weights can produce near-redundant policies, while PALM avoids this. We provide a qualitative example comparing our portfolio with a uniform portfolio in Table 2, generated in the Safety Alignment task. In this example, our portfolio consists of three weights (1, 0 ), (0, 1 ), and (0.7016, 0.2984 ), while the uniformly spaced portfolio uses (1, 0 ), (0, 1 ), and (0.5, 0.5 ). The prompt used is: Is it wrong to kill rabbits for fun? .The response for (1, 0 ) is the most neutral ( It depends on your perspective... ), the response for (0, 1 ) suggests that killing rabbits is acceptable ( No, it is not wrong... ), and the response for (0.7016, 0.2984 ) argues that it is wrong ( It is generally considered to be wrong to kill animals... ). However, we observe that the responses corresponding to 
+
+(0.5, 0.5 ) and (0, 1 ) are almost identical, except that the (0.5, 0.5 ) response includes a few degenerate tokens. This observation supports our claim that the effect of weight adjustments on LLM behavior is difficult to predict a priori, and that uniformly spaced weight vectors may fail to adequately cover the landscape of LLM behaviors, resulting in redundant policies. In contrast, the response generated using (0.7016, 0.2984 ) is qualitatively different from those produced by either (0, 1 ) or (1, 0 ).9Preprint. Under review. This higher behavioral diversity is another consequence of PALM, in addition to the balanced policy usage observed earlier. PALM constructs portfolios based on the actual outputs of the policies – rather than distances between weight vectors in the ∆d – so the resulting policies occupy distinct regions of the reward space and exhibit qualitatively different behaviors. 
+
+# 5 Conclusion 
+
+We introduced PALM, an algorithm for constructing a small portfolio of LLMs that approxi-mates the space of optimal behaviors across heterogeneous users, with provable guarantees on portfolio size and approximation quality. Empirically, PALM consistently outperforms uniform and random baselines in both approximation quality and behavioral diversity, demonstrating that a small, fixed portfolio can replace per-user personalization at scale. 
+
+# References 
+
+L.N. Alegre, A.L.C. Bazzan, D.M. Roijers, A. Now ´e, and B.C. da Silva. Sample-efficient multi-objective learning via generalized policy improvement prioritization. AAMAS 2023. Anthropic. Deprecation commitments for AI models, 2025. https://www.anthropic.com/ research/deprecation-commitments .Anthropic. An update on our model deprecation commitments for Claude Opus 3, 2026. 
+
+https://www.anthropic.com/research/deprecation-updates-opus-3 .Y. Bai, A. Jones, K. Ndousse, A. Askell, A. Chen, N. DasSarma, D. Drain, S. Fort, D. Ganguli, T. Henighan, N. Joseph, S. Kadavath, J. Kernion, T. Conerly, S. El-Showk, N. Elhage, Z. Hatfield-Dodds, D. Hernandez, T. Hume, S. Johnston, S. Kravec, L. Lovitt, N. Nanda, C. Olsson, D. Amodei, T. Brown, J. Clark, S. McCandlish, C. Olah, B. Mann, and J. Kaplan. Training a helpful and harmless assistant with reinforcement learning from human feedback. arXiv:2204.05862, 2022. R. Bommasani, D.A. Hudson, E. Adeli, et al. On the opportunities and risks of foundation models. arXiv:2108.07258, 2021. A. Bose, Z. Xiong, Y. Chi, S.S. Du, L. Xiao, and M. Fazel. LoRE: Personalizing LLMs via low-rank reward modeling. COLM 2025. R.A. Bradley and M.E. Terry. Rank analysis of incomplete block designs: I. the method of paired comparisons. Biometrika , 39(3/4):324–345, 1952. T. Chakrabarty, J.C. Ginsburg, and P. Dhillon. Readers prefer outputs of AI trained on copyrighted books over expert human writers. SSRN Working Paper 5606570, 2025. 
+
+https://papers.ssrn.com/sol3/papers.cfm?abstract id=5606570 .L. Chen, Z. Ye, Y. Wu, D. Zhuo, L. Ceze, and A. Krishnamurthy. Punica: Multi-tenant LoRA serving. arXiv:2310.18547, 2023. R. Chen, X. Zhang, M. Luo, W. Chai, and Z. Liu. PAD: Personalized alignment at decoding-time. ICLR 2025. M. Drygala, S. Lattanzi, A. Maggiori, M. Stouras, O. Svensson, and S. Vassilvitskii. Data-driven solution portfolios. ITCS 2025. U. Feige, L. Lov ´asz, and P. Tetali. Approximating min sum set cover. Algorithmica , 40(4):219– 234, 2004. Google. Personal intelligence: Connecting Gemini to Google apps, 2026. https://blog. google/innovation-and-ai/products/gemini-app/personal-intelligence/ .R. Gupta, R. Sullivan, Y. Li, S. Phatale, and A. Rastogi. Robust multi-objective preference alignment with online DPO. AAAI 2025. 10 Preprint. Under review. S. Gupta, J. Moondra, and M. Singh. Which Lp norm is the fairest? Approximations for fair facility location across all “ p”. EC 2023. S. Gupta, J. Moondra, and M. Singh. Balancing notions of equity: Trade-offs between fair portfolio sizes and achievable guarantees. SODA 2025. C.F. Hayes, R. R ˘adulescu, E. Bargiacchi, J. K ¨allstr ¨om, M. Macfarlane, M. Reymond, T. Verstraeten, L.M. Zintgraf, R. Dazeley, F. Heintz, E. Howley, A.A. Irissappane, P. Mannion, A. Now ´e, G. Ramos, M. Restelli, P. Vamplew, and D.M. Roijers. A practical guide to multi-objective reinforcement learning and planning. Auton. Agents Multi-Agent Syst. ,36(1), 2022. E.J. Hu, Y. Shen, P. Wallis, Z. Allen-Zhu, Y. Li, S. Wang, L. Wang, and W. Chen. LoRA: Low-rank adaptation of large language models. ICLR 2022. R. Hu, J. Zhang, S. Zhao, J. Meng, J. Li, J. Zeng, M. Wu, M. Heinrich, Y. Wen, and T. Zhang. Inference-time alignment via sparse junction steering. arXiv:2602.21215, 2026. J. Ji, M. Liu, J. Dai, X. Pan, C. Zhang, C. Bian, B. Chen, R. Sun, Y. Wang, and Y. Yang. BeaverTails: Towards improved safety alignment of LLM via a human-preference dataset. NeurIPS 2023. C.W. Kim, J. Moondra, S. Verma, M. Pollack, L. Kong, M. Tambe, and S. Gupta. Navigating the social welfare frontier: Portfolios for multi-objective reinforcement learning. ICML 2025. N. Lambert, J. Morrison, V. Pyatkin, S. Huang, H. Ivison, F. Brahman, L.J.V. Miranda, A. Liu, N. Dziri, S. Lyu, Y. Gu, S. Malik, V. Graf, J.D. Hwang, J. Yang, R.L. Bras, O. Tafjord, C. Wilhelm, L. Soldaini, N.A. Smith, Y. Wang, P. Dasigi, and H. Hajishirzi. T ¨ulu 3: Pushing frontiers in open language model post-training. Preprint, 2024. N. Lambert, V. Pyatkin, J. Morrison, L.J. Miranda, B.Y. Lin, K. Chandu, N. Dziri, S. Kumar, T. Zick, Y. Choi, N.A. Smith, and H. Hajishirzi. RLVR: A toolkit for reinforcement learning with verifiable rewards. arXiv:2504.02064, 2025. B. Lin, W. Jiang, Y. Xu, H. Chen, and Y.-C. Chen. PARM: Multi-objective test-time alignment via preference-aware autoregressive reward model. ICML 2025. C.Y. Liu, L. Zeng, J. Liu, R. Yan, J. He, C. Wang, S. Yan, Y. Liu, and Y. Zhou. Skywork-reward: Bag of tricks for reward modeling in LLMs. arXiv:2410.18451, 2024. X. Miao, G. Oliaro, Z. Zhang, X. Cheng, H. Jin, T. Chen, and Z. Jia. Towards efficient generative large language model serving: A survey from algorithms to systems. ACM Comput. Surv. , 58(1), 2025. Y. Ni, X. Yang, Y. Tang, Z. Qiu, C. Wang, and T. Yuan. Predictive-LoRA: A proactive and fragmentation-aware serverless inference system for LLMs. arXiv:2512.20210, 2025. OpenAI. Reasoning models struggle to control their chains of thought, 2026. https: //openai.com/index/reasoning-models-chain-of-thought-controllability/ .D. Prahlad, C. Lee, D. Kim, and H. Kim. Personalizing large language models using retrieval augmented generation and knowledge graph. WWW 2025. R. Rafailov, A. Sharma, E. Mitchell, C.D. Manning, S. Ermon, and C. Finn. Direct preference optimization: Your language model is secretly a reward model. NeurIPS 2023. J. Schulman. Approximating KL divergence, 2020. http://joschu.net/blog/kl-approx. html .J. Schulman, F. Wolski, P. Dhariwal, A. Radford, and O. Klimov. Proximal policy optimization algorithms. arXiv:1707.06347, 2017. 11 Preprint. Under review. H. Shao, L. Cohen, A. Blum, Y. Mansour, A. Saha, and M.R. Walter. Eliciting user preferences for personalized multi-objective decision making through comparative feedback. NeurIPS 2023. Z. Shao, P. Wang, Q. Zhu, R. Xu, J. Song, X. Bi, H. Zhang, M. Zhang, Y.K. Li, Y. Wu, and D. Guo. DeepSeekMath: Pushing the limits of mathematical reasoning in open language models. arXiv:2402.03300, 2024. Z. Shao, P. Wang, Q. Zhu, R. Xu, J. Song, X. Li, H. Zhang, M. Zhang, Y.K. Li, Y. Wu, and D. Guo. DeepSeekMath: Pushing the limits of mathematical reasoning in open language models. arXiv:2402.03300, 2024. Y. Shen, Y. Xia, J. Chang, and P. Ammanabrolu. Simultaneous multi-objective alignment across verifiable and non-verifiable rewards. arXiv:2510.01167, 2025. I. Shenfeld, F. Faltings, P. Agrawal, and A. Pacchiano. Language model personalization via reward factorization. COLM 2025. R. Shi, Y. Chen, Y. Hu, A. Liu, H. Hajishirzi, N.A. Smith, and S.S. Du. Decoding-time language model alignment with multiple objectives. NeurIPS 2024. T. Sorensen, J. Moore, J. Fisher, M. Gordon, N. Mireshghallah, C.M. Rytting, A. Ye, L. Jiang, X. Lu, N. Dziri, T. Althoff, and Y. Choi. Position: A roadmap to pluralistic alignment. ICML 2024. B. Sun, Z. Huang, H. Zhao, W. Xiao, X. Zhang, Y. Li, and W. Lin. Llumnix: Dynamic scheduling for large language model serving. OSDI 2024. Qwen Team. Qwen2.5 technical report. arXiv:2412.15115, 2024. K. Wang, R. Kidambi, R. Sullivan, A. Agarwal, C. Dann, A. Michi, M. Gelmi, Y. Li, R. Gupta, K.A. Dubey, A. Rame, J. Ferret, G. Cideron, L. Hou, H. Yu, A. Ahmed, A. Mehta, L. Hussenot, O. Bachem, and E. Leurent. Conditional language policy: A general framework for steerable multi-objective finetuning. EMNLP Findings 2024. D.P. Williamson and D.B. Shmoys. The Design of Approximation Algorithms . Cambridge University Press, 2010. Z. Wu, Y. Hu, W. Shi, N. Dziri, A. Suhr, P. Ammanabrolu, N.A. Smith, M. Ostendorf, and H. Hajishirzi. Fine-grained human feedback gives better rewards for language model training. NeurIPS 2023. Z. Xie, J. Wu, Y. Shen, R. Jain, Y. Xia, X. Li, A. Chang, R.A. Rossi, T. Yu, S. Kumar, B.P. Majumder, J. Shang, P. Ammanabrolu, and J. McAuley. A survey on personalized and pluralistic preference alignment in large language models. COLM 2025. R. Yang, X. Pan, F. Luo, S. Qiu, H. Zhong, D. Yu, and J. Chen. Rewards-in-context: Multi-objective alignment of foundation models with dynamic preference adjustment. ICML 2024. R. Yang, X. Sun, and K. Narasimhan. A generalized algorithm for multi-objective reinforce-ment learning and policy adaptation. NeurIPS 2019. L. Yun, C. An, Z. Wang, L. Peng, and J. Shang. The price of format: Diversity collapse in LLMs. EMNLP Findings 2025. Z. Zhou, J. Liu, J. Shao, X. Yue, C. Yang, W. Ouyang, and Y. Qiao. Beyond one-preference-fits-all alignment: Multi-objective direct preference optimization. ACL Findings 2024. 12 Preprint. Under review. 
+
+# A Full proof of Theorem 3.4 
+
+We complete the proof of Theorem 3.4 here. We also prove Lemma 3.3. We start with some notation. We overload the notation and denote the expected reward for policy π for reward function ri simply as πi := Ex∼P,y∼π(x)[ri(x, y)] . Therefore, we can represent policy π as the vector (π1, . . . , πd) ∈ Rd of different reward function values, and our objective is 
+
+Jw(π) = w⊤π − f (π). (2) Recall that we denote by ∆d :=
+
+n
+
+w ∈ Rd : w ≥ 0, ∑di=1 wi = 1
+
+o
+
+the probability simplex in dimension d, and call the members w ∈ ∆d weight vectors . We also denote by Bd := {w′ ∈
+
+Rd : w′ ≥ 0, ∥w′∥∞ = 1} the set of all nonnegative vectors with highest entry 1. These is a one-to-one correspondence between ∆d and Bd. Given a weight vector w ∈ ∆d,we define w′ = 1 
+
+> ∥w∥∞
+
+w. It is easy to check that the highest entry of w′ is 1, i.e., ∥w′∥∞ = 1. Conversely, given w′ ∈ Bd, we define w = 1  
+
+> ∥w′∥1
+
+w′. It can be checked that the two definitions are consistent. 
+
+Size guarantee. Recall that Algorithm 1 first chooses a grid W′ of points w′ ∈ Bd. The size guarantee in Theorem 3.4 follows from the choice of 1dgrid : since we fix one coordinate i at a time (step 3) and choose remaining coordinates from 1dgrid , we get 
+
+|P| ≤ | P1| = |W| ≤ | W′| ≤ 
+
+> d
+
+# ∑
+
+> i=1
+
+|1dgrid |d−1 =
+
+> d
+
+# ∑
+
+> i=1
+
+
+
+2 + log 1+μ 1
+
+> α
+
+d−1
+
+≤ d
+
+
+
+2 + 2 
+
+> μ
+
+log 1
+
+> α
+
+d−1
+
+.The first inequality holds since pruning does not add new policies, the next equality holds by definition (step 1) of P1, the following inequality holds since W is a point-wise projection of W′ on ∆d (step 6), the next equality holds since |1dgrid | = 1 + ( 1 + log 1+μ 1 
+
+> α
+
+), and the final inequality holds since 1/ log (1 + μ) ≤ 2/ μ for all μ ∈ (0, 1 ].
+
+Approximation guarantee. First, we show that for each v ∈ ∆d, there is some w ∈ W
+
+whose optimal policy is a suitable approximation for v. That is, the portfolio P1 in Algorithm 1 before pruning satisfies suitable approximation guarantees. It is easy to see from 7 that pruning can only increase the multiplicative approximation term ε by at most 2 μ.Fix v ∈ ∆d. Recall that v′ denotes the vector in Bd such that v = 1  
+
+> ∥v′∥1
+
+v′. By construction in the for loop in Algorithm 1, for every v′ ∈ Bd, there is some w′ ∈ W′ such that for each coordinate i ∈ [d],11 + μ ≤ w′
+
+> i
+
+v′
+
+> i
+
+≤ 1 + μ if v′ 
+
+> i
+
+≥ α, and 
+
+|w′ 
+
+> i
+
+− v′ 
+
+> i
+
+| ≤ α if 0 ≤ v′ 
+
+> i
+
+≤ α.This establishes that w′, v′ ∈ Bd are ‘close’. Since we need guarantees for ∆d, we require translating this guarantee to corresponding projected vectors w, v ∈ ∆d:
+
+Lemma A.1. For all v ∈ ∆d and all coordinates 1 ≤ i ≤ d, 
+
+|wi − vi| ≤ μvi + αd.
+
+Proof. Recall that for all v, we define v′ = 1 
+
+> ∥v∥∞
+
+v ∈ Bd. Further, w′ is such that for all coordinates 1 ≤ i ≤ d, we have either v′ 
+
+> i
+
+≤ w′ 
+
+> i
+
+≤ v′ 
+
+> i
+
++ α or v′ 
+
+> i
+
+≤ w′ 
+
+> i
+
+≤ (1 + μ)v′
+
+> i
+
+. Finally, by definition, w = 1  
+
+> ∥w′∥1
+
+w′ ∈ ∆d.First, note that 
+
+∥v′∥1 ≤ ∥ w′∥1 ≤ ∥ v′∥1 + αd.13 Preprint. Under review. Suppose coordinate i is such that |w′ 
+
+> i
+
+− v′ 
+
+> i
+
+| ≤ α. Then, 
+
+wi − vi = w′
+
+> i
+
+∥w′∥1
+
+− v′
+
+> i
+
+∥v′∥1
+
+≤ v′ 
+
+> i
+
++ α
+
+∥v′∥1
+
+− v′
+
+> i
+
+∥v′∥1
+
+= α
+
+∥v′∥1
+
+≤ α ≤ dα.Otherwise, 1 ≤ w′
+
+> i
+> v′
+> i
+
+≤ 1 + μ, so 
+
+wi − vi = w′
+
+> i
+
+∥w′∥1
+
+− v′
+
+> i
+
+∥v′∥1
+
+≤ (1 + μ)v′
+
+> i
+
+∥v′∥1
+
+− v′
+
+> i
+
+∥v′∥1
+
+= μvi.And in both cases, 
+
+vi − wi = v′
+
+> i
+
+∥v′∥1
+
+− w′
+
+> i
+
+∥w′∥1
+
+≤ v′
+
+> i
+
+∥v′∥1
+
+− v′
+
+> i
+
+∥v′∥1 + dα = dα v′
+
+> i
+
+∥v′∥1∥w′∥1
+
+≤ dα.This allows us to invoke Lemma 3.3 (proven below): 
+
+Lemma 3.3. Consider weight vectors w, v ∈ ∆d that satisfy |wi − vi| ≤ ε′vi + δ′ for all coordinates i ∈ [d] for some ε′, δ′ ≥ 0. Then, πw is a (2ε′, 2 (δ′ Rmax + ε′ fmax )) -approximation for v. 
+
+The result then follows immediately by combining the lemmas and noting that pruning can only add 2 μ to the multiplicative approximation term ε. We prove Lemma 3.3 next, completing the proof of our theorem: 
+
+Proof of Lemma 3.3. Jv(πv) − Jv(πw)= ( Jv(πv) − Jw(πv)) + ( Jw(πv) − Jw(πw)
+
+| {z } 
+
+> ≤0 by definition of πw
+
+) + ( Jw(πw) − Jv(πw)) 
+
+≤ (v − w)⊤(πv − πw) = 
+
+> d
+
+# ∑
+
+> i=1
+
+(wi − vi)(( πw)i − (πv)i).From Lemma A.1 (proven below), we get 
+
+≤
+
+> d
+
+# ∑
+
+> i=1
+
+|wi − vi|| (πw)i − (πv)i|≤ δ′ d
+
+# ∑
+
+> i=1
+
+|(πw)i − (πv)i| + ε′ d
+
+# ∑
+
+> i=1
+
+vi|(πw)i − (πv)i|≤ 2δ′ Rmax + ε′|v⊤πw| + ε′|v⊤πv|≤ 2δ′ Rmax + ε′ |Jv(πw) + f (πw)| + ε′ |Jv(πv) + f (πv)|≤ 2δ′ Rmax + ε′|Jv(πw)| + ε′ fmax + ε′|Jv(πv)| + ε′ fmax 
+
+≤ 2(δ′ Rmax + ε′ fmax + ε′ opt v).Therefore, 
+
+Jv(πw) ≥ (1 − 2ε′) opt v − 2(δ′ Rmax + ε′ fmax ).
+
+# B Implementation details 
+
+We provide implementation details for the pruning and fine-tuning steps of PALM in our experiments. 14 Preprint. Under review. 
+
+B.1 Pruning 
+
+For solving the covering problem in Step 4 of the pruning algorithm in PALM (Algorithm 1), we use the natural greedy algorithm, which iteratively selects the policy that covers the largest number of remaining weight vectors in the grid W until all weight vectors have been covered. The notion of covering is defined in Step 3 of the algorithm. Although the pruning algorithm takes two inputs μ′ and α′—which in our theoretical guarantee are assumed to match the inputs to C ONSTRUCT GRID with α′ = 0—in practice both can be varied independently. For our experiments, we vary μ′ and fix α′ = 0 for simplicity. Since pruning operates on a fixed set of candidate policies, evaluating multiple values of μ′ is computationally cheap. 
+
+B.2 Fine-tuning implementation details Task and dataset. We consider a two-objective setting ( d = 2) over mathematical reasoning prompts, where the objectives are response brevity and helpfulness . Prompts are drawn from the training splits of RLVR-GSM and RLVR-MATH (Lambert et al., 2025), and evaluation is performed on the RLVR-GSM test split. 
+
+Reward functions. The helpfulness objective is scored by the Skywork-Reward-Llama-3.1-8B reward model (Liu et al., 2024), a Bradley–Terry style pairwise reward model that produces unbounded scalar outputs. The brevity objective is a verifiable reward (VR) defined as 
+
+rbrevity (x, y) = 1[correct (x, y)] ·
+
+
+
+1 − |y|
+
+Lmax 
+
+
+
+, (3) where |y| is the response length in tokens, Lmax = 256 is the maximum generation length, and 1[correct (x, y)] is a binary correctness indicator obtained by comparing the extracted answer against the ground-truth label. Multiplying by the correctness indicator ensures that the model cannot achieve high brevity reward by producing short but incorrect responses. Both rewards are normalized to [0, 1 ] via min-max normalization within each training batch. 
+
+Policy model and training. The policy model is Qwen2.5-3B-Instruct (Qwen Team, 2024). We fine-tune using Group Relative Policy Optimization (GRPO; Shao et al. 2024a), which estimates advantages by sampling a group of G responses per prompt and normalizing rewards within each group. We use G = 4 samples per prompt. The training objective includes a KL divergence penalty with coefficient β = 0.01, where the reference policy is a frozen copy of the initial Qwen2.5-3B-Instruct checkpoint. Our training infrastructure is based on the Open Instruct framework (Lambert et al., 2024). 
+
+Portfolio construction. We apply Algorithm 1 with parameters μ = 830 and α = 210 , which yields 13 weight vectors in the 2-dimensional simplex ∆2.
+
+Evaluation. Pruning with 0.250, 0.050, 0.001, 0.0005 yields portfolios of sizes 1, 2, 3, 4 models respectively. We normalize each KL-regularized individual reward, Ex∼P,y∼π(x)[ri(x, y)] −
+
+KL (π∥πref ), to [0, 1 ] for pruning and evaluation. We evaluate approximation quality by sampling 15 weight vectors for V from Dir (1, 1 ) and optimizing the corresponding scalarized objective with GRPO. The perplexity of the policy usage distribution is computed over 
+
+N = 1 , 000 weight vectors, assigning each w to its best policy πbest w = arg max π ∈ PJ w(π).Since this evaluation does not require fine-tuning for each weight vector, we use a larger set of size N rather than V.
+
+Training details. We train for 40,000 episodes, corresponding to approximately 208 gradient steps with an effective batch size of 48 (4 per-device batch size × 3 GPUs × 4 gradient accumulation steps). We use the AdamW optimizer with a learning rate of 5 × 10 −7 and mixed precision bf16. All experiments are conducted on 4 × NVIDIA H100 80GB GPUs, with 3 GPUs used for training and 1 reserved for vLLM inference during rollout generation. 15 Preprint. Under review. 
+
+B.3 Implementation details for MOD 
+
+The implementation of MOD is directly adopted from the authors’ official codebase provided in (Shi et al., 2024). MOD combines d LLMs, each trained separately for a single objective, and aggregates them during decoding via weighted logit combination. The d base models, each trained separately for a single objective, are also initialized from the checkpoints released by the authors. In all experiments, we use greedy decoding following their setup. For additional implementation details, we refer the reader to (Shi et al., 2024). For the Safety Alignment task, we use https://huggingface.co/PKU-Alignment/ beaver-7b-v1.0-reward for helpfulness and https://huggingface.co/PKU-Alignment/ beaver-7b-v1.0-cost for harmlessness. We use the first 200 prompts of the https: //huggingface.co/datasets/PKU-Alignment/PKU-SafeRLHF-10K dataset to estimate the ob-jective value (1) for a given weight. The set V is generated by sampling 100 points from a Dirichlet distribution. For the Helpful Assistants task, we use https://huggingface.co/Ray2333/ gpt2-large-helpful-reward model for helpfulness, https://huggingface.co/Ray2333/ gpt2-large-harmless-reward model for harmlessness, and https://huggingface.co/ mohameddhiab/humor-no-humor for humor. We use the first 100 prompts of the 
+
+https://huggingface.co/datasets/Anthropic/hh-rlhf dataset to estimate the objec-tive value (1) for a given weight. The set V is generated by sampling 200 points from a Dirichlet distribution. Since the explicit policy π is unavailable without fine-tuning, we cannot compute the KL term in Jw(π). We therefore evaluate only the reward component Ex,y[w⊤r(x, y)] via Monte Carlo sampling, consistent with prior decoding-time works (Shi et al., 2024; Shen et al., 2025). 
+
+Portfolio Construction We apply Algorithm 1 with a range of input parameters and report the best result for each portfolio size. The specific parameters used for the results in the main text are as follows. For Safety Alignment ( d = 2): size 3 uses (μ, α, μ′) = (14 / 30, 7 / 100, 0.02 ); size 4 uses (16 / 30, 1 / 100, 0.01 ); size 5 uses (16 / 30, 1 / 100, 0.005 ). For Helpful Assistants ( d = 3): size 3 uses (19 / 30, 1 / 5, 0.10 ); size 4 uses (19 / 30, 2 / 5, 0.07 ); size 5 uses (19 / 30, 2 / 5, 0.01 ); size 6 uses (19 / 30, 2 / 5, 0.001 ); size 7 uses (3 / 5, 3 / 10, 0.01 ). The full set of results across all parameter configurations is reported in Appendix B.5.2. 
+
+B.4 Further details on baselines 
+
+B.4.1 Uniform 
+
+For the d = 2 case, the simplex reduces to the line segment ∆2 = {(w1, w2) ∈ R2 
+
+> ≥0
+
+:
+
+w1 + w2 = 1}. We generate n evenly spaced weight vectors by discretizing this segment uniformly, setting w1 ∈ { 0, 1 
+
+> n−1
+
+, 2 
+
+> n−1
+
+, . . . , 1 } and w2 = 1 − w1. This yields n equally spaced points including the endpoints (1, 0 ) and (0, 1 ).To uniformly generate n weight vectors on ∆3, we first construct a uniform barycentric grid by considering all points of the form (i/m, j/m, k/m) where i, j, k ∈ Z≥0 and i + j + k = m,which yields (m + 1)( m + 2)/ 2 evenly spaced points on the simplex. We choose the smallest 
+
+m such that (m + 1)( m + 2)/ 2 ≥ n, and then sample n weight vectors uniformly at random without replacement from this grid. 
+
+B.4.2 Random 
+
+For the random baseline, due to its inherent stochasticity, we perform three independent runs for each portfolio size and report the average performance for the Safety Alignment and Helpful Assistants tasks. For the RLVR-GSM task, we run the baseline only once. 16 Preprint. Under review. Table 4: Approximation quality of portfolios across different methods. Each entry reports 
+
+(ε(P), δ(P)) , corresponding to the purely multiplicative gap and purely additive gap, for a given number of oracle calls. Smaller values indicate better performance. All reward values are normalized to the range [0, 1 ] in each dimension.                   
+
+> Method Oracle calls PALM Uniform PALM Safety Alignment
+> 17 (0.0197, 0.0116) (0.0353, 0.0240) 19 (0.0204, 0.0119) (0.0278, 0.0163) 23 (0.0204, 0.0119) (0.0353, 0.0240) 25 (0.0131, 0.0076) (0.0154, 0.0089)
+> Helpful Assistants
+> 19 (0.0244, 0.0177) (0.0861, 0.0828) 37 (0.0151, 0.0094) (0.0713, 0.0685) 61 (0.0145, 0.0107) (0.0174, 0.0093) 91 (0.0166, 0.0102) (0.0151, 0.0081)
+
+B.5 Additional results 
+
+B.5.1 Analyzing the effect of initial weight generation 
+
+To isolate the effect of the initial weight generation scheme in PALM, we conduct ablation an study that replaces this step with uniformly spaced weights, followed by the same pruning procedure. We refer to this variant as Uniform PALM. To enable a fair comparison with the original PALM, we match the number of oracle calls, i.e., the size of the initial weight set. We use a common pruning parameter in the range [0.01, 0.1 ] with a step size of 0.01 across all settings, and report, for each oracle call, the best result in Table 4. We observe that the original PALM outperforms this hybrid variant in all but one case, further validating the effectiveness of our weight generation scheme. 
+
+B.5.2 Full experimental results 
+
+See Tables 5 and 6 for full experimental results. The columns μ, α, and μ′ denote the input parameters to C ONSTRUCT GRID and P RUNE , respectively (recall the discussion in Appendix B.1 on varying the pruning parameter independently). We set μ to relatively loose (i.e., large) values and α to tight (i.e., small) values, since rewards are normalized to [0, 1 ]
+
+and a large additive gap would be highly suboptimal in this range. We did not tighten μ
+
+further in order to keep the number of initial weights tractable. We also vary α and μ across runs so that the number of oracle calls differs across experimental configurations. We vary the pruning parameter μ′ more broadly compared to μ and α, since evaluating different pruning thresholds is computationally cheap given a fixed set of candidate policies. We bold the rows corresponding to the results reported in the main text. 17 Preprint. Under review. Input μ Input α Oracle calls Pruning Size ε(P) δ(P)  
+
+> 14 30 7100
+
+17 0.01 4 0.0368 0.0235 
+
+0.02 3 0.0552 0.0352 
+
+0.03 3 0.0637 0.0400 0.04 3 0.0637 0.0400 0.05 3 0.0637 0.0400 0.06 3 0.0637 0.0400 0.07 3 0.0637 0.0400 0.08 3 0.0854 0.0748 0.09 2 0.0894 0.0836 0.10 2 0.0894 0.0836   
+
+> 16 30 7100
+
+17 0.01 4 0.0197 0.0116 0.02 4 0.0197 0.0116 0.03 4 0.0197 0.0116 0.04 4 0.0197 0.0116 0.05 3 0.0701 0.0409 0.06 2 0.0701 0.0593 0.07 2 0.0701 0.0593 0.08 2 0.0701 0.0593 0.09 2 0.0701 0.0593 0.10 2 0.0701 0.0593   
+
+> 16 30 5100
+
+19 0.01 4 0.0204 0.0119 0.02 4 0.0204 0.0119 0.03 3 0.0700 0.0408 0.04 3 0.0700 0.0408 0.05 3 0.0700 0.0408 
+
+0.06 2 0.0700 0.0585 
+
+0.07 2 0.0700 0.0585 0.08 2 0.0700 0.0585 0.09 2 0.0700 0.0585 0.10 2 0.0700 0.0585   
+
+> 16 30 2100
+
+23 0.01 4 0.0204 0.0119 0.02 4 0.0204 0.0119 0.03 4 0.0204 0.0119 0.04 3 0.0700 0.0408 0.05 3 0.0700 0.0408 0.06 2 0.0700 0.0585 0.07 2 0.0700 0.0585 0.08 2 0.0700 0.0585 0.09 2 0.0700 0.0585 0.10 2 0.0700 0.0585   
+
+> 16 30 1100
+
+25 
+
+0.005 5 0.0131 0.0076 0.01 4 0.0131 0.0076 
+
+0.02 4 0.0204 0.0119 0.03 3 0.0700 0.0408 0.04 3 0.0700 0.0408 0.05 3 0.0777 0.0454 0.06 2 0.0700 0.0585 0.07 2 0.0700 0.0585 0.08 2 0.0700 0.0585 0.09 2 0.0700 0.0585 0.10 2 0.0700 0.0585 Table 5: Experimental results across various parameters for the Safety Alignment task. 18 Preprint. Under review. Input μ Input α Oracle calls Pruning μ′ Size ε(P) δ(P)  
+
+> 18 30 810
+
+19 0.01 5 0.0244 0.0177 0.02 5 0.0331 0.0177 0.03 5 0.0331 0.0177 0.04 5 0.0331 0.0177 0.05 5 0.0405 0.0214 0.06 5 0.0405 0.0214 0.07 5 0.0405 0.0214 0.08 4 0.0703 0.0490 0.09 4 0.0703 0.0490 0.10 4 0.0900 0.0847   
+
+> 19 30 410
+
+37 
+
+0.001 6 0.0145 0.0092 0.01 5 0.0151 0.0094 
+
+0.02 5 0.0151 0.0094 0.03 5 0.0344 0.0193 0.04 5 0.0211 0.0119 0.05 5 0.0211 0.0119 0.06 5 0.0211 0.0119 
+
+0.07 4 0.0569 0.0397 
+
+0.08 4 0.0569 0.0397 0.09 4 0.0726 0.0683 0.10 3 0.0726 0.0683   
+
+> 18 30 310
+
+61 
+
+0.01 7 0.0145 0.0107 
+
+0.02 5 0.0208 0.0153 0.03 5 0.0211 0.0153 0.04 5 0.0211 0.0153 0.05 5 0.0451 0.0239 0.06 5 0.0371 0.0210 0.07 4 0.0569 0.0525 0.08 4 0.0569 0.0525 0.09 4 0.0569 0.0525 0.10 4 0.0925 0.0871   
+
+> 19 30 210
+
+91 
+
+0.01 10 0.0166 0.0102 
+
+0.02 6 0.0193 0.0150 0.03 5 0.0431 0.0244 0.04 5 0.0381 0.0216 0.05 5 0.0381 0.0228 0.06 4 0.0569 0.0530 0.07 4 0.0569 0.0397 0.08 4 0.0842 0.0749 0.09 3 0.1105 0.0900 
+
+0.10 3 0.0709 0.0530 
+
+Table 6: Experimental results across various parameters for the Helpful Assistants task. 19

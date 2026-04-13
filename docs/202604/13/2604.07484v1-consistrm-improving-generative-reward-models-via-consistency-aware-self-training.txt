@@ -1,0 +1,670 @@
+Title: ConsistRM: Improving Generative Reward Models via Consistency-Aware Self-Training
+
+URL Source: https://arxiv.org/pdf/2604.07484v1
+
+Published Time: Fri, 10 Apr 2026 00:14:31 GMT
+
+Number of Pages: 16
+
+Markdown Content:
+# ConsistRM: Improving Generative Reward Models via Consistency-Aware Self-Training 
+
+Yu Liang *, Liangxin Liu *, Longzheng Wang, Yan Wang, Yueyang Zhang Long Xia , Zhiyuan Sun , Daiting Shi †
+
+Baidu Inc., Beijing, China 
+
+{liangyu05, liuliangxin, shidaiting01}@baidu.com 
+
+Abstract 
+
+Generative reward models (GRMs) have emerged as a promising approach for align-ing Large Language Models (LLMs) with hu-man preferences by offering greater repre-sentational capacity and flexibility than tradi-tional scalar reward models. However, GRMs face two major challenges: reliance on costly human-annotated data restricts scalability, and self-training approaches often suffer from in-stability and vulnerability to reward hacking. To address these issues, we propose Con-sistRM , a self-training framework that en-ables effective and stable GRM training with-out human annotations. ConsistRM incor-porates the Consistency-Aware Answer Re-ward , which produces reliable pseudo-labels with temporal consistency, thereby providing more stable model optimization. Moreover, the 
+
+Consistency-Aware Critique Reward is intro-duced to assess semantic consistency across multiple critiques and allocates fine-grained and differentiated rewards. Experiments on five benchmark datasets across four base mod-els demonstrate that ConsistRM outperforms vanilla Reinforcement Fine-Tuning (RFT) by an average of 1.5%. Further analysis shows that ConsistRM enhances output consistency and mitigates position bias caused by input order, highlighting the effectiveness of consistency-aware rewards in improving GRMs. 
+
+1 Introduction 
+
+Large language models (LLMs) have seen grow-ing popularity in both academia and industry due to their exceptional capability in tackling complex tasks. A core technique for aligning LLMs’ outputs with human expectations is Reinforcement Learn-ing from Human Feedback (RLHF) (Ouyang et al., 2022; Bai et al., 2022; Dong et al., 2024; Lam-bert, 2025; Lai et al., 2025). The reward model 
+
+> *Equal contribution.
+> †Corresponding authors.
+
+Figure 1: An overview of ConsistRM in comparison with vanilla GMRs, emphasizing its self-training frame-work based on consistency-aware learning to enhance model pairwise preference performance. 
+
+in RLHF supplies supervision signals for training, and its effectiveness is widely acknowledged as a primary factor limiting the maximum achievable alignment performance(Rafailov et al., 2023; Azar et al., 2024). Recently, an increasing number of studies have focused on generative reward models (GRMs) (Mahan et al., 2024; Ye et al., 2025; Liu et al., 2025d). In contrast to traditional models that merely output scalar scores, GRMs offer greater representational capacity, enhanced generalization, and better adaptability to complex feedback. While GRMs have demonstrated effectiveness, their training typically requires large amounts of high-quality human-annotated label data, making the process costly and hard to scale. For instance, methods like (Chen et al., 2025) depend on human-labeled reward signals for reinforcement learning. Similarly, approaches such as SynPref-40M (Liu et al., 2025a) leverage LLMs to curate data auto-matically, though they still rely on initial human annotations for guidance. To reduce manual anno-tation, recent studies have explored unsupervised or self-training paradigms for GRMs, such as generat-ing training signals from LLMs’ internal entropy or confidence (Zuo et al., 2025; Shafayat et al., 
+
+> arXiv:2604.07484v1 [cs.AI] 8 Apr 2026
+
+2025; Wang et al., 2025c). However, these meth-ods remain fragile because the reward signals are tightly correlated with the policy model, which eas-ily leads to reward hacking and early overfitting to noisy pseudo-labels(Laidlaw et al., 2024; Zhang et al., 2025c). Overall, despite notable advances, achieving robust and stable GRM training without any human feedback remains a major challenge. In this work, we propose ConsistRM , a novel self-training framework that leverages internally de-rived consistency signals without human-annotated labels. Our goal is to enhance the pairwise pref-erence ability of GRM through two key modules: (1) the Consistency-Aware Answer Reward, which considers temporal consistency (including both cur-rent model states and historical results) to provide reliable training signals; (2) the Consistency-Aware Critique Reward, which measures semantic con-sistency across diverse critiques and offers fine-grained rewards. The combination of these two complementary internal signals results in a more stable and reliable self-training framework. We evaluate the effectiveness and generalization of ConsistRM across five benchmark datasets us-ing four base models. Experimental results show that ConsistRM achieves an average performance gain of 1.5% compared to vanilla Reinforcement Fine-Tuning (RFT). Through detailed analysis, we further demonstrate that ConsistRM enhances out-put consistency and mitigates position bias induced by input order. Our contributions are summarized as follows: • We propose ConsistRM, a framework that enables self-training for GRMs through consistency-aware mechanisms, eliminating the need for human feedback. • Within this framework, we design a method to construct pseudo-labels by leveraging con-sistency between current and historical model outputs, thereby providing GRMs with more reliable learning signals. • Empowered by the consistency-aware re-ward from ConsistRM, GRMs generate out-puts with improved conciseness and accuracy, while significantly reducing position bias. 
+
+2 Related work 
+
+Generative Reward Model Recent experimen-tal studies have demonstrated that GRMs represent a key new paradigm in reward modeling, primar-ily due to their enhanced interpretability and gen-eralization capabilities (Liu et al., 2025a; White-house et al., 2025; Saha et al., 2025). For ex-ample, DeepSeek -GRM (Liu et al., 2025d) intro-duces a pointwise generative approach that pro-duces detailed critiques and self-derived evalua-tion rules through reinforcement learning (RL), en-abling more flexible and task-agnostic scoring com-pared to conventional scalar RMs. This generative paradigm has inspired subsequent research. For instance, RM - R1 (Chen et al., 2025) incorporates chain - of - thought reasoning via a two - stage process: distilling high - quality reasoning traces followed by RL with verifiable rewards (Guo et al., 2025a). This approach yields sample -specific evaluation rationales, thereby enhancing both interpretabil-ity and empirical performance. Further extending the integration of reasoning, Reward Reasoning Models (Guo et al., 2025b) introduce a “reason-before-judgment” methodology without requiring annotated traces and dynamically adapt computa-tion based on input complexity. However, a com-mon limitation of these existing generative and reasoning -based GRMs is their dependence on su-pervised signals and multi - stage pipelines to obtain high -quality labels or reasoning traces, which sub-stantially limits their further development. 
+
+Label-Free Self-Training for LLMs To address the challenge of acquiring high-quality labels, re-searchers have shifted their focus toward self-training paradigms that leverage LLMs to generate supervisory signals, thereby reducing reliance on human annotation. Existing methods can be di-vided into two main categories: The first focuses on stabilizing outputs by encouraging low-entropy predictions or leveraging internal confidence sig-nals to improve training efficiency (Li et al., 2025b; Zhang et al., 2025a; Li et al., 2025a). The second constructs supervision signals from the consistency of multiple output paths, providing more reliable guidance for reward modeling, which is closer to our approach. A representative example of the sec-ond category is Test-Time Reinforcement Learning (TTRL), which uses majority voting over candidate answers as pseudo-labels for RL updates (Zuo et al., 2025; Liu et al., 2025b). Extensions such as EVOL-RL (Zhou et al., 2025) and collabora-tive reward frameworks (Zhang et al., 2025d) have been proposed to enhance this paradigm. How-ever, recent studies (Wang et al., 2025a) suggest that pure majority voting may suffer from spurious consensus when candidate outputs are highly cor-Figure 2: Overall Framework of ConsistRM. The framework aims to produce an output o = ( c, y ), which comprises a textual critique c and a binary preference label y. Here, y = −1 indicates that a1 is preferred over a2 (a1 ≻ a2)., and y = 1 indicates the opposite preference ( a2 ≻ a1). Consistency-Aware Answer Reward module integrates online-state preference and memory-driven preference to generate pseudo-labels for training. The Consistency-Aware Critique Reward module provides fine-grained rewards by measuring the similarity of multiple criteria. By combining these two rewards, ConsistRM performs self-training to progressively enhance the GRMs’ ability. 
+
+related, offering limited guidance for fine-grained reasoning. Other approaches exploit internal model states, using confidence scores for advantage esti-mation or as direct feedback in preference optimiza-tion (Zhao et al., 2025; van Niekerk et al., 2025). Nevertheless, methods relying solely on within-round consensus or coarse-grained feedback are highly noise-sensitive, compromising the reliabil-ity of the resulting supervisory signals. 
+
+3 Method 
+
+We propose ConsistRM, a stable and reliable self-training framework that explicitly GRM both an-swer preference consistency and critique consis-tency. As illustrated in Figure 2, ConsistRM con-sists of two core components: (1) Consistency-Aware Answer Reward(CAAR), which consid-ers online-state and memory-driven preference consistencies to produce reliable pseudo-labels; (2) Consistency-Aware Critique Reward(CACR), which encourages semantic consistency among multiple generated critiques, thereby improving the stability of the analysis process. ConsistRM lever-ages consistency between answers and critiques to provide fine-grained reward, thereby enhancing its pairwise preferences ability. 
+
+3.1 Pairwise Preference Formulation 
+
+We model the problem of pairwise preference com-parison as a conditional generative process. Given an input x = ( q, a 1, a 2) consisting of a query q
+
+and two candidate responses (a1, a 2), GRM π gen-erates a structured output o = ( c, y ), where c is a textual critique and y is a binary preference label, as detailed below: 
+
+(c, y ) ∼ π(n) 
+
+> θ
+
+(c, y | q, a 1, a 2), (1) where (n) denotes the GRM training at the n-th iter-ation. The preference label y ∈ {− 1, 1} indicates the direction of preference: y = −1 corresponds to a1 ≻ a2, while y = 1 corresponds to a2 ≻ a1.
+
+3.2 Consistency-Aware Answer Reward 
+
+To alleviate reward hacking(Gao et al., 2023; Laid-law et al., 2024) and establish more reliable pseudo labels, we propose a Consistency-Aware Answer Reward (CAAR) mechanism. This mechanism con-structs pseudo-labels by building the relation be-tween two types of preferences: the Online-State Preference (derived from the current training it-eration) and the Memory-Driven Preference (cap-tured from memory experience). Consequently, the pseudo-labels produced are more robust and reli-able, providing stronger support for self-training. 
+
+Online-State Consistency Preference We de-fine the online-state preference signal as a metric that quantifies preference consistency under the cur-rent state of GRMs. Given an input x = ( q, a 1, a 2),the model performs K rollouts during training, gen-erating a set of outputs: O = [ o1, o 2, . . . , o k], and 
+
+oj = ( cj , y j ) corresponds to the output of model from the j-th rollout. To quantify the online-state preference consistency for the input x at n-th it-eration, we aggregate the preference prediction yj
+
+obtained from all rollouts in O and the online-state consistency preference s(n) 
+
+> online
+
+is defined as: 
+
+s(n) 
+
+> online
+
+= 1
+
+K
+
+> K
+
+X
+
+> j=1
+
+yj (2) where n means the n-th training iteration. 
+
+Memory-Driven Consistency Preference. Al-though online-state preference consistency reflects the preferences expressed by the current GRM π,the estimate can be unreliable in the early stages of training, which may cause the GRM to converge to-ward suboptimal local optima(Zhang et al., 2025c). To enhance the robustness and reliability of pseudo-labels, we propose a memory-driven consistency preference. Specifically, for each input sample x,we maintain a dynamically updated experience list 
+
+E that stores the pseudo-labels collected across training iterations: 
+
+E(n−1) = [ˆ y(0) , ˆy(1) , . . . , ˆy(n−1) ] (3) where ˆy(n−1) denotes the pseudo-label constructed for input x at the ( n − 1)-th training iteration. No-tably, the initialization pseudo-label ˆy(0) is gen-erated by the initial GRM π(0)  
+
+> θ
+
+. To quantify the memory-driven consistency preference for input x,we aggregate all pseudo-labels accumulated in E
+
+by computing their average. At the n-th training it-eration, the memory-driven preference consistency 
+
+s(n) 
+
+> memory
+
+is defined as: 
+
+s(n) 
+
+> memory
+
+= 1
+
+n − 1
+
+> n−1
+
+X
+
+> i=0
+
+ˆy(i) (4) 
+
+Pseudo-Label with Temporal Consistency We derive the final pseudo-label ˆy for the current it-eration by jointly leveraging consistency signals at multiple levels, which leads to more reliable pseudo-labels that are better aligned with the train-ing dynamics. Specifically, for each input sample 
+
+x at the n-th training iteration, the pseudo-label is constructed as follows: 
+
+ˆy(n) = sgn (s(n) 
+
+> online
+
++ s(n)
+
+> memory
+
+) (5) where sgn( ·) denotes the sign function . This ternary labeling strategy explicitly assigns ˆy = 0 
+
+in the presence of inconsistent preference signals, which prevent low-confidence supervision from dominating the optimization. Finally, for each input x, we define the Consistency-Aware Answer Reward r(a) 
+
+> j
+
+, which measures the agreement between the constructed pseudo-label ˆy(n) and the preference prediction 
+
+y(n) 
+
+> j
+
+generated in the j-th rollout at n-th training iteration. The reward is computed as: 
+
+r(a,n ) 
+
+> j
+
+= I
+
+h
+
+ˆy(n) = y(n)
+
+> j
+
+i
+
+− I
+
+h
+
+ˆy(n)̸ = y(n) 
+
+> j
+
+∧ ˆy(n)̸ = 0 
+
+i (6) where I[·] denotes the indicator function , and 
+
+r(a,n ) 
+
+> j
+
+∈ {− 1, 0, 1}.
+
+3.3 Consistency-Aware Critique Reward 
+
+Rather than relying solely on outcome-level super-vision, we introduce a Consistency-Aware Critique Reward (CACR) in ConsistRM to deliver richer re-ward signals and stabilize the outputs of GRMs. We posit that high semantic similarity among multiple generated critiques implies that their corresponding responses lie within a similar high-reward seman-tic region, which can be leveraged to guide model optimization more effectively. When the GRM 
+
+πθ produces critiques with strong semantic consis-tency for the same input x, the resulting reward signal becomes more stable and less sensitive to sampling variability. Based on this observation, we use consistency among critiques as a proxy for reward signal reliability, and that reinforcing such consistency improves model alignment with stable and representative evaluations. Concretely, following (Zhou et al., 2025), each critique c(n) 
+
+> j
+
+is encoded into a dense vector using the Qwen3-4B-Embedding (Zhang et al., 2025b) and computes the cosine similarity matrix S(n).Based on this matrix, we rank the critiques c(n)
+
+> j
+
+according to their semantic consistency, and se-lect the top-p critiques to receive the reward. The corresponding reward is defined as: 
+
+r(c,n ) 
+
+> j
+
+=
+
+(
+
+0.1, if y(n) 
+
+> j
+
+= ˆ y(n) and rank( c(n) 
+
+> j
+
+) ≤ p;0, otherwise. (7) where r(c,n ) 
+
+> j
+
+represents the consistency-aware cri-tique reward for input x.
+
+3.4 Final Reward 
+
+We define the final reward for each generated re-sponse by integrating three components: a manda-tory format constraint, a consistency-aware answer reward, and a consistency-aware critique reward. The format constraint is first applied to enforce structural validity. The correctness and stability reward components are computed only if this con-straint is satisfied. Thus, for an input x at the j-th rollout of the n-th training iteration, the final re-ward is computed as follows: 
+
+r(n) =
+
+
+
+−5, if invalid ;
+
+r(a,n ) 
+
+> j
+
++ r(c,n ) 
+
+> j
+
+, if ˆy(n)̸ = 0; 0, if ˆy(n) = 0 .
+
+(8) Details of the ConsistRM algorithm are provided in the appendixA.4. 
+
+4 Experiments 
+
+4.1 Setup Benchmark To thoroughly assess ConsistRM’s performance on pairwise preference tasks, we uti-lize five reward model benchmarks that contain multilingual instructions and responses from di-verse LLMs: (1) RewardBench (Lambert et al., 2025) includes 2,985 evaluation samples from 23 data sources, categorized into four main groups: chat, chat-hard, safety, and reasoning. (2) Prefer-ence Proxy Evaluations (PPE) (Frick et al., 2025): we focus on its Preference subset with Chatbot Arena human preference pairs, covering 20 LLMs across 121+ languages. (3) RM-Bench (Liu et al., 2025c): a benchmark designed to assess reward model robustness through sensitivity to content dif-ferences and style biases. (4) RMB (Zhou et al., 2024) is a comprehensive benchmark with 49 real-world task categories focused on helpfulness and harmlessness. It uses synthetically generated pref-erence pairs and GPT-4 for pointwise ratings based on query-specific principles. Human verification ensures dataset quality. (5) JudgeBench (Tan et al., 2025): we report results for the subset generated by GPT-4o and use position-consistent accuracy, considering a sample correct only if the judge gives the right verdict in both response orders. 
+
+Implementation details We use Qwen3 as our testbed and fine-tune it for 4 epochs using the GRPO (Shao et al., 2024). The fine-tuning em-ploys a global batch size of 64 and a learning rate of 1e-6, with a maximum generation length of 1024 tokens. GRPO involves a proximal policy optimiza-tion (PPO) phase; during this phase, we use a mini-batch size of 32 and perform 8 rollouts per update step. The generation temperature during training is set to 1.0. To stabilize training and prevent exces-sive policy drift, we apply KL regularization with a coefficient of 0.001. For inference, following (Whitehouse et al., 2025; Saha et al., 2025), we set the maximum generation length to 2048 tokens and the temperature to 0 (more detailed configuration can be found in Appendix A.1). 
+
+Baselines We perform the following experiments to evaluate our approach comprehensively: • Base : We evaluate the Qwen3-4B (Yang et al., 2025) and Qwen3-8B models on benchmark datasets without any fine-tuning. • SFT : We fine-tune the base Qwen3 models us-ing supervised fine-tuning on the HelpSteer3 dataset (Wang et al., 2025b). • RFT : we further fine-tune the Qwen3 models using the GRPO algorithm (Shao et al., 2024) for reinforcement fine-tuning (for more dataset detailed can be found in Appendix A.2). • TTRL : This method uses majority voting over candidate answers as pseudo-labels for reinforce-ment learning updates (Zuo et al., 2025; Liu et al., 2025b). We then compare our ConsistRM against sev-eral open-source GRMs of similar scale, includ-ing EvalPlanner-Llama-8B (Saha et al., 2025), J1-Llama-8B (Whitehouse et al., 2025), and DeepSeek-GRM-27B (Liu et al., 2025d) ID System GT RewardBench PPE Pref RM-Bench RMB JudgeBench Overall                                                                                                                                        
+
+> AVG ∆(↑)Open Generative Reward Models
+> 1EvalPlanner-Llama-8B !83.0 54.3 68.1 -30.2 --2J1-Llama-8B !85.7 59.8 73.4 -42.0 --3DeepSeek-GRM-27B !88.5 67.2 -70.3 ---
+> Implemented Existing Method
+> 4Qwen3-4B 78.6 63.3 74.5 76.4 50.0 68.6 -54 + SFT !79.8 63.1 76.1 76.5 43.7 67.8 -0.8 64 + RFT !80.0 64.7 76.6 76.7 51.1 69.8 +1.2 74 + TTRL %81.6 61.8 76.3 75.6 52.3 69.5 +0.9
+> Our Method
+> 84 + CAAR %81.4 64.1 76.6 77.5 52.0 70.3 +1.7 98 + CACR (ConsistRM) %80.3 65.1 76.8 76.5 56.1 71.0 +2.4
+> Implemented Existing Method
+> 10 Qwen3-8B 81.6 63.8 75.8 78.8 54.3 70.9 -11 10 + SFT !82.7 65.0 77.1 76.9 51.7 70.7 -0.2 12 10 + RFT !85.4 65.4 78.2 78.2 55.4 72.5 +1.6 13 10 + TTRL %85.3 65.0 77.4 74.2 56.8 71.7 +0.8
+> Our Method
+> 14 10 + CAAR %84.9 64.8 77.3 78.1 56.0 72.2 +1.3 15 14 + CACR (ConsistRM) %85.6 67.7 78.3 79.1 56.9 73.5 +2.6
+
+Table 1: Overall performance of different GRMs on five benchmarks. ConsistRM achieved the best results without requiring any human-annotated training data, demonstrating our effectiveness of the self-training paradigm. Bold 
+
+indicating the best performance and underline indicating the second-best performance. 
+
+4.2 Main Results 
+
+We focus our analysis on Qwen3-8B, which is rep-resentative of the overall trends observed across smaller 4B models. System (10) shows the original Qwen3-8B’s performance on pairwise preference benchmarks. Systems (5) and (11) achieve only limited improvements through vanilla SFT. The core issue is that standard loss functions (e.g., cross-entropy) average over the entire dataset, smoothing out training signals and impeding targeted updates for hard samples. However, online reinforcement learning offers an effective solution to this chal-lenge. Specifically, GRPO assigns differentiated rewards to multiple sampled outputs based on ex-isting labels, thereby yielding stable performance improvements, as shown in Systems (6) and (12). In contrast, simple unsupervised learning results in marginal improvements, as shown in Systems (7) and (13), primarily due to the increasing bias in pseudo-labels during the later stages of training. Additionally, Systems (14) shows that incre-mentally integrating the ConsistRM submodule enhances GRM performance, surpassing the con-temporary vanilla RFT and TTRL method. This stems from stable and reliable learning labels de-rived from current and historical state decisions, enabling effective self-learning. Notably, Con-sistRM significantly boosts Qwen3’s pairwise pref-erence performance compared to vanilla RFT and other advanced methods, as seen in System (15). The improvement is particularly pronounced on JudgeBench benchmarks, likely due to our Con-sistRM produce more consistent responses. 
+
+5 Analysis 
+
+This section aims to address the following re-search questions through experiments: (1) Can ConsistRM adapt to different foundation models or other rewards of critique? (see §5.1) (2) What are the advantages of ConsistRM? (see §5.2) (3) How efficient is ConsistRM? (see §5.3) For evaluation, we primarily use Qwen3-4B as the base model and test our approach on benchmarks: RewardBench and JudgeBench, unless otherwise specified. 
+
+5.1 The Varieties of ConsistRM Various Foundation Models Although Con-sistRM shows impressive improvements on Qwen3-4B and 8B, its generalization to other foundation models remains to be validated. To address this, we apply ConsistRM to different models, including Qwen3-14B and LLaMA-3.1-8B. Under consistent experimental settings, we evaluate performance on two standard benchmarks. As shown in Table Foundation Model Method RewardBench PPE Pref RM-Bench RMB JudgeBench Overall                                                              
+
+> AVG ∆(↑)
+> Qwen3-4B Vanilla RFT 80.0 64.7 76.6 76.7 51.1 69.8 -ConsistRM 80.3 65.1 76.8 76.5 56.1 71.0 +1.2 Qwen3-8B Vanilla RFT 85.4 65.4 78.2 78.2 55.4 72.5 -ConsistRM 85.6 67.7 79.2 79.2 55.9 73.5 +1.0 Qwen3-14B Vanilla RFT 87.4 66.3 79.3 76.3 68.6 75.6 -ConsistRM 89.0 67.7 77.5 78.4 71.7 76.9 +1.3 Llama-3.1-8B Vanilla RFT 74.8 55.3 63.2 62.7 30.2 57.2 ConsistRM 76.6 54.3 64.8 64.9 33.4 58.8 +1.6
+
+Table 2: Results of ConsistRM with various foundation models. ConsistRM can be stably applied to LLMs of different sizes and architectures. 
+
+2, ConsistRM consistently improves both models across these benchmarks (+1.3, +1.6). These re-sults demonstrate that ConsistRM can effectively leverage the inherent consistency ability of LLMs (of varying sizes and architectures) for effective self-training without any human feedback. 
+
+Various Critique Rweard This section proposes two modifications to the Consistency-Aware Cri-tique Reward Module (CACR) to examine its ra-tionality. In contrast to ConsistRM, we intro-duce an additional reward term for samples in the bottom 50% of semantic consistency, denoted as CACR-Low. Second, we replace the critique quality estimation in CACR with a token-level confidence measure—DeepConfidence (Fu et al., 2025), which is implemented in two variants: (1) DeepConf-Tail: the average confidence of the final 128 tokens, based on the observation that reason-ing quality often wanes at the end of long chains, where final steps are crucial for correctness. (2) DeepConf-Low: the average confidence of the 128 lowest-confidence tokens across the entire reason-ing trajectory. The effectiveness and necessity of CACR are supported in the Table 3. First, performance deteriorates when high rewards are assigned to low-similarity critiques, suggesting that higher-similarity critiques reflect stronger consensus and thus support more reliable preference judgments. Second, simply replacing CACR with DeepConfi-dence causes a significant performance drop (from 68.2 to 65.4). We attribute this phenomenon to reward hacking, in which optimization over token-level confidence biases the model toward overly confident but erroneous tokens, thereby leading to homogenized outputs and degraded overall perfor-mance. The above experiments show the rationality of our proposed consistency-aware critique reward.                                  
+
+> System RewardBench JudgeBench Overall
+> AVG ∆(↑)Various Critique Rweard
+> ConsistRM 80.3 56.1 68.2 -w/ CACR-Low 81.2 50.6 65.8 -2.4 w/ DeepConf-Tail 80.4 50.3 65.4 -2.8 w/ DeepConf-Low 79.8 51.2 65.5 -2.7
+> Positional Bias
+> Qwen3-4B 69.7 50.0 59.9 -Vanilla RFT 71.4 51.1 61.3 +1.4 ConsistRM 74.2 56.1 65.2 +5.3
+
+Table 3: Comparison results with different setups on GRMs. ConsistRM achieves the better Results. 
+
+5.2 The Consistency of ConsistRM Robustness to Positional Bias In this section, we evaluate how effectively ConsistRM mitigates position bias in GRMs. Position bias is defined as the tendency of a model’s preference between two responses to depend on their presentation order. In practice, for the same query, swapping the response order can lead to a reversal of the model’s prefer-ence. To quantify this bias, we adopt the evaluation standard from Tan et al. (2025), where a sample is considered correctly evaluated only if the model produces consistent judgments under both order-ings of the answer pair. We apply this standard to both RewardBench and JudgeBench, comparing base models, RFT models, and our ConsistRM. As shown in Table 3, vanilla RFT yields only limited improvement in mitigating positional bias (+1.4). We hypothesize that for challeng-ing samples, the model tends to learn shallow prompt–answer mappings rather than robust rea-soning. In contrast, ConsistRM leverages its ability to generate more suitable training labels, thereby promoting the training process and substantially mitigating positional bias. This leads to an im-provement in the consistency score from +1.4 to +5.3, showing the robustness of ConsistRM. Figure 3: Comparison of the stability of different GRMs with different rollout sizes. 
+
+Stability to Multiple Votes We further analyze the output stability of ConsistRM under high-temperature decoding, where stochasticity in gen-eration can lead to increased variance in model outputs. To mitigate this issue, multi-round vot-ing (Wang et al., 2023) improves answer consis-tency by aggregating outputs from multiple reason-ing paths sampled at high temperature. We eval-uate three models: the Qwen3-4B model, vanilla RFT, and our ConsistRM on RewardBench and JudgeBench, varying the number of rollout sizes (1, 2, 4, 8, 16). As shown in Figure 3, when applied to the base model, multi-round voting is observed to yield unstable gains on generative reward tasks due to output inconsistency, whereas vanilla RFT provides stable but limited improvements. In con-trast, ConsistRM achieves consistent performance gains as the number of paths increases, eventually matching the performance of an 8B model while retaining the 4B parameter scale. This improve-ment can be attributed to ConsistRM’s ability to effectively supervise the critique process, thereby enhancing response stability. 
+
+5.3 Less tokens, More power The efficiency of ConsistRM ConsistRM is a pairwise preference reward model designed to im-prove both task performance and response effi-ciency—the latter measured by output length. To evaluate efficiency gains, we compare the aver-age response lengths of Qwen3-4B, vanilla RFT, and ConsistRM on RewardBench and JudgeBench. As shown in Figure 4, RFT produces significantly longer responses than Qwen3-4B, likely because RFT relies solely on outcome reward without ex-plicit length constraints. In contrast, ConsistRM effectively controls output length while maintain-ing competitive performance. For example, on Re-wardBench, it reduces the average response length from 1,924.5 to 1,717.1. This reduction is primar-ily driven by consistency-aware critique rewards,  
+
+> Figure 4: Changing trends of the average response length with different GRMs. ConsistRM achieves the balance between performance and efficiency.
+
+which improve task performance while suppressing excessive verbosity in model outputs. 
+
+Conclusion 
+
+This paper proposes ConsistRM, a novel self-training strategy for GRMs that leverages the con-sistency awareness of LLMs to generate supervi-sory signals without relying on external human feedback. ConsistRM consists of two key modules: the Consistency-Aware Label Reward module and the Consistency-Aware Critique Reward module. The former enables self-training by explicitly mod-eling the model’s internal preference consistency across multiple levels, while the latter derives more stable evaluation criteria to provide richer reward signals. Extensive experiments on multiple bench-marks and models of varying sizes demonstrate the effectiveness and robustness of the proposed ConsistRM. Furthermore, our analysis shows that the approach significantly improves the consistency and efficiency of answer generation while mitigat-ing positional bias. 
+
+Limitations 
+
+Although ConsistRM demonstrates significant per-formance improvements, it has several limitations. First, semantic consistency is currently evaluated only at the overall critique level, which may over-look fine-grained alignment between text segments. Future work could address this by segmenting cri-tiques into smaller semantic units and providing reward supervision at a more granular level. This direction aligns with research on process reward modeling in reinforcement learning, which aims to provide verifiable rewards and remains an open avenue for future exploration. References 
+
+Mohammad Gheshlaghi Azar, Zhaohan Daniel Guo, Bi-lal Piot, Remi Munos, Mark Rowland, Michal Valko, and Daniele Calandriello. 2024. A general theoret-ical paradigm to understand learning from human preferences. In International Conference on Arti-ficial Intelligence and Statistics , pages 4447–4455. PMLR. Yuntao Bai, Andy Jones, Kamal Ndousse, Amanda Askell, Anna Chen, Nova DasSarma, Dawn Drain, Stanislav Fort, Deep Ganguli, Tom Henighan, and 1 others. 2022. Training a helpful and harmless assis-tant with reinforcement learning from human feed-back. arXiv preprint arXiv:2204.05862 .Xiusi Chen, Gaotang Li, Ziqi Wang, Bowen Jin, Cheng Qian, Yu Wang, Hongru Wang, Yu Zhang, Denghui Zhang, Tong Zhang, and 1 others. 2025. Rm-r1: Reward modeling as reasoning. arXiv preprint arXiv:2505.02387 .Hanze Dong, Wei Xiong, Bo Pang, Haoxiang Wang, Han Zhao, Yingbo Zhou, Nan Jiang, Doyen Sahoo, Caiming Xiong, and Tong Zhang. 2024. Rlhf work-flow: From reward modeling to online rlhf. arXiv preprint arXiv:2405.07863 .Evan Frick, Tianle Li, Connor Chen, Wei-Lin Chi-ang, Anastasios Nikolas Angelopoulos, Jiantao Jiao, Banghua Zhu, Joseph E. Gonzalez, and Ion Stoica. 2025. How to Evaluate Reward Models for RLHF. In The Thirteenth International Conference on Learn-ing Representations .Yichao Fu, Xuewei Wang, Yuandong Tian, and Jiawei Zhao. 2025. Deep think with confidence. arXiv preprint arXiv:2508.15260 .Leo Gao, John Schulman, and Jacob Hilton. 2023. Scal-ing laws for reward model overoptimization. In In-ternational Conference on Machine Learning , pages 10835–10866. PMLR. Daya Guo, Dejian Yang, Haowei Zhang, Junxiao Song, Ruoyu Zhang, Runxin Xu, Qihao Zhu, Shirong Ma, Peiyi Wang, Xiao Bi, and 1 others. 2025a. Deepseek-r1: Incentivizing reasoning capability in llms via reinforcement learning. arXiv preprint arXiv:2501.12948 .Jiaxin Guo, Zewen Chi, Li Dong, Qingxiu Dong, Xun Wu, Shaohan Huang, and Furu Wei. 2025b. Reward reasoning model. arXiv preprint arXiv:2505.14674 .Hanyu Lai, Xiao Liu, Junjie Gao, Jiale Cheng, Zehan Qi, Yifan Xu, Shuntian Yao, Dan Zhang, Jinhua Du, Zhenyu Hou, and 1 others. 2025. A survey of post-training scaling in large language models. In Pro-ceedings of the 63rd Annual Meeting of the Associa-tion for Computational Linguistics (Volume 1: Long Papers) , pages 2771–2791. Cassidy Laidlaw, Shivam Singhal, and Anca Dragan. 2024. Correlated proxies: A new definition and im-proved mitigation for reward hacking. arXiv preprint arXiv:2403.03185 .Nathan Lambert. 2025. Reinforcement learning from human feedback. arXiv preprint arXiv:2504.12501 .Nathan Lambert, Valentina Pyatkin, Jacob Morrison, LJ Miranda, Bill Yuchen Lin, Khyathi Chandu, Nouha Dziri, Sachin Kumar, Tom Zick, Yejin Choi, Noah A. Smith, and Hannaneh Hajishirzi. 2025. Re-wardbench: Evaluating Reward Models for Language Modeling. In Findings of the Association for Compu-tational Linguistics: NAACL 2025 , pages 1755–1797, Albuquerque, New Mexico. Association for Compu-tational Linguistics. Tianjian Li, Yiming Zhang, Ping Yu, Swarnadeep Saha, Daniel Khashabi, Jason Weston, Jack Lanchantin, and Tianlu Wang. 2025a. Jointly reinforcing diversity and quality in language model generations. arXiv preprint arXiv:2509.02534 .Yi-Chen Li, Tian Xu, Yang Yu, Xuqin Zhang, Xiong-Hui Chen, Zhongxiang Ling, Ningjing Chao, Lei Yuan, and Zhi-Hua Zhou. 2025b. Generalist reward models: Found inside large language models. arXiv preprint arXiv:2506.23235 .Chris Yuhao Liu, Liang Zeng, Yuzhen Xiao, Jujie He, Jiacai Liu, Chaojie Wang, Rui Yan, Wei Shen, Fuxi-ang Zhang, Jiacheng Xu, Yang Liu, and Yahui Zhou. 2025a. Skywork-reward-v2: Scaling preference data curation via human-ai synergy. arXiv preprint arXiv:2507.01352 .Jia Liu, ChangYi He, YingQiao Lin, MingMin Yang, FeiYang Shen, and ShaoGuo Liu. 2025b. Ettrl: Balancing exploration and exploitation in llm test-time reinforcement learning via entropy mechanism. 
+
+arXiv preprint arXiv:2508.11356 .Yantao Liu, Zijun Yao, Rui Min, Yixin Cao, Lei Hou, and Juanzi Li. 2025c. RM-Bench: Benchmarking Re-ward Models of Language Models with Subtlety and Style. In The Thirteenth International Conference on Learning Representations .Zijun Liu, Peiyi Wang, Runxin Xu, Shirong Ma, Chong Ruan, Peng Li, Yang Liu, and Yu Wu. 2025d. Inference-time scaling for generalist reward model-ing. arXiv preprint arXiv:2504.02495 .Dakota Mahan, Duy Van Phung, Rafael Rafailov, Chase Blagden, Nathan Lile, Louis Castricato, Jan-Philipp Fränken, Chelsea Finn, and Alon Albalak. 2024. Generative reward models. arXiv preprint arXiv:2410.12832 .Long Ouyang, Jeffrey Wu, Xu Jiang, Diogo Almeida, Carroll Wainwright, Pamela Mishkin, Chong Zhang, Sandhini Agarwal, Katarina Slama, Alex Ray, and 1 others. 2022. Training language models to follow in-structions with human feedback. Advances in neural information processing systems , 35:27730–27744. Rafael Rafailov, Archit Sharma, Eric Mitchell, Christo-pher D Manning, Stefano Ermon, and Chelsea Finn. 2023. Direct preference optimization: Your language model is secretly a reward model. Advances in neural information processing systems , 36:53728–53741. Swarnadeep Saha, Xian Li, Marjan Ghazvininejad, Ja-son Weston, and Tianlu Wang. 2025. Learning to plan & reason for evaluation with thinking-llm-as-a-judge. arXiv preprint arXiv:2501.18099 .Sheikh Shafayat, Fahim Tajwar, Ruslan Salakhutdi-nov, Jeff Schneider, and Andrea Zanette. 2025. Can large reasoning models self-train? arXiv preprint arXiv:2505.21444 .Zhihong Shao, Peiyi Wang, Qihao Zhu, Runxin Xu, Junxiao Song, Xiao Bi, Haowei Zhang, Mingchuan Zhang, YK Li, Yang Wu, and 1 others. 2024. Deepseekmath: Pushing the limits of mathematical reasoning in open language models. arXiv preprint arXiv:2402.03300 .Sijun Tan, Siyuan Zhuang, Kyle Montgomery, William Yuan Tang, Alejandro Cuadron, Chen-guang Wang, Raluca Popa, and Ion Stoica. 2025. JudgeBench: A Benchmark for Evaluating LLM-Based Judges. In The Thirteenth International Con-ference on Learning Representations .Carel van Niekerk, Renato Vukovic, Benjamin Matthias Ruppik, Hsien-chin Lin, and Milica Gaši´ c. 2025. Post-training large language models via reinforce-ment learning from self-feedback. arXiv preprint arXiv:2507.21931 .Weiqin Wang, Yile Wang, Kehao Chen, and Hui Huang. 2025a. Beyond majority voting: Towards fine-grained and more reliable reward signal for test-time reinforcement learning. arXiv preprint arXiv:2512.15146 .Xuezhi Wang, Jason Wei, Dale Schuurmans, Quoc V Le, Ed H. Chi, Sharan Narang, Aakanksha Chowdhery, and Denny Zhou. 2023. Self-consistency improves chain of thought reasoning in language models. In 
+
+The Eleventh International Conference on Learning Representations .Zhilin Wang, Jiaqi Zeng, Olivier Delalleau, Hoo-Chang Shin, Felipe Soares, Alexander Bukharin, El-lie Evans, Yi Dong, and Oleksii Kuchaiev. 2025b. Helpsteer3-preference: Open human-annotated pref-erence data across diverse tasks and languages. arXiv preprint arXiv:2505.11475 .Zihan Wang, Xingle Xu, Hao Wang, Yiwen Ye, Yuchen Li, Linhao Wang, Hongze Tan, Peidong Wang, Shi Feng, Guoqing Chen, and 1 others. 2025c. A survey on entropy mechanism in large reasoning models. 
+
+Authorea Preprints .Chenxi Whitehouse, Tianlu Wang, Ping Yu, Xian Li, Jason Weston, Ilia Kulikov, and Swarnadeep Saha. 2025. J1: Incentivizing thinking in llm-as-a-judge via reinforcement learning. arXiv preprint arXiv:2505.10320 .An Yang, Anfeng Li, Baosong Yang, Beichen Zhang, Binyuan Hui, Bo Zheng, Bowen Yu, Chang Gao, Chengen Huang, Chenxu Lv, and 1 others. 2025. Qwen3 technical report. arXiv preprint arXiv:2505.09388 .Zihuiwen Ye, Fraser David Greenlee, Max Bartolo, Phil Blunsom, Jon Ander Campos, and Matthias Gallé. 2025. Improving reward models with synthetic cri-tiques. In Findings of the Association for Computa-tional Linguistics: NAACL 2025 , pages 4506–4520. Kongcheng Zhang, Qi Yao, Shunyu Liu, Yingjie Wang, Baisheng Lai, Jieping Ye, Mingli Song, and Dacheng Tao. 2025a. Consistent paths lead to truth: Self-rewarding reinforcement learning for llm reasoning. 
+
+arXiv preprint arXiv:2506.08745 .Yanzhao Zhang, Mingxin Li, Dingkun Long, Xin Zhang, Huan Lin, Baosong Yang, Pengjun Xie, An Yang, Dayiheng Liu, Junyang Lin, Fei Huang, and Jingren Zhou. 2025b. Qwen3 embedding: Advancing text embedding and reranking through foundation models. 
+
+arXiv preprint arXiv:2506.05176 .Yanzhi Zhang, Zhaoxi Zhang, Haoxiang Guan, Yilin Cheng, Yitong Duan, Chen Wang, Yue Wang, Shuxin Zheng, and Jiyan He. 2025c. No free lunch: Re-thinking internal feedback for llm reasoning. arXiv preprint arXiv:2506.17219 .Zizhuo Zhang, Jianing Zhu, Xinmu Ge, Zihua Zhao, Zhanke Zhou, Xuan Li, Xiao Feng, Jiangchao Yao, and Bo Han. 2025d. Co-rewarding: Stable self-supervised rl for eliciting reasoning in large language models. arXiv preprint arXiv:2508.00410 .Xuandong Zhao, Zhewei Kang, Aosong Feng, Sergey Levine, and Dawn Song. 2025. Learning to rea-son without external rewards. URL https://arxiv. org/abs/2505.19590 , 2. Enyu Zhou, Guodong Zheng, Binghai Wang, Zhiheng Xi, Shihan Dou, Rong Bao, Wei Shen, Limao Xiong, Jessica Fan, Yurong Mou, and 1 others. 2024. Rmb: Comprehensively benchmarking reward models in llm alignment. arXiv preprint arXiv:2410.09893 .Yujun Zhou, Zhenwen Liang, Haolin Liu, Wenhao Yu, Kishan Panaganti, Linfeng Song, Dian Yu, Xian-gliang Zhang, Haitao Mi, and Dong Yu. 2025. Evolv-ing language models without labels: Majority drives selection, novelty promotes variation. arXiv preprint arXiv:2509.15194 .Yuxin Zuo, Kaiyan Zhang, Li Sheng, Shang Qu, Ganqu Cui, Xuekai Zhu, Haozhan Li, Yuchen Zhang, Xin-wei Long, Ermo Hua, and 1 others. 2025. Ttrl: Test-time reinforcement learning. arXiv preprint arXiv:2504.16084 .A Training Configuration 
+
+A.1 Hyperparameter Settings 
+
+We implement our method using the Volcano Engine Reinforcement Learning for LLMs framework and conduct our experiments on two recent open-source base models: Qwen3-4B and Qwen3-8B. All models are optimized using the GRPO algorithm for 4 training epochs. We adopt a global batch size of 64 and a learning rate of 1e-6. The maximum generation length is set to 1024 tokens and the maximum prompt length is set to 4096 tokens. During training, we use a PPO mini-batch size of 32 and perform 8 rollouts per update step. The generation temperature is fixed at 1.0 and the top-p is set to 0.8 to encourage exploration. We additionally enable KL regularization to stabilize training, with a KL loss coefficient of 0.001.              
+
+> Hyperparameter Value
+> Training Epochs 4Global Batch Size 64 Learning Rate 1e-6 Maximum Prompt Length 4096 tokens Maximum Generation Length 1024 tokens PPO Mini-Batch Size 32 Rollouts per Update Step 8Clip Ratio 0.2 Training Temperature 1.0 Top-p 0.8 Use KL Loss True KL Loss Coefficient 0.001
+
+Table 4: Implementation Details of Our Method 
+
+A.2 Construction of the ConsistRM Training Dataset 
+
+In this study, rather than utilizing the full HelpSteer3 training dataset, we selectively curated the training data by leveraging the model itself for data filtering. Specifically, we first identified and removed examples for which the model produced outputs identical to the ground truth across all 8 rollouts. The remaining subset of data was subsequently used to construct the final training dataset. The detailed statistics of the resulting training data are summarized in Table 5. Model Number of Examples qwen3-4b 13,236 qwen3-8b 12,098 qwen3-14b 10,340 
+
+Table 5: Statistics of the final training dataset 
+
+A.3 Computational Resources 
+
+All experiments reported in this paper were conducted on a single server equipped with 8x NVIDIA A800 GPUs. A.4 Pseudo-code of ConsistRM Algorithm 1 ConsistRM: Improving Generative Reward Models via Consistency-Aware Self-Training  
+
+> 1:
+
+Require: Input x = ( q, a 1, a 2), rollout count K, experience buffer E, GRM πθ 
+
+> 2:
+
+Output: Updated E, final rewards {r(n) 
+
+> j
+
+} 
+
+> 3:
+
+// Step 1: Generate multiple rollouts  
+
+> 4:
+
+for j = 1 to K do  
+
+> 5:
+
+(c(n) 
+
+> j
+
+, y (n) 
+
+> j
+
+) ∼ πθ(x) 
+
+> 6:
+
+end for  
+
+> 7:
+
+// Step 2: Compute online-state consistency  
+
+> 8:
+
+s(n) 
+
+> online
+
+← 1
+
+> K
+
+P 
+
+> j
+
+y(n) 
+
+> j
+> 9:
+
+// Step 3: Compute memory-driven consistency  
+
+> 10:
+
+if n > 0 then  
+
+> 11:
+
+s(n) 
+
+> memory
+
+← 1
+
+> n
+
+Pn−1 
+
+> i=0
+
+ˆy(i) 
+
+> 12:
+
+else  
+
+> 13:
+
+s(n) 
+
+> memory
+
+← 0 
+
+> 14:
+
+end if  
+
+> 15:
+
+// Step 4: Construct pseudo-label with temporal consistency  
+
+> 16:
+
+ˆy(n) ← sgn (s(n) 
+
+> online
+
++ s(n)
+
+> memory
+
+) 
+
+> 17:
+
+Append ˆy(n) to E 
+
+> 18:
+
+// Step 5: Compute consistency-aware critique reward  
+
+> 19:
+
+Encode each c(n) 
+
+> j
+
+, compute cosine similarity, and rank top-p by semantic consistency  
+
+> 20:
+
+// Step 6: Compute final reward for each rollout  
+
+> 21:
+
+for j = 1 to K do  
+
+> 22:
+
+Compute r(a,n ) 
+
+> j
+
+: 
+
+> 23:
+
+if y(n) 
+
+> j
+
+= ˆ y(n) then  
+
+> 24:
+
+r(a,n ) 
+
+> j
+
+← 1 
+
+> 25:
+
+else if ˆy(n)̸ = 0 and y(n)
+
+> j
+
+̸ = ˆ y(n) then  
+
+> 26:
+
+r(a,n ) 
+
+> j
+
+← − 1 
+
+> 27:
+
+else  
+
+> 28:
+
+r(a,n ) 
+
+> j
+
+← 0 
+
+> 29:
+
+end if  
+
+> 30:
+
+if y(n) 
+
+> j
+
+= ˆ y(n) and rank (c(n) 
+
+> j
+
+) ≤ p then  
+
+> 31:
+
+r(c,n ) 
+
+> j
+
+← 0.1 
+
+> 32:
+
+else  
+
+> 33:
+
+r(c,n ) 
+
+> j
+
+← 0 
+
+> 34:
+
+end if  
+
+> 35:
+
+Compute r(n) 
+
+> j
+
+: 
+
+> 36:
+
+if response invalid then  
+
+> 37:
+
+r(n) 
+
+> j
+
+← − 5 
+
+> 38:
+
+else if ˆy(n) = 0 then  
+
+> 39:
+
+r(n) 
+
+> j
+
+← 0 
+
+> 40:
+
+else  
+
+> 41:
+
+r(n) 
+
+> j
+
+← r(a,n ) 
+
+> j
+
++ r(c,n ) 
+
+> j
+> 42:
+
+end if  
+
+> 43:
+
+end for  
+
+> 44:
+
+Return: Updated E, final rewards {r(n) 
+
+> j
+
+}B Prompts and Model Completions 
+
+This section presents sample prompts and the responses generated by the models. 
+
+B.1 Prompt for Training 
+
+For all experiments, we adopted standardized templates to regulate the output format, and explicitly required the model to first define the evaluation dimensions and elaborate on the analysis process of the two answers, before presenting a clearly delimited final answer. 
+
+Prompt Template. 
+
+Initially, consider factors such as practicality, relevance, accuracy, comprehensiveness, originality, and detail richness. Include 2 to 4 criteria for high-quality responses within the <Criterion >and </Criterion >. Subsequently, based on the <Criterion>, provide a thorough evaluation of each response within the <Analysis>and </Analysis>. Avoid any positional biases and ensure that the sequence in which the responses were presented does not affect your judgement. The length of the responses should not sway your evaluation. Lastly, after completing your evaluation, deliver your final judgement strictly adhering to this format: "Response 1 is better than Response 2" OR "Response 2 is better than Response 1" within the <Result>and </Result>. 
+
+Output Format Requirements 
+
+The special placeholders must be included. <Criterion> 2 to 4 criteria for high-quality responses </Criterion> <Analysis> Response 1: Evaluation of Response 1 based on the given Criterion Response 2: Evaluation of Response 2 based on the given Criterion </Analysis> <Result> Based on the output results from Criteria and Analysis, only print the following: "Response 1 is better than Response 2" OR "Response 2 is better than Response 1". </Result> 
+
+Conversation Context & Query Responses to be Compared 
+
+[The Begin of Response 1] [The End of Response 1] [The Begin of Response 2] [The End of Response 2] B.2 Example from RewardBench Generation Example of RewardBench. Conversation Context & Query 
+
+does the NHI use the top bottom or bottom up approach 
+
+Response 1: 
+
+The National Health Insurance (NHI) is a system that aims to provide universal healthcare coverage to all citizens of a country. The approach used by NHI can vary depending on the specific implementation and the country in question. However, in general, NHI systems tend to use a combination of both top-down and bottom-up approaches A top-down approach in healthcare typically involves centralized decision-making and planning, with policies and guidelines set at the national level and implemented at the local level. This approach can ensure consistency, standardization, and equity in healthcare services across the country. In the context of NHI, a top-down approach might involve the government setting national health priorities, determining the benefits package, and establishing payment rates for healthcare providers. On the other hand, a bottom-up approach in healthcare emphasizes local decision-making, community engagement, and the involvement of healthcare providers and patients in the planning and implementation of healthcare services. This approach can help ensure that healthcare services are responsive to local needs and preferences and can promote greater ownership and accountability among healthcare providers and communities. In the context of NHI, a bottom-up approach might involve local healthcare providers and communities participating in the design and implementation of healthcare services, with the national government providing support and resources. In practice, many NHI systems use a combination of both top-down and bottom-up approaches. For example, the national government might set broad policy guidelines and provide funding, while local healthcare providers and communities have the flexibility to tailor healthcare services to meet local needs and preferences. In summary, the NHI can use both top-down and bottom-up approaches, depending on the specific implementation and the country in question. A combination of both approaches can help ensure that healthcare services are equitable, responsive to local needs, and efficient. 
+
+Response 2: 
+
+The National Health Insurance (NHI) system in Taiwan uses a bottom-up approach. This means that the NHI is funded primarily through premiums collected from the population, which are then used to pay for healthcare services. The system is designed to provide universal coverage and equal access to healthcare services for all citizens, with the government subsidizing the premiums for those who cannot afford them. The bottom-up approach in the context of the NHI involves the following key features: 1. **Premium Collection**: The NHI is funded through premiums that are collected from the insured population. These premiums are based on income levels, with higher-income individuals paying higher premiums. 2. **Pooling of Funds**: The collected premiums are pooled together to create a large fund that is used to pay for healthcare services. This pooling of funds helps to spread the financial risk across the entire population, ensuring that everyone has access to healthcare when needed. 3. **Service Provision**: Healthcare providers, such as hospitals and clinics, are reimbursed by the NHI for the services they provide to insured individuals. The reimbursement rates are set by the government and are based on the type of service provided. 4. **Government Subsidies**: The government provides subsidies to help cover the cost of premiums for low-income individuals and families, ensuring that everyone has access to healthcare services regardless of their ability to pay. In summary, the NHI in Taiwan uses a bottom-up approach, with premiums collected from the population being used to fund healthcare services. The system is designed to provide universal coverage and equal access to healthcare services for all citizens, with the government subsidizing the premiums for those who cannot afford them. 
+
+Ground Truth: 
+
+Response 1 is better than Response 2 Generation of Base GRM. 
+
+<Criterion> 1. Relevance and Correctness: The response should accurately answer the user’s question and provide information that is factually correct regarding the National Health Insurance (NHI) and its top-down or bottom-up approach. 2. Depth and Coverage: The response should address all important aspects of the NHI system and its operational approach, offering a thorough and well-rounded explanation. 3. Organization and Readability: The response should be clearly structured, with ideas presented in a logical sequence and easy for readers to follow. 4. Detail and Exemplification: The response should include concrete details or examples where relevant, particularly when discussing specific implementations, such as the NHI in Taiwan. </Criterion> <Analysis> Response 1: Response 1 provides a broad overview of NHI systems and correctly explains the concepts of both top-down and bottom-up approaches in healthcare. It is accurate in describing the general mechanisms and benefits of each approach, and it is well-organized and clear. However, the response remains largely abstract and does not focus on any specific country or concrete implementation. As a result, while it demonstrates strong general knowledge, it lacks concrete details that would help a user understand how the NHI operates in practice, making it less actionable for someone seeking a real-world example. Response 2: Response 2 focuses specifically on the NHI in Taiwan and provides a detailed explanation of how the bottom-up approach is implemented in practice. It accurately describes key mechanisms, including premium collection, pooling of funds, service reimbursement, and government subsidies, linking each to the bottom-up operational model. The response is structured clearly, presenting information in a logical sequence, and offers concrete examples that enhance understanding. While it does not discuss the top-down approach, the specificity, practical relevance, and clarity make it more directly useful and easier to apply to a real-world context compared with Response 1. </Analysis> <Result>Response 2 is better than Response 1 </Result> Generation After CosistRM Training. 
+
+<Criterion> 1. **Accuracy and Relevance**: The response must correctly address the user’s question and provide accurate information relevant to the National Health Insurance (NHI) and the top-bottom or bottom-up approach. 2. **Comprehensiveness**: The response should cover all relevant aspects of the NHI system and its approach, providing a thorough explanation. 3. **Clarity and Structure**: The response must be clearly organized, with logical flow and easy to understand. 4. **Specificity**: The response should provide specific examples or details where applicable, especially when discussing specific implementations like the NHI in Taiwan. </Criterion> <Analysis> Response 1: Response 1 provides a comprehensive overview of the NHI system and explains both top-down and bottom-up approaches in the context of healthcare. It correctly identifies that NHI systems can use a combination of both approaches, and it offers clear explanations of each. The response is accurate, well-structured, and relevant to the user’s query. However, it is somewhat general and does not specify any particular country’s NHI system, which could have been more informative given the nature of the question. Response 2: Response 2 is more specific, as it focuses on the NHI in Taiwan and clearly explains how it uses a bottom-up approach. It provides detailed features of the system, including premium collection, pooling of funds, service provision, government subsidies, and universal coverage. The response is accurate, relevant, and clearly structured. However, it assumes that the user is referring to the NHI in Taiwan without explicitly stating this, which may limit its applicability to other NHI systems around the world. It also does not mention the top-down approach at all, which could be seen as a limitation in addressing the broader question. </Analysis> <Result>Response 1 is better than Response 2 </Result>
