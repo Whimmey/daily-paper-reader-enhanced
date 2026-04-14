@@ -1,0 +1,625 @@
+Title: MemCoT: Test-Time Scaling through Memory-Driven Chain-of-Thought
+
+URL Source: https://arxiv.org/pdf/2604.08216v1
+
+Published Time: Fri, 10 Apr 2026 01:05:13 GMT
+
+Number of Pages: 14
+
+Markdown Content:
+# MemCoT: Test-Time Scaling through Memory-Driven Chain-of-Thought 
+
+# Haodong Lei 
+
+leihaodong@seu.edu.cn Southeast University Nanjing, Jiangsu, China Shanghai Artificial Intelligence Laboratory Shanghai, China 
+
+# Junming Liu 
+
+liujunming@pjlab.org.cn Shanghai Artificial Intelligence Laboratory Shanghai, China 
+
+# Yirong Chen 
+
+chenyirong@pjlab.org.cn Shanghai Artificial Intelligence Laboratory Shanghai, China 
+
+# Ding Wang †
+
+wangding@pjlab.org.cn Shanghai Artificial Intelligence Laboratory Shanghai, China 
+
+# Hongsong Wang †
+
+hongsongwang@seu.edu.cn Southeast University Nanjing, Jiangsu, China Average Single-hop Multi-hop Temporal Open-domain 
+
+0
+
+20 
+
+40 
+
+60 
+
+80 
+
+> Answer Prediction F1 Score(%)
+
+58.0 
+
+64.8 
+
+40.4 
+
+60.3 
+
+42.7 
+
+MemCoT 
+
+CompassMem 
+
+Memverse 
+
+A-Mem 
+
+MemoryOS 
+
+Mem0 
+
+RAG 
+
+Figure 1: The answer prediction 𝐹 1 scores (%) of GPT-4o-mini on the LoCoMo benchmark. MemCoT achieves a state-of-the-art overall 𝐹 1 score of 58.03%, significantly outperforming all baseline memory systems across all sub-tasks. 
+
+## Abstract 
+
+Large Language Models (LLMs) still suffer from severe halluci-nations and catastrophic forgetting during causal reasoning over massive, fragmented long contexts. Existing memory mechanisms typically treat retrieval as a static, single-step “passive matching” process, leading to severe semantic dilution and contextual frag-mentation. To overcome these fundamental bottlenecks, we propose 
+
+MemCoT , a test-time memory scaling framework that redefines the 
+
+†Ding Wang and Hongsong Wang are corresponding authors. Permission to make digital or hard copies of all or part of this work for personal or classroom use is granted without fee provided that copies are not made or distributed for profit or commercial advantage and that copies bear this notice and the full citation on the first page. Copyrights for components of this work owned by others than the author(s) must be honored. Abstracting with credit is permitted. To copy otherwise, or republish, to post on servers or to redistribute to lists, requires prior specific permission and/or a fee. Request permissions from permissions@acm.org. 
+
+MM ’26, Rio de Janeiro, Brazil 
+
+© 2018 Copyright held by the owner/author(s). Publication rights licensed to ACM. ACM ISBN 978-1-4503-XXXX-X/2018/06 https://doi.org/XXXXXXX.XXXXXXX 
+
+reasoning process by transforming long-context reasoning into an iterative, stateful information search. MemCoT introduces a multi-view long-term memory perception module that enables Zoom-In evidence localization and Zoom-Out contextual expansion, allow-ing the model to first identify where relevant evidence resides and then reconstruct the surrounding causal structure necessary for reasoning. In addition, MemCoT employs a task-conditioned dual short-term memory system composed of semantic state memory and episodic trajectory memory. This short-term memory records historical search decisions and dynamically guides query decompo-sition and pruning across iterations. Empirical evaluations demon-strate that MemCoT establishes a state-of-the-art performance. Empowered by MemCoT, several open- and closed-source mod-els achieve SOTA performance on the LoCoMo benchmark and LongMemEval-S benchmark. 
+
+1 
+
+> arXiv:2604.08216v1 [cs.MA] 9 Apr 2026 MM ’26, November 10–14, 2026, Rio de Janeiro, Brazil Trovato et al.
+
+## CCS Concepts 
+
+• Do Not Use This Code → Generate the Correct Terms for Your Paper ; Generate the Correct Terms for Your Paper ; Generate the Correct Terms for Your Paper; Generate the Correct Terms for Your Paper. 
+
+## Keywords 
+
+Agent Memory, AI Agent, Multi-model reasoning   
+
+> ACM Reference Format:
+> Haodong Lei, Junming Liu, Yirong Chen, Ding Wang, and Hongsong Wang. 2018. MemCoT: Test-Time Scaling through Memory-Driven Chain-of-Thought. In Proceedings of Proceedings of the 34th ACM International Conference on Multimedia (MM ’26). ACM, New York, NY, USA, 14 pages. https://doi.org/ XXXXXXX.XXXXXXX
+
+## 1 Introduction 
+
+Despite the rapid expansion of context windows to the million-token scale, Large Language Models (LLMs) still fail remarkably in long-horizon reasoning over extended interaction histories [ 2, 27 ,41 ]. In real-world scenarios, models frequently forget earlier user preferences, lose track of causal dependencies across distant dia-logue turns, and produce hallucinated conclusions when reasoning requires synthesizing scattered evidence over time [ 31 ]. This para-dox reveals a deeper limitation: long-context failure is not primarily caused by insufficient context capacity, but by the model’s inability to perform coherent reasoning over temporally distributed infor-mation [ 12 ]. Simply enlarging the context window does not resolve this issue; instead, it often amplifies semantic noise [ 8], dilutes criti-cal signals, and exacerbates reasoning instability. These phenomena suggest that the challenge of long-context reasoning is fundamen-tally not a problem of context length, but of how information is searched, organized, and utilized during reasoning [47]. Historically, efforts to enhance LLM performance on complex tasks have relied on a fixed-compute forward pass. Subsequent reasoning techniques, such as Chain-of-Thought (CoT) [ 33 ] and Tree-of-Thoughts (ToT) [ 39 ], introduced the paradigm of compute scaling [28 ] by increasing reasoning steps to deepen the model’s internal reflection. Concurrently, Retrieval-Augmented Generation (RAG) [ 13 ] represents a data scaling approach, aiming to mitigate forgetting and hallucinations by incorporating external knowledge bases. While RAG mitigates catastrophic forgetting to some extent, naïve retrieval paradigms remain fundamentally inadequate for resolving complex multi-hop reasoning challenges. The retrieved contexts frequently suffer from critical information omissions and semantic noise [ 1], leading to frequent failure in multi-hop long-context scenarios, as observed in benchmarks such as LoCoMo [ 20 ]and LongMemEval [35]. To specifically address long-context challenges, recent research has delved into AI Agent memory mechanisms [ 48 ]. While funda-mental retrieval still relies on RAG-style pipelines, significant ad-vancements have been made in the storage, segmentation, and con-struction of memory. Existing methods mainly include session-level memory [ 19 ], turn-level memory [ 7 ], topic-aware memory [ 23 ], hierarchical summaries [ 11 , 49 ], and graph-based retrieval struc-tures such as RAPTOR [ 26 ] and HippoRAG [ 10 ]. Although these methods differ in how memory is organized and indexed, they share a common operational assumption that memory retrieval is treated as a single-step matching process [ 12 ] between the current query and stored history. The agent must decide what to retrieve before knowing what information will become relevant during reasoning. Consequently, retrieval either becomes overly broad, introducing excessive irrelevant context that dilutes reasoning, or overly narrow, omitting crucial information and causing semantic fragmentation [3]. In essence, existing AI memory technologies encounter two fundamental bottlenecks in long-context multi-hop reasoning: (1) Search Modeling Dilemma in Long Contexts: Extended texts are replete with dense entities and high-frequency noise. It is diffi-cult to predict complex user intents a priori, causing static knowl-edge bases to suffer from severe semantic dilution during rela-tional modeling. (2) Contextual Fragmentation: Employing a single-granularity search strategy yields suboptimal results. Coarse-grained retrieval introduces excessive noise, whereas fine-grained retrieval strips away essential contextual background, leading to an imbalance between retrieval success rate and information density. The root cause of these limitations is that current memory mech-anisms treat retrieval as a static, single-step “passive matching” process. To this end, we go beyond the conventional view that mem-ory merely assists reasoning, and instead propose that memory fundamentally defines the reasoning process . This conceptualization drives a fundamental paradigm shift in how the agent interacts with its memory constraints. We introduce MemCoT (Memory-Driven Chain-of-Thought), a test-time scaling framework that reformu-lates long-context reasoning as an iterative memory–reasoning loop with evolving state. This transforms memory access from static, single-shot passive matching [ 14 ] into a stateful, active search process [ 40 ]. Within MemCoT , memory transcends the role of a passive data repository to function as a memory-driven reason-ing engine, thereby rendering the reasoning process traceable and correctable. Our key contributions are summarized as follows: 
+
+• We propose MemCoT , the first self-evolving architecture that couples test-time reasoning with dynamic memory evo-lution. By integrating a memory and reasoning loop, it effec-tively scales test-time compute, transforming static retrieval into an iterative search process that dynamically decomposes complex reasoning chains. 
+
+• We design a multi-view long-term memory perception mod-ule with a trajectory- and context-aware short-term state. The perception module balances precise entity search with global contextual awareness, while the short-term state en-ables traceable reasoning that dynamically decomposes and prunes queries to condition memory access. 
+
+• MemCoT is a plug-and-play, training-free framework de-signed for complex long-context memory management, seam-lessly empowering LLM agents in real-world scenarios. On the LoCoMo benchmark, it achieves SOTA results, enabling compact models like GPT-4o-mini and Qwen2.5-14B to reach 
+
+𝐹 1 scores of 58.03 and 57.06, respectively. Additionally, it achieves an 88.0 LLM-as-a-Judge score on the LongMemEval-s benchmark.  
+
+> 2MemCoT: Test-Time Scaling through Memory-Driven Chain-of-Thought MM ’26, November 10–14, 2026, Rio de Janeiro, Brazil
+
+## 2 Related Work 2.1 Memory-Augmented Agents 
+
+The integration of long-term memory mechanisms [ 48 ] marks a fundamental paradigm shift in the evolution of LLM agents [ 12 ]. Early frameworks like MemGPT [ 22 ] pioneered operating-system-inspired paging and segmentation to manage extended contexts. Building upon this, scalable architectures like Mem0 [ 7] dynami-cally consolidate memory states to mitigate the severe limitations of fixed context windows. To elevate memory from a passive data repository to an active cognitive engine, recent architectures in-creasingly employ hierarchical and structured representations. Pi-oneering this structural shift, G-Memory [ 43 ] manages agent col-laborations through a three-tier organizational graph hierarchy. To adaptively manage contextual noise within these agentic structures, approaches like MemGAS [ 36 ] propose dynamic multi-granularity routing. By transforming memory into a navigable logical map, architectures like Mnemis [ 29 ] empower agents to perform sophis-ticated cognitive traversals over long-horizon trajectories. Further-more, addressing the computational overhead of complex memory constructions, frameworks like CoM [ 38 ] advocate for lightweight storage paired with sophisticated utilization, organizing memory fragments into coherent inference paths. Specialized structures are also emerging in complex multimodal domains, such as Vis-Mem [ 42 ], which resolves visual processing bottlenecks via dual short-term and long-term memory systems. 
+
+## 2.2 Evolutionary Memory 
+
+Building upon persistent storage, the field is now decisively tran-sitioning toward dynamic and self-evolving memory paradigms. Rather than maintaining static archives, recent research increas-ingly focuses on the continuous lifecycle and trajectory evolution of information. For instance, frameworks like CompassMem [ 11 ]actively organize ongoing agent experiences into explicit event graphs, continually updating to map evolving causal and temporal sequences. Similarly, managing the decay and consolidation of these dynamic states is critical; MemoryBank [ 49 ] selectively reinforces traits based on the Ebbinghaus Forgetting Curve to maintain con-sistency across prolonged interactions. Ultimately, frameworks are moving toward machine-native generative states: MemGen [ 44 ] in-troduces latent memory sequences that seamlessly interweave with reasoning, while MemSkill [ 46 ] and MemEvolve [ 45 ] reframe mem-ory operations as learnable, meta-adaptable skills that dynamically co-evolve with the agent’s experiences and reasoning architecture. 
+
+## 3 Motivation 
+
+A primary challenge in deploying LLM agents lies in managing memory during extended agent-environment interactions [ 48 ]. Sec-tion 3.1 formalizes the memory mechanism using Bayesian prob-ability, highlighting the diminishing returns of one-step memory and the necessity of multi-step memory. Subsequently, Section 3.2 details our multi-view contextual retrieval design formulated to support this probabilistic model. 
+
+## 3.1 Problem Formulation 
+
+As illustrated in Figure 2a, both single-hop and multi-hop long-context queries require retrieving dispersed information. While existing one-step memory approaches handle simple tasks, they fail in complex scenarios: fixed top-𝐾 bottlenecks limit single-hop retrieval, and high-frequency noise dilutes latent semantic links in multi-hop reasoning [ 41 ]. Fundamentally, modeling all potential rea-soning paths within a single step is computationally intractable [ 18 ]. For a dataset 𝐷 and reasoning depth 𝑛 , constructing a comprehen-sive knowledge graph 𝐾 ′ to map every potential query necessitates multiple Cartesian products: 𝐾 ′ = 𝐷 × 𝐷 × · · · × 𝐷 = 𝐷 𝑛 . The state space of potential queries expands exponentially to 𝑂 (| 𝐷 |𝑛 ).This prohibitive complexity inherently restricts the scalability of one-step methods in long-context scenarios [5]. To address these bottlenecks, multi-step memory resolves com-plex intents through iterative searches [ 34 ]. We formalize this evo-lution as a Markov process. Given an initial query 𝑄 , required evidence 𝐸 , and final answer 𝐴 , optimizing long-context capability equates to maximizing the joint probability 𝑞 (𝐴, 𝐸 |𝑄 ). The follow-ing subsections decompose this objective for single-hop and multi-hop scenarios. 
+
+Single-Hop Factorization. For single-hop questions, particularly those requiring multiple pieces of evidence, we define the evidence set as 𝐸 = {𝑒 1, . . . , 𝑒 𝑛 } and the corresponding answer components as 𝐴 = {𝑎 1, . . . , 𝑎 𝑛 }. Assuming conditional independence among the individual evidence-gathering events, we decompose the com-plex query 𝑄 into 𝑛 atomic sub-queries, such that 𝑄 = {𝑞 1, . . . , 𝑞 𝑛 }.The joint probability can thus be factorized sequentially: 
+
+𝑞 (𝐴, 𝐸 |𝑄 ) = 𝑞 (𝑎 1, 𝑒 1 |𝑞 1)𝑞 (𝑎 2, 𝑒 2 |𝑞 2) . . . 𝑞 (𝑎 𝑛 , 𝑒 𝑛 |𝑞 𝑛 )
+
+= 𝑞 (𝑎 1 |𝑒 1, 𝑞 1)𝑞 (𝑒 1 |𝑞 1) . . . 𝑞 (𝑎 𝑛 |𝑒 𝑛 , 𝑞 𝑛 )𝑞 (𝑒 𝑛 |𝑞 𝑛 )
+
+=
+
+> 𝑛
+
+Ö
+
+> 𝑖 =1
+
+𝑞 (𝑎 𝑖 |𝑒 𝑖 , 𝑞 𝑖 )
+
+| {z }
+
+> Generation Capacity
+
+·
+
+> 𝑛
+
+Ö
+
+> 𝑖 =1
+
+𝑞 (𝑒 𝑖 |𝑞 𝑖 ).
+
+| {z }
+
+> Memory Search Capacity
+
+(1) This derivation decouples the objective into response generation capacity of the responder agent, formulated as 𝑞 (𝐴 |𝐸, 𝑄 ) = 𝑓 𝜃 (𝐸, 𝑄 ),and memory search capacity, 𝑞 (𝑒 𝑖 |𝑞 𝑖 ) = 𝜓 (𝑞 𝑖 , M) , where 𝜓 (·) de-notes the memory retrieval function and M represents the input long-term memory. Because fixed top-𝐾 limits restrict single-step retrieval, we decompose the 𝑛 required evidence pieces into 𝐽 sub-queries. Each targets 𝐾 = 𝑛 /𝐽 pieces, formulating the search as a multi-step grouping process: 
+
+> 𝑛
+
+Ö
+
+> 𝑖 =1
+
+𝑞 (𝑒 𝑖 |𝑞 𝑖 ) =
+
+> 𝐽
+
+Ö
+
+> 𝑗 =1
+> 𝐾
+
+Ö
+
+> 𝑘 =1
+
+𝑞 (𝑒 𝑘 |𝑞 𝑗 , 𝑚 𝑗 )
+
+=
+
+> 𝐽
+
+Ö
+
+> 𝑗 =1
+
+𝑞 (𝑒 ( 𝑗 −1) · 𝐾 +1, . . . , 𝑒 𝑗 ·𝐾 |𝑞 𝑗 , 𝑚 𝑗 )
+
+=
+
+> 𝐽
+
+Ö
+
+> 𝑗 =1
+
+𝑞 (𝐸 𝑛𝑒𝑤 𝑗 |𝑞 𝑗 , 𝑚 𝑗 ),
+
+(2) where 𝐸 𝑛𝑒𝑤 𝑗 = {𝑒 ( 𝑗 −1) · 𝐾 +1, . . . , 𝑒 𝑗 ·𝐾 }. Consequently, when address-ing complex single-hop queries within extensive contexts, a one-step retrieval paradigm can at best resolve a mere fraction (e.g., 1/𝐽 )   
+
+> 3MM ’26, November 10–14, 2026, Rio de Janeiro, Brazil Trovato et al.
+> (a) (b) (c)
+
+Figure 2: Analysis of reasoning and retrieval failures in long-context: (a) A relational diagram illustrating the dependencies between evidence and answers in complex single-hop and multi-hop reasoning scenarios. The red circle 𝐴 denotes the final answer, while the blue circles 𝑒 𝑖 represent the supporting evidence. (b) A Pareto chart depicting the distribution of chunk distances (ranging from 1 to 880) between the falsely retrieved chunks and the ground-truth answer chunks evaluated on the LoCoMo dataset. (c) A magnified Pareto chart detailing the chunk distances within a narrowed range of 1 to 100 on the LoCoMo dataset. 
+
+of the information need, inevitably resulting in the truncation and loss of the remaining critical evidence. 
+
+Multi-Hop Exploration. For multi-hop reasoning, the required evidence set is modeled as 𝐸 = {𝑒 1 } ∪ 𝐸 ℎ , where 𝑒 1 denotes the initial piece of evidence and 𝐸 ℎ = {𝑒 2, . . . , 𝑒 𝑛 } represents the sub-sequent multi-hop evidence chain. Unlike the single-hop scenario, the events of acquiring each piece of evidence are no longer inde-pendent; given the initial query 𝑄 , there exists a strong sequential correlation among them. Based on the chain rule of probability, the joint probability must be factorized as follows: 
+
+𝑞 (𝐴, 𝐸 |𝑄 ) = 𝑞 (𝐴, 𝑒 1, . . . , 𝑒 𝑛 |𝑄 )
+
+= 𝑞 (𝐴 |𝑒 𝑛 , . . . , 𝑒 1, 𝑄 )
+
+| {z }
+
+> Generation Capacity
+
+𝑞 (𝑒 1, . . . , 𝑒 𝑛 |𝑄 ).
+
+| {z }
+
+> Memory Search Capacity
+
+(3) In this sequential modeling, the final term 𝑞 (𝐴 |𝑒 𝑛 , . . . , 𝑒 1, 𝑄 ) =
+
+𝑓 𝜃 (𝐸, 𝑄 ) still represents the responder agent’s generation capac-ity based on all accumulated evidence. The query 𝑄 can still be decomposed into sub-problems, but their resolutions are strictly conditioned on prior discoveries. Mathematically, the multi-hop memory search capacity is also modeled as a multi-step grouping process: 
+
+𝑞 (𝑒 1, . . . , 𝑒 𝑛 |𝑄 ) = 𝑞 (𝑒 1 |𝑄 )𝑞 (𝑒 2 |𝑒 1, 𝑄 ) . . . 𝑞 (𝑒 𝑛 |𝑒 𝑛 −1, . . . , 𝑒 1, 𝑄 ). (4) Consequently, for complex multi-hop reasoning tasks, a one-step search is prone to extracting superficial evidence, culminating in vague and ungrounded final responses. In summary, static one-step retrieval is highly impractical; mas-tering long-context tasks requires a dynamic, multi-step evolving memory architecture. 
+
+## 3.2 Perceptual Scale Mismatch for Retrieval 
+
+RAG systems are notoriously sensitive to chunking strategies [ 9, 20 ]. Oversized chunks precipitate the omission of critical entities and re-lations, leading to semantic ambiguity during retrieval. Conversely, undersized chunks restrict the retrieval’s informational horizon, causing contextual fragmentation [3]. In extended-context environments, target information is fre-quently dispersed asymmetrically across the dataset [ 3 ]. Therefore, a retrieval methodology that guarantees both precise semantic tar-geting and a broad informational horizon is highly valuable [ 3 ]. To empirically investigate this necessity, we analyzed the retrieval failure cases of LightRAG [ 9 ] on the long context conversation benchmark LoCoMo. Specifically, we quantified the positional dis-tance between the falsely retrieved chunks and the ground-truth chunks containing the correct answers. As illustrated in Figure 2b, when employing a smaller chunk setting (approximately 200 to-kens per chunk), roughly 60% of the erroneous retrievals are located within a 100-chunk radius of the actual answer. Furthermore, as depicted in Figure 2c, approximately 60% of these proximal results are concentrated within a mere 10-chunk distance. This empirical analysis demonstrates that requisite answers are frequently dis-tributed within the immediate periphery of the initially retrieved information [ 3, 6]. Motivated by these findings, we propose a multi-view design paradigm characterized by fine-grained small-vision retrieval, combined with coarse-grained wide-vision observation to optimize memory reading operations. 
+
+## 4 Methodology 
+
+In this section, we present the framework of MemCoT. In Section 4.1, we introduce the scaling test-time compute memory frame-work in MemCoT, detailing the self-evolution of reasoning and memory. Section 4.2 describes the multi-view long-term memory perception within MemCoT. Finally, Section 4.3 elaborates on the task-conditioned dual short-term memory system.  
+
+> 4MemCoT: Test-Time Scaling through Memory-Driven Chain-of-Thought MM ’26, November 10–14, 2026, Rio de Janeiro, Brazil
+
+Figure 3: The overall architecture of the MemCoT framework. It illustrates the scaling test-time compute memory loop, driven by a multi-view memory perception module for long-term memory extraction and a short-term memory evolution module for iterative query 𝑞 𝑗 updates in the 𝑗 −th iteration. On one hand, the retrieved memory 𝑚 𝑗 provides factual anchors that empower the Judge Agent to construct a more rigorous and grounded CoT for reasoning. On the other hand, the reasoning process explicitly identifies the deficiencies in the retrieved memory 𝑚 𝑗 relative to the current query 𝑞 𝑗 and refines the 𝑞 𝑗 into the next query 𝑞 𝑗 +1 to optimize the next retrieved memory 𝑚 𝑗 +1. This bidirectional synergy loop establishes the foundation of our 
+
+Memory-driven Chain of Thought paradigm. 
+
+## 4.1 Overview of MemCoT Framework 
+
+MemCoT facilitates test-time memory acquisition and state evo-lution through a recurrent memory-reasoning loop. As illustrated in Figure 3, each iteration 𝑗 begins with the perception module 
+
+𝜓 𝑝𝑒𝑟𝑐𝑒𝑖𝑣𝑒 (𝑞 𝑗 , M) , which performs deep extraction over the long-term memory M. Subsequently, the evolution module 𝑓 evolve  
+
+> 𝜃
+
+distills high-value semantic and episodic trajectory information, updating the dynamic short-term memory state 𝑚 𝑗 . The judge process 𝑓 judge 
+
+> 𝜃
+
+evaluates the sufficiency of 𝑚 𝑗 : if adequate, the responder agent generates the final answer; otherwise, 𝑓 judge  
+
+> 𝜃
+
+identifies “knowledge blind spots” to formulate the next sub-query 𝑞 𝑗 +1, triggering a new cycle. This interplay effectively decomposes multi-hop reasoning into tractable sub-problems. According to Sec 3.1, we observe that both single-hop and multi-hop retrieval paradigms can be uniformly modeled through an iterative process. Both paradigms are encapsu-lated into a single, unified equation: 
+
+𝑞 (𝐴, 𝐸 |𝑄 ) = 𝑓 𝜃 (𝐸, 𝑄 )
+
+> 𝐽
+
+Ö
+
+> 𝑗 =1
+
+𝑓 memcot  
+
+> 𝜃
+
+(𝑞 𝑗 , 𝑚 𝑗 , 𝑄 ), (5) where 𝑓 memcot  
+
+> 𝜃
+
+extracts contextually useful information by evaluat-ing whether the current memory state 𝑚 𝑗 adequately addresses the sub-query 𝑞 𝑗 and the overarching user query 𝑄 . For each iteration 
+
+𝑗 = 1, . . . , 𝐽 , the state transitions rely on the following equations: 
+
+𝑚 𝑗 = 𝑓 evolve  
+
+> 𝜃
+
+(𝑚 𝑗 −1,𝜓 𝑝𝑒𝑟𝑐𝑒𝑖𝑣𝑒 (𝑞 𝑗 , M) , 𝑞 𝑗 ), (6) 
+
+𝑞 𝑗 +1 = 𝑓 judge  
+
+> 𝜃
+
+(𝑚 𝑗 , 𝑞 𝑗 ), (7) where 𝑞 1 = 𝑄 and 𝑚 0 = ∅. This mathematically unified framework demonstrates the theoretical versatility of the proposed memory evolution mechanism. The detailed mathematical derivation and proof for this unification are provided in Appendix A. 
+
+## 4.2 Multi-View Long-Term Memory Perception 
+
+This module consists of a multi-modal long-term memory storage unit, denoted as M, and a multi-view memory perception function 
+
+𝜓 𝑝𝑒𝑟𝑐𝑒𝑖𝑣𝑒 . To effectively balance retrieval precision and contextual completeness, we design 𝜓 𝑝𝑒𝑟𝑐𝑒𝑖𝑣𝑒 as a hierarchical aggregation of zoom-in focal retrieval 𝜓 z-i , zoom-out context expansion 𝜓 z-o , and panoramic visual grounding 𝜓 vis . Formally, for a given sub-query 
+
+𝑞 𝑗 at the 𝑗 -th evolutionary iteration, the multi-view perception process is mathematically formulated as: 
+
+𝑚 z-i = 𝜓 z-i (𝑞 𝑗 , M, 𝐾 ),𝑚 z-o = 𝜓 z-o (𝑞 𝑗 , M, 𝑚 z-i ,𝑊 ),𝜓 𝑝𝑒𝑟𝑐𝑒𝑖𝑣𝑒 (𝑞 𝑗 , M) = 𝑚 z-i ∪ 𝑚 z-o 
+
+| {z }
+
+> Text Type
+
+∪𝜓 vis (𝑞 𝑗 , M, 𝑚 z-i ),
+
+| {z }
+
+> Visual Type
+
+(8) where ∪ denotes the aggregation of retrieved multi-view memory contents. For text-type memory, we adhere to the core design principle of “fine-grained search, multi-view mining.” Built upon a graph-structured storage framework (e.g., LightRAG [ 9]), the memory entries in M are partitioned into minimal textual chunks to max-imize the granularity of entities and relations. During the initial retrieval phase, the zoom-in focal retrieval function 𝜓 z-i extracts the highly precise and albeit contextually narrow chunks from top-𝐾 
+
+memory chunks to form 𝑚 z-i . To mitigate the inherent narrowness of this receptive field, the zoom-out context expansion function, 
+
+𝜓 z-o , is subsequently triggered. By leveraging the positional indices  
+
+> 5MM ’26, November 10–14, 2026, Rio de Janeiro, Brazil Trovato et al.
+
+of 𝑚 z-i , it retrieves an adjacent window of 𝑊 chunks, yielding a wide viewing memory 𝑚 z-o representation that successfully restores the surrounding contextual semantics. When the long-term memory encompasses visual-type mem-ory, we employ a unified multi-modal structural memory approach. Recognizing that the spatial proximity between images and their surrounding text encapsulates subtle visual topologies [ 32 ], we leverage Optical Character Recognition (OCR) methodologies to project images and adjacent text into a unified visual representa-tion. If the wide viewing memory 𝑚 z-o retrieval detects an explicit image cue, the system seamlessly triggers the panoramic visual grounding module, 𝜓 vis . This function retrieves the correspond-ing multi-modal memory to extract macro-structural information, thereby comprehensively optimizing the final response quality. To minimize computational latency and token overhead, the image res-olutions are dynamically compressed during this visual extraction phase. Ultimately, according to Eqs. (6) and (7), the aggregated high-value information extracted across these varied views constitutes the semantic memory. This refined semantic representation is then explicitly written into the dynamic short-term memory state 𝑚 𝑗 
+
+for subsequent reasoning and query updating. 
+
+## 4.3 Short-Term Memory Evolution 
+
+A dynamic short-term memory is the critical nexus for state evolu-tion, directly governing reasoning efficacy. To transform retrieval from passive matching to active perception, we introduce a task-conditioned evolving memory 𝑓 evolve  
+
+> 𝜃
+
+, which integrates semantic memory and episodic trajectory memory within the dynamic short-term memory 𝑚 𝑗 .As shown in the right part of Figure 3, after 𝑓 evolve  
+
+> 𝜃
+
+updates 
+
+𝑚 𝑗 −1 to 𝑚 𝑗 , the new semantic memory stored in 𝑚 𝑗 contains the factual semantic memory returned by the long-term perception module 𝜓 𝑝𝑒𝑟𝑐𝑒𝑖𝑣𝑒 . Meanwhile, the new episodic trajectory memory records the state transitions and failed query trajectories across iterations. During each cycle, the judge agent evaluates the dynamic short-term memory 𝑚 𝑗 during the judge process 𝑓 judge  
+
+> 𝜃
+
+. If the 𝑚 𝑗 
+
+contains sufficient evidence, the evolution stops and returns 𝑚 𝑗 to the responder agent. If not, according to Eq. (7), the modifying query agent analyzes the failed trajectories to understand the reasoning gap and dynamically updates the query 𝑞 𝑗 as 𝑞 𝑗 +1.The query state update consists of two primary actions: 
+
+• Decomposition: For complex intents, the modifying query agent dissects the query into atomic sub-queries (e.g., de-composing “What did John do in England and Japan 4 years ago?” into separate queries for “John do in England 4 years ago.” and “John do in Japan 4 years ago.”). 
+
+• Pruning: If the semantic memory has already resolved a portion of the query, the modifying query agent deletes the resolved intent to focus strictly on the missing evidence. By continuously referencing the failed trajectories within the episodic trajectory memory, the modifying query agent prevents redundant searches. This targeted state evolution ensures that subsequent queries are tightly aligned with the reasoning deficits, maximizing the efficacy of long-term memory retrieval. 
+
+## 5 Experiment 
+
+In this section, we comprehensively evaluate the MemCoT frame-work. We first introduce the experimental settings, followed by the main results on the long-context benchmark LoCoMo and Long-MemEval [ 20 , 35 ]. Finally, we conduct ablation studies and hyper-parameter analyses to validate the efficacy of our core components. 
+
+## 5.1 Experimental Settings 
+
+Datasets. We evaluate our approach on two primary datasets de-signed to assess long-range memory and reasoning capabilities in agent systems. First, we utilize the LoCoMo benchmark [ 20 ], which comprises 841 single-hop, 282 multi-hop, 96 open-domain, and 321 temporal reasoning challenges. We report the 𝐹 1 score as the pri-mary evaluation metric across all sub-tasks. Second, we incorporate the LongMemEval-S benchmark[ 35 ] to further validate comprehen-sive memory performance across distinct evaluation dimensions. For the LongMemEval-S benchmark [ 35 ], we report the overall performance across 70 sessions, alongside specific granular metrics comprising 133 Single-session-user (SSU), 30 Multi-session (MS), 30 Single-session-preference (SSP), 133 Temporal-reasoning (TR), 78 Knowledge-update (KU), and 56 Single-session-assistant (SSA) instances. 
+
+Implementation Details. To ensure a robust evaluation, we utilize both closed-source and open-source models as our foun-dational responders: GPT-4o-mini [ 4 ] and Qwen2.5-14B [ 24 ]. For LongMemEval-S [ 35 ], 𝑊 is increased to 15 to capture the frag-mented dependencies inherent in its multi-session structures. Our retrieval module employs LightRAG with the recommended Top-
+
+𝐾 = 10 for focal retrieval. The maximum evolutionary iterations 
+
+𝐽 is uniformly set to 8 across all tasks to facilitate deep reasoning while preventing indefinite search cycles. 
+
+## 5.2 Main Results 
+
+The main comparative results on the LoCoMo benchmark are pre-sented in Table 1 and Table 2. Across all tested architectures, in-cluding GPT-4o-mini, Qwen2.5-14B, and Qwen2.5-7B, our proposed MemCoT framework consistently establishes new SOTA results. Specifically, on the GPT-4o-mini model, MemCoT achieves a commanding overall 𝐹 1 score of 58.03, significantly outperforming the strongest graph-based baseline, CompassMem, which scores 52.18. This substantial improvement is particularly pronounced in complex reasoning scenarios such as Temporal (60.31) and Open-domain (42.67) questions, demonstrating the framework’s supe-rior capability in dynamic state evolution and active perception. Similarly, when equipped with the Qwen2.5-14B model, MemCoT attains an impressive overall 𝐹 1 score of 57.06, compared to Com-passMem’s 52.52 and CAM’s 44.64. Moreover, it is noteworthy that while Table 1 highlights a substantial performance gain in open-domain reasoning, this surge is not proportionally reflected in the aggregate overall score. We attribute this phenomenon to the class imbalance within the LoCoMo benchmark, as the open-domain category comprises only 96 instances, thereby exerting a limited influence on the final weighted average. To validate robustness, we evaluated MemCoT on the compact Qwen2.5-7B. As shown in Table 2, MemCoT achieves a 52.01 𝐹 1
+
+score, representing a 57.3% improvement over the strongest baseline  
+
+> 6MemCoT: Test-Time Scaling through Memory-Driven Chain-of-Thought MM ’26, November 10–14, 2026, Rio de Janeiro, Brazil
+
+Table 1: Performance ( 𝐹 1 score) comparison on the LoCoMo benchmark, covering single-hop, multi-hop, open-domain, and temporal settings. Best results are highlighted in bold, and second-best results are underlined. Model Method Single-hop Multi-hop Open-domain Temporal Overall GPT-4o-mini [4]  Full Context 45.89 25.01 15.49 23.83 35.57 RAG [13] 52.19 32.17 23.21 30.77 42.25 Mem0 [7] 47.65 38.72 28.64 48.93 45.10 MemoryOS [16] 48.62 35.27 20.02 41.15 42.84 HippoRAG [10] 54.84 33.59 28.59 48.17 47.92 A-Mem [37] 44.65 27.02 12.14 45.85 39.65 CAM [15] 50.58 33.55 18.23 44.14 44.10 CompassMem [11] 57.36 38.84 26.61 57.96 52.18 MemCoT 64.81 40.43 42.67 60.31 58.03 Qwen2.5-14B [24]  Full Context 55.35 32.59 13.50 27.36 42.74 RAG [13] 49.79 28.11 20.42 24.73 38.77 Mem0 [7] 42.58 31.73 15.03 28.96 36.04 MemoryOS [16] 46.33 38.19 20.27 32.24 40.28 HippoRAG [10] 42.45 27.57 19.74 30.66 35.85 A-Mem [37] 33.75 22.09 13.49 27.19 28.98 CAM [15] 50.39 34.50 23.86 44.70 44.64 CompassMem [11] 61.02 42.32 25.88 47.18 52.52 MemCoT 63.09 45.10 38.04 57.49 57.06 Table 2: Performance ( 𝐹 1 score) comparison on the LoCoMo benchmark using the tiny model Qwen2.5-7B model, highlighting MemCoT’s consistent superiority even in smaller-scale architectures. Model Method Single-Hop Multi-Hop Open-domain Temporal Overall Qwen2.5-7B [24]  Full Context 10.61 3.39 8.24 3.72 7.38 RAG [13] 21.72 8.05 14.51 4.89 13.88 A-Mem [37] 12.73 8.67 13.86 6.28 12.1 EpMem [30] 17.64 6.35 2.66 9.96 6.63 Mem0 [7] 24.96 20.31 32.74 33.16 28.75 MemoryOS [16] 29.55 21.03 40.85 26.26 33.74 MemVerse [17] 28.12 24.23 40.33 25.05 33.79 MemCoT 63.99 36.34 33.08 40.06 52.01 Table 3: Performance (LLM-as-a-Judge score) comparison on the LongMemEval-S benchmark. Best results are highlighted in bold, and second-best results are underlined. Model Method SSU MS SSP TR KU SSA Overall GPT-4o-mini [4]  Full Context 78.6 38.3 6.7 42.1 78.2 89.3 55.0 RAG [13] 88.6 47.4 70.0 63.2 70.5 91.1 67.2 Mem0 [7] 91.4 66.2 34.0 63.9 74.4 96.4 71.1 Zep [25] 92.9 47.4 53.3 54.1 74.4 75.0 63.2 Nemori [21] 88.6 51.1 46.7 61.7 61.5 83.9 64.2 EMem-G [50] 87.0 73.6 32.2 74.8 94.4 87.5 77.9 Mnemis [29] 97.1 76.7 90.0 83.5 92.3 100.0 87.2 MemCoT 98.5 79.6 70.0 89.4 88.4 100.0 88.0 
+
+MemVerse (33.79). Notably, despite limited parameters, MemCoT maintains a strong score for the multi-hop question (36.34), single-hop question (63.99), and temporal question (40.06). This success stems from our memory evolution mechanism: by using GPT-4o-mini for high-quality memory construction, MemCoT enables a test-time knowledge distillation effect, allowing smaller models to internalize complex structural insights.  
+
+> 7MM ’26, November 10–14, 2026, Rio de Janeiro, Brazil Trovato et al.
+
+Figure 4: Effects of different parameters: (a) Impact of the adjacent window size ( 𝑊 ) on memory retrieval Recall (%) and reasoning 
+
+𝐹 1 score (%) using the Qwen2.5-7B model. (b) Impact of the maximum evolution iterations ( 𝐽 ) on memory retrieval Recall (%) using the Qwen2.5-7B model. (c) Impact of Fine-grained TopK ( 𝐾 ) on memory retrieval Recall (%) using the Qwen2.5-7B model. Table 4: Ablation study results on the LoCoMo benchmark using Qwen2.5-14B ( 𝐹 1 scores). 𝜓 z-o and 𝜓 vis denote zoom-out and visual modules, respectively. 
+
+Method Multi-hop Temporal Open Single-hop Overall MemCoT 40.43 60.31 42.67 64.81 58.03 w/o 𝜓 z-o 35.48 55.13 38.58 61.35 53.89 w/o 𝜓 vis 39.21 59.73 39.58 63.82 56.19 w/o 𝜓 z-o+vis 34.78 50.88 41.49 59.62 53.71 Furthermore, the evaluation on the LongMemEval-S benchmark corroborates the comprehensive superiority of our approach, as de-tailed in Table 3. Using the GPT-4o-mini model, MemCoT achieves the highest overall score of 88.0, surpassing strong, specialized long-term memory baselines such as Mnemis (87.2) and EMem-G (77.9). The framework demonstrates exceptional proficiency in extract-ing and tracking conversational details, yielding SOTA results in Single-session-user (SSU) with 98.5, Multi-session (MS) with 79.6, and Temporal-reasoning (TR) with 89.4. Additionally, MemCoT perfectly executes Single-session-assistant (SSA) tracking with a flawless score of 100.0. Despite competitive niche performances by EMem-G and Mnemis in KU and SSP, MemCoT’s superior over-all results underscore its versatile capacity for multi-dimensional memory integration. 
+
+## 5.3 Ablation Study 
+
+To systematically evaluate the contributions of the core mechanisms within MemCoT, we design several ablation variants. 
+
+Multi-view Long-Term Memory Perception. Our perception module integrates coarse-grained and global extraction to balance precision and contextual integrity. We investigate the impact of these components by testing the following variants: 
+
+• w/o 𝜓 z-o : We remove the zoom-out context expansion mod-ule. Relying solely on fine-grained chunks restricts the infor-mational horizon and is expected to exacerbate contextual fragmentation, leading to performance degradation on com-plex multi-hop queries. 
+
+• w/o 𝜓 vis : We disable the panoramic visual grounding mod-ule. This variant isolates the text-type memory from multi-modal structural cues, demonstrating the necessity of macro-structural visual integration for comprehensive response quality. As shown in Table 4, removing 𝜓 z-o leads to a substantial drop in 
+
+𝐹 1 scores. In contrast, the decline caused by ablating the 𝜓 vis is comparatively mild on the LoCoMo benchmark. 
+
+## 5.4 Further Analysis 
+
+We further conduct sensitivity analyses on key hyperparameters that govern the dynamic short-term memory evolution and multi-view retrieval processes. 
+
+Impact of Adjacent Window Size ( 𝑊 ). To further elucidate the role of contextual breadth in our framework, we investigate the sensitivity of the adjacent window size 𝑊 within the zoom-out context expansion module 𝜓 z-o . As illustrated in Figure 4(a), when 
+
+𝑊 scales from 1 to 4, both the retrieval Recall and the final 𝐹 1 score exhibit a consistent upward trajectory. This trend confirms that 𝜓 z-o 
+
+successfully enlarges the model’s informational horizon, effectively mitigating the contextual fragmentation typically associated with fine-grained retrieval by restoring surrounding semantic dependen-cies. However, as 𝑊 exceeds 8, the Recall rate plateaus while the 𝐹 1
+
+score begins a pronounced decline. We attribute this performance degradation to the fact that an excessively large 𝑊 introduces a surplus of retrieved memory entries, which over-extends the input context and incorporates significant semantic noise. This influx of irrelevant information dilutes critical signals and triggers reasoning instability, ultimately compromising the quality and precision of the generated responses. 
+
+Impact of Maximum Evolutionary Steps ( 𝐽 ). The hyperpa-rameter 𝐽 constrains the maximum allowable number of iterative search cycles to prevent indefinite trajectories. In Figure 4(b), the Judge Agent autonomously determines when sufficiently accurate information has been gathered in the short memory; consequently, varying 𝐽 within the range of 2 to 6 leads to substantial fluctua-tions in recall rate, while values beyond 6 result in only marginal variations. 
+
+> 8
+
+MemCoT: Test-Time Scaling through Memory-Driven Chain-of-Thought MM ’26, November 10–14, 2026, Rio de Janeiro, Brazil 
+
+Impact of Fine-grained TopK ( 𝐾 ). The variable 𝐾 serves as the lower bound of evidence acquisition per retrieval step during the ini-tial zoom-in focal retrieval module 𝜓 z-i . As illustrated in Figure 4(c), setting 𝐾 in the range of 10–15 yields a notable performance gain, whereas values exceeding 15 lead to a decline. We attribute this to the increased number of retrieved memory entries expanding the context of 𝜓 z-i excessively, thereby inducing catastrophic forgetting. 
+
+## 6 Conclusion 
+
+In this paper, we introduce MemCoT, a test-time memory scaling framework that redefines memory as a memory-driven engine for long-context LLM reasoning. By integrating a recurrent memory-agent loop, MemCoT transforms static retrieval into an active, state-ful search process. Our architecture synergizes multi-view long-term perception with a dynamic short-term memory system to sys-tematically decompose complex queries and prune redundant tra-jectories. Extensive evaluations demonstrate that MemCoT achieves new SOTA performance on the LoCoMo and LongMemEval-S benchmarks. Ultimately, MemCoT provides a mathematically uni-fied and scalable solution for overcoming both single-hop and multi-hop reasoning bottlenecks in extended interactions. Looking ahead, 
+
+MemCoT facilitates a fundamental paradigm shift from passive retrieval to active, stateful cognitive reasoning, empowering AI agents to maintain rigorous coherence throughout extended in-teractions. This architecture establishes a mathematically unified and scalable foundation for the next generation of self-evolving, long-context intelligent systems. 
+
+## References 
+
+[1] Akari Asai, Zeqiu Wu, Yizhong Wang, Avirup Sil, and Hannaneh Hajishirzi. 2024. Self-RAG: Learning to Retrieve, Generate, and Critique through Self-Reflection. In The Twelfth International Conference on Learning Representations .https://openreview.net/forum?id=hSyW5go0v8 [2] Yushi Bai, Xin Lv, Jiajie Zhang, Hongchang Lyu, Jiankai Tang, Zhidian Huang, Zhengxiao Du, Xiao Liu, Aohan Zeng, Lei Hou, Yuxiao Dong, Jie Tang, and Juanzi Li. 2024. LongBench: A Bilingual, Multitask Benchmark for Long Context Understanding. In Proceedings of the 62nd Annual Meeting of the Association for Computational Linguistics (Volume 1: Long Papers) , Lun-Wei Ku, Andre Martins, and Vivek Srikumar (Eds.). Association for Computational Linguistics, Bangkok, Thailand, 3119–3137. doi:10.18653/v1/2024.acl-long.172 [3] Sinchana Ramakanth Bhat, Max Rudat, Jannis Spiekermann, and Nicolas Flores-Herr. 2025. Rethinking Chunk Size For Long-Document Retrieval: A Multi-Dataset Analysis. arXiv:2505.21700 [cs.IR] [4] Pu Cao, Feng Zhou, Junyi Ji, Qingye Kong, Zhixiang Lv, Mingjian Zhang, Xuekun Zhao, Siqi Wu, Yinghui Lin, Qing Song, and Lu Yang. 2025. Preliminary Explo-rations with GPT-4o(mni) Native Image Generation. arXiv:2505.05501 [cs.CV] https://arxiv.org/abs/2505.05501 [5] Thomas Y Chen. 2025. How Many Parameters for Multi-Hop? An Information-Theoretic Capacity Law for Knowledge Retrieval in Large Language Models. In 
+
+Knowledgeable Foundation Models at ACL 2025 .[6] Xin Cheng, Wangding Zeng, Damai Dai, Qinyu Chen, Bingxuan Wang, Zhenda Xie, Kezhao Huang, Xingkai Yu, Zhewen Hao, Yukun Li, Han Zhang, Huishuai Zhang, Dongyan Zhao, and Wenfeng Liang. 2026. Conditional Memory via Scalable Lookup: A New Axis of Sparsity for Large Language Models. arXiv:2601.07372 [cs.CL] [7] Prateek Chhikara, Dev Khant, Saket Aryan, Taranjeet Singh, and Deshraj Yadav. 2025. Mem0: Building Production-Ready AI Agents with Scalable Long-Term Memory. arXiv:2504.19413 [cs.CL] https://arxiv.org/abs/2504.19413 [8] Florin Cuconasu, Giovanni Trappolini, Federico Siciliano, Simone Filice, Cesare Campagnano, Yoelle Maarek, Nicola Tonellotto, and Fabrizio Silvestri. 2024. The Power of Noise: Redefining Retrieval for RAG Systems. In Proceedings of the 47th International ACM SIGIR Conference on Research and Development in Information Retrieval (SIGIR 2024) . ACM. [9] Zirui Guo, Lianghao Xia, Yanhua Yu, Tu Ao, and Chao Huang. 2025. LightRAG: Simple and Fast Retrieval-Augmented Generation. In Findings of the Association for Computational Linguistics: EMNLP 2025 , Christos Christodoulopoulos, Tanmoy Chakraborty, Carolyn Rose, and Violet Peng (Eds.). Association for Computational Linguistics, 10746–10761. [10] Bernal Jiménez Gutiérrez, Yiheng Shu, Yu Gu, Michihiro Yasunaga, and Yu Su. 2025. HippoRAG: Neurobiologically Inspired Long-Term Memory for Large Language Models. arXiv:2405.14831 [cs.CL] [11] Yuyang Hu, Jiongnan Liu, Jiejun Tan, Yutao Zhu, and Zhicheng Dou. 2026. Mem-ory Matters More: Event-Centric Memory as a Logic Map for Agent Searching and Reasoning. arXiv:2601.04726 [cs.AI] https://arxiv.org/abs/2601.04726 [12] Yuyang Hu, Shichun Liu, Yanwei Yue, Guibin Zhang, Boyang Liu, Fangyi Zhu, Jiahang Lin, Honglin Guo, Shihan Dou, Zhiheng Xi, Senjie Jin, Jiejun Tan, Yanbin Yin, Jiongnan Liu, Zeyu Zhang, Zhongxiang Sun, Yutao Zhu, Hao Sun, Boci Peng, Zhenrong Cheng, Xuanbo Fan, Jiaxin Guo, Xinlei Yu, Zhenhong Zhou, Zewen Hu, Jiahao Huo, Junhao Wang, Yuwei Niu, Yu Wang, Zhenfei Yin, Xiaobin Hu, Yue Liao, Qiankun Li, Kun Wang, Wangchunshu Zhou, Yixin Liu, Dawei Cheng, Qi Zhang, Tao Gui, Shirui Pan, Yan Zhang, Philip Torr, Zhicheng Dou, Ji-Rong Wen, Xuanjing Huang, Yu-Gang Jiang, and Shuicheng Yan. 2026. Memory in the Age of AI Agents. arXiv:2512.13564 [cs.CL] [13] Patrick Lewis, Ethan Perez, Aleksandra Piktus, Fabio Petroni, Vladimir Karpukhin, Naman Goyal, Heinrich Küttler, Mike Lewis, Wen-tau Yih, Tim Rocktäschel, Sebastian Riedel, and Douwe Kiela. 2020. Retrieval-Augmented Generation for Knowledge-Intensive NLP Tasks. In Advances in Neural Information Processing Systems , H. Larochelle, M. Ranzato, R. Hadsell, M.F. Balcan, and H. Lin (Eds.), Vol. 33. Curran Associates, Inc., 9459–9474. [14] Patrick Lewis, Ethan Perez, Aleksandra Piktus, Fabio Petroni, Vladimir Karpukhin, Naman Goyal, Heinrich Küttler, Mike Lewis, Wen-tau Yih, Tim Rocktäschel, Sebastian Riedel, and Douwe Kiela. 2020. Retrieval-augmented generation for knowledge-intensive NLP tasks. In Proceedings of the 34th International Conference on Neural Information Processing Systems . Curran Associates Inc., Red Hook, NY, USA, Article 793. [15] Rui Li, Zeyu Zhang, Xiaohe Bo, Zihang Tian, Xu Chen, Quanyu Dai, Zhenhua Dong, and Ruiming Tang. 2025. CAM: A Constructivist View of Agentic Memory for LLM-Based Reading Comprehension. In The Thirty-ninth Annual Conference on Neural Information Processing Systems . https://openreview.net/forum?id= ACSOnSHiWe [16] Zhiyu Li, Chenyang Xi, Chunyu Li, Ding Chen, Boyu Chen, Shichao Song, Simin Niu, Hanyu Wang, Jiawei Yang, Chen Tang, Qingchen Yu, Jihao Zhao, Yezhaohui Wang, Peng Liu, Zehao Lin, Pengyuan Wang, Jiahao Huo, Tianyi Chen, Kai Chen, Kehang Li, Zhen Tao, Huayi Lai, Hao Wu, Bo Tang, Zhengren Wang, Zhaoxin Fan, Ningyu Zhang, Linfeng Zhang, Junchi Yan, Mingchuan Yang, Tong Xu, Wei Xu, Huajun Chen, Haofen Wang, Hongkang Yang, Wentao Zhang, Zhi-Qin John Xu, Siheng Chen, and Feiyu Xiong. 2025. MemOS: A Memory OS for AI System. arXiv:2507.03724 [cs.CL] [17] Junming Liu, Yifei Sun, Weihua Cheng, Haodong Lei, Yirong Chen, Licheng Wen, Xuemeng Yang, Daocheng Fu, Pinlong Cai, Nianchen Deng, Yi Yu, Shuyue Hu, Botian Shi, and Ding Wang. 2025. MemVerse: Multimodal Memory for Lifelong Learning Agents. arXiv:2512.03627 [cs.AI] [18] Nelson F. Liu, Kevin Lin, John Hewitt, Ashwin Paranjape, Michele Bevilacqua, Fabio Petroni, and Percy Liang. 2024. Lost in the Middle: How Language Models Use Long Contexts. Transactions of the Association for Computational Linguistics 
+
+12 (2024), 157–173. [19] Junru Lu, Siyu An, Mingbao Lin, Gabriele Pergola, Yulan He, Di Yin, Xing Sun, and Yunsheng Wu. 2023. MemoChat: Tuning LLMs to Use Memos for Consistent Long-Range Open-Domain Conversation. arXiv:2308.08239 [cs.CL] [20] Adyasha Maharana, Dong-Ho Lee, Sergey Tulyakov, Mohit Bansal, Francesco Barbieri, and Yuwei Fang. 2024. Evaluating Very Long-Term Conversational Memory of LLM Agents. In Proceedings of the 62nd Annual Meeting of the Associ-ation for Computational Linguistics (Volume 1: Long Papers) , Lun-Wei Ku, Andre Martins, and Vivek Srikumar (Eds.). Association for Computational Linguistics, 13851–13870. doi:10.18653/v1/2024.acl-long.747 [21] Jiayan Nan, Wenquan Ma, Wenlong Wu, and Yize Chen. 2025. Nemori: Self-Organizing Agent Memory Inspired by Cognitive Science. arXiv:2508.03341 [cs.AI] https://arxiv.org/abs/2508.03341 [22] Charles Packer, Sarah Wooders, Kevin Lin, Vivian Fang, Shishir G. Patil, Ion Stoica, and Joseph E. Gonzalez. 2024. MemGPT: Towards LLMs as Operating Systems. arXiv:2310.08560 [cs.AI] [23] Zhuoshi Pan, Qianhui Wu, Huiqiang Jiang, Xufang Luo, Hao Cheng, Dongsheng Li, Yuqing Yang, Chin-Yew Lin, H. Vicky Zhao, Lili Qiu, and Jianfeng Gao. 2025. SeCom: On Memory Construction and Retrieval for Personalized Conversational Agents. In The Thirteenth International Conference on Learning Representations .[24] Qwen, :, An Yang, Baosong Yang, Beichen Zhang, Binyuan Hui, Bo Zheng, Bowen Yu, Chengyuan Li, Dayiheng Liu, Fei Huang, Haoran Wei, Huan Lin, Jian Yang, Jianhong Tu, Jianwei Zhang, Jianxin Yang, Jiaxi Yang, Jingren Zhou, Junyang Lin, Kai Dang, Keming Lu, Keqin Bao, Kexin Yang, Le Yu, Mei Li, Mingfeng Xue, Pei Zhang, Qin Zhu, Rui Men, Runji Lin, Tianhao Li, Tianyi Tang, Tingyu Xia, Xingzhang Ren, Xuancheng Ren, Yang Fan, Yang Su, Yichang Zhang, Yu Wan, Yuqiong Liu, Zeyu Cui, Zhenru Zhang, and Zihan Qiu. 2025. Qwen2.5 Technical Report. arXiv:2412.15115 [cs.CL] https://arxiv.org/abs/2412.15115 9MM ’26, November 10–14, 2026, Rio de Janeiro, Brazil Trovato et al. 
+
+[25] Preston Rasmussen, Pavlo Paliychuk, Travis Beauvais, Jack Ryan, and Daniel Chalef. 2025. Zep: A Temporal Knowledge Graph Architecture for Agent Memory. arXiv:2501.13956 [cs.CL] [26] Parth Sarthi, Salman Abdullah, Aditi Tuli, Shubh Khanna, Anna Goldie, and Christopher D. Manning. 2024. RAPTOR: Recursive Abstractive Processing for Tree-Organized Retrieval. In International Conference on Learning Representations (ICLR) .[27] Yaorui Shi, Yuxin Chen, Siyuan Wang, Sihang Li, Hengxing Cai, Qi GU, Xiang Wang, and An Zhang. 2026. Look Back to Reason Forward: Revisitable Memory for Long-Context LLM Agents. In The Fourteenth International Conference on Learning Representations . https://openreview.net/forum?id=1cymflI2Lh [28] Charlie Snell, Jaehoon Lee, Kelvin Xu, and Aviral Kumar. 2024. Scaling LLM Test-Time Compute Optimally can be More Effective than Scaling Model Parameters. arXiv:2408.03314 [cs.LG] https://arxiv.org/abs/2408.03314 [29] Zihao Tang, Xin Yu, Ziyu Xiao, Zengxuan Wen, Zelin Li, Jiaxi Zhou, Hualei Wang, Haohua Wang, Haizhen Huang, Weiwei Deng, Feng Sun, and Qi Zhang. 2026. Mnemis: Dual-Route Retrieval on Hierarchical Graphs for Long-Term LLM Memory. arXiv:2602.15313 [cs.CL] [30] Alessandra Terranova, Björn Ross, and Alexandra Birch. 2025. Evaluating Long-Term Memory for Long-Context Question Answering. arXiv:2510.23730 [cs.CL] https://arxiv.org/abs/2510.23730 [31] Xinyu Wang, Mingze Li, Peng Lu, Xiao-Wen Chang, Lifeng Shang, Jinping Li, Fei Mi, Prasanna Parthasarathi, and Yufei Cui. 2026. InfMem: Learning System-2 Memory Control for Long-Context Agent. arXiv:2602.02704 [cs.CL] https: //arxiv.org/abs/2602.02704 [32] Haoran Wei, Yaofeng Sun, and Yukun Li. 2025. DeepSeek-OCR: Contexts Optical Compression. arXiv:2510.18234 [cs.CV] https://arxiv.org/abs/2510.18234 [33] Jason Wei, Xuezhi Wang, Dale Schuurmans, Maarten Bosma, Brian Ichter, Fei Xia, Ed H. Chi, Quoc V. Le, and Denny Zhou. 2022. Chain-of-thought prompting elicits reasoning in large language models. In Proceedings of the 36th International Conference on Neural Information Processing Systems (New Orleans, LA, USA) 
+
+(NIPS ’22) . Curran Associates Inc., Red Hook, NY, USA, Article 1800, 14 pages. [34] Tianxin Wei, Noveen Sachdeva, Benjamin Coleman, Zhankui He, Yuanchen Bei, Xuying Ning, Mengting Ai, Yunzhe Li, Jingrui He, Ed H. Chi, Chi Wang, Shuo Chen, Fernando Pereira, Wang-Cheng Kang, and Derek Zhiyuan Cheng. 2025. Evo-Memory: Benchmarking LLM Agent Test-time Learning with Self-Evolving Memory. arXiv:2511.20857 [cs.CL] [35] Di Wu, Hongwei Wang, Wenhao Yu, Yuwei Zhang, Kai-Wei Chang, and Dong Yu. 2025. LongMemEval: Benchmarking Chat Assistants on Long-Term Interactive Memory. In The Thirteenth International Conference on Learning Representations .[36] Derong Xu, Yi Wen, Pengyue Jia, Yingyi Zhang, wenlin zhang, Yichao Wang, Huifeng Guo, Ruiming Tang, Xiangyu Zhao, Enhong Chen, and Tong Xu. 2025. From Single to Multi-Granularity: Toward Long-Term Memory Association and Selection of Conversational Agents. arXiv:2505.19549 [cs.CL] [37] Wujiang Xu, Zujie Liang, Kai Mei, Hang Gao, Juntao Tan, and Yongfeng Zhang. 2025. A-Mem: Agentic Memory for LLM Agents. In The Thirty-ninth Annual Conference on Neural Information Processing Systems . https://openreview.net/ forum?id=FiM0M8gcct [38] Xiucheng Xu, Bingbing Xu, Xueyun Tian, Zihe Huang, Rongxin Chen, Yunfan Li, and Huawei Shen. 2026. Chain-of-Memory: Lightweight Memory Construction with Dynamic Evolution for LLM Agents. arXiv:2601.14287 [cs.LG] [39] Shunyu Yao, Dian Yu, Jeffrey Zhao, Izhak Shafran, Tom Griffiths, Yuan Cao, and Karthik Narasimhan. 2023. Tree of Thoughts: Deliberate Problem Solving with Large Language Models. In Advances in Neural Information Processing Systems ,A. Oh, T. Naumann, A. Globerson, K. Saenko, M. Hardt, and S. Levine (Eds.), Vol. 36. Curran Associates, Inc., 11809–11822. [40] Shunyu Yao, Jeffrey Zhao, Dian Yu, Nan Du, Izhak Shafran, Karthik Narasimhan, and Yuan Cao. 2023. ReAct: Synergizing Reasoning and Acting in Language Models. In International Conference on Learning Representations (ICLR) .[41] Hongli Yu, Tinghong Chen, Jiangtao Feng, Jiangjie Chen, Weinan Dai, Qiying Yu, Ya-Qin Zhang, Wei-Ying Ma, Jingjing Liu, Mingxuan Wang, and Hao Zhou. 2026. MemAgent: Reshaping Long-Context LLM with Multi-Conv RL-based Memory Agent. In The Fourteenth International Conference on Learning Representations .[42] Xinlei Yu, Chengming Xu, Guibin Zhang, Zhangquan Chen, Yudong Zhang, Yongbo He, Peng-Tao Jiang, Jiangning Zhang, Xiaobin Hu, and Shuicheng Yan. 2026. VisMem: Latent Vision Memory Unlocks Potential of Vision-Language Models. arXiv:2511.11007 [cs.CV] [43] Guibin Zhang, Muxin Fu, Guancheng Wan, Miao Yu, Kun Wang, and Shuicheng Yan. 2025. G-Memory: Tracing Hierarchical Memory for Multi-Agent Systems. 
+
+arXiv preprint arXiv:2506.07398 (2025). [44] Guibin Zhang, Muxin Fu, and Shuicheng Yan. 2025. MemGen: Weaving Genera-tive Latent Memory for Self-Evolving Agents. arXiv:2509.24704 [cs.CL] [45] Guibin Zhang, Haotian Ren, Chong Zhan, Zhenhong Zhou, Junhao Wang, He Zhu, Wangchunshu Zhou, and Shuicheng Yan. 2025. MemEvolve: Meta-Evolution of Agent Memory Systems. arXiv:2512.18746 [cs.CL] [46] Haozhen Zhang, Quanyu Long, Jianzhu Bao, Tao Feng, Weizhi Zhang, Haodong Yue, and Wenya Wang. 2026. MemSkill: Learning and Evolving Memory Skills for Self-Evolving Agents. arXiv:2602.02474 [cs.CL] [47] Yusen Zhang, Ruoxi Sun, Yanfei Chen, Tomas Pfister, Rui Zhang, and Sercan Ö. Arı k. 2024. Chain of Agents: Large Language Models Collaborating on Long-Context Tasks. In Advances in Neural Information Processing Systems , A. Glober-son, L. Mackey, D. Belgrave, A. Fan, U. Paquet, J. Tomczak, and C. Zhang (Eds.), Vol. 37. Curran Associates, Inc., 132208–132237. doi:10.52202/079017-4202 [48] Zeyu Zhang, Quanyu Dai, Xiaohe Bo, Chen Ma, Rui Li, Xu Chen, Jieming Zhu, Zhenhua Dong, and Ji-Rong Wen. 2025. A survey on the memory mechanism of large language model-based agents. ACM Transactions on Information Systems 
+
+43, 6 (2025), 1–47. [49] Wanjun Zhong, Lianghong Guo, Qiqi Gao, He Ye, and Yanlin Wang. 2024. MemoryBank: enhancing large language models with long-term memory. In 
+
+Proceedings of the Thirty-Eighth AAAI Conference on Artificial Intelligence and Thirty-Sixth Conference on Innovative Applications of Artificial Intelligence and Fourteenth Symposium on Educational Advances in Artificial Intelligence (AAAI’24/IAAI’24/EAAI’24) . AAAI Press, Article 2198, 8 pages. doi:10.1609/aaai. v38i17.29946 [50] Sizhe Zhou and Jiawei Han. 2025. A Simple Yet Strong Baseline for Long-Term Conversational Memory of LLM Agents. arXiv:2511.17208 [cs.CL] https://arxiv. org/abs/2511.17208 10 MemCoT: Test-Time Scaling through Memory-Driven Chain-of-Thought MM ’26, November 10–14, 2026, Rio de Janeiro, Brazil 
+
+## A Unified Objective in MemCoT 
+
+This appendix formalizes how the unified objective in Eq. (5) follows from the single-hop decomposition (Eqs. (1) –(2) ) and the multi-hop chain factorization (Eqs. (3) –(4) ), once the MemCoT loop in Eqs. (6) –(7) is interpreted as a sequential memory search process. For a single-hop query, to solve the modeled grouping, our Mem-CoT conducts 𝐽 rounds of search for the evidence (from 𝑗 = 1 to 𝐽 ). During each evolutionary round 𝑗 , it forms a short-term memory 
+
+𝑚 𝑗 and a corresponding query 𝑞 𝑗 . We expect that each short-term memory evolution incorporates at least 𝐾 new pieces of evidence (i.e., |𝐸 new  
+
+> 𝑗
+
+| = 𝐾 ). In a single round of search, the single-hop forma-tion is defined as: 
+
+𝑞 (𝐸 new  
+
+> 𝑗
+
+|𝑞 𝑗 , 𝑚 𝑗 ) = 𝑓 memcot  
+
+> 𝜃
+
+(𝑞 𝑗 , 𝑚 𝑗 , 𝑄 ) (9) For a multi-hop query, to resolve the complex conditional depen-dency, the probability of retrieving the 𝑗 -th hop evidence is flaw-lessly modeled by the state transition of our short-term memory. The initial step of this process is defined as 𝑞 (𝑒 1 |𝑄 ) = 𝑓 memcot  
+
+> 𝜃
+
+(𝑞 1,𝑚 0, 𝑄 ) with 𝑞 0 = 𝑄 and 𝑚 0 = ∅. Subsequently, each conditional step is defined as: 
+
+𝑞 (𝑒 𝑗 |𝑒 𝑗 −1, . . . , 𝑒 1, 𝑄 ) = 𝑓 memcot  
+
+> 𝜃
+
+(𝑞 𝑗 , 𝑚 𝑗 , 𝑄 ) (10) By substituting the iterative state transitions back into our prior formulations, we demonstrate that both problem types converge to an identical mathematical objective. For single-hop queries, this approach transforms the complex multi-evidence problem to op-timize search under a fixed top-𝐾 constraint through progressive short-term memory construction. According to Eqs. (1) and (2) , the overall model is formulated as: 
+
+𝑞 (𝐴, 𝐸 |𝑄 ) = 𝑞 (𝐴, 𝑒 1, . . . , 𝑒 𝑛 |𝑄 )
+
+= 𝑞 (𝐴 |𝐸 new  
+
+> 1
+
+, . . . , 𝐸 new  
+
+> 𝐽
+
+, 𝑄 )
+
+> 𝐽
+
+Ö
+
+> 𝑗 =1
+
+𝑞 (𝐸 new  
+
+> 𝑗
+
+|𝑞 𝑗 , 𝑚 𝑗 )
+
+= 𝑓 𝜃 (𝐸, 𝑄 )
+
+> 𝐽
+
+Ö
+
+> 𝑗 =1
+
+𝑓 memory  
+
+> 𝜃
+
+(𝑞 𝑗 , 𝑚 𝑗 , 𝑄 )
+
+(11) Consequently, for multi-hop problems, according to Eqs. (3) and (4) , the sequential dependencies of the evidence chain are ultimately condensed into the exact same probabilistic structure: 
+
+𝑞 (𝐴, 𝐸 |𝑄 ) = 𝑞 (𝐴, 𝑒 1, . . . , 𝑒 𝑛 |𝑄 )
+
+= 𝑞 (𝐴 |𝑒 𝑛 , . . . , 𝑒 1, 𝑄 )𝑞 (𝑒 1, . . . , 𝑒 𝑛 |𝑄 )
+
+= 𝑓 𝜃 (𝐸, 𝑄 )
+
+> 𝐽
+
+Ö
+
+> 𝑗 =1
+
+𝑓 memory  
+
+> 𝜃
+
+(𝑞 𝑗 , 𝑚 𝑗 , 𝑄 )
+
+(12) Both paradigms are elegantly encapsulated into a single, cohesive equation: 
+
+𝑞 (𝐴, 𝐸 |𝑄 ) = 𝑓 𝜃 (𝐸, 𝑄 )
+
+> 𝐽
+
+Ö
+
+> 𝑗 =1
+
+𝑓 memcot  
+
+> 𝜃
+
+(𝑞 𝑗 , 𝑚 𝑗 , 𝑄 ) (13) In summary, whether addressing the high-volume top-𝐾 con-straints of single-hop problems or navigating the sequential de-pendencies of multi-hop reasoning, our Multi-Step Memory archi-tecture provides a mathematically unified modeling framework. Both paradigms are elegantly encapsulated into a single, cohesive equation, demonstrating the theoretical robustness and versatility of the proposed memory evolution mechanism. 
+
+Table 5: The analysis of the cost and 𝐹 1 scores in the LoCoMo benchmark. Best results are highlighted in bold, and second-best results are underlined. Model Method 𝐹 1 scores Token GPT-4o-mini[4]  Full Context 35.57 16,910 RAG [13] 42.25 649 
+
+Mem0 [7] 45.10 1,172 MemoryOS [16] 42.84 1,589 A-Mem [37] 39.65 2,520 CompassMem [11] 52.18 20,100 MemCoT 58.03 2,438 
+
+> Qwen2.5-14B[24]
+
+Full Context 42.74 16,910 RAG [13] 38.77 695 
+
+Mem0 [7] 36.04 1,015 MemoryOS [16] 40.28 1,400 A-Mem [37] 28.98 1,137 CompassMem [11] 52.52 20,100 MemCoT 57.06 2,748 
+
+Table 6: The analysis of the average steps by category in the LoCoMo benchmark. The MH, TP, OD, and SH represent Multi-hop, Temporal, Open-domain, and Single-hop, respec-tively. Model Average Steps MH TP OD SH Overall 
+
+GPT-4o-mini [4] 1.83 2.41 3.25 1.52 1.87 Qwen2.5-7B [24] 1.90 2.69 2.55 1.76 2.03 
+
+## B Additional Experiments B.1 Computational Cost Analysis 
+
+To study the cost of computation, we analyze the cost of tokens and the average evolution iteration 𝐽 of each category in the LoCoMo benchmark. As shown in Table 5, models of different sizes incur varying token costs. Notably, the maximum token consumption re-mains only 2,748, which is substantially lower than the full context length of 16,910 tokens. Although Mem0 or MemoryOS produce a relatively low cost of approximately 1.5k tokens, MemCoT explicitly makes a trade-off between the quality of the answer and the con-sumption of tokens. Compared to MemoryOS, MemCoT achieves a 41% improvement in 𝐹 1 scores at the expense of an additional 1.3k tokens. Moreover, as shown in Table 6, the average number of evolutionary iterations is merely 1.87 and 2.03 for GPT-4o-mini and Qwen2.5-7B, respectively. These results demonstrate that MemCoT effectively determines the optimal termination point for the itera-tive loop, even when the maximum number of iterations is set to 
+
+𝐽 = 8. 
+
+> 11 MM ’26, November 10–14, 2026, Rio de Janeiro, Brazil Trovato et al.
+
+Table 7: The analysis of different types of retrieval methods in the LoCoMo benchmark. Best results are highlighted in bold. The model is GPT-4o-mini. 
+
+Type Method Single-hop Multi-hop Open Temporal Overall 
+
+Full Context 45.89 25.01 15.49 23.83 35.57 RAG [13] 52.19 32.17 23.21 30.77 42.25 Non graph Mem0 [7] 47.65 38.72 28.64 48.93 45.10 A-Mem [37] 44.65 27.02 12.14 45.85 39.65 MemCoT(w NaïveRag [13]) 65.38 43.85 32.99 56.10 57.73 
+
+MemoryOS [16] 48.62 35.27 20.02 41.15 42.84 Graph CompassMem [11] 57.36 38.84 26.61 57.96 52.18 MemCoT(w LightRag [9]) 64.81 40.43 42.67 60.31 58.03 Table 8: Performance on the LoCoMo benchmark with Advanced Models GPT-4.1-mini.Best results are highlighted in bold, and second-best results are underlined. Model Method Multi-hop Temporal Open-domain Single-hop Overall Token GPT-4.1-mini 
+
+Full Context 25.02 12.04 19.05 18.68 18.70 16,910 MemoryBank [49] 5.00 5.94 5.16 5.72 5.46 432 
+
+MemGPT [22] 17.72 19.44 11.29 25.59 18.51 16,977 A-Mem [37] 25.06 51.01 13.22 41.02 32.58 2,520 Mem0 [7] 30.14 48.91 16.43 41.3 34.20 1,764 Zep [25] 26.73 20.97 21.24 39.96 32.40 1,602 MemCoT (w/o 𝜓 z-o ) 38.51 38.94 52.81 64.58 53.73 1,707 MemCoT 43.89 60.88 40.88 66.42 59.54 2,790 
+
+## B.2 The Analysis of Retrieval Module 
+
+Because of its short-term memory evolution mechanism, MemCoT is insensitive to the design of the retrieval method. To further an-alyze the role of the retrieval module in long-term memory, we conduct corresponding ablation studies. As shown in Table 7, our method still maintains the best performance with both graph-based and non-graph-based retrieval methods, achieving 𝐹 1 scores of 58.03 and 57.73, respectively. It shows that the non-graph retrieval method will only slightly decline in the quality of the answer, while the graph retrieval method will get better performance at the cost of the time required for knowledge graph construction. Notably, we notice that no significant performance discrepancy between single-hop and multi-hop questions. We attribute this to the multi-step framework of MemCoT, which effectively bridges the gap between the non-graph and graph retrieval methods, which means the pro-cess of MemCoT builds a memory graph due to the short-term memory evolution module. Specifically, the short-term memory evolution module dynamically constructs an implicit memory graph during processing. For open-domain and temporal questions, graph-based methods such as LightRAG yield higher 𝐹 1 scores owing to their enhanced memory representations. Ultimately, these findings demonstrate that our method could be improved with the develop-ment of the retrieval methods. 
+
+## B.3 More Model Experiments 
+
+To provide a more concrete illustration of MemCoT, Figure 5 com-pares the workflows of standard RAG, the single-step memory base-line, and our proposed MemCoT. Specifically, MemCoT leverages diverse forms of short-term memory to facilitate the reasoning pro-cess, which in turn iteratively refines the search queries to retrieve more relevant memory. Furthermore, Table 8 presents a detailed analysis of the trade-off between token consumption and response accuracy in the advanced model. Compared to Mem0, MemCoT achieves a substantial 83% improvement in answer quality, although with a 58% increase in token usage. Notably, when compared to Zep, the ablated variant MemCoT (w/o 𝜓 z-o ) slightly increases only 6% in the consumption of tokens while still delivering a 65% im-provement in quality, thereby demonstrating the robustness and high efficiency of the MemCoT framework. 
+
+## C Detailed Settings 
+
+For the long-term memory storage system, we adopt LightRAG as our underlying search engine. In both the LoCoMo and Long-MemEval setups, we utilize gpt-4o-mini [ 4 ] for entity and relation extraction, aligning with standard practices in recent literature. To encourage diverse sampling, the generation temperature for agents within the multi-view long-term memory perception module is consistently set to 1.0. Conversely, the temperature for the judge agent is set to 0.0 to ensure deterministic and rigorous judgment on whether further query modifications are necessary. Finally, the  
+
+> 12 MemCoT: Test-Time Scaling through Memory-Driven Chain-of-Thought MM ’26, November 10–14, 2026, Rio de Janeiro, Brazil
+
+Figure 5: The specific comparison of different methods. The orange mark indicates the keywords of the truth label. 
+
+responder agent’s temperature is set to 1.0, which conforms to prevalent experimental configurations. 
+
+## D Prompts. 
+
+To implement our results, we release the key prompts in our proce-dure. Below is the instruction for zoom-in focal retrieval. 
+
+prompt = f""" { query_information } { known_information } RAG ␣ retrieval ␣ results : { rag_results_text } Task :␣ Identify ␣ useful ␣ retrieval ␣ chunks ␣ based ␣ on ␣" Constraint Matching ". Analysis ␣ Rules : 1. ␣ ** Temporal ␣ Check **: ␣ If ␣ the ␣ query ␣ mentions ␣a␣ specific ␣ time ␣ or ␣ duration ,␣ ANY ␣ result ␣ mentioning ␣a␣ matching ␣ time / duration ␣ is ␣ HIGHLY ␣ relevant . 2. ␣ ** Descriptive ␣ Matches **: ␣ If ␣ the ␣ query ␣ asks ␣ for ␣ a␣ specific ␣ name ␣(e.g.,␣a␣ place ␣ or ␣ person ) ,␣ but ␣ the ␣ text ␣ only ␣ provides ␣a␣ generic ␣ description ␣ (e.g.,␣" my place " ,␣" that person " ,␣" my origin ") ,␣ mark ␣ it ␣ as ␣ USEFUL .␣ It ␣ confirms ␣ the ␣ context . 3. ␣ ** Partial ␣ Information **: ␣ Do ␣ not ␣ discard ␣a␣ result ␣ just ␣ because ␣ it ␣ lacks ␣ the ␣ final ␣ answer . ␣ If ␣ it ␣ provides ␣ the ␣* background *␣ or ␣* cause *␣ of ␣ the ␣ queried ␣ event ,␣ it ␣ is ␣ useful . Output ␣a␣ JSON ␣ object : 1. ␣ thinking :␣A␣ brief ␣ explanation ␣ covering ,␣ including ␣ why ␣ specific ␣ IDs ␣ were ␣ selected ␣( mention ␣ the ␣ matching ␣ time ␣ or ␣ description ). 3. ␣ missing_information :␣ What ␣ specific ␣ missing_information ␣ is ␣ still ␣ missing .␣ You ␣ can ␣ analyze ␣ the ␣ disadvantage ␣ of ␣ search_query . 4. ␣ useful_ids :␣ List ␣ of ␣ indices ␣(e.g.,␣ [1 , ␣ 2]) .␣ Include ␣ IDs ␣ that ␣ contain ␣ matching ␣ timeframes ␣ or ␣ descriptions ␣ of ␣ the ␣ target ,␣ even ␣ if ␣ the ␣ specific ␣ name ␣ is ␣ missing . Output ␣ ONLY ␣ valid ␣ JSON .""" 
+
+Below is the instruction for zoom-out context expansion. 
+
+prompt = f""" { query_information } { known_information } { middle_context_text } Task :␣ Identify ␣ useful ␣ information ␣ to ␣ answer ␣ the ␣ query . Analysis ␣ Rules : 1. ␣ ** Temporal ␣ Check **: ␣ If ␣ the ␣ query ␣ mentions ␣a␣ specific ␣ time ␣ or ␣ duration ,␣ ANY ␣ result ␣ mentioning ␣a␣ matching ␣ time / duration ␣ is ␣ HIGHLY ␣ relevant . 1. ␣ ** Descriptive ␣ Matches **: ␣ If ␣ the ␣ query ␣ asks ␣ for ␣ a␣ specific ␣ name ␣ but ␣ the ␣ text ␣ only ␣ provides ␣a␣ generic ␣ description ,␣ mark ␣ it ␣ as ␣ USEFUL . 2. ␣ ** Contextual ␣ Clues **: ␣ Surrounding ␣ turns ␣ may ␣ provide ␣ context ,␣ causation ,␣ or ␣ temporal ␣ references ␣ that ␣ help ␣ answer ␣ the ␣ query . Output ␣a␣ JSON ␣ object : 1. ␣ thinking :␣ Your ␣ reasoning ␣ about ␣ what ␣ useful ␣ information ␣ these ␣ context ␣ windows ␣ contain . 2. ␣ thinking_choice :␣␣ Why ␣ specific ␣ IDs ␣ were ␣ selected ␣( mention ␣ the ␣ matching ␣ time ␣ or ␣ description );  
+
+> 13 MM ’26, November 10–14, 2026, Rio de Janeiro, Brazil Trovato et al.
+
+3. ␣ missing_information :␣ What ␣ specific ␣ information ␣ is ␣ still ␣ missing ␣ to ␣ fully ␣ answer ␣ the ␣ query . 4. ␣ useful_ids :␣ List ␣ of ␣0- based ␣ indices ␣(e.g.,␣ [0 , ␣ 2]) ␣ from ␣ the ␣ context ␣ windows ␣ that ␣ are ␣ useful . Output ␣ ONLY ␣ valid ␣ JSON .""" 
+
+Below is the instruction for panoramic visual grounding. 
+
+prompt =f"""{ query_information } { known_information } { rag_information } You ␣ are ␣ viewing ␣ conversation ␣ session ␣ images ␣ from ␣ sessions :␣{ session_list_str }. Each ␣ image ␣ is ␣a␣ page ␣ from ␣a␣ conversation ␣ PDF .␣ Dialogue ␣ entries ␣ are ␣ formatted ␣ as : ␣␣ {{ dia_id }} - ␣ {{ speaker }}: ␣ {{ text }} Some ␣ entries ␣ may ␣ include ␣ embedded ␣ images ␣ with ␣ captions . Your ␣ task : 1. ␣ Carefully ␣ read ␣ ALL ␣ dialogue ␣ content ␣ visible ␣ in ␣ the ␣ images . 2. ␣ Identify ␣ dialogue ␣ entries ␣( by ␣ their ␣ dia_id ,␣e.g .,␣" D1 :5 ")␣ that ␣ contain ␣ information ␣ relevant ␣ to ␣ answering ␣ the ␣ query . 3. ␣ Explain ␣ your ␣ reasoning . Output ␣a␣ JSON ␣ object : {{ " thinking ":␣ ... , " useful_dia_ids ":␣ ... , }} Output ␣ ONLY ␣ valid ␣ JSON .""" 
+
+Below is the instruction for the judge agent. 
+
+prompt =f""" Query :␣{ query } { short_memory_text } { conv_memory_text } { fail_queue_information } Output ␣a␣ JSON ␣ object : 1.{ thinking } 2. useful_id :␣ List ␣ of ␣ dia_id ␣ strings ␣ from ␣ the ␣ useful ␣ results ␣(e.g.,␣ [0 , ␣ 2]) .␣ If ␣ can_answer ,␣ include ␣ those ␣ that ␣ support ␣ the ␣ answer .␣ If ␣ not , ␣ include ␣ those ␣ with ␣ relevant ␣ partial ␣ info . 3. can_answer :␣ true ␣ if ␣ the ␣ results ␣ contain ␣ enough ␣ information ␣ to ␣ answer ␣ the ␣ query ,␣ false ␣ otherwise . 4. ␣ action :␣ Check ␣ the ␣ ** Fail ␣ query **. ␣ You ␣ can ␣ choose ␣ only ␣ one ␣ action ␣ to ␣ generate ␣ for ␣ each ␣ new ␣ query : ␣␣␣␣ 1. ␣ Break :␣ Break ␣ down ␣ the ␣ last ␣ query ␣ into ␣ sub -queries ␣ to ␣ get ␣a␣ shorter ␣ but ␣ more ␣ exact ␣ query . ␣ if ␣Q =[ Q_A , Q_B ],␣ you ␣ can ␣ just ␣ searcg ␣ Q_A ␣ firstly .␣ Example :␣ When ␣ Tom ␣ arrived ␣ at ␣ Shanghai ␣3␣ years ␣ ago ->␣[ Tom ␣ arrived ␣ at ␣ Shanghai ,3 ␣ years ␣ ago ] ␣␣␣␣ 2. ␣ Delete :␣ If ␣ Root ␣ Query ␣Q␣=␣[ Q_A , Q_B ]␣ and ␣ Short ␣ Memory ␣ include ␣ Q_A ,␣ focus ␣ on ␣ Q_B ␣ and ␣ New ␣ query ␣Q '=Q - Q_A . ␣␣␣␣ Do ␣ not ␣ let ␣ new_queries ␣ as ␣ same ␣ as ␣ and ␣ Fail ␣ query . ␣␣␣␣ You ␣ can ␣ try ␣ more ␣ types ␣ of ␣ action ␣ to ␣ avoid ␣ the ␣ same ␣ failed ␣ query . 5. new_queries :␣ If ␣ can_answer ␣ is ␣ false ,␣ suggest ␣{ queries_num }␣ new ␣ queries ␣ that ␣ are ␣ more ␣ likely ␣ to ␣ retrieve ␣ the ␣ missing ␣ information .␣ These ␣ should ␣ be ␣ focused ␣ and ␣ based ␣ on ␣ the ␣ gaps ␣ identified ␣ in ␣ the ␣ report . Output ␣a␣ JSON ␣ object ␣ exactly ␣ following ␣ this ␣ structure : {{ " thinking ":␣ ... , " useful_id ":␣ ... , " can_answer ":␣ ... , " action ":␣ ... , " new_queries ":␣ ... , }} Output ␣ ONLY ␣ valid ␣ JSON .""" 
+
+For the responder agent, we adopt the standard response prompts from LoCoMo [20] and LongMemEval [35], respectively.

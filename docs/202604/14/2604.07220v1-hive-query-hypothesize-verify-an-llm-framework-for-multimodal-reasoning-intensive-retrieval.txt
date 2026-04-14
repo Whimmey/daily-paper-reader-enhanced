@@ -1,0 +1,339 @@
+Title: HIVE: Query, Hypothesize, Verify An LLM Framework for Multimodal Reasoning-Intensive Retrieval
+
+URL Source: https://arxiv.org/pdf/2604.07220v1
+
+Published Time: Thu, 09 Apr 2026 01:13:20 GMT
+
+Number of Pages: 10
+
+Markdown Content:
+# HIVE: Query, Hypothesize, Verify — An LLM Framework for Multimodal Reasoning-Intensive Retrieval 
+
+# Mahmoud Abdalla 1 Mahmoud SalahEldin Kasem 1 Mohamed Mahmoud 1
+
+# Mostafa Farouk Senussi 1 Abdelrahman Abdallah 2 Hyun-Soo Kang 1* 
+
+> 1
+
+# Chungbuk National University 2 University of Innsbruck 
+
+# Abstract 
+
+Multimodal retrieval models fail on reasoning-intensive queries where images (diagrams, charts, screenshots) must be deeply integrated with text to identify relevant documents — the best multimodal model achieves only 27.6 nDCG@10 on MM-BRIGHT, underperforming even strong text-only retrievers (32.2). We introduce HIVE 
+
+(Hypothesis-driven Iterative Visual Evidence Retrieval), a plug-and-play framework that injects explicit visual–text reasoning into a retriever via LLMs. HIVE operates in four stages: (1) initial retrieval over the corpus, (2) LLM-based compensatory query synthesis that explicitly artic-ulates visual and logical gaps observed in top-k candi-dates, (3) secondary retrieval with the refined query, and (4) LLM verification and reranking over the union of can-didates. Evaluated on the multimodal-to-text track of MM-BRIGHT (2,803 real-world queries across 29 technical do-mains), HIVE achieves a new state-of-the-art aggregated nDCG@10 of 41.7 — a +9.5 point gain over the best text-only model (DiVeR: 32.2) and +14.1 over the best multi-modal model (Nomic-Vision: 27.6), where our reasoning-enhanced base retriever contributes 33.2 and the HIVE framework adds a further +8.5 points — with particularly strong results in visually demanding domains (Gaming: 68.2, Chemistry: 42.5, Sustainability: 49.4). Compati-ble with both standard and reasoning-enhanced retrievers, HIVE demonstrates that LLM-mediated visual hypothesis generation and verification can substantially close the mul-timodal reasoning gap in retrieval. 1
+
+# 1. Introduction 
+
+The ability to retrieve relevant information from large cor-pora is fundamental to knowledge-intensive applications 
+
+> *Corresponding author.
+> 1https : / / github . com / mm - bright / multimodal -reasoning-retrieval
+
+such as question answering, retrieval-augmented genera-tion, and agentic systems [18]. Recent advances in dense retrieval have yielded powerful embedding models that cap-ture rich semantic relationships between queries and docu-ments [14]. However, these models are predominantly de-signed for text-only retrieval, where surface-level semantic matching is often sufficient. Real-world queries are increas-ingly multimodal. Users post screenshots of error messages, attach diagrams from scientific papers, or include charts from financial reports when seeking help online. In these settings, retrieval requires reasoning — understanding what the image depicts, how it relates to the text query, and which documents in the corpus collectively address both dimen-sions. As shown in Figure 1, a query containing a circuit diagram and the text “why is my LED not lighting up?” can-not be resolved by matching keywords alone; the retrieval system must reason about the circuit topology to identify the relevant document. Recent vision and vision-language models demonstrate strong task-specific reasoning, such as rationale-driven anomaly detection [1], industrial defect classification [15], and video understanding [23]. However, these approaches are designed for closed-set prediction and do not address how visual reasoning can be leveraged to improve open-domain retrieval over large text corpora. This challenge is starkly reflected in recent benchmarks. On MM-BRIGHT [6], the first multimodal benchmark for reasoning-intensive retrieval, state-of-the-art multimodal models achieve only 27.6 nDCG@10 — lower than the best text-only retriever (32.2). Adding visual information actively hurts performance, revealing a fundamental gap: current multimodal retrievers embed images and text jointly but lack the capacity to reason about what visual content im-plies for document relevance. A natural question arises: can we inject visual reasoning into retrieval without retraining any model? Existing approaches to improve retrieval qual-ity rely on query expansion [34], chain-of-thought prompt-ing [36], or reranking [3, 32] — but these operate purely in the text domain and ignore the visual gap. On the other hand, fine-tuning multimodal retrievers requires large la-1
+
+> arXiv:2604.07220v1 [cs.IR] 8 Apr 2026
+
+beled datasets and is computationally prohibitive for most practitioners. We introduce HIVE (Hypothesis-driven Iterative Visual 
+
+Evidence Retrieval), a plug-and-play framework that ad-dresses this gap by harnessing LLMs as explicit visual reasoners within the retrieval pipeline. Crucially, HIVE requires no additional training beyond the base retrieval model — the framework operates entirely at inference time, making it compatible with any retriever, from off-the-shelf embedding models to reasoning-enhanced fine-tuned re-trievers. HIVE is motivated by a key insight: LLMs, when provided with top-k retrieved documents and a description of the query image, can identify what is missing and gen-erate a precise compensatory query that captures the visual reasoning the base retriever could not perform. This is anal-ogous to how a human expert, upon seeing an unsatisfying set of search results, reformulates their query by explicitly articulating what they are looking for — except HIVE does this with full awareness of both the image content and the retrieved documents. Our contributions are as follows: • We identify and formalize the visual reasoning gap in multimodal retrieval: the failure of embedding-based models to reason about what query images imply for doc-ument relevance (§5.1). • We propose HIVE , a plug-and-play, model-agnostic framework that injects LLM-driven visual hypothesis generation and verification into any base retriever via a four-stage pipeline (§3). • We demonstrate that HIVE achieves a new state-of-the-art aggregated nDCG@10 of 41.7 on MM-BRIGHT’s multimodal-to-text track, outperforming the best multi-modal model by +14.1 points and the best text-only model by +9.5 points, with consistent gains across all 29 do-mains (§5.2). 
+
+# 2. Related Work 
+
+2.1. Dense Retrieval and Reasoning-Intensive Benchmarks 
+
+Dense retrieval using bi-encoder models has become the dominant paradigm for large-scale information retrieval [7, 14, 28]. These models independently encode queries and documents into a shared embedding space and retrieve via efficient nearest-neighbor search [13]. While highly effective on fact-seeking queries in benchmarks such as BEIR [33] and MTEB [25], bi-encoders struggle when rel-evance requires multi-step reasoning rather than surface-level semantic matching. The BRIGHT and Tempo bench-mark [5, 31] exposed this limitation clearly: even the strongest embedding models (nDCG@10 of 59.0 on BEIR) collapse to 18.3 on reasoning-intensive queries. Subsequent work has sought to address this gap through reasoning-aware fine-tuning [9, 30], iterative query expansion [17, 34], and LLM-based reranking [4, 24, 32, 37, 43]. DIVER [21] integrates all three components — document preprocessing, feedback-based query expansion, and hybrid pointwise-listwise reranking — achieving state-of-the-art results on BRIGHT. 
+
+2.2. Multimodal Embedding Models 
+
+Contrastive vision-language models such as CLIP [27] and SigLIP [39] established the foundation for joint image-text embedding by aligning visual and textual representa-tions through large-scale contrastive pretraining. However, these models produce a single shared embedding space and lack the capacity for fine-grained, instruction-following re-trieval. Nomic Embed Vision [26] addressed this by shar-ing an embedding space between a vision encoder and a strong text model, enabling zero-shot image-text retrieval with competitive performance on standard benchmarks. Recent MLLMs-based retrievers — VLM2Vec [12], GME [40], and Qwen3-VL-Embedding [19] — achieve strong results through contrastive training on multimodal benchmarks. Despite these advances, all share a fundamen-tal limitation: embedding-based similarity cannot reason about what a query image implies for document relevance. MM-BRIGHT confirmed this directly: the best multimodal model (Nomic-Vision: 27.6) underperforms the best text-only retriever (DiVeR: 32.2), showing visual reasoning can-not be reduced to embedding fusion. 
+
+2.3. Visual Document Retrieval 
+
+ColPali [10] treats document pages as images and embeds them via a VLM using ColBERT-style late interaction, by-passing OCR entirely. DSE [22] and VisRAG [38] similarly embed full page images for dense retrieval. While effec-tive for visual document retrieval, these methods assume vi-sual queries and documents; HIVE addresses multimodal-to-text retrieval where documents are purely textual. 
+
+2.4. LLM-Augmented Query Reformulation 
+
+Query expansion and reformulation have long been used to bridge the vocabulary gap between queries and docu-ments [29]. With the advent of LLMs, several works have proposed generating hypothetical documents [11], chain-of-thought reasoning queries [31], answer scent queries [2], or iteratively expanded queries [17, 21] to improve the re-trieval of reasoning-intensive content. Re-Invoke [8] ap-plies LLMs to unsupervised tool retrieval by enriching tool documents offline and extracting user intent at inference time. RankGPT [32] demonstrated that LLMs can directly rerank retrieved passages through sliding window prompt-ing, while Rank1 [37] and RankR1 [43] further improved reranking via reasoning optimized LLMs. 2Figure 1. An example where standard multimodal retrievers fail to identify the relevant document because the query image (a circuit diagram) contains critical visual cues that text-only or embedding-based matching cannot capture. HIVE generates a compensatory query that explicitly articulates these visual gaps, enabling successful retrieval. 
+
+2.5. Multimodal Reasoning-Intensive Retrieval 
+
+MM-BRIGHT [6] introduced the first benchmark for reasoning-intensive multimodal retrieval, spanning 2,803 queries across 29 technical domains with four task types of increasing complexity. The benchmark revealed that ex-isting multimodal models systematically fail on queries re-quiring visual reasoning, with the best multimodal model underperforming text-only baselines. Concurrent work MR 2-Bench [42] proposed a complementary benchmark emphasizing visual-centric reasoning, including spatial puzzles and multi-image relational tasks, and found that reasoning-enhanced reranking strategies yield consistent gains. Our work directly addresses the challenge identi-fied by these benchmarks: HIVE is the first framework to explicitly model the visual reasoning gap at the retrieval level, achieving a new state-of-the-art on MM-BRIGHT’s multimodal-to-text track. 
+
+# 3. Method 
+
+3.1. Problem Formulation 
+
+We address the multimodal-to-text retrieval task, in which each query consists of a text component and one or more as-sociated images, while the document corpus contains text-only passages. Formally, let C = {d1, d 2, . . . , d N } denote a corpus of N text documents. A multimodal query is a pair 
+
+q = ( qt, q v ), where qt is the textual component and qv is an image (e.g., a diagram, chart, or screenshot). The ob-jective is to retrieve an ordered set of documents ˆDk ⊂ C ,
+
+| ˆDk| = k, that are most relevant to the full intent expressed by (qt, q v ).Standard dense retrievers operate by encoding query and documents into a shared embedding space and ranking by cosine similarity: 
+
+score (q, d ) = cos (ϕ(qt, q v ), ψ (d))  (1) where ϕ(·) and ψ(·) denote query and document encoders respectively. While effective for surface-level match-ing, this formulation provides no mechanism for reason-ing about what qv implies for document relevance — the core challenge in reasoning-intensive multimodal retrieval. HIVE addresses this by introducing an LLM-mediated in-termediate stage that explicitly constructs a compensatory query ˆq capturing visual and logical cues missing from the initial retrieval, and then verifies and reranks the union of candidates from both rounds. 
+
+3.2. Overview of HIVE 
+
+HIVE is a plug-and-play, four-stage retrieval framework that augments any base retriever with LLM-driven visual hypothesis generation and verification. The term iterative 
+
+reflects that retrieval is performed in two successive passes, each conditioned on the output of the previous stage — an iterative refinement over the candidate set rather than a single-pass lookup. An overview is shown in Figure 2. Given a multimodal query (qt, q v ) and a text corpus C,HIVE proceeds as follows: 1. Initial Retrieval. A base retriever R retrieves the top-k1
+
+candidate documents D(1) = R(qt, q v , C, k 1).3Figure 2. Overview of the HIVE framework. Given a multimodal query (qt, q v ), HIVE operates in four stages: (1) Initial Retrieval                       
+
+> — a base retriever retrieves a small probe set D(1) of top-k1candidates; (2) Compensatory Query Synthesis — an LLM inspects the probe documents alongside the image description δ(qv)to identify visual and logical gaps, generating a targeted compensatory query ˆq;
+> (3) Secondary Retrieval — the base retriever uses ˆqto retrieve a broader candidate set D(2) ; and (4) Verification & Reranking — an LLM re-evaluates the union U=D(1) ∪ D (2) against the original multimodal query and produces the final ranked list ˆDkf. No additional training is required beyond the base retriever.
+
+2. Compensatory Query Synthesis. An LLM inspects 
+
+D(1) alongside the image description δ(qv ) and gener-ates a compensatory query ˆq that articulates the visual and logical gaps in the initial results. 3. Secondary Retrieval. The same retriever R uses ˆq to re-trieve a broader set of candidates D(2) = R(ˆ q, q v , C, k 2),where k2 ≫ k1.4. Verification and Reranking. An LLM re-evaluates the union U = D(1) ∪D (2) against the original query (qt, q v )
+
+and produces a final ranked list ˆDkf .
+
+3.3. Stage 1: Base Retriever 
+
+HIVE is retriever-agnostic and can wrap any dense re-trieval model. In our experiments, we use HIVE-Retriever ,a reasoning-enhanced embedding model independently fine-tuned from Qwen3-Embedding-4B on synthetic hard-negative contrastive data spanning medical, mathematical, and general domains. Our Retriever encodes both text and image-text queries into a shared embedding space using the hidden state of the [EOS] token from the last layer, and retrieves via cosine similarity: 
+
+score (q, d i) = cos  E(qt, q v ), E (di) (2) For multimodal queries, we represent qv through its im-age caption δ(qv ) generated by GPT-4o, concatenated with 
+
+qt as the query input. This caption is used consistently across all four stages of HIVE. We note that GPT-4o is thus invoked in three roles: (1) image captioning to produce 
+
+δ(qv ), (2) compensatory query synthesis in Stage 2, and (3) verification and reranking in Stage 4. All three calls are at inference time and require no gradient updates beyond the base retriever. 
+
+3.4. Stage 2: Compensatory Query Synthesis 
+
+The central hypothesis of HIVE is that the failure of initial retrieval on reasoning-intensive queries is systematic: the top-k1 retrieved documents collectively reveal which visual or logical dimensions the query requires but the retriever failed to surface. An LLM, given both the image description 
+
+δ(qv ) and D(1) , is uniquely positioned to identify these gaps and synthesize a targeted compensatory query. Formally, let D(1) = {dr1 , . . . , d rk1 } be the initial probe results ordered by retrieval score. We construct the follow-ing prompt to the LLM: 
+
+ˆq = L HYPOTHESIS PROMPT (qt, δ (qv ), {dri }k1
+
+> i=1
+
+) (3) The H YPOTHESIS PROMPT instructs the LLM to: (1) identify what the image depicts beyond what the text query states, (2) assess which aspects of the query intent are miss-ing or only partially addressed by the probe documents, and (3) produce a concise compensatory query ˆq that bridges these gaps. 
+
+Design rationale. Unlike standard query expansion meth-ods that reformulate the text query in isolation [17, 34], 4DOMAIN BGE-VL CLIP GME-2B GME-7B JINA-CLIP NOMIC SIGLIP HIVE 
+
+STEM & Life Sciences 
+
+Acad 4.2 4.8 16.2 27.6 22.3 22.6 3.6 45.4 
+
+Bio 5.7 14.8 22.9 15.2 20.5 26.9 11.9 42.7 
+
+Chem 10.8 9.6 27.2 21.9 30.6 30.6 11.6 42.5 
+
+Phys 6.8 6.1 13.3 14.0 14.4 17.2 7.3 25.1 
+
+Math 13.1 17.9 16.4 9.3 27.0 34.0 15.3 45.2 
+
+Earth 10.1 10.9 20.5 26.2 24.6 30.1 11.8 44.6 
+
+BioAc 13.3 11.4 10.5 13.4 19.4 23.4 14.8 40.1 
+
+BioInf 11.6 9.4 21.1 19.2 23.7 33.8 16.8 34.8 
+
+Med 12.6 9.8 22.7 19.0 26.8 33.9 9.1 42.0 
+
+Software & Technical Systems 
+
+Apple 7.2 12.3 23.9 17.0 24.3 28.7 4.4 36.1 
+
+Ubuntu 11.6 5.5 25.9 34.2 26.1 34.3 12.6 53.6 
+
+BTC 8.9 8.3 18.2 19.6 22.6 22.7 10.0 37.3 
+
+Crypto 11.3 14.8 9.8 7.1 15.5 22.4 10.2 22.5 
+
+QC 4.5 2.6 5.9 5.6 10.8 12.1 2.6 14.9 
+
+Robot 16.1 10.6 15.8 18.7 19.0 30.3 14.3 39.1 
+
+Sales 14.2 2.3 31.1 47.3 32.3 26.2 6.5 44.9 
+
+Social Sciences & Humanities 
+
+Econ 9.5 6.0 10.0 12.6 13.5 21.1 9.8 49.2 
+
+Psych 6.4 8.7 15.6 18.6 20.8 23.9 7.9 41.9 
+
+Phil 2.4 5.4 15.2 18.0 19.4 21.7 7.0 30.1 
+
+Law 10.2 19.7 30.7 35.0 35.3 47.6 16.4 64.6 
+
+Christ 8.9 15.0 20.0 26.5 21.0 30.9 13.0 49.2 
+
+Islam 12.0 10.7 25.8 32.0 24.3 28.9 6.5 41.0 
+
+Applied Domains 
+
+Aviat 9.6 15.4 16.2 17.0 24.3 24.1 9.2 40.1 
+
+Game 17.5 19.1 41.6 43.9 45.6 43.1 21.4 68.2 
+
+GIS 13.8 13.1 15.5 15.6 20.3 25.8 16.5 36.5 
+
+PM 8.6 8.9 21.9 33.2 20.5 27.6 12.4 41.9 
+
+Sustain 10.1 9.0 16.7 25.6 24.3 24.7 11.5 49.4 
+
+Travel 10.1 16.1 23.9 30.8 26.6 36.7 13.1 51.8 
+
+Quant 8.1 2.1 12.4 15.3 11.6 16.2 5.8 34.2 Average 10.0 10.4 19.5 22.0 23.0 27.6 10.8 41.7  
+
+> Table 1. Per-domain nDCG@10 on MM-BRIGHT (multimodal-to-text track) across all 29 domains, grouped by thematic category. HIVE achieves the highest average score and the best score in 28 of 29 domains. Best scores per domain in bold . Average is computed as a query-weighted macro average following the official MM-BRIGHT evaluation protocol [6], where domains with more queries contribute proportionally; per-domain scores are rounded to one decimal place after aggregation.
+
+the compensatory query synthesis in HIVE explicitly con-ditions on: (i) the visual content of the query image, and (ii) the actual content of the top-k1 retrieved documents. This dual conditioning allows HIVE to generate targeted expansions that address specifically what is missing, rather than general paraphrases of the original query. For example, given a query image showing a Python stack trace and re-trieved documents discussing general debugging practices, HIVE would generate a compensatory query articulating the specific error type and module visible in the image. 
+
+3.5. Stage 3: Secondary Retrieval 
+
+Given the compensatory query ˆq, we perform a second re-trieval pass with a larger budget k2 ≫ k1:
+
+D(2) = R(ˆ q, q v , C, k 2) (4) 5We use k2 = 50 and k1 = 5 by default (ablated in Sec-tion 5.4). The larger k2 is intentional: since ˆq targets a dif-ferent semantic subspace than the original query, a broader search increases coverage of relevant documents that the initial pass missed. The final candidate pool is the union of both passes: 
+
+U = D(1) ∪ D (2) , |U| ≤ k1 + k2 (5) where duplicates are removed while preserving retrieval or-der. 
+
+3.6. Stage 4: Verification and Reranking 
+
+Given U, a final LLM-based verification and reranking step produces the output list ˆDkf . The LLM is provided with the full union of candidates alongside the original query 
+
+(qt, δ (qv )) and asked to reason step-by-step about relevance before producing a ranked list of the top-kf document IDs: 
+
+ˆDkf = L VERIFY PROMPT (qt, δ (qv ), U, k f ) (6) The V ERIFY PROMPT instructs the LLM to act as a ver-ification agent: given the full visual-textual query context and all candidate documents, reason through which docu-ments most effectively resolve the user’s multimodal intent, then output a ranked JSON list of document IDs. Docu-ments not appearing in the LLM’s top-kf list are assigned residual scores based on their original retrieval rank, en-suring full coverage for downstream evaluation. The final scores are assigned as: 
+
+score (di) = 
+
+(
+
+Smax − rank i if di ∈ ˆDkf
+
+Sbase − offset i otherwise  (7) where Smax = 1000 and Sbase = 500 are fixed constants and offset i reflects the position in the unranked residual list. 
+
+# 4. Experiments 
+
+4.1. Dataset 
+
+We evaluate HIVE on MM-BRIGHT [6], the first reasoning-intensive multimodal retrieval benchmark. MM-BRIGHT consists of 2,803 queries spanning 29 techni-cal domains , including Gaming, Chemistry, Law, Sustain-ability, Earth Science, Mathematics, Computer Science, Medicine, and others. Each query is a multimodal pair 
+
+(qt, q v ) comprising a text question and one or more associ-ated images (diagrams, charts, screenshots, molecular struc-tures, etc.), paired with a text-only document corpus. 
+
+4.2. Experimental Setup 
+
+Computational Infrastructure. The base retriever was trained on 4× NVIDIA H100 80GB GPUs using dis-tributed data-parallel training. HIVE inference requires no additional GPU training; all LLM calls for compensatory query synthesis (Stage 2) and verification and reranking (Stage 4) use GPT-4o . Embedding inference for all retrieval stages is performed on a single node. 
+
+HIVE Hyperparameters. Unless otherwise specified, we use the following default hyperparameters throughout all experiments: probe size k1 = 5 , secondary retrieval size 
+
+k2 = 50 , final reranking output kf = 10 , and GPT-4o tem-perature = 0 (deterministic decoding). Sensitivity to k1 and 
+
+k2 is analyzed in Section 5.4. 
+
+4.3. Baselines 
+
+We compare against two families of baselines, following the MM-BRIGHT evaluation protocol. 
+
+Multimodal Retrievers. These models encode the full multimodal query (qt, q v ):• CLIP [27]: Contrastive image-text model with shared embedding space. • SigLIP [39]: Sigmoid-based contrastive VLM with im-proved image-text alignment. • Jina-CLIP [16]: Multi-task contrastive model supporting text-image and text-text retrieval. • Nomic Embed Vision [26]: Shares an embedding space between a vision encoder and a strong text model, en-abling zero-shot multimodal retrieval. • BGE-VL [41]: Multimodal embedding model from the BGE family supporting fused-modal retrieval. • GME-Qwen2-VL [40]: Universal multimodal embed-ding model built on Qwen2-VL, supporting any-to-any retrieval across text, image, and fused modalities. 
+
+Text-Only Retrievers. These models encode only the text component qt of the query: • BM25 : Sparse lexical baseline using BM25 scoring. • E5-Mistral-7B [35]: Instruction-tuned dense retriever built on Mistral-7B. • GTE-Qwen2-7B [20]: General text embedding model from the GTE family. • DiVeR [21]: Reasoning-enhanced retriever fine-tuned on Qwen3-Embedding-4B with synthetic hard-negative data and iterative query expansion; current state-of-the-art on BRIGHT. 
+
+# 5. Results 
+
+5.1. Main Results. 
+
+Figure 3 and Table 1 present the aggregated and per-domain nDCG@10 results across all 29 MM-BRIGHT do-mains. HIVE achieves a new state-of-the-art aggregated nDCG@10 of 41.7 , surpassing the strongest multimodal baseline (Nomic-Vision: 27.6) by +14.1 points and the 6HIVE         
+
+> DiVeR
+> OpenAI
+> ReasonIR
+> Qwen2
+> SFR
+> E5
+> GritLM
+> Rader
+> Qwen
+> Contriever
+> BM25
+> 0
+> 10
+> 20
+> 30
+> 40
+> 41.7
+> 32.2
+> 28.8 28.6 28.1 26.9
+> 25.3 25.3 24.9
+> 21.5 20.1
+> 8.5
+> (b) Text-Only Baselines
+> M-BRIGHT Multimodal-to-Text Retrieval
+> IVE (ours) Baseline Figure 3. Average nDCG@10 on MM-BRIGHT (multimodal-to-text track) for all evaluated models. HIVE achieves 41.7, out-performing the best multimodal baseline (Nomic-Vision: 27.6) by +14.1 points.
+
+best text-only model (DiVeR: 32.2) by +9.5 points . We at-tribute these gains to two complementary components: our reasoning-enhanced base retriever (HIVE-Retriever: 33.2, already surpassing DiVeR by +1.0), and the HIVE inference framework which contributes an additional +8.5 points 
+
+(33.2 → 41.7) with no additional training beyond the base retriever. The performance gap between HIVE and all baselines is consistent and substantial. The second-best model, Nomic-Vision (27.6), is followed by Jina-CLIP (23.0), GME-7B (22.0), GME-2B (19.5), SigLIP (10.8), CLIP (10.4), and BGE-VL (10.0). Notably, all contrastive VLM base-lines score below 28, confirming the finding from MM-BRIGHT [6] that standard embedding-based similarity is fundamentally insufficient for reasoning-intensive multi-modal retrieval. 
+
+5.2. Domain-Level Analysis 
+
+Table 1 reports per-domain nDCG@10 across all 29 MM-BRIGHT domains, grouped into four thematic categories. HIVE achieves the best performance in 28 of 29 domains ,demonstrating that the gains are not driven by a few outlier domains but reflect a consistent and systematic improve-ment across the full benchmark. The single exception is Salesforce (Sales), where GME-7B (47.3) narrowly outper-forms HIVE (44.9) — a domain characterized by highly structured CRM screenshots whose visual layout GME-7B’s contrastive training specifically captures, reducing the marginal benefit of compensatory query synthesis. Several patterns emerge from the domain-level break-down. First, HIVE shows the strongest absolute scores in 
+
+Gaming (68.2), Law (64.6), Ubuntu (53.6), Travel (51.8), and Economics (49.2). Second, the largest relative gains over Nomic-Vision occur in visually demanding domains such as Academic (+22.8), Economics (+28.1), and Sus-tainability (+24.7), where diagrams and charts carry dense domain-specific information that embedding similarity can-not capture. Third, even in domains where Nomic-Vision is relatively strong (Law: 47.6, BioInformatics: 33.8), HIVE still achieves improvements (+17.0 and +1.0 respectively). The marginal gain in BioInformatics (+1.0) is the single ex-ception and is explained by domain characteristics: bioin-formatics queries predominantly feature sequence-based images (e.g., alignment plots, phylogenetic trees) whose vi-sual content carries limited additional semantic signal be-yond what the text query already expresses. In such cases, GPT-4o’s image description δ(qv ) adds little new informa-tion to the compensatory query, reducing HIVE’s advantage to near-zero. This pattern is consistent with Quantum Com-puting (14.9) and Cryptography (22.5), where visual con-tent is similarly abstract — confirming that HIVE’s gains are largest when images carry dense, domain-specific infor-mation not expressible in the text query alone. The weakest HIVE performance is observed in Quantum Computing 
+
+(14.9) and Cryptography (22.5) — both highly abstract technical domains where visual content offers limited ad-ditional signal beyond the text query. 
+
+5.3. Plug-and-Play Analysis. 
+
+To demonstrate that HIVE is a general framework rather than a retriever-specific optimization, Table 2 reports nDCG@10 for each base retriever with and without HIVE. We note that HIVE-Retriever (33.2) already out-performs DiVeR (32.2) by +1.0 as a standalone model; the HIVE framework then contributes an additional +8.5 points (33.2 → 41.7), confirming that the framework’s gains are independent of the base retriever’s strength. HIVE yields consistent improvements across all base re-trievers, regardless of whether they are contrastive VLMs or reasoning-enhanced text models, with larger gains for weaker bases (e.g., +10.1 for CLIP), confirming that com-pensatory queries cover a wider semantic gap when the ini-tial probe set is less informative. 
+
+5.4. Ablation Study. 
+
+Table 3 evaluates the contribution of each HIVE stage by progressively adding components on top of the HIVE-Retriever base. The results confirm that both the compen-satory query synthesis (Stages 2–3) and the verification and reranking (Stage 4) contribute substantially and indepen-dently to the final performance, with neither stage alone sufficient to achieve the full gain. Applying Stage 4 only 7Table 2. HIVE as a plug-and-play framework across base retriev-ers. ∆ denotes absolute nDCG@10 improvement from applying HIVE. 
+
+Base Retriever Base +HIVE ∆
+
+CLIP 10.4 20.5 +10.1 GME-Qwen2-VL-2B 19.5 25.3 +5.8 GME-Qwen2-VL-7B 22.0 27.5 +5.5 Nomic-Vision 27.6 34.1 +6.5 HIVE-Retriever 33.2 41.7 +9.5 
+
+Table 3. Component ablation on MM-BRIGHT (HIVE-Retriever base).        
+
+> Configuration nDCG@10
+> HIVE-Retriever (base, no HIVE Framework) 33.2 + Stage 2 only (compensatory query, no verify) 35.3 + Stage 4 only (verify/rerank D(1) )37.2 + Stages 2+3 (expand only, no verify) 38.1
+> + Stages 1–4 (full HIVE) 41.7
+
+(verify/rerank over the initial probe set D(1) ) yields 37.2, while applying Stages 2+3 only (expand without verifica-tion) yields 38.1 — below the 41.7 achieved by the full pipeline. This confirms a clear synergy: Stage 2–3 expands coverage by surfacing relevant documents the base retriever missed, while Stage 4 filters the noise introduced by the broader secondary retrieval. Figure 4 further reports sensitivity to the probe size k1
+
+and secondary retrieval size k2. Performance improves con-sistently as both k1 and k2 increase, with k1=5 , k2=50 of-fering the best tradeoff between retrieval coverage and LLM context length. Smaller probe sets ( k1=3 , k2=30 ) already yield a 5-point improvement over the base retriever (38.2 vs. 33.2), confirming that even a light application of HIVE is beneficial. 
+
+# 6. Conclusion 
+
+We presented HIVE (Hypothesis-driven Iterative Visual Ev-idence Retrieval), a plug-and-play framework that addresses the fundamental limitation of existing multimodal retriev-ers on reasoning-intensive queries. While state-of-the-art multimodal embedding models score below 28 nDCG@10 on MM-BRIGHT — and are outperformed by text-only re-trievers — HIVE achieves 41.7 nDCG@10 through two complementary contributions: a reasoning-enhanced base retriever (33.2) and the HIVE inference framework (+8.5 points), which injects explicit visual reasoning via LLM-mediated compensatory query synthesis and verification at inference time. The key insight driving HIVE is that re-trieval failure on multimodal reasoning queries is systematic and diagnosable: an LLM, given the query image descrip-36 37 38 39 40 41 42 43     
+
+> nDCG@10
+> k1=3, k2=30
+> k1=3, k2=50
+> k1=5, k2=50
+> 38.2
+> 39.5
+> 41.7
+> Hyperparameter Sensitivity ( k1,k2)
+> Default config
+> Other configs
+
+Figure 4. Hyperparameter sensitivity on MM-BRIGHT. Each bar shows nDCG@10 for a (k1, k 2) configuration. The default setting (k1=5 , k2=50 ) achieves the best performance of 41.7, while even the lightest configuration ( k1=3 , k2=30 ) yields a substantial +5.0 gain over the base retriever (33.2). 
+
+tion and the top-k probe documents, can reliably identify what visual and logical cues are missing and synthesize a targeted compensatory query to recover them. This two-pass architecture — initial retrieval, hypothesis generation, secondary retrieval, and verification — requires no addi-tional training beyond the base retriever and is compatible with any dense retrieval backbone, as confirmed by consis-tent gains across five base retrievers spanning contrastive VLMs and reasoning-enhanced text models. Domain-level analysis across all 29 MM-BRIGHT do-mains reveals that HIVE’s gains are largest in visually de-manding domains where images carry dense structured in-formation (gains over Nomic-Vision — Gaming: +25.1, Economics: +28.1, Sustainability: +24.7), while gains are more modest in abstract domains with limited visual sig-nal (Quantum Computing: 14.9, Cryptography: 22.5). This pattern provides a clear signal for future work: the bottle-neck in abstract domains lies in GPT-4o’s ability to ground ambiguous or low-resolution images, suggesting that vi-sual grounding confidence estimation could further improve HIVE’s effectiveness. Future directions include extending HIVE to multi-image and video-to-text retrieval, replacing GPT-4o with smaller open-source models to reduce cost, and learning compensatory query generation end-to-end via reinforcement learning from retrieval feedback. 
+
+# Acknowledgment 
+
+This work was supported by Innovative Human Resource Development for Local Intellectualization program through the Institute of Information & Communications Technol-ogy Planning & Evaluation(IITP) grant funded by the Korea government(MSIT) (IITP-2026-RS-2020-II201462, 50%), and partly supported by the National Research Foundation of Korea (NRF) grant funded by the Korea government 8(Ministry of Science and ICT) (RS-2023-NR076833) 
+
+# References 
+
+[1] Mahmoud Abdalla, Mahmoud SalahEldin Kasem, Mohamed Mahmoud, Mostafa Farouk Senussi, Abdelrahman Abdal-lah, and Hyun-Soo Kang. Think-to-detect: Rationale-driven vision–language anomaly detection. Mathematics , 13(24): 3920, 2025. 1 [2] Abdelrahman Abdallah, Jamshid Mozafari, Bhawna Piryani, and Adam Jatowt. Asrank: Zero-shot re-ranking with answer scent for document retrieval. In Findings of the Association for Computational Linguistics: NAACL 2025 , pages 2950– 2970, 2025. 2 [3] Abdelrahman Abdallah, Jamshid Mozafari, Bhawna Piryani, and Adam Jatowt. Dear: Dual-stage document reranking with reasoning agents via llm distillation. arXiv preprint arXiv:2508.16998 , 2025. 1 [4] Abdelrahman Abdallah, Bhawna Piryani, Jamshid Mozafari, Mohammed Ali, and Adam Jatowt. Rankify: A comprehen-sive python toolkit for retrieval, re-ranking, and retrieval-augmented generation. arXiv preprint arXiv:2502.02464 ,2025. 2 [5] Abdelrahman Abdallah, Mohammed Ali, Muhammad Abdul-Mageed, and Adam Jatowt. Tempo: A realistic multi-domain benchmark for temporal reasoning-intensive retrieval. arXiv preprint arXiv:2601.09523 , 2026. 2 [6] Abdelrahman Abdallah, Mohamed Darwish Mounis, Mahmoud Abdalla, Mahmoud SalahEldin Kasem, Mostafa Farouk Senussi, Mohamed Mahmoud, Mohammed Ali, Adam Jatowt, and Hyun-Soo Kang. Mm-bright: Amulti-task multimodal benchmark for reasoning-intensive retrieval. arXiv preprint arXiv:2601.09562 , 2026. 1, 3, 5, 6, 7[7] Mohammed Ali, Abdelrahman Abdallah, and Adam Ja-towt. Sustainableqa: A comprehensive question answering dataset for corporate sustainability and eu taxonomy report-ing. arXiv preprint arXiv:2508.03000 , 2025. 2 [8] Yanfei Chen, Jinsung Yoon, Devendra Singh Sachan, Qingze Wang, Vincent Cohen-Addad, Mohammadhossein Bateni, Chen-Yu Lee, and Tomas Pfister. Re-invoke: Tool invoca-tion rewriting for zero-shot tool retrieval. In Findings of the Association for Computational Linguistics: EMNLP 2024 ,pages 4705–4726, 2024. 2 [9] Debrup Das, Sam O’Nuallain, and Razieh Rahimi. Rader: Reasoning-aware dense retrieval models. arXiv preprint arXiv:2505.18405 , 2025. 2 [10] Manuel Faysse, Hugues Sibille, Tony Wu, Bilel Omrani, Gautier Viaud, C´ eline Hudelot, and Pierre Colombo. Col-pali: Efficient document retrieval with vision language mod-els. arXiv preprint arXiv:2407.01449 , 2024. 2 [11] Luyu Gao, Xueguang Ma, Jimmy Lin, and Jamie Callan. Precise zero-shot dense retrieval without relevance labels. In Proceedings of the 61st Annual Meeting of the Associa-tion for Computational Linguistics (Volume 1: Long Papers) ,pages 1762–1777, 2023. 2 [12] Ziyan Jiang, Rui Meng, Xinyi Yang, Semih Yavuz, Yingbo Zhou, and Wenhu Chen. Vlm2vec: Training vision-language models for massive multimodal embedding tasks. arXiv preprint arXiv:2410.05160 , 2024. 2 [13] Jeff Johnson, Matthijs Douze, and Herv´ e J´ egou. Billion-scale similarity search with gpus. IEEE transactions on big data , 7(3):535–547, 2019. 2 [14] Vladimir Karpukhin, Barlas Oguz, Sewon Min, Patrick Lewis, Ledell Wu, Sergey Edunov, Danqi Chen, and Wen-tau Yih. Dense passage retrieval for open-domain question answering. In Proceedings of the 2020 conference on em-pirical methods in natural language processing (EMNLP) ,pages 6769–6781, 2020. 1, 2 [15] Mahmoud SalahEldin Kasem, Mohamed Mahmoud, Mostafa Farouk Senussi, Mahmoud Abdalla, and Hyun-Soo Kang. Attention-guided hybrid learning for accurate defect classification in manufacturing environments. Scientific Reports , 2025. 1 [16] Andreas Koukounas, Georgios Mastrapas, Sedigheh Eslami, Bo Wang, Mohammad Kalim Akram, Michael G¨ unther, Is-abelle Mohr, Saba Sturua, Nan Wang, and Han Xiao. jina-clip-v2: Multilingual multimodal embeddings for text and images. arXiv preprint arXiv:2412.08802 , 2024. 6 [17] Yibin Lei, Tao Shen, and Andrew Yates. Thinkqe: Query expansion via an evolving thinking process. arXiv preprint arXiv:2506.09260 , 2025. 2, 4 [18] Patrick Lewis, Ethan Perez, Aleksandra Piktus, Fabio Petroni, Vladimir Karpukhin, Naman Goyal, Heinrich K¨ uttler, Mike Lewis, Wen-tau Yih, Tim Rockt¨ aschel, et al. Retrieval-augmented generation for knowledge-intensive nlp tasks. Advances in neural information processing systems ,33:9459–9474, 2020. 1 [19] Mingxin Li, Yanzhao Zhang, Dingkun Long, Keqin Chen, Sibo Song, Shuai Bai, Zhibo Yang, Pengjun Xie, An Yang, Dayiheng Liu, et al. Qwen3-vl-embedding and qwen3-vl-reranker: A unified framework for state-of-the-art multimodal retrieval and ranking. arXiv preprint arXiv:2601.04720 , 2026. 2 [20] Zehan Li, Xin Zhang, Yanzhao Zhang, Dingkun Long, Pengjun Xie, and Meishan Zhang. Towards general text embeddings with multi-stage contrastive learning. arXiv preprint arXiv:2308.03281 , 2023. 6 [21] Meixiu Long, Duolin Sun, Dan Yang, Junjie Wang, Yecheng Luo, Yue Shen, Jian Wang, Hualei Zhou, Chunxiao Guo, Peng Wei, et al. Diver: A multi-stage approach for reasoning-intensive information retrieval. arXiv preprint arXiv:2508.07995 , 2025. 2, 6 [22] Xueguang Ma, Sheng-Chieh Lin, Minghan Li, Wenhu Chen, and Jimmy Lin. Unifying multimodal retrieval via document screenshot embedding. In Proceedings of the 2024 Confer-ence on Empirical Methods in Natural Language Processing ,pages 6492–6505, 2024. 2 [23] Mohamed Mahmoud, Bilel Yagoub, Mostafa Farouk Senussi, Mahmoud Abdalla, Mahmoud Salaheldin Kasem, and Hyun-Soo Kang. Two-stage video violence detec-tion framework using gmflow and cbam-enhanced resnet3d. 
+
+Mathematics , 13(8):1226, 2025. 1 [24] Abdelrahman Abdallah Bhawna Piryani Jamshid Mozafari and Mohammed Ali Adam Jatowt. How good are llm-based 
+
+9rerankers? an empirical analysis of state-of-the-art reranking models. 2025. 2 [25] Niklas Muennighoff, Nouamane Tazi, Lo¨ ıc Magne, and Nils Reimers. Mteb: Massive text embedding benchmark. In 
+
+Proceedings of the 17th Conference of the European Chap-ter of the Association for Computational Linguistics , pages 2014–2037, 2023. 2 [26] Zach Nussbaum, Brandon Duderstadt, and Andriy Mulyar. Nomic embed vision: Expanding the latent space. arXiv preprint arXiv:2406.18587 , 2024. 2, 6 [27] Alec Radford, Jong Wook Kim, Chris Hallacy, Aditya Ramesh, Gabriel Goh, Sandhini Agarwal, Girish Sastry, Amanda Askell, Pamela Mishkin, Jack Clark, Gretchen Krueger, and Ilya Sutskever. Learning transferable visual models from natural language supervision. In Proceedings of ICML , 2021. 2, 6 [28] Nils Reimers and Iryna Gurevych. Sentence-bert: Sentence embeddings using siamese bert-networks. In Proceedings of the 2019 conference on empirical methods in natural lan-guage processing and the 9th international joint conference on natural language processing (EMNLP-IJCNLP) , pages 3982–3992, 2019. 2 [29] Stephen Robertson and Hugo Zaragoza. The probabilistic relevance framework: BM25 and beyond . Now Publishers Inc, 2009. 2 [30] Rulin Shao, Rui Qiao, Varsha Kishore, Niklas Muennighoff, Xi Victoria Lin, Daniela Rus, Bryan Kian Hsiang Low, Sewon Min, Wen-tau Yih, Pang Wei Koh, et al. Rea-sonir: Training retrievers for reasoning tasks. arXiv preprint arXiv:2504.20595 , 2025. 2 [31] Hongjin Su, Howard Yen, Mengzhou Xia, Weijia Shi, Niklas Muennighoff, Han-yu Wang, Haisu Liu, Quan Shi, Zachary S Siegel, Michael Tang, et al. Bright: A realistic and challenging benchmark for reasoning-intensive retrieval. 
+
+arXiv preprint arXiv:2407.12883 , 2024. 2 [32] Weiwei Sun, Lingyong Yan, Xinyu Ma, Shuaiqiang Wang, Pengjie Ren, Zhumin Chen, Dawei Yin, and Zhaochun Ren. Is chatgpt good at search? investigating large language mod-els as re-ranking agents. In Proceedings of the 2023 confer-ence on empirical methods in natural language processing ,pages 14918–14937, 2023. 1, 2 [33] Nandan Thakur, Nils Reimers, Andreas R¨ uckl´ e, Abhishek Srivastava, and Iryna Gurevych. Beir: A heterogenous benchmark for zero-shot evaluation of information retrieval models. arXiv preprint arXiv:2104.08663 , 2021. 2 [34] Liang Wang, Nan Yang, and Furu Wei. Query2doc: Query expansion with large language models. In Proceedings of the 2023 Conference on Empirical Methods in Natural Lan-guage Processing , pages 9414–9423, 2023. 1, 2, 4 [35] Liang Wang, Nan Yang, Xiaolong Huang, Linjun Yang, Ran-gan Majumder, and Furu Wei. Multilingual e5 text embed-dings: A technical report. arXiv preprint arXiv:2402.05672 ,2024. 6 [36] Jason Wei, Xuezhi Wang, Dale Schuurmans, Maarten Bosma, Fei Xia, Ed Chi, Quoc V Le, Denny Zhou, et al. Chain-of-thought prompting elicits reasoning in large lan-guage models. Advances in neural information processing systems , 35:24824–24837, 2022. 1 [37] Orion Weller, Kathryn Ricci, Eugene Yang, Andrew Yates, Dawn Lawrie, and Benjamin Van Durme. Rank1: Test-time compute for reranking in information retrieval. arXiv preprint arXiv:2502.18418 , 2025. 2 [38] Shi Yu, Chaoyue Tang, Bokai Xu, Junbo Cui, Junhao Ran, Yukun Yan, Zhenghao Liu, Shuo Wang, Xu Han, Zhiyuan Liu, et al. Visrag: Vision-based retrieval-augmented generation on multi-modality documents. arXiv preprint arXiv:2410.10594 , 2024. 2 [39] Xiaohua Zhai, Basil Mustafa, Alexander Kolesnikov, and Lucas Beyer. Sigmoid loss for language image pre-training. In Proceedings of the IEEE/CVF international conference on computer vision , pages 11975–11986, 2023. 2, 6 [40] Xin Zhang, Yanzhao Zhang, Wen Xie, Mingxin Li, Ziqi Dai, Dingkun Long, Pengjun Xie, Meishan Zhang, Wenjie Li, and Min Zhang. Gme: improving universal multimodal retrieval by multimodal llms. arXiv preprint arXiv:2412.16855 , 2024. 2, 6 [41] Junjie Zhou, Zheng Liu, Ze Liu, Shitao Xiao, Yueze Wang, Bo Zhao, Chen Jason Zhang, Defu Lian, and Yongping Xiong. Megapairs: Massive data synthesis for universal mul-timodal retrieval. arXiv preprint arXiv:2412.14475 , 2024. 6 [42] Junjie Zhou, Ze Liu, Lei Xiong, Jin-Ge Yao, Yueze Wang, Shitao Xiao, Fenfen Lin, Miguel Hu Chen, Zhicheng Dou, Siqi Bao, et al. Mr 2-bench: Going beyond match-ing to reasoning in multimodal retrieval. arXiv preprint arXiv:2509.26378 , 2025. 3 [43] Shengyao Zhuang, Xueguang Ma, Bevan Koopman, Jimmy Lin, and Guido Zuccon. Rank-r1: Enhancing reasoning in llm-based document rerankers via reinforcement learning. 
+
+arXiv preprint arXiv:2503.06034 , 2025. 2 
+
+10

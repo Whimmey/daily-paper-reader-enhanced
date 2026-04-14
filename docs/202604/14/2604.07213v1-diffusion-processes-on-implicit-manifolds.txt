@@ -1,0 +1,1432 @@
+Title: Diffusion Processes on Implicit Manifolds
+
+URL Source: https://arxiv.org/pdf/2604.07213v1
+
+Published Time: Thu, 09 Apr 2026 01:13:10 GMT
+
+Number of Pages: 23
+
+Markdown Content:
+# Diffusion Processes on Implicit Manifolds 
+
+Victor Kawasaki-Borruat ∗
+
+Signal Processing Laboratory 2 EPFL 
+
+Clara Grotehans 
+
+Institute of Artificial Intelligence Medical University of Vienna 
+
+Pierre Vandergheynst 
+
+Signal Processing Laboratory 2 EPFL 
+
+Adam Gosztolai 
+
+Institute of Artificial Intelligence Medical University of Vienna 
+
+## Abstract 
+
+High-dimensional data are often modeled as lying near a low-dimensional man-ifold. We study how to construct diffusion processes on this data manifold in the implicit setting. That is, using only point cloud samples and without access to charts, projections, or other geometric primitives. Our main contribution is a data-driven SDE that captures intrinsic diffusion on the underlying manifold while being defined in ambient space. The construction relies on estimating the diffusion’s infinitesimal generator and its carré-du-champ (CDC) from a proxim-ity graph built from the data. The generator and CDC together encode the local stochastic and geometric structure of the intended diffusion. We show that, as the number of samples grows, the induced process converges in law on the space of probability paths to its smooth manifold counterpart. We call this construction Implicit Manifold-valued Diffusions (IMDs), and furthermore present a numerical simulation procedure using Euler–Maruyama integration. This gives a rigorous basis for practical implementations of diffusion dynamics on data manifolds, and opens new directions for manifold-aware sampling, exploration, and generative modeling. 
+
+## 1 Introduction 
+
+Stochastic differential equations (SDEs) [ 53 ] model continuous-time dynamics under deterministic drift and random perturbations. In machine learning, they underpin a broad range of methods, including Langevin sampling [ 9, 51 ], Bayesian inference [ 68 , 49 ], stochastic optimization [ 70 , 12 ], and score-based generative modeling [ 60 ]. While most existing methods are formulated in Euclidean space Rn, many datasets are better modeled as concentrating near lower-dimensional manifolds of intrinsic dimension d ≪ n [ 28 ]. Under this manifold hypothesis , appropriate stochastic dynamics are naturally described by a diffusion process (Zt)t≥0 over a Riemannian manifold M through the SDE 
+
+dZ t = b(Zt)dt + σ(Zt)dB M 
+
+> t
+
+, (1) where b ∈ C ∞(M) is a drift, σ(z) ∈ Rd×d is a diffusion term and BM 
+
+> t
+
+is Brownian motion on M
+
+[ 37 , 61 ]. Analytically defining or numerically approximating the dynamics of Eq. (1) on a known manifold M is achieved through explicit knowledge of geometric primitives such as charts [ 3], retraction operators [ 34 , 19 , 20 , 25 , 72 , 29 ], exponential maps [ 48 ] or geodesics [ 18 ]. This is the typical setting of Riemannian optimization [1, 12, 14]. Here, we instead focus on the setting where neither M nor its geometry are analytically available. Instead, we are only given a point cloud XN = {xi}Ni=1 ⊂ F (M) ⊂ Rn, where F : M → Rn
+
+> ∗
+
+Corresponding author: victor.borruat@epfl.ch 
+
+Preprint. 
+
+> arXiv:2604.07213v1 [cs.LG] 8 Apr 2026
+
+is an isometric embedding, so that the data are available only through their ambient representa-tion. We therefore seek to construct, from the point cloud alone, an ambient-space stochastic process Yt ∈ F (M) whose evolution matches the intrinsic diffusion Zt ∈ M in the large-sample limit. Current methods are not directly applicable in the implicit setting, where the manifold is observed only through point-cloud samples and explicit geometric primitives are unavailable. 
+
+Figure 1: No prior knowl-edge of T2 beyond the sam-ples (gray) is required to com-pute the displayed Brownian motion (red). In this work, we take an operator-theoretic approach to diffusion on implicit manifolds. Starting from a proximity graph built from the point cloud XN , we consider the associated random walk graph Laplacian LN ; the discrete generator of a local Markov process on the graph. We then show that, in the large-sample limit, LN
+
+converges to a second-order differential operator L on M, namely the scaled infinitesimal generator of the target diffusion Zt from Eq. (1) . Moreover, we prove that the constructed process Yt convergence on the space of probability paths C([0 , T ], F (M)) to F (Zt). Figure 1 depicts a simple visual example of our construction on the torus. The above results provide the first fully data-driven path space-consistent construction of diffusion processes on implicit manifolds, which we dub Implicit Manifold-valued Diffusions (IMDs). We prove the graph-to-manifold convergence in Theorem 2, and the consistency of Euler-Maruyama discretization of IMDs in Theorem 3. Numerical experiments on synthetic and real-world datasets are presented in Section 6, showing that IMDs make for a viable lightweight method to both explore and generate new samples from data manifolds. We summarize our contributions below. • Data-driven formulation of manifold diffusion. We show that stochastic processes on arbitrary data manifolds can be constructed by estimating their infinitesimal generators, without access to charts, projections, or explicit geometric information. • Path-space convergence guarantees. We prove that our data-driven generator converges to the Laplace–Beltrami operator and that the induced stochastic process converges in law on path space C[0 , T ] to its smooth manifold counterpart in the large-sample limit. Such contributions find many applications in science, such as computational biology [ 71 , 36 ], robotics [57], material science [72], and neuroscience [54]. • Recovery of intrinsic stochastic dynamics. We show empirically that IMDs produce smooth on-manifold trajectories between data points and explore directions inaccessible to score-only retraction baselines. 
+
+## 2 Related Works 
+
+Manifold Learning Existing methods in the implicit manifold setting typically attempt to first recover the manifold structure, before approximating the dynamics. One approach consists in learning a latent representation [ 2 , 52 ] before simulating Brownian motion on the latent coordinates. The use of Diffusion Maps (DMs) [ 23 ] provides a principled graph-to-manifold limit, which enables latent estimation [ 32 ], or estimation of diffusion generators [ 47 ] for Langevin sampling. Such use of DMs allows for correct sampling of marginals, but not of the entire path. 
+
+Diffusion Geometry A more recent line of work in diffusion geometry [ 40 , 41 ] involves recovering the implicit manifold’s "Riemannian" geometry [ 3 ] in the ambient Euclidean space, which inspired manifold-aware generative modeling methods using the carré-du-champ in flow matching [ 4 , 5 ]. This method is closer in spirit to IMDs, as geometry emerges from the computed operators. 
+
+Score-Based Diffusion Models Another avenue involves the connections between score-based generative models and implicit manifolds [ 55 , 24 , 17 , 15 ]. [ 42 ] proposes score-based retractions as approximate projections onto F (M) to recover manifold operations in the implicit manifold setting. This allows for good approximations of deterministic Riemannian optimization, but still lacks the desired stochasticity. 21.00 0.75 0.50 0.25 0.00 0.25 0.50 0.75 1.00    
+
+> t=x
+> 0.0
+> 0.5
+> 1.0
+> 1.5
+> 2.0
+> 2.5
+> 3.0
+> Density
+> Empirical
+> Target p(t)
+
+Figure 2: Histogram of the endpoint statistic t = ⟨μ, Y T ⟩ ∈ [−1, 1] (blue) under Langevin dynamics computed with IMDs, compared with the theoretical density induced by the von Mises–Fisher distribution (red) on S7 ⊂ R8. Close agreement indicates that the simulated process recovers the target equilibrium law. See Section 6.1 for more details. 
+
+Geometric limits of graph Laplacians This is the theoretical backbone of IMDs, and consists of the main proof techniques. Such limits were pioneered in a series of work by [ 6, 7, 8 ], later refined to pointwise convergence of the random walk graph Laplacian to the Laplace-Beltrami operator by [35]. More recently, spectral convergence was established by considering continuum limits of point clouds [ 63 , 64 , 30 , 31 ], or metric geometry concepts [ 16 ], both of which we will use in the proof of Theorem 2. 
+
+## 3 Background on diffusion processes on manifolds 
+
+Here we provide the necessary background on constructing stochastic processes on Riemannian manifolds. 
+
+3.1 Calculus on Riemannian manifolds 
+
+Let ( M, g) be a complete, d-dimensional, connected Riemannian manifold without boundary. For each z ∈ M , the Riemannian metric g defines an inner product on the tangent space Tz M [26] 
+
+⟨U, V ⟩g := 
+
+> d
+
+X
+
+> i,j =1
+
+gij U iV j , (2) for vectors U (z), V (z) ∈ Tz M, where gij denotes the metric tensor in local coordinates. The metric 
+
+g allows defining the gradient ∇M of a function b ∈ C ∞(M) in local (manifold-centric) coordinate basis (∂1, . . . , ∂ d) ∈ Tz M as 
+
+(∇Mb)i := 
+
+> d
+
+X
+
+> j=1
+
+gij ∂j b, (3) where gij := g−1 
+
+> ij
+
+is the Riemannian co-metric. The associated Laplace–Beltrami operator is then defined as 
+
+∆Mb := div( ∇Mb). (4) To work with data densities, we assume M is oriented and define a volume form dvol g , and the corresponding unit volume Vol (M) := R 
+
+> M
+
+dvol g , which gives rise to a measure on M.We will call variables in local coordinates, e.g., z := ( z1, . . . , z d) ∈ M as intrinsic and the corresponding differential operators ∇M, ∆M will define the intrinsic geometry. We may also define extrinsic variables x := ( x1, . . . , x n) ∈ Rn through an isometric embedding into Euclidean space 
+
+F : M → Rn.2 We will drop subscripts to imply the usual Euclidean differential operators ( ∇, ∆). 
+
+> 2
+
+F ’s existence is guaranteed by Nash’s isometric embedding theorem for large enough n.
+
+33.2 Stochastic processes on manifolds from infinitesimal generators 
+
+We now discuss the construction of stochastic processes over manifolds by adopting an operator-theoretic perspective. For the differential operators ∇M, ∆M it is a classical result [ 61 ] that for any smooth test function f ∈ C∞(M), the SDE from Eq. (1) has an associated partial differential equation description 
+
+∂tf = Lf, (5) where L is called the infinitesimal generator 
+
+L = 12
+
+> d
+
+X
+
+> i,j =1
+
+aij (z) ∂∂z i
+
+∂∂z j +
+
+> d
+
+X
+
+> i=1
+
+bi(z) ∂∂z i , (6) with b(z) is a drift field and a(z) = σσ ⊤ is the local noise covariance, both restricted to Tz M. Note that the scaled Laplace-Beltrami operator 12 ∆M is a special case for b(z) = 0 , σ(z) = a(z) = I, and corresponds to an isotropic Brownian motion dZ t = dB M 
+
+> t
+
+on M whose invariant law is the volume measure dvol g [37, 33, 3]. While ∇M, ∆M allow defining a stochastic process on the manifold, these objects are generally not available for implicit manifolds. Instead, one may construct these objects directly from data based on diffusion geometry [ 40 ], a formalism that recovers differential calculus over manifolds using local operators that can be estimated from data. The central object in diffusion geometry is the carré-du-champ (CDC) 
+
+Γ( f, h ) = L(f h ) − f Lh − hLf, (7) which relates the data-induced operator Γ to the infinitesimal generator L of a stochastic process. Note that for ∆M the CDC reduces to the usual Riemannian metric in Eq. (2) [ 41 ]. Further, as the following theorem from Ref. [ 37 ] asserts, there is a canonical lifting of L generating Zt ∈ M to an equivalent ambient-space ˜L generating Yt ∈ F (M).
+
+Theorem 1 ([ 37 ]) . Let x := ( x1, . . . , x n) be ambient coordinates, f i(x) := xi be the coordi-nate function on M,
+
+˜aij := Γ( f i, f j ), ˜vi := Lf i, (8) 
+
+where Γ is as in Eq. (7) , and define the operator 
+
+˜L := 12
+
+> n
+
+X
+
+> i,j =1
+
+˜aij ∂2
+
+∂x i∂x j +
+
+> n
+
+X
+
+> i=1
+
+˜vi ∂∂x i . (9) 
+
+Then, for any ˜f ∈ C ∞(Rn) that extends f ∈ C ∞(M) to ambient coordinates, namely f = ˜f ◦F
+
+for an isometric embedding F , we have ˜L ˜f = Lf .
+
+Remark 1. The operator ˜L should be understood as an ambient representation of the intrinsic generator L, not as a new generator on all of Rn. For any ˜f ∈ C∞(Rn), the quantity ˜L ˜f is only relevant through its restriction to F (M), where ( ˜L ˜f ) F (M) = L  ˜f F (M)
+
+. Thus, Γ determines the tangential noise, while the first-order term L ensures that the ambient differential operator reproduces the intrinsic manifold dynamics exactly. 
+
+Theorem 1 implies that the stochastic process on M defined in Eq. (1) may be equivalently defined as an SDE in Euclidean space as 
+
+dY t = (˜ v(Yt) + b(Yt)) dt + ˜ a(Yt)dW t, (10) where Wt is a standard Brownian motion. The result is an Rn-valued diffusion process constrained to F (M).Geometrically, the isometric embedding F induces an inner product in ambient space, ⟨U, V ⟩g =
+
+⟨dF (U ), dF (V )⟩Rn and that the CDC encodes this metric via Γ( f, h ) = g(∇Mf, ∇Mh). In extrinsic coordinates (x1, . . . , x n), the CDC can be viewed as a projector onto the tangent space at 
+
+x ∈ F (M) given by the matrix Γij (x) = Γ( xi, x j ) = ⟨πx(ei), π x(ej )⟩, where πx is the orthogonal projector πx : Rn → TxF (M). We formalize this geometric intuition in Proposition 1. 4Proposition 1. Let ∆M be the Laplace-Beltrami operator of M, and denote Γ its CDC operator as per Eq. (7) . Then for ambient coordinates (x1, . . . x n) the CDC operator at a point 
+
+x ∈ F (M), Γij (xi, x j )( x), can be viewed as a projection matrix onto TxM. That is, we have 
+
+Γij (x) = ⟨πx(ei), π x(ej )⟩. (11) 
+
+## 4 Data-driven construction of diffusions on implicit manifolds 
+
+Given that any diffusion on M with second-order generator L can be represented in the ambient space Rn via Γ (Theorem 1), we now turn to estimating L from a point cloud of samples XN := 
+
+{xi}Ni=1 ⊂ Rn, assumed to be iid drawn from the volume measure dvol g of M.Our construction is based on random walks on graphs. For a global neighbourhood radius ϵ > 0, we define the edge-defining binary matrix 
+
+Wij := 1 ∥xi − xj ∥22 ≤ ϵ , (12) which we symmetrize by imposing Wij 
+
+> !
+
+= Wji . We denote mi := PNj=1 Wij the node-wise normalization constant, and the associated row-stochastic random walk matrix is given by 
+
+Pij := Wij 
+
+mi
+
+. (13) We can now define the discrete random walk graph Laplacian (RWGL), 
+
+(LN u)( xi) := cϵ2
+
+X
+
+> i∼j
+
+Wij 
+
+mi
+
+(u(xi) − u(xj )) , (14) where u : XN → R is a function over the nodes, and c > 0 is a fixed scaling constant [ 31 ]. Eq. (14) corresponds to the standard RWGL LN = IN ×N − P [22], up to the constant factor cϵ2 .Proving the convergence of LN to the corresponding continuous operator requires interpolating the Laplacian 
+
+L := P∗ 
+
+> N
+
+LN PN : H → H, (15) where PN : H → HN and P∗ 
+
+> N
+
+: HN → H are identification maps between the Hilbert spaces of 
+
+L2-functions on the data HN := L2(XN , R) and on the manifold H := L2(M, R).Intuitively, PN is already present through the action of the embedding F , and P∗ 
+
+> N
+
+acts as a nearest-neighbour approximator, mapping a function assignment f (y) to f (xj ), where xj =argmin x∈XN ∥x − y∥22 is the closest data point. We may now define a data-driven version of the SDE (10) 
+
+dXt =
+
+
+
+L(Xt) + b(Xt)
+
+
+
+dt + Γ1/2(Xt)dW t, (16) where Γ is the CDC operator (7) associated to L from Eq. (15) . By Theorem 1, Eq. (16) is the data-driven, ambient-valued SDE corresponding to Eq. (1) that smoothly extends the drift term b. The following result justifies the operator limit of the discrete generator induced by the graph Laplacian, 
+
+LN , to the Laplace-Beltrami operator ∆M. Further, it establishes that the trajectories of the induced by these generators converge in law on path space C[0 , T ] to the corresponding manifold diffusion. 
+
+Theorem 2. Let xiiid 
+
+∼ μ be a set of data points and L be the interpolated random walk Laplacian of the graph over these points, as per Eq. (15) . Then, as N → ∞ and ϵ → 0 as per Eq. (35) , L
+
+converges in the strong resolvent sense to c∆M, for some constant c > 0. Consequently, the data-driven SDE in Eq. (16) converges in law to the associated manifold diffusion Zt. That is, 
+
+Xt =⇒ Yt, in C([0 , T ], F (M)) , (17) 
+
+as N → ∞ and ϵ(N ) → 0, where Yt = F (Zct ) is the extrinsic lifting of the manifold diffusion generated from Eq. (1) by L = b · ∇ M + 12 ∆M from Eq. (1) .Proof. See Appendix D. 
+
+Remark 2. The presented graph construction involved the hard-cutoff from Eq. (13) , but our results hold for broader types of kernels. We refer to Appendix C for all technical details. 
+
+55 Numerical solution of IMDs 
+
+We now provide the Euler-Maruyama (E-M) scheme for the numerical solution of the data-driven SDE in Eq. (10): 
+
+¯X(ℓ+1) h := ¯Xℓh +  b(¯Xℓh ) + LN (¯Xℓh ) h + Γ1/2(¯Xℓh )√hξ ℓ+1 , (18) where ξℓ+1 ∼ N (0 , In) is an independently drawn Gaussian, and h > 0 is the step size. The following theorem shows that Eq. (18) provides a consistent discretization, preserving the intrinsic geometric structure in the large-sample limit. 
+
+Theorem 3. Let Yt be the diffusion process satisfying Eq. (10) , and ¯Xℓh given by Eq. (18) 
+
+with step size h > 0. Assume that the coefficients b, L and Γ satisfy regularity conditions of Assumption 1. Then, for any fixed T > 0, and any η > 0 and for all t ∈ [ℓh, (ℓ + 1) h) with hℓ ≤ T , we have 
+
+W2
+
+ L(Yt), L(¯Xℓh ) ≤ η, (19) 
+
+as N → ∞ , h → 0, ϵ → 0 under the assumed rates of Eq. (35) with probability 1 − oN (1) .Proof. See Appendix E. Together, Theorems 2 and 3 justify the data-driven construction on IMDs and their numerical solution in the limit h → 0. We now discuss numerical heuristics for efficient implementations. 
+
+5.1 High-dimensional numerical heuristics 
+
+> ¯Xℓ
+> Uℓ+1
+> ¯Xℓ+1
+> IMD
+
+σ2sσ
+
+Figure 3: We use the score of a pre-trained SGM sσ (x) ≈∇x log pσ (x) as a retraction toward the data manifold. Numerical approximations of IMDs necessarily operate with finite step sizes, whereas the guarantees of Theorems 2 and 3 hold in the infinitesimal limit h → 0. In practice, only applying the Euler-Maruyama (E-M) discretization of the IMD SDE may lead to off-manifold deviations due to discretization error, which can require very small step sizes to control. To alleviate this effect, we optionally apply a Denoising Riemannian Gradient Descent (DRGD) [ 42 ] step after each E-M update (see Fig. 3). Importantly, this correction is not part of the theoretical construction of IMDs, which are entirely defined by L and Γ. Rather, the DRGD update serves as a practical stabilization mechanism and enables the use of larger step sizes. We formalize the above discussion in Algorithm 1. More details pertaining to the experimental setup are available in Appendix F. 
+
+Algorithm 1: Implicit manifold-valued diffusions (with DRGD) 
+
+Input: Point cloud XN = {xi}Ni=1 , step size h > 0, iterations L > 0, (optional) drift b(·)
+
+sσ (·), σ ← from SGM on XN
+
+L, Γ ← from Section 4 
+
+¯X0 ← XN [0] Initialize on XN
+
+for ℓ = 0 , ..., L − 1 do 
+
+Draw ξℓ+1 ∼ N (0 , In)
+
+Uℓ+1 = ¯Xℓ + L(¯Xℓ) + b(¯Xℓ) h + Γ1/2(¯Xℓ)√hξ ℓ+1 E-M step 
+
+¯Xℓ+1 = Uℓ+1 + σ2sσ (Uℓ+1 ) (optional) DRGD stabilization 
+
+end Output: Trajectory {¯Xi}Li=0 
+
+66 Experiments 
+
+We evaluate IMDs on both synthetic and real-world data to highlight three key properties: 1. Geometric Fidelity. The IMD, despite being agnostic to the geometry of M, does not deviate from its surface. Moreover, we show that the error does not accumulate. 2. Statistical Fidelity. The law of the generated process on C[0 , T ] matches its theoretical counterpart, providing experimental evidence for Theorem 2. 3. Better Generalization. The tangential dynamics that IMDs provide are strictly orthogo-nal to the "normal" directions of traditional score-based generative models (SGMs). We demonstrate on the MNIST dataset that IMDs allow for a smooth interpolation between two datapoints, which is inaccessible to SGMs. We refer the reader to Appendix F for details on the experimental setups. 
+
+6.1 Langevin sampling on the hypersphere 
+
+In this section we evaluate IMDs against the analytically well-known stochastic process of Brownian motion on the (hyper)sphere. On a manifold, Langevin dynamics with equilibrium density q ∝ e−U (x)
+
+satisfy the SDE [21, 3] 
+
+dY t = −∇ MU (Yt)dt + √2dB M 
+
+> t
+
+. (20) Following Proposition 1, we have ∇ ˜U (x) = Γ( U (x)) . This yields the following data-driven extrinsic SDE 
+
+dY t = ( L(Yt) − Γ(∇U (Yt))) dt + Γ1/2(Yt)dW t. (21) In the case of the von Mises-Fisher (vMF) distribution, 
+
+p(x, μ, κ ) ∝ exp  κμ⊤x , (22) where μ ∈ Rn is the mean vector and κ > 0 is the concentration parameter [50 ], we have 
+
+∇U (x) = κμ. We measure geometric fidelity 1 of the numerical solutions (18) using the radial error at time t as 
+
+δt = |¯Xt − πSd (¯Xt)|, (23) where πU is a projection operator onto a subspace U ⊂ Rn.Statistical fidelity is measured by an estimator of the statistic t := μ⊤YT , which follows the law 
+
+p(t) = κd/ 2−1
+
+√πΓ( d−12 )I d 
+
+> 2−1
+
+(κ) eκt (1 − t2) d−32 (24) on S7, where Γ is the Γ-function, and Id is the modified Bessel function [ 50 ]. Simulation results for geometric fidelity are reported in Table 1, and statistical fidelity 2 is reported in Fig. 2 for μ = e1 the first basis vector, and κ = 10 .                            
+
+> Dimension dStep size hIMD ( ¯δt/max tδt)IMD+DRGD ( ¯δt/max tδt)Interpretation 210 −30.01 /0.064 N/A IMD is sufficient 710 −31.452 /3.85 0.028 /0.17 DRGD enables larger steps 710 −40.266 /0.935 0.007 /0.044 DRGD enables larger steps 710 −50.054 /0.253 0.002 /0.014 IMD has acceptable errors
+
+Table 1: Geometric fidelity of IMDs during Langevin sampling of (22) on spheres of varying dimensions. We notice that the optional DRGD step of Algorithm 1 help control the error as dimensions increase. A more thorough ablation on the role of L, Γ and DRGD on S2 is presented in Appendix G.1. 76.2 Intrinsic dynamics and mode connectivity on MNIST 
+
+In addition to synthetic experiments, we investigate whether IMDs recover meaningful intrinsic dynamics on real data manifolds. In particular, we examine whether the induced stochastic process enables coherent traversal between distinct modes of the data distribution, which remains a challenge for standard diffusion-based generative models due to memorization [15, 13, 11]. We demonstrate that the smooth and tangential dynamics of IMDs make for clean exploration of real-world datasets we stochastic dynamics over a single digit (1) of the MNIST dataset [ 46 ]. Specifically, starting from a given data point z0, we simulate Langevin IMDs (Eq. (21) ) driven by a quadratic potential 
+
+V (zt) := 12 ∥zt − z⋆∥22 (25) centered at a target data point z⋆ (the endpoint in Fig. 4a). The resulting IMD trajectory depicted in Fig. 4a illustrates smooth evolution in pixel space and continuous transitions toward samples belonging to the z⋆’s neighbourhood. Our results starkly contrast the off-manifold trajectory naive ambient Langevin driven by (25), corrected via DRGD (Fig. 4b). Nearest-neighbour (NN) comparisons confirm that intermediate states are not explained by proximity to individual training examples, but instead lie along structured paths on the underlying data manifold. To quantify this behavior, Fig. 4c tracks (i) the distance to the initial point and (ii) the distance to the closest datapoint along the trajectory. We observe a clear, smooth interpolation between z0 and z⋆ in the case of IMDs, whereas solely relying on DRGD as a retraction method accumulates off-manifold errors. step 50 step 55 step 60 step 65 step 70 step 75 step 80 step 85 step 90 step 95 step 100 step 105 step 110 step 115 step 120 step 125 step 130 step 50 step 55 step 60 step 65 step 70 step 75 step 80 step 85 step 90 step 95 step 100 step 105 step 110 step 115 step 120 step 125 step 130 
+
+(a) IMD + DRGD (top) and corresponding NN in MNIST dataset (bottom) step 50 step 55 step 60 step 65 step 70 step 75 step 80 step 85 step 90 step 95 step 100 step 105 step 110 step 115 step 120 step 125 step 130 step 50 step 55 step 60 step 65 step 70 step 75 step 80 step 85 step 90 step 95 step 100 step 105 step 110 step 115 step 120 step 125 step 130 
+
+(b) Euclidean Langevin Diffusion with Score-Based Retraction (top) and corresponding NN in MNIST dataset (bottom) 0 25 50 75 100 125 150 175 200     
+
+> Time Step
+> 0.0
+> 2.5
+> 5.0
+> 7.5
+> 10.0
+> 12.5
+> 15.0
+> 17.5
+> Distance
+> IMD z0dist.
+> IMD NN-dist.
+> SGM z0dist.
+> SGM NN-dist.
+
+(c) We observe that the Langevin IMD+DRGD scheme undergoes a clear bifurcation at t ≈ 75 , and changes from the initial data point’s basin into the target’s basin. On the other hand, solely relying on the score model to retract to the manifold not only produces qualitatively bad samples (bottom row of Fig. 4b). We also note that the quadratic potential from Eq. (25) does not even guide to the correct data point, and that the NN error remains higher. The used step size was h = 10 −3 for 200 steps, further highlighting the exploratory capabilities of IMDs. 
+
+Figure 4: IMDs produce a smooth transition between two dissimilar data points z0 to z⋆ in pixel space (Fig. 4a), in contrast to a naive reliance on score-based models (Fig. 4b). We see that IMDs produce coherent transitions between distinct regions of the data distribution, whereas score-based retraction alone fails to do so reliably (Fig. 4c). 87 Limitations and Outlook 
+
+Higher dimensions The computation of the graph Laplacian relies on a kernel kϵ, which inherently suffers from the curse of dimensionality of kernel methods [ 65 ]. We however note that recent work proposes a neural surrogate to compute the CDC Γ, offering an interesting computationally tractable option for larger datasets [5]. 
+
+Non-asymptotic rates Deriving finite sample bounds on the convergence of Theorems 2 and 3 is a clear extension of this work, but requires significant additional theoretical analysis and is thus outside of the scope of this work. We note that some non-asymptotic spectral convergence rates for Laplacians are derived in [69] for the flat torus. 
+
+Generative Modeling We believe the interplay of tangent and normal directions to be a very impor-tant tool in the analysis of generative modeling under the manifold hypothesis. An interesting avenue for future work would involve combining both to consider noisy data, and the evolving geometry along generative dynamics. Furthermore, we believe that extending IMDs to endpoint-conditioned processes (conditioned diffusion, Schrödinger bridges) may offer computationally inexpensive and stable alternatives for exploring data manifolds. 
+
+## 8 Conclusion 
+
+In this work, we introduced Implicit Manifold-valued Diffusions, a mathematically rigorous method-ology to simulate stochastic processes of the diffusion type on data manifolds. We demonstrated that IMDs converge to their smooth theoretical counterpart in the large sample limit, enabling simulations of Langevin-type processes on manifolds only defined through point clouds. Moreover, the proposed tangential dynamics on the data manifold complement current literature on score-based sampling, and provide evidence that tangential manifold dynamics enable coherent cross-basin exploration beyond nearest-neighbour memorization-like behavior. 
+
+## Acknowledgments and Disclosure of Funding 
+
+P.V. and V.K.B. acknowledge funding from the Swiss National Science Foundation (SNSF), grant number SNF 200021-232277. A.G. and C.G. were supported by an ERC grant (NEURO-FUSE, Project DOI: 10.3030/101163046). 9References 
+
+[1] P-A Absil, Robert Mahony, and Rodolphe Sepulchre. Optimization algorithms on matrix manifolds . Princeton University Press, 2008. [2] Giovanni S Alberti, Johannes Hertrich, Matteo Santacesaria, and Silvia Sciutto. Manifold learning by mixture models of vaes for inverse problems. Journal of Machine Learning Research , 25(202):1–35, 2024. [3] Dominique Bakry, Ivan Gentil, and Michel Ledoux. Analysis and geometry of Markov diffusion operators , volume 348. Springer Science & Business Media, 2013. [4] Jacob Bamberger, Iolo Jones, Dennis Duncan, Michael M. Bronstein, Pierre Vandergheynst, and Adam Gosztolai. Carré du champ flow matching: better quality-generalisation tradeoff in generative models, 2025. URL https://arxiv.org/abs/2510.05930 .[5] Jacob Bamberger, Adam Gosztolai, Pierre Vandergheynst, Michael M Bronstein, and Iolo Jones. Riemannian metric matching for scalable geometric modelling of distributions. In ICLR 2026 Workshop on Geometry-grounded Representation Learning and Generative Modeling , 2026. [6] Mikhail Belkin and Partha Niyogi. Laplacian eigenmaps for dimensionality reduction and data representation. Neural computation , 15(6):1373–1396, 2003. [7] Mikhail Belkin and Partha Niyogi. Semi-supervised learning on riemannian manifolds. Machine learning , 56(1):209–239, 2004. [8] Mikhail Belkin and Partha Niyogi. Towards a theoretical foundation for laplacian-based manifold methods. Journal of Computer and System Sciences , 74(8):1289–1308, 2008. [9] Karthik Bharath, Alexander Lewis, Akash Sharma, and Michael V Tretyakov. Sampling and estimation on manifolds using the langevin diffusion. Journal of Machine Learning Research ,26(71):1–50, 2025. [10] Patrick Billingsley. Convergence of probability measures . John Wiley & Sons, 2013. [11] Giulio Biroli, Tony Bonnaire, Valentin De Bortoli, and Marc Mézard. Dynamical regimes of diffusion models. Nature Communications , 15(1):9957, 2024. [12] Silvere Bonnabel. Stochastic gradient descent on riemannian manifolds. IEEE Transactions on Automatic Control , 58(9):2217–2229, 2013. [13] Tony Bonnaire, Raphaël Urfin, Giulio Biroli, and Marc Mézard. Why diffusion models don’t memorize: The role of implicit dynamical regularization in training. arXiv preprint arXiv:2505.17638 , 2025. [14] Nicolas Boumal. An introduction to optimization on smooth manifolds . Cambridge University Press, 2023. doi: 10.1017/9781009166164. URL https://www.nicolasboumal.net/book .[15] Sam Buchanan, Druv Pai, Yi Ma, and Valentin De Bortoli. On the edge of memorization in diffusion models. arXiv preprint arXiv:2508.17689 , 2025. [16] Dmitri Burago, Sergei Ivanov, and Yaroslav Kurylev. A graph discretization of the laplace– beltrami operator. Journal of Spectral Theory , 4(4):675–714, 2015. [17] Saptarshi Chakraborty, Quentin Berthet, and Peter L Bartlett. Generalization properties of score-matching diffusion models for intrinsically low-dimensional data. arXiv preprint arXiv:2603.03700 , 2026. [18] Ricky TQ Chen and Yaron Lipman. Flow matching on general geometries. arXiv preprint arXiv:2302.03660 , 2023. [19] Xiang Cheng, Jingzhao Zhang, and Suvrit Sra. Efficient sampling on riemannian manifolds via langevin mcmc. In Proceedings of the 36th International Conference on Neural Information Processing Systems , NIPS ’22, Red Hook, NY, USA, 2022. Curran Associates Inc. ISBN 9781713871088. 10 [20] Xiang Cheng, Jingzhao Zhang, and Suvrit Sra. Theory and algorithms for diffusion processes on riemannian manifolds. arXiv preprint arXiv:2204.13665 , 2022. [21] Sinho Chewi. Log-Concave Sampling . 2025. URL https://chewisinho.github.io/ .[22] Fan RK Chung. Spectral graph theory , volume 92. American Mathematical Soc., 1997. [23] Ronald R Coifman and Stéphane Lafon. Diffusion maps. Applied and computational harmonic analysis , 21(1):5–30, 2006. [24] Valentin De Bortoli. Convergence of denoising diffusion models under the manifold hypothesis. 
+
+arXiv preprint arXiv:2208.05314 , 2022. [25] Valentin De Bortoli, Emile Mathieu, Michael Hutchinson, James Thornton, Yee Whye Teh, and Arnaud Doucet. Riemannian score-based generative modelling. Advances in neural information processing systems , 35:2406–2422, 2022. [26] Manfredo Perdigao Do Carmo and J Flaherty Francis. Riemannian geometry , volume 2. Springer, 1992. [27] Stewart N Ethier and Thomas G Kurtz. Markov processes: characterization and convergence .John Wiley & Sons, 2009. [28] Charles Fefferman, Sanjoy Mitter, and Hariharan Narayanan. Testing the manifold hypothesis. 
+
+Journal of the American Mathematical Society , 29(4):983–1049, 2016. [29] Yuan Gao, Jian-Guo Liu, and Nan Wu. Data-driven efficient solvers for langevin dynamics on manifold in high dimensions. Applied and Computational Harmonic Analysis , 62:261–309, 2023. [30] Nicolás García Trillos and Dejan Slepˇ cev. Continuum limit of total variation on point clouds. 
+
+Archive for rational mechanics and analysis , 220(1):193–241, 2016. [31] Nicolás García Trillos, Moritz Gerlach, Matthias Hein, and Dejan Slepˇ cev. Error estimates for spectral convergence of the graph laplacian on random geometric graphs toward the laplace– beltrami operator. Foundations of Computational Mathematics , 20(4):827–887, 2020. [32] Dimitris G Giovanis, Ellis Crabtree, Roger G Ghanem, and Ioannis G Kevrekidis. Generative learning of densities on manifolds. Computer Methods in Applied Mechanics and Engineering ,446:118266, 2025. [33] Alexander Grigoryan. Heat kernel and analysis on manifolds , volume 47. American Mathemat-ical Soc., 2009. [34] Ernst Hairer, Marlis Hochbruck, Arieh Iserles, and Christian Lubich. Geometric numerical integration. Oberwolfach Reports , 3(1):805–882, 2006. [35] Matthias Hein, Jean-Yves Audibert, and Ulrike von Luxburg. Graph laplacians and their convergence on random neighborhood graphs. Journal of Machine Learning Research , 8(6), 2007. [36] Scott A Hollingsworth and Ron O Dror. Molecular dynamics simulation for all. Neuron , 99(6): 1129–1143, 2018. [37] Elton P Hsu. Stochastic analysis on manifolds . Number 38. American Mathematical Soc., 2002. [38] Aapo Hyvärinen. Estimation of non-normalized statistical models by score matching. Journal of Machine Learning Research , 6(24):695–709, 2005. URL http://jmlr.org/papers/v6/ hyvarinen05a.html .[39] Jean Jacod and Philip Protter. Discretization of processes , volume 67. Springer Science & Business Media, 2011. [40] Iolo Jones. Diffusion geometry, 2024. URL https://arxiv.org/abs/2405.10858 .11 [41] Iolo Jones and David Lanners. Computing diffusion geometry. arXiv preprint arXiv:2602.06006 ,2026. [42] Andrey Kharitenko, Zebang Shen, Riccardo de Santi, Niao He, and Florian Doerfler. Landing with the score: Riemannian optimization through denoising, 2025. URL https://arxiv. org/abs/2509.23357 .[43] Daniel Kressner. Low Rank Approximation Lecture 9. 2018. URL https://www.epfl.ch/ labs/anchp/wp-content/uploads/2018/12/lecture9-slides.pdf .[44] Kazuhiro Kuwae and Takashi Shioya. Convergence of spectral structures: A functional analytic theory and its applications to spectral geometry. Communications in Analysis and Geometry , 11 (4):599–673, September 2003. ISSN 1019-8385. doi: 10.4310/CAG.2003.v11.n4.a1. [45] Peter D Lax. Functional analysis . John Wiley & Sons, 2014. [46] Yann LeCun, Léon Bottou, Yoshua Bengio, and Patrick Haffner. Gradient-based learning applied to document recognition. Proceedings of the IEEE , 86(11):2278–2324, 2002. [47] Fengyi Li and Youssef Marzouk. Diffusion map particle systems for generative modeling. arXiv preprint arXiv:2304.00200 , 2023. [48] Simon JA Malham and Anke Wiese. Stochastic lie group integrators. SIAM Journal on Scientific Computing , 30(2):597–617, 2008. [49] Stephan Mandt, Matthew D Hoffman, and David M Blei. Stochastic gradient descent as approximate bayesian inference. Journal of Machine Learning Research , 18(134):1–35, 2017. [50] Kanti V Mardia and Peter E Jupp. Directional statistics . John Wiley & Sons, 2009. [51] Radford M Neal. Mcmc using hamiltonian dynamics. Handbook of markov chain monte carlo ,pages 47–95, 2011. [52] Mu Niu, Zhenwen Dai, Pokman Cheung, and Yizhu Wang. Intrinsic gaussian process on unknown manifolds with probabilistic metrics. Journal of Machine Learning Research , 24(104): 1–42, 2023. [53] Bernt Øksendal. Stochastic differential equations. In Stochastic differential equations: an introduction with applications , pages 38–50. Springer, 2003. [54] Matthew G Perich, Devika Narain, and Juan A Gallego. A neural manifold view of the brain. 
+
+Nature Neuroscience , 28(8):1582–1597, 2025. [55] Jakiw Pidstrigach. Score-based generative models detect manifolds. Advances in Neural Information Processing Systems , 35:35852–35865, 2022. [56] Olaf Ronneberger, Philipp Fischer, and Thomas Brox. U-net: Convolutional networks for biomedical image segmentation. CoRR , abs/1505.04597, 2015. [57] Matteo Saveriano, Fares J Abu-Dakka, and Ville Kyrki. Learning stable robotic skills on riemannian manifolds. Robotics and Autonomous Systems , 169:104510, 2023. [58] Yang Song and Stefano Ermon. Generative modeling by estimating gradients of the data distribution. In H. Wallach, H. Larochelle, A. Beygelzimer, F. d'Alché-Buc, E. Fox, and R. Garnett, editors, Advances in Neural Information Processing Systems , volume 32. Curran Associates, Inc., 2019. [59] Yang Song and Stefano Ermon. Improved techniques for training score-based generative models. In H. Larochelle, M. Ranzato, R. Hadsell, M.F. Balcan, and H. Lin, editors, Advances in Neural Information Processing Systems , volume 33, pages 12438–12448. Curran Associates, Inc., 2020. [60] Yang Song, Jascha Sohl-Dickstein, Diederik P. Kingma, Abhishek Kumar, Stefano Ermon, and Ben Poole. Score-based generative modeling through stochastic differential equations, 2021. URL https://arxiv.org/abs/2011.13456 .12 [61] Daniel W Stroock and SR Srinivasa Varadhan. Multidimensional diffusion processes . Springer, 2007. [62] Johanna Tengler, Christoph Brune, and José A. Iglesias. Manifold limit for the training of shallow graph convolutional neural networks, 2026. URL https://arxiv.org/abs/2601. 06025 .[63] Nicolás Garcia Trillos and Dejan Slepˇ cev. On the rate of convergence of empirical measures in 
+
+∞-transportation distance. Canadian Journal of Mathematics , 67(6):1358–1383, 2015. [64] Nicolas Garcia Trillos and Dejan Slepˇ cev. A variational approach to the consistency of spectral clustering. Applied and Computational Harmonic Analysis , 45(2):239–281, 2018. [65] Vladimir Vapnik. The nature of statistical learning theory . Springer science & business media, 2013. [66] Veeravalli S Varadarajan. On the convergence of sample probability distributions. Sankhy ¯a: The Indian Journal of Statistics (1933-1960) , 19(1/2):23–26, 1958. [67] Cédric Villani et al. Optimal transport: old and new , volume 338. Springer, 2009. [68] Max Welling and Yee W Teh. Bayesian learning via stochastic gradient langevin dynamics. In Proceedings of the 28th international conference on machine learning (ICML-11) , pages 681–688, 2011. [69] Caroline L Wormell and Sebastian Reich. Spectral convergence of diffusion maps: Improved error bounds and an alternative normalization. SIAM Journal on Numerical Analysis , 59(3): 1687–1734, 2021. [70] Pan Xu, Jinghui Chen, Difan Zou, and Quanquan Gu. Global convergence of langevin dynamics based algorithms for nonconvex optimization. Advances in Neural Information Processing Systems , 31, 2018. [71] Jason Yim, Brian L Trippe, Valentin De Bortoli, Emile Mathieu, Arnaud Doucet, Regina Barzilay, and Tommi Jaakkola. Se (3) diffusion model with application to protein backbone generation. In Proceedings of the 40th International Conference on Machine Learning , pages 40001–40039, 2023. [72] Olga Zaghen, Floor Eijkelboom, Alison Pouplin, Cong Liu, Max Welling, Jan-Willem van de Meent, and Erik J. Bekkers. Riemannian variational flow matching for material and protein design, 2025. URL https://arxiv.org/abs/2502.12981 .
+
+## A Aesthetically pleasing plots    
+
+> (a) 2-dimensional sphere (b) The Torus T2(c) Swiss Roll
+
+Figure 5: Step size is 1e-3 , simulated over 5’000 steps. The Laplacian is computed over 10’000 samples. We notice that while the Swiss Roll is not boundaryless, the nearest-neighbour approach to estimating L(Xt) via P∗ 
+
+> N
+
+prevents off-manifold drift. 13 B Riemannian Geometry 
+
+We consider the case of a compact boundaryless Riemannian manifold (M, g ) and an isometric embedding F : M → Rn and will study some properties of the embedded manifold F (M). We begin with some notation: let (e1, . . . e n) denote the canonical basis of the ambient space Rn, (x1, . . . x n)
+
+denote an arbitrary coordinate space in Rn, and f ∈ C ∞(M) with an extension ˜f ∈ C ∞(Rn) such that f = ˜f on F (M).
+
+Proposition 2 ([ 43 ]) . Let ∇ ˜f denote the usual gradient of ˜f , and ∇Mf the Riemannian gradient of f . Then for a point x ∈ F (M), we have 
+
+∇ ˜f (x) = PTxM∇ ˜f (x) + P ⊥
+
+> TxM
+
+∇ ˜f (x). (26) 
+
+In particular, this implies that the Riemannian gradient of f at x is the projection of f ’s extension onto the tangent space at x: ∇Mf (x) = PTxM∇ ˜f (x).
+
+B.1 Proof of Proposition 1 
+
+We begin with the intrinsic formulation of the Riemannian gradient for f ∈ C ∞(M) at p ∈ M :
+
+⟨∇ Mf (p), v ⟩g = dfp(v) (27) for v ∈ TpM, and where dfp(v) is the differential of f at p applied to v. When considering 
+
+f i(x) = xi the coordinate function, we have that 
+
+⟨∇ Mxi(p), v ⟩ = vi = ⟨ei, v ⟩. (28) By decomposition of ei = PTpM(ei) + P ⊥
+
+> TpM
+
+(ei) and Proposition 2, we have 
+
+∇Mxi(p) = PTpM(ei) (29) by the Riesz representation theorem on Hilbert spaces [ 45 ]. Thus, the CDC has entries  Γij (p)kℓ as a projection onto TpM.
+
+B.2 Proof of Theorem 1 
+
+The proof is quite straightforward. We begin with the action of L on f by first writing the partial derivatives of f (x) = ˜f (f 1(x), . . . , f n(x)) :
+
+∂if = X
+
+> α
+
+∂α ˜f ∂ if α, (30) 
+
+∂ij f = X
+
+> α
+
+∂α ˜f ∂ ij f α + X
+
+> α,β
+
+∂αβ ˜f (∂if α)( ∂j f β ). (31) Thus, in Einstein notation 
+
+Lf = 12 aij 
+
+X
+
+> α
+
+∂α ˜f ∂ ij f α + X
+
+> α,β
+
+∂αβ ˜f (∂if α)( ∂j f β )
+
+ + + bi X
+
+> α
+
+∂α ˜f ∂ if α
+
+!
+
+= 12
+
+X
+
+> α
+
+aij ∂ij f α∂α ˜f + bi X
+
+> α
+
+∂α ˜f ∂ if α + 12
+
+X
+
+> α,β
+
+aij ∂αβ ˜f (∂if α)( ∂j f β )= X
+
+> α
+
+(Lf α)∂αf α + 12
+
+X
+
+> α,β
+
+Γ( f α, f β )∂αβ ˜f = ˜L ˜f (32) on M. L acts on the manifold M, where ∂i are along the tangent directions of M. ˜f is defined wrt basis vectors of Rn, not M, so the derivative is not along T M, whence we must apply the chain rule to convert to ambient space. 14 C Singular Limits of Geometric Graphs 
+
+We introduce the necessary machinery to construct a graph from samples of M, as is done in [ 31 , 63 , 64 , 30 ]. Denote dvol g the volume form of M, from which the samples {xi}Ni=1 are i.i.d. drawn. The empirical measure of the N data points MN := ( x1, . . . , x N ) is denoted 
+
+νN := 1
+
+n
+
+> N
+
+X
+
+> i=1
+
+δxi , (33) and asymptotically weakly converges to dvol g [66 ]. The rate of convergence is captured by the following ∞-Wasserstein distance of the transport map T : M → X such that T#dvol g = νN :
+
+ϵ := d∞(dvol g , ν N ) := inf   
+
+> T:T#dvol g=νN
+
+ess sup 
+
+> x∈M
+
+dM(x, T (x)) , (34) where dM is the geodesic distance on M [ 26 ]. T further induces a partition of M = SNi=1 Ui with 
+
+Ui := T −1 ({xi}) the pre-image of the transport and dvol g (Ui) = 1 
+
+> n
+
+. [ 31 ] guarantees us with high probability that 
+
+ϵ ≤ C
+
+ log NN
+
+1/d 
+
+(35) for d ≥ 3, and 
+
+ϵ ≤ C (log N )3/4
+
+N 1/2 (36) for d = 2 hold, which will allow us to construct appropriate asymptotic convergence results. We further define a kernel function 
+
+kϵ(xi, x j ) = η (|xi − xj |) s.t. 
+
+Z
+
+> Rm
+
+η(|x|)dx = 1 , (37) which is decreasing, supported on [0 , 1] , and Lipschitz on [0 , 1] . The kernel defines defines the weights of the graph’s edges 
+
+wij = 1
+
+N h N
+
+η
+
+ |xi − xj |
+
+hN
+
+
+
+, (38) where | · | denotes Euclidean distance and hN is an appropriately selected neighourhood radius [31, 62]. 
+
+Remark 3. While we consider a general kernel η, the hard-cutoff graph built using Eq. (13) in Section 4 is recovered by the choice of η(r) := 1r≤1, with bandwidth hN = √ϵ up to normalization. 
+
+The resulting graph is thus GN := ( MN , W N ). The surface tension is defined as 
+
+ση := 
+
+Z
+
+> Rm
+
+|x · e1|2η(|x|)dx, (39) and is required for appropriate scaling of the graph Laplacian in order for convergence to be estab-lished. We also introduce the contraction discretization operator 
+
+PN f : xi 7 → N ·
+
+Z
+
+> Ui
+
+f (x)dμ (x) (40) where Ui is the pre-image of a point on XN in M. Conversely we define 
+
+P∗ 
+
+> N
+
+u : x 7 → Λ
+
+> n
+
+X
+
+> i=1
+
+u(xi)1Ui (x)
+
+!
+
+(41) the extension map , where Λ is a Lipschitz kernel ensuring smoothness. 15 Proposition 3. For Λ = I the identity operator, PN and P∗ 
+
+> N
+
+are adjoint in their respective spaces. Proof. We begin by letting f ∈ H and u ∈ Hn, allowing us to compute the inner product 
+
+⟨u, PN f ⟩HN := N
+
+Z
+
+> X
+
+u Pf d (μN ) = 
+
+> N
+
+X
+
+> i=1
+
+u(xi)( Pf )( xi)=
+
+> N
+
+X
+
+> i=1
+
+u(xi)
+
+Z
+
+> Ui
+
+f (x)dμ (x) (42) as well as 
+
+⟨P∗ 
+
+> N
+
+u, f ⟩H =
+
+Z
+
+> M
+> N
+
+X
+
+> i=1
+
+u(xi)1Ui f (x)dμ (x) = 
+
+> N
+
+X
+
+> i=1
+
+u(xi)
+
+Z
+
+> Ui
+
+f (x)dμ (x) (43) which matches the previous inner product over the graph under suitable conditions on ρ and m (which are covered by [31]). 
+
+## D Proof of Theorem 2 
+
+Proof Outline The proof is based on the Kuwae–Shioya framework for convergence of Dirichlet forms on varying Hilbert spaces [ 44 ]. In our setting, the discrete spaces HN consist of functions on the nodes of the graph with N samples, while the limit space H is the corresponding continuum Hilbert space on M (see Appendix C for the precise definitions). We then introduce the discrete and continuum Dirichlet forms EN and E, verify Mosco convergence, and conclude strong resolvent convergence of the associated infinitesimal generators. 
+
+D.1 Setup 
+
+We work with the discrete Hilbert spaces HN and the continuum Hilbert space H introduced in Appendix C. The corresponding graph and manifold Dirichlet forms are 
+
+EN (u, v ) := u⊤LN v, for u, v ∈ HN , (44) and 
+
+E(f, h ) := 
+
+Z
+
+> M
+
+f (x)∆ M(h)( x)dvol g (x). (45) We write EN (u) := EN (u, u ) and E(f ) := E(f, f ). We recall that identification operators P : H →
+
+HN and P∗ : HN → H are used to compare discrete and continuum objects. We now recall a result pertaining to Dirichlet forms of graphs constructed as in Appendix C. 
+
+Lemma 1 (Lemmas 13 & 14 [ 31 ]) . For the discrete and continuous Dirichlet forms defined above, the following hold 1. For all f ∈ H1(M),3 we have 
+
+EN (PN f ) ≤ (1 + C′
+
+> 1
+
+ϵ + C′
+
+> 2
+
+εϵ + C′
+
+> 3
+
+ϵ2)
+
+| {z }
+
+> =: δ′
+> N
+
+E(f ), (46) 
+
+and 
+
+C′ 
+
+> 1
+
+= CαL p, C′ 
+
+> 2
+
+= C
+
+
+
+d + 2d+1 Lkϵ (1 + αL p)
+
+kϵ(1 /2) 
+
+
+
+, C′ 
+
+> 3
+
+= Cd (K + R−2)
+
+and C is a universal constant.      
+
+> 3Note that any f∈H1(M)is automatically in C(M).
+
+16 2. For any u ∈ HN , we have 
+
+E(IN u) ≤ (1 + C′′  
+
+> 1
+
+ϵ + C′′ 
+
+> 2
+
+εϵ + C′′  
+
+> 3
+
+ϵ2)
+
+| {z }
+
+> =: δ′′
+> N
+
+EN (u), (47) 
+
+where IN is the interpolation map and 
+
+C′′  
+
+> 1
+
+= αL p, C′′  
+
+> 2
+
+= C(d + C′
+
+> 2
+
+), C′′  
+
+> 3
+
+= (1 + 1
+
+σkϵ
+
+)dK. 
+
+Corollary 1. We immediately notice that from Appendix C hN ∝ √ϵ, implying that ϵ, εϵ and ϵ2 all go to zero as sample size N → ∞ , implying that all terms involving C′ 
+
+> i
+
+and C′′  
+
+> i
+
+go to zero as N → ∞ .
+
+By Lemma 1 and Corollary 1, the comparison errors δ′ 
+
+> N
+
+, δ ′′  
+
+> N
+
+vanish as N → ∞ .
+
+D.2 Mosco Convergence 
+
+We begin by defining the notion of Mosco convergence of operators. 
+
+Definition 1. Let X be a topological vector space, and Fn : X → [0 , +∞] be functionals on X. The sequence (Fn)n is said Mosco convergent to another functional F : X → [0 , +∞] if the following two conditions hold: 
+
+• for each sequence of xn ∈ X converging weakly to x ∈ X (denoted xn ⇀ x ), we have 
+
+lim inf  
+
+> n→∞
+
+Fn(xn) ≥ F (n), (48) • for each x ∈ X there exists an approximating sequence of elements xn ∈ X converging strongly to x, such that 
+
+lim sup 
+
+> n→∞
+
+Fn(xn) ≤ F (x). (49) 
+
+We denote this FnM
+
+→ F . This is a stronger version of Γ-convergence, which doesn’t require mixing the weak & strong topologies. Mosco convergence is equivalent to both weak and strong Γ-convergence simultaneously. 
+
+We will now show that using Lemma 1 and Corollary 1, the Dirichlet forms of a geometric graph 
+
+G = ( XN ; E) whose nodes are iid sampled from F (M) satisfy the conditions for Mosco convergence from Definition 1. 
+
+Lower Bound We begin by stating that Dirichlet forms are by design convex, quadratic forms that are continuous in H1, whence they are weakly lower semicontinuous (LSC). We now define a sequence of functions un : V → R such that Inun ⇀ f in H, then 
+
+E(f ) a)
+
+≤ lim inf   
+
+> N→∞
+
+E(P∗ 
+
+> N
+
+uN )
+
+> b)
+
+≤ lim  
+
+> N→∞
+
+(1 + δ′′  
+
+> N
+
+)En(uN ) (50) where we use weak LSC in a) and Lemma 1 point 2 in b). We do note that the δ′ 
+
+> N
+
+and δ′′  
+
+> N
+
+terms go to zero as N → ∞ by definition of the used rates in Eq. (35). We don’t explain it here, though. 
+
+Upper Bound Conversely, we use Lemma 1 point 1 to establish 
+
+lim sup  
+
+> N→∞
+
+EN (PN f ) ≤ lim sup  
+
+> N→∞
+
+(1 + δ′ 
+
+> N
+
+)E(f )= E(f ) lim  
+
+> N→∞
+
+(1 + δ′ 
+
+> N
+
+) = E(f ). (51) Both above inequalities exactly allow us to deduce that ENM
+
+→ E .17 D.3 Generator Convergence 
+
+Now that we have proven that ENM
+
+→ E , we may apply classical results of [ 44 ] to state that the generators L → ∆M in the strong resolvent sense. We recall that L is understood as in Eq. (15) ,which acts intrinsically on M. The lifting to extrinsic space will be done in the last step of the proof and all arguments below are intrinsic until specified otherwise. By standard consequences of strong resolvent convergence for self-adjoint operators, the associated Markov semigroups 
+
+T (N ) 
+
+> t
+
+:= etL, Tt := et∆M (52) satisfy 
+
+T (N ) 
+
+> t
+
+f → Ttf strongly in H (53) for every f ∈ H and each fixed t ≥ 0.
+
+D.4 Weak Convergence of Process Law 
+
+Let 0 ≤ t1 < · · · < t k ≤ T , and let f1, . . . , f k ∈ Cb(M). Denote by (Zt)t the Markov process generated by L, and by (Zt)t the manifold diffusion generated by ∆M. By the Markov property, 
+
+Ez
+
+
+
+> k
+
+Y
+
+> j=1
+
+fj
+
+ Ztj
+
+ = T (N )
+
+> t1
+
+
+
+f1 T (N )
+
+> t2−t1
+
+ f2 · · · T (N )  
+
+> tk−tk−1
+
+fk
+
+
+
+(z), (54) and similarly, 
+
+Ez
+
+
+
+> k
+
+Y
+
+> j=1
+
+fj
+
+ Xtj
+
+ = Tt1
+
+
+
+f1 Tt2−t1
+
+ f2 · · · Ttk −tk−1 fk
+
+
+
+(z).
+
+Since T (N ) 
+
+> t
+
+→ Pt strongly for each fixed t, an iterative application of the semigroup convergence implies 
+
+Ez
+
+
+
+> k
+
+Y
+
+> j=1
+
+fj
+
+
+
+Z(N )
+
+> tj
+
+ → Ez
+
+
+
+> k
+
+Y
+
+> j=1
+
+fj
+
+ Ztj
+
+ .
+
+Hence the finite-dimensional distributions of (Zt)t converge to those of (Zt)t.It remains to prove tightness of the laws of (Zt)t on C([0 , T ]; M). Since M is compact, the coeffi-cients of the limiting diffusion are smooth and therefore bounded. Under the standing assumptions on the graph approximation, the approximating processes inherit uniform moment bounds on increments. In particular, there exists a constant C > 0, independent of N , such that for all 0 ≤ s ≤ t ≤ T ,
+
+sup 
+
+> N
+
+Ez
+
+h
+
+dM
+
+
+
+Z(N ) 
+
+> t
+
+, Z (N )
+
+> s
+
+4i
+
+≤ C|t − s|2.
+
+By the Kolmogorov–Chentsov theorem [ 27 ], the family of laws of (Zt)t is tight in C([0 , T ]; M) for all N .Combining tightness with convergence of finite-dimensional distributions [10], we conclude that 
+
+Zt ⇒ Zt in C([0 , T ]; M),
+
+proving intrinsic convergence in law on path space. To prove the claim, we define the extrinsic processes as 
+
+Xt := F (Zt), Yt := F (Zt) (55) under the embedding map F : M → Rn. By the continuous mapping theorem, these processes inherit smoothness, whereby 
+
+Xt =⇒ Yt in C([0 , T ]; F (M)) , (56) proving the claim. 18 E Proof of Theorem 3 
+
+Proof Outline We compare the Euler–Maruyama scheme ¯Xℓh to the target smooth extrinsic diffu-sion Xt through the intermediate continuous data-driven process ˆXt. The total error is decomposed into (i) a graph approximation error between Xt and ˆXt, (ii) an off-grid time discretization error between ˆXt and ˆXℓh , and (iii) the Euler–Maruyama discretization error between ˆXℓh and ¯Xℓh .
+
+E.1 Preliminaries 
+
+We begin by discussing the regularity conditions we assume. Since we are in a computational setting, we only consider all stochastic processes (Xt)t≥0 before their explosion time e(X). A unique solution can be ensured to exist by assuming local Lipschitzness of the drift and diffusion terms [ 37 ], which is the setting we consider, formalized in the following Assumption. 
+
+Assumption 1 (Uniform second-moment control) . We assume that L and Γ satisfy a local Lipschitz growth condition uniformly in N , i.e., there exists constants C, K > 0, independent of N , such that for all x ∈ Rn,
+
+∥Γ(x) − L(y)∥ + ∥Γ 12 (x) − Γ 12 (y)∥ ≤ C(∥x − y∥), (57) 
+
+∥L(x)∥2 + ∥Γ 12 (x)∥2 ≤ K(1 + ∥x∥2). (58) Consequently, for every finite time horizon T > 0, the process (16) is well behaved: 
+
+sup 
+
+> N
+
+sup  
+
+> t∈[0 ,T ]
+
+E∥¯X(N ) 
+
+> t
+
+∥2 < ∞, sup  
+
+> t∈[0 ,T ]
+
+E∥¯Xt∥2 < ∞. (59) 
+
+E.2 Splitting Terms 
+
+We now consider the Euler-Maruyama discretization of the true ˜L-diffusion from Eq. (10) with timestep h > 0, given by the difference equation 
+
+¯X(ℓ+1) h := ¯Xℓh + hL ( ¯Xℓh ) + Γ 1/2( ¯Xℓh )√hξ ℓ+1 , (60) where ξℓ+1 ∼ N (0 , Ik). We recall the squared Wasserstein-2 distance [67], 
+
+W 22 (μ, ν ) := inf  
+
+> γ∈Γ( μ,ν )
+
+E(x,y )
+
+∥x − y∥22
+
+ , (61) where Γ( μ, ν ) denotes the couplings of μ and ν. It is easy to see that for two random variables 
+
+X ∼ μ, Y ∼ ν, we have that 
+
+W 22 (μ, ν ) ≤ E ∥X − Y ∥22
+
+ (62) by the optimality of the coupling γ in W2.We first introduce the intermediate continuous-time off-grid terms ˆX, and apply a triangle inequality on W2
+
+ L(¯Xℓh ), L(Xt), giving us 
+
+W2
+
+ L(¯Xℓh ), L(Yt) ≤ W2
+
+
+
+L(¯Xℓh ), L( ˆXℓh )
+
+| {z }
+
+> data approximation
+
++ W2
+
+
+
+L( ˆXℓh ), L( ˆXt)
+
+| {z }
+
+> time discretization
+
++ W2
+
+
+
+L( ˆXt), L(Yt)
+
+| {z }
+
+> E-M error
+
+,
+
+(63) which we will treat individually using different tools. 
+
+Data Approximation 
+
+We begin with the first term labeled "data approximation", which may be asymptotically suppressed by Theorem 2. Indeed, the strong operator convergence ensures us that the data driven and off-grid processes will converge as N → ∞ .19 Off-grid Time Discretization 
+
+We use Eq. (62) to upper bound the term by 
+
+W2
+
+
+
+L( ˆXℓh ), L( ˆXt)
+
+
+
+≤
+
+
+
+E
+
+h
+
+∥ ˆXℓh − ˆXt∥22
+
+i 1/2
+
+, (64) which is controlled under linear growth by synchronous coupling , i.e. both ˆXt and ˆXℓh are driven by the same Brownian motion Bτ . Without loss of generality, let 0 < s < t and consider the difference 
+
+ˆXs − ˆXt =
+
+Z ts
+
+b( ˆXτ )dτ +
+
+Z ts
+
+σ( ˆXτ )dBτ . (65) Plugging this into the second term of Eq. (63), we get 
+
+
+
+E
+
+h
+
+∥ ˆXt − ˆXℓh ∥22
+
+i 1/2
+
+≤
+
+
+
+E
+
+
+
+∥
+
+Z ts
+
+b( ˆXτ )dτ ∥22
+
+ 1/2
+
++
+
+
+
+E
+
+
+
+∥
+
+Z ts
+
+σ( ˆXτ )dBτ ∥22
+
+ 1/2
+
+> a)
+
+≤
+
+E
+
+"
+
+sup  
+
+> τ∈(s,t )
+
+∥b( ˆXτ )∥22
+
+#1/2
+
++ E
+
+"
+
+sup  
+
+> τ∈(s,t )
+
+∥σ( ˆXτ )∥22
+
+#1/2 p|t − s|≤ Ct
+
+p|t − s|, (66) where we use the maximum principle in a), and bound it with a constant Ct. Thus, for s = ℓh , we can state that 
+
+W 22 (L( ˆXℓh ), L( ˆXt)) ∈ O (h). (67) Thus, by choosing an appropriate step size h → 0 as N → ∞ , we obtain the desired convergence. 
+
+E-M Error 
+
+Finally, considering the regularity of Assumption 1, classical results of Euler-Maruyama schemes [21, 39] yield the bound 
+
+W2
+
+
+
+L( ˆXt), L(Yt)
+
+
+
+≤ O (h1/2) (68) where in a) we use the bound from Eq. (62) on the two first terms. Notice that said terms purely pertain to discretization and "off-grid" errors of ˆX, whereas the last term is purely continuous, but compares the transportation cost from the L-diffusion to the data-driven diffusion. By taking N → ∞ , ϵ → 0 as per Eq. (35) and h → 0, we combine all previous upper bounds and plug into Eq. (63) to obtain 
+
+W2
+
+ L(¯Xℓh ), L(Xt) ∈ O (h1/2), (69) thus proving the claim. 
+
+## F Implementation Details 
+
+F.1 Graph Construction 
+
+All experiments (except for MNIST) used the hard-cutoff kernel of bandwidth ϵ > 0 from Eq. (12) .In the case of the MNIST dataset, we used a fully-connected Gaussian kernel 
+
+kϵ(xi, x j ) := exp 
+
+ ∥xi − xj ∥22
+
+ϵ2
+
+
+
+. (70) This non-compact kernel is not covered by the current convergence proof, although prior work [ 31 ] indicates the current framework should appeal to such kernels. We thus disclaim here that the MNIST experiments should be interpreted as empirical evidence, rather than fully theorem-backed instantiations. We compute the random walk graph Laplacian in the same way in both cases, using Eq. (14). The CDC operator is computed by considering its action on coordinate functions. At each timestep ℓ
+
+of Algorithm 1, we extend LN to L as in Eq. (15) by using a nearest-neighbour (NN) or k-NN lookup. 20 Remark 4. Note that the NN lookup is generally controllable as per Assumption 1, and k-NN lookup is a Lipschitz map. As we are directly considering the extrinsic setting of F (M), all functions are already considered lifted. 
+
+Remark 5. We also do not use the Diffusion Maps algorithm [ 23 ], as the variable-bandwidth graph Laplacian construction does not fit into the framework presented in Appendix C. We believe this to be an important future direction for rigorous IMD constructions, but leave it for future work. 
+
+F.2 Score Model 
+
+We train a noise-conditional score network sθ (x, σ ) [ 38 ] following the multi-scale noise formulation of [ 58 , 59 ] using denoising score matching. The synthetic data’s network’s training is parametrized with a fully-connected residual architecture on a noise-prediction loss. For MNIST we parametrize the score-model with a U-Net encoder-decoder architecture with skip connections at each spatial resolution [56, 42]. For the noise conditioning, we embed the noise level via a Gaussian random Fourier feature layer [60 ] and inject it as a bias into the first linear layer (MLP for synthetic data) or as a per-channel bias at every convolutional block (U-Net for MNIST). We use a geometric schedule of noise levels with 20 different noise levels ranging ( σmin = 0 .005 , σ max = 1 ) for the synthetic examples and 100 noise levels ranging ( σmin = 0 .01 , σ max = 15 ) for MNIST. 
+
+Training Details For the synthetic data, we trained a 3 residual layer network of 128 hidden dimensions for 200 epochs with a fixed learning rate of 2 × 10 −4 on the Adam optimizer. For MNIST, we trained a three-level U-Net operating on single-channel 28 ×28 images, with skip connections at every resolution and channel widths of 64 , 128 , and 256 . The model is trained for 1,000 epochs using the Adam optimizer with a learning rate of 2 × 10 −4 and batch size 256 .
+
+Noise Scale Selection The noise scale σ in the DRGD step of Algorithm 1 is chosen to be small enough such that no numerical errors are incurred during score estimations (as in [ 42 ]). In particular, we chose σ = 0 .005 for all synthetic tasks, and σ = 0 .01 for the MNIST tasks. 
+
+F.3 Euler-Maruyama Parameters 
+
+As the Euler-Maruyama scheme is fairly simple, we only discuss choice os step size and an extra parameter we call the speedup. All experiments were performed with a step size h = 10 −3. However, as certain datasets were not normalized (as is the unit sphere S2), we included a speedup term, which effectively stretches the step size. This was done in order to avoid increasing the "physical time" T
+
+too drastically, while keeping a low number of steps, but allowing a larger step to be covered. In particular, we used a speedup of 1.0 for the sphere, 100 .0 on the swiss roll and 10 .0 on MNIST. The particular number of steps was chosen per experiment, depending on what aspect of IMDs was to be highlighted. 
+
+## G Additional Experimental Results 
+
+Here we present complementary experimental results pertaining to those of Section 6. In particular, we provide more details for Tables 1 and 2, along with some interpretation of the results. 
+
+G.1 Comparison with Naive Methods 
+
+To further support the unique correctness of our method (using both L and Γ), we compare experi-mental results of running more “naive" IMDs for spherical Brownian motion. As shown in Figure 6, the score model is not the only driver of geometric fidelity. In particular, we compare Algorithm 1 with two other methods, inspired by recent applications of diffusion geometry to flow matching [ 4 ]and using score-based models as retractions for Riemannian optimization in the implicit manifold setting [ 42 ]. The first method solely relies on the CDC operator and DRGD retraction, resulting in dynamics driven by 
+
+Uℓ = ¯Xℓh + √hΓ 12 (¯Xℓ)ξℓ+1 , (71) 
+
+¯Xℓ+1 = Uℓ + σ2sσ (Uℓ). (72) 21 The second method performs regular ambient Brownian motion, and relies on the DRGD step 
+
+Uℓ = ¯Xℓh + √hξ ℓ+1 , (73) 
+
+¯Xℓ+1 = Uℓ + σ2sσ (Uℓ). (74) 
+
+(a) IMD with DRGD Retraction  (b) CDC+DRGD Retraction  (c) R3 Noise + DRGD Retraction 0.0 0.2 0.4 0.6 0.8 1.0 
+
+> 0.00
+> 0.02
+> 0.04
+> 0.06
+> 0.08
+> error  δt
+> max δt
+
+(d) IMD radial error 0.0 0.2 0.4 0.6 0.8 1.0
+
+> 0.0
+> 0.2
+> 0.4
+> 0.6
+> 0.8
+> 1.0
+> error
+
+δt
+
+max δt (e) CDC radial error 0.0 0.2 0.4 0.6 0.8 1.0  
+
+> 0.0
+> 0.2
+> 0.4
+> 0.6
+> 0.8
+> error
+> δt
+> max δt
+
+(f) Naive noise radial error 
+
+Figure 6: Comparison of diffusion trajectories (top row) and corresponding radial errors (bottom row). The use of the DRGD in IMDs allows for non-cumulative errors, whereas CDC+DRGD accumulates errors. Observing Fig. 6, we immediately notice two things: (i) the CDC+DRGD construction accumulates errors in the normal direction and (ii) the isotropic noise + DRGD is not constrained to the sphere’s surface. We interpret the first behaviour as evidence that the CDC as a projector onto TxM is correct, but will induce normal error accumulation unless the step size is minuscule. Secondly, we notice that the SGM-based correction is not "strong" enough on its own to counter the isotropy of R3 Brownian motion, resulting in failure to maintain geometric consistency. 
+
+G.2 Swiss Roll 
+
+To test IMDs on implicit manifolds, we considered the Swiss roll dataset. Because neighbours in Euclidean distance may not correspond to those in geodesic distance, unconstrained or projection-based dynamics may induce transitions across nearby folds that are distant along the manifold. IMDs avoid this failure mode by constructing dynamics at the level of the generator, ensuring that motion is intrinsically constrained. The empirical results (reported in Table 2 and Fig. 7) validate that the operator-based construction remains consistent with theory across all metrics reflects the fact that IMDs approximate the correct infinitesimal dynamics, rather than relying on heuristic geometric corrections. Concretely, the reported metrics quantify complementary aspects of the induced dynamics: • Average nearest-neighbour (NN) distance measures the average distance to the closest data point in ambient space (best seen in Figs 7a, 7b, 7c). 22 Table 2: Swiss roll evaluation for a latent sheet of size 14 × 20 . Higher is better for spread and MSD; lower is better for NN distance and max jump. Reported values are means and standard errors over 50 starting points, 100 paths of 10k steps each. †Reported for completeness but not interpreted, as these values are implausible due to non-local behavior. 
+
+Method Avg NN Dist ↓ Max Jump ↓ Spread ↑ MSD ↑
+
+Only DRGD 0.65 ± 0.431 6.294 16 .701 20 .172 ± 2.442 
+
+CDC 4.297 ± 2.637 6.464 112 .320 † 123 .304 ± 12 .268 †
+
+IMD+DRGD 0.298 ± 0.075 2.141 78 .564 78 .816 ± 8.739 
+
+• Maximal jump tracks the locality of the diffusion in latent space (best seen in Figs. 7d, 7e, 7f). • Spread is the covariance of the endpoints Cov (XT ), which reflects how much the diffusion process has explored the manifold. • Mean Squared Displacement reflects the average latent displacement, analogously to the spread. We observe that IMDs maintain geometric fidelity and local behaviour while exploring the manifold. 
+
+Computations for Table 2 We computed all runs over 50 random starting points, with 100 runs per starting point. The latent sheet has size (h, t ) = (20 , 14) . The chosen step size is h = 10 −3, for 
+
+10 4 steps, with speedup =100 due to the large size of the swiss roll relative to the unit sphere. The maximal jump is computed using Euclidean distance in the latent sheet, the spread is the 
+
+(a) IMD with DRGD Retraction  (b) CDC+DRGD Retraction  (c) R3 Noise + DRGD Retraction 6 8 10 12 14 
+
+> t-roll
+> 0
+> 5
+> 10
+> 15
+> 20
+> height
+
+(d) IMD radial error 6 8 10 12 14  
+
+> t-roll
+> 0
+> 5
+> 10
+> 15
+> 20
+> height
+
+(e) CDC radial error 6 8 10 12 14  
+
+> t-roll
+> 0
+> 5
+> 10
+> 15
+> 20
+> height
+
+(f) Naive noise radial error 
+
+Figure 7: Comparison of diffusion trajectories on the Swiss roll (top row) and corresponding latent sheet projections (bottom row). Similar to Fig. 6, we notice error accumulation in the normal direction, which manifests non-locality as the discontinuous jump in the latent sheet. We also note the lack of continuous exploration of the isotropic BM compared to IMDs. 23

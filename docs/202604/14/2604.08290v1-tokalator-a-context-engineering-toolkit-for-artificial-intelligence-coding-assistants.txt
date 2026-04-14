@@ -1,0 +1,756 @@
+Title: Tokalator: A Context Engineering Toolkit for Artificial Intelligence Coding Assistants
+
+URL Source: https://arxiv.org/pdf/2604.08290v1
+
+Published Time: Fri, 10 Apr 2026 01:28:48 GMT
+
+Number of Pages: 37
+
+Markdown Content:
+# Highlights 
+
+Tokalator: A Context Engineering Toolkit for Artificial Intelligence Coding Assistants 
+
+Vahid Farajijobehdar , İlknur Köseoğlu Sarı , Nazım Kemal Üre , Engin Zeydan 
+
+• VS Code extension tracks token budgets for 17 LLM models across five cost categories 
+
+• Five-signal scorer identifies distractor tabs; evaluated at six F1 thresh-olds 
+
+• Closed-form caching break-even ( n∗ = 2 ), O(T 2) cost growth, Cobb– Douglas optimization 
+
+• MCP server + CLI provide real Claude Byte Pair Encoding (BPE) token counting for Claude Code agents 
+
+• 124 unit tests verify mathematical models; +50 out of 220 developers gave qualitative feedback during interactive sessions 
+
+> arXiv:2604.08290v1 [cs.SE] 9 Apr 2026
+
+# Tokalator: A Context Engineering Toolkit for Artificial Intelligence Coding Assistants 
+
+Vahid Farajijobehdar a, İlknur Köseoğlu Sarı a, Nazım Kemal Üre b,Engin Zeydan c, ∗
+
+> aKariyer.net, R&D Center, Istanbul, Turkey
+> bStanford University and iLab, Stanford, CA, U.S.A.
+> cCentre Tecnològic de Telecomunicacions de Catalunya (CTTC/CERCA), Castelldefels, Spain
+
+Abstract 
+
+Artificial Intelligence (AI)-assisted coding environments operate within finite context windows of 128,000-1,000,000 tokens (as of early 2026), yet existing tools offer limited support for monitoring and optimizing token consump-tion. As developers open multiple files, model attention becomes diluted and Application Programming Interface (API) costs increase in proportion to input and output as conversation length grows. Tokalator is an open-source context-engineering toolkit that includes a VS Code extension with real-time budget monitoring and 11 slash commands; nine web-based calcu-lators for Cobb-Douglas quality modeling, caching break-even analysis, and 
+
+O(T 2) conversation cost proofs; a community catalog of agents, prompts, and instruction files; an MCP server and Command Line Interface (CLI); a Python econometrics API; and a PostgreSQL-backed usage tracker. The system supports 17 Large Language Models (LLMs) across three providers (Anthropic, OpenAI, Google) and is validated by 124 unit tests. An initial deployment on the Visual Studio Marketplace recorded 313 acquisitions with a 206.02% conversion rate as of v3.1.3. A structured survey of 50 developers across three community sessions indicated that instruction-file injection and low-relevance open tabs are among the primary invisible budget consumers            
+
+> ∗Corresponding author
+> Email addresses: vahid.farajijobehdar@kariyer.net (Vahid Farajijobehdar ),
+> ilknur.koseoglu@kariyer.net (İlknur Köseoğlu Sarı ), ure@stanford.edu (Nazım Kemal Üre ), engin.zeydan@cttc.cat (Engin Zeydan )
+
+in typical AI-assisted development sessions. 
+
+Keywords: 
+
+AI coding assistants, context engineering, LLM cost optimization, Model Context Protocol, tab relevance scoring, token budget monitoring, 
+
+1. Introduction and Motivation 
+
+Modern AI coding assistants such as GitHub Copilot (VS Code), Claude Code, and Cursor, help programmers develop code efficiently by connecting their integrated development environment (IDE) to large language models (LLMs) with context windows of 128,000 to 1,000,000 tokens (as of early 2026). Aubakirova et al. [ 1], drawing on over 100 trillion tokens of real-world interactions on the OpenRouter platform, document a structural shift: average prompt length grew nearly fourfold between 2024 and 2025 (from 
+
+≈1,500 to >6,000 tokens), driven by agentic workflows and reasoning-intensive tasks. Robbes et al. [ 2] confirmed widespread adoption, finding 15.85–22.60% of 129,134 active GitHub projects now using AI coding agents, sessions that consume far more tokens per interaction than traditional completions. Despite ever-larger context windows, developers lack visibility into how their context budget is consumed. Every open tab, system prompt, instruction file, and conversation turn contributes silently to this budget. For example, at Anthropic’s Claude Opus 4.6 pricing of $5.00/MTok input and $25.00/MTok output [ 3], a single 200,000-token prompt costs $1.00 for input alone. Existing tools address only fragments of this problem. tiktoken [ 4] and Anthropic’s tokenizer count tokens offline but have trivial IDE integration, no cross-provider support, and no cost modeling. Claude Code exposes /context 
+
+(current context size) and /cost (session spend) as CLI commands, but these are Claude-specific, terminal-only, and provide no per-file breakdown, no cross-provider comparison, and no caching or conversation-strategy analysis. VS Code v1.110 [ 5], released concurrently, added a native context indicator and /compact slash command, but both are scoped to Copilot sessions and do not extend to other providers or expose economic models. Han et al. [ 6]showed token budgets can be enforced at the reasoning level without quality loss, but no IDE tool previously exposed this control in a cross-provider, cost-modelling form. Bergemann et al. [ 7] formalised LLM output quality as a Cobb–Douglas production function but did not implement a developer-facing tool. Without integrated tooling, three compounding problems arise: 21. Attention dilution : irrelevant files compete with relevant ones for the context window, reducing model output quality [7, 8, 9]. 2. Cost rise : conversations sending full history at every turn grow at O(T 2)
+
+cumulative cost, where T is the total number of conversation turns. At turn t the model receives S + t(u + a) input tokens (system prompt S,average user tokens u, average assistant tokens a), so total input cost is: 
+
+> T
+
+X
+
+> t=1
+
+S + t(u + a) = ST + T (T + 1) 2 (u + a) ∈ O(T 2). (1) 3. Context rot : after 20+ turns, stale context degrades model accuracy; Hong et al. [ 8] showed this degradation is uneven across LLM models, appears even on simple retrieval tasks, and worsens when distractor content is present. This paper addresses three research questions (RQ): 
+
+RQ1 What are the primary sources of token budget consumption in a typ-ical AI-assisted development session, and can they be made visible to developers in real time? 
+
+RQ2 Can a lightweight syntactic relevance scorer reliably identify distractor tabs ,open IDE files that contribute tokens to the context window but are not relevant to the current coding task, that developers agree should be removed? 
+
+RQ3 Can formal economic models (Cobb–Douglas production functions, caching break-even analysis, conversation cost projections) be imple-mented as practical developer tools without requiring access to proprietary model internals? 
+
+Tokalator (a portmanteau of “token” and “calculator”) 1 is a VS Code extension that monitors context budget consumption in real time and helps developers reduce token waste and API costs. Its relevance scorer applies   
+
+> 1Source code: https://github.com/vfaraji89/tokalator ; VS Code Marketplace:
+> https://marketplace.visualstudio.com/items?itemName=vfaraji89.tokalator ;Web platform: https://tokalator.wiki/ .
+
+3weighted rules over five syntactic signals to identify low-relevance open tabs; its economic calculators translate formal LLM cost models into concrete cost estimates that developers can act on directly. The contributions are framed to address the specific gaps: 1. In-IDE, five-category context budget monitor. Existing tokenizers (tiktoken , Anthropic’s offline API) count aggregate tokens but provide no IDE integration and no decomposition by cost source. Claude Code exposes 
+
+/context (aggregate context size) and /compact (session compaction) as terminal commands, but these are Claude-specific, offer no per-file or per-category breakdown, and provide no real-time visual dashboard. VS Code v1.110 [ 5] introduced a native context window indicator, but its scope is limited to Copilot sessions and it exposes neither cost-category decomposition nor cross-provider monitoring. Tokalator provides real-time decomposition into five categories (open files, system prompt, instruction files, conversation history, output reservation) directly in the VS Code sidebar, raising health warnings at provider-specific rot thresholds. 2. Zero-latency syntactic tab relevance scorer. Semantic approaches to context selection (e.g., EVOR [ 10 ], ACE [ 11 ]) require embedding inference that is too slow for real-time IDE use. Tokalator’s five-signal scorer runs entirely client-side with no model calls, completing in <5 ms for 30+ open tabs, and reduces context usage by 21.2% in our illustrative example (Section 4). 3. Closed-form economic models as interactive calculators. Berge-mann et al. [ 7] built formal theory (caching break-even, Cobb–Douglas optimization) but provided no implementation. Tokalator packages these into nine interactive web calculators with proven closed-form solutions: break-even at n∗ = 2 reuses for all current Anthropic models, O(T 2)
+
+vs. O(T ) cost growth under three strategies, and Cobb–Douglas quality optimization robust to ±30% parameter perturbations. 4. MCP server and CLI for Claude Code integration. This tool exposes BPE token counting via the Model Context Protocol. Tokala-tor’s tokalator-mcp package provides four MCP tools ( count_tokens ,
+
+estimate_budget , preview_turn , list_models ) over stdio transport, en-abling any MCP-capable agent or IDE to count tokens without a network call. 45. Auto-discovered context engineering catalog. Prior catalog sys-tems require manual curation. Tokalator auto-discovers multiple agents, prompts, and instruction files from community-contributed directories using file-extension conventions ( .agent.md , .prompt.md , .instructions.md ,
+
+.collection.yml ), with no manually configuration required. The remainder of this paper is organised as follows. Section 2 reviews related work and positions Tokalator against existing tools. Section 3 describes the software architecture and functionalities. Section 4 presents illustrative examples. Section 5 reports evaluation evidence addressing the three RQs. Section 6 discusses implications and threats to validity. Section 7 states limitations. Section 8 concludes with future work priorities. 
+
+2. Metadata and Related Work 
+
+Mei et al. [ 12 ] recently surveyed over 1,400 context engineering papers, formally establishing context engineering as a discipline spanning context retrieval, processing, management, RAG, memory systems, tool-integrated reasoning, and multi-agent architectures. Tokalator addresses the under-served developer-tooling layer of this taxonomy: making context budget consumption visible and cost-optimisable directly inside the IDE. Table 1 positions Tokalator against the closest existing tools across eight capability dimensions and is discussed in detail in the subsections below; Table 2 summarises the software metadata. 
+
+Tokenization libraries: OpenAI’s tiktoken and Anthropic’s 
+
+@anthropic-ai/tokenizer provide programmatic BPE token counting for their respective vocabularies [ 4, 14 ]. OpenAI models utilize cl100k_base or 
+
+o200k_base encodings, while Anthropic employs a proprietary vocabulary. Both providers offer server-side counting via their respective Messages APIs [ 15 ]; Tokalator replicates this client-side for offline, zero-API-call estimates. While Google now publishes a client-side LocalTokenizer within the google-genai SDK [ 16 ], it relies on a SentencePiece Unigram model with a significantly larger vocabulary ( ≈256k tokens) [ 17 ]. To maintain a lightweight footprint, Tokalator provides the option to use a character-based heuristic ( ≈4 chars/token) for Google model estimates. This heuristic, however, introduces a measured mean absolute error (MAE) of 10–15% on English code and 15–32% on low-resource languages like Turkish scripts. (Section 7). Importantly, none of the official libraries offer real-time IDE integration, multi-provider comparison, or unified cost estimation. 5Table 1: Feature comparison of Tokalator against existing tools. ✓ = full support; ◦ =partial; – = not supported.                                                  
+
+> Feature Tokalator (this work) tiktoken (CLI) Anthropic tok. API Token Ctr. Ext. Cursor IDE VS Code v1.110
+> Real-time IDE to-ken counting
+> ✓––◦◦◦
+> Multi-provider sup-port (3+)
+> ✓–––––Per-file relevance scoring
+> ✓–––––Context budget de-composition
+> ✓–––––Caching break-even analysis
+> ✓–––––Conversation cost projection
+> ✓–––––Chat participant / slash cmds
+> ✓––––◦
+> MCP server for agent use
+> ✓–––––
+
+LLM pricing and inference economics: Bergemann et al. [ 7] formalized LLM output quality as a Cobb–Douglas production function Q = XαY β (b +
+
+Z)γ of input ( X), output ( Y ), and cached ( Z) tokens, but provided no implementation. Translating this theory into a developer tool requires α, β, γ 
+
+sensitivity parameters that are not publicly reported for any model. Tokalator uses author-assigned placeholder values that satisfy two structural constraints (α + β + γ < 1 for diminishing returns; α < β reflecting generation-quality intuition) and demonstrates economic robustness across ±30% perturbations of all parameters (Section 3.2). Erdil [ 18 ] analyzed Pareto frontiers of inference cost versus capability; Cottier et al. [ 19 ] documented rapid but uneven price declines; Delavande et al. [ 20 ] examined economics beyond per-token pricing. These studies provide economic theory but no developer-facing tools. 
+
+Energy and environmental cost of inference: Beyond monetary pricing, LLM inference carries measurable energy and carbon costs that scale directly with token count. Wilhelm et al. [ 21 ] formally defined energy per token (Etok )and showed models of similar parameter count can differ substantially in energy efficiency. Husom et al. [ 22 ] quantified a baseline energy coefficient of ≈ 5.28 × 10 −7 kWh/output token, with near-linear correlation between 6Table 2: Software metadata for Tokalator v3.1.3.                                
+
+> Nr. Description Value
+> S1 Current software ver-sion 3.1.3 S2 Legal software licence MIT License S3 Computing platforms / OS Windows, macOS, Linux (VS Code ≥1.99), Web browsers S4 Installation require-ments VS Code ≥1.99, Node.js ≥18 S5 Support email [vahid.farajijobehdar@kariyer.net] C6 Code languages & tools TypeScript, JavaScript, Next.js 16, React 19, Tail-wind CSS 4, Recharts, Prisma 7, VS Code Exten-sion API [13], esbuild C7 Compilation dependen-cies Node.js ≥18, VS Code ≥1.99; Ext.:
+> @anthropic-ai/tokenizer ,js-tiktoken ;MCP/CLI: @modelcontextprotocol/sdk ,zod
+
+token length and energy consumption. Li et al. [ 23 ] showed near-linear carbon emissions per token generated for LLaMA-2 and proposed SPROUT for carbon-efficient scheduling. Together, these studies establish that every token saved represents both a cost saving and an emissions reduction. This reinforces the environmental rationale for Tokalator’s budget monitoring: surfacing exact token counts enables developers to reduce both API spend and inference energy footprint. 
+
+Context window research: Aubakirova et al. [ 1] documented a four times increase in average prompt length (1.5 K to 6 K tokens) between 2024 and 2025, driven by agentic workflows. Fu et al. [ 24 ] showed that data engineering choices critically determine whether models can exploit 128K context windows, reinforcing that context length is a resource to be managed rather than simply maximised. Wei et al. [ 25 ] proposed position-aware token weighting, showing that not all context positions contribute equally to generation quality, which provides theoretical grounding for Tokalator’s per-file relevance scorer. Mei et al. [ 12 ] coined the term “context engineering” to describe the systematic design of what enters the context window. 
+
+Context rot and long-context degradation: Liu et al. [ 9] showed that LLMs systematically miss information placed in the middle of a long input, 7finding a U-shaped accuracy curve across question-answering and key-value retrieval tasks. Hong et al. [ 8] introduced the term context rot in an evaluation of 18 LLMs, demonstrating non-uniform performance degradation as input length grows, even on simple tasks, with distractor content amplifying the effect. These findings motivate Tokalator’s context health warnings, which alert developers when context size exceeds a provider-specific rot threshold. The R < 0.3 distractor threshold is a conservative heuristic chosen so that at least two scoring signals must agree before a tab is flagged; it is not yet empirically calibrated and is evaluated against human ground-truth labels in Section 5.2. Anthropic [ 26 ] formalised three complementary strategies for long-horizon agents: compaction , structured note-taking , and sub-agent architectures , which directly informed Tokalator’s /compaction command. 
+
+Context compaction: Navid [ 27 ] demonstrated automatic context com-paction for tool-heavy agentic workflows, reducing a five-ticket customer service pipeline from 208 K to 86 K tokens (58.6% reduction) via prompt injec-tion at a threshold.Tokalator’s /optimize reduces open-file context through syntactic relevance scoring, achieving 21.2% context reduction in our illustra-tive example purely through IDE tab management without any conversation re-writing (Section 4). VS Code v1.110 [ 5] subsequently introduced a native 
+
+/compact command, confirming the importance of this capability; Tokalator’s approach differs in providing explicit threshold tracking, turn-by-turn growth projection, and cross-provider support. 
+
+Agent context management: Perera et al. [ 11 ] built an adaptive context manager for Quality Assurance (QA) agents that dynamically selects which history fragments to retain based on relevance to the current query, the same principle Tokalator’s relevance scorer applies to open IDE files. Su et al. [ 10 ] introduced EVOR, which iteratively refines retrieved context docu-ments during code synthesis; Tokalator solves the complementary problem of deciding which already-open files should stay in context. Both EVOR and ACE [ 28 ] rely on semantic understanding, requiring embedding inference that is too slow for real-time IDE use ( >100 ms per query on typical hardware). Tokalator chooses syntactic signals to achieve the following engineering trade-offs: language match, import relationships, path similarity, edit recency, and diagnostics all compute in <5 ms client-side with no model calls, satisfying the interactive-latency budget of an IDE extension. Nanjundappa and Maahesh-wari [ 29 ] proposed ContextBranch, which applies version-control semantics to LLM conversations, cutting context size by 58.1% in exploratory coding. ContextBranch and Tokalator are complementary: Tokalator controls which 8files enter the context; ContextBranch controls which conversational turns persist. 
+
+Cross-session and multi-agent context: Vasilopoulos [ 30 ] described Codi-fied Context, a three-component system (hot-memory constitution, 19 spe-cialist agents, cold-memory knowledge base) across 283 development sessions on a 108,000-line C# codebase. This is the closest real-world complement to Tokalator: Tokalator manages the live context window within a session; Codified Context organises persistent cross-session memory. Wu et al. [ 31 ]proposed the Git-Context-Controller (GCC), a version-control-inspired con-text management framework for long-horizon LLM agents that structures agent memory using Git-like operations (COMMIT, BRANCH, MERGE); GCC operates at the agent reasoning level, while Tokalator addresses the token budget of a single developer session inside the IDE. 
+
+Terminology and domain vocabulary: The context engineering field lacks standardised terms. For example, “prompt caching” [ 32 ], “automatic caching” (OpenAI), and “context caching” (Google) are three labels for mechanically similar features with different pricing. Hong et al. [ 8] coined “context rot”; others use “context degradation,” “attention dilution,” or “context pollution” for overlapping ideas. Mei et al. [ 12 ] introduced “context engineering” itself, yet terms such as “compaction,” “distractors,” and “stable prefix” remain informal. 
+
+3. Software Description 
+
+3.1. Software Architecture 
+
+Tokalator v3.1.3 comprises three execution environments: VS Code Exten-sion, Web Platform, and a CLI & MCP with the following six components: The VS Code extension ( 1○) forms the core interactive layer, implementing a pipeline editor event capture, tokenization, context monitoring, snapshot management, and dashboard rendering. Relevance scoring and context op-timization run as subordinate modules fed by the monitor stage, and both surface their output through a unified Chat Participant accessible via the 
+
+@tokalator command. The Web Platform ( 2○) and Catalog ( 3○) provide browser-accessible tooling for token economics and model comparison, while the MCP + CLI server ( 4○) exposes the same BPE counting primitives to agentic runtimes via stdio transport, enabling Claude Code and compatible clients to count tokens without a network call. Persistence is handled by a dedicated REST API ( 5○) backed by a Prisma-managed relational store ( 6○), 9both deployed independently of the extension. Figure 1 presents the full system architecture.    
+
+> ¹Developer
+> Editor
+> Events
+> Tokenizer
+> Service
+> Context
+> Monitor
+> Context
+> Snapshot
+> Dashboard
+> & Status Bar
+> Relevance Scorer
+> (Eq. 2)
+> Context Optimizer
+> (Alg. 1) Chat Participant
+> 1○VS Code Extension
+
+ 
+
+> 2○Web Platform
+
+_ 
+
+> 3○Catalog
+
+_     
+
+> 4○MCP + CLI
+> áõ
+> 5○API + 6 ○DB
+> ÆClaude Code
+> stdio
+
+Figure 1: System architecture of Tokalator (v3.1.3). Solid arrows denote data flow; dashed bidirectional arrows denote shared data between the VS Code extension ( 1○) and each independently deployable component. 
+
+The six components are: 1. VS Code Extension (TypeScript, ∼5,000 LOC): Real-time context budget monitoring with 17 model profiles (6 Anthropic, 7 OpenAI, 4 Google); tab relevance scoring; a context optimization engine; sidebar dashboard with pin/unpin/close controls; and an interactive chat participant ( @tokalator )with 11 slash commands. 2. Web Platform (Next.js 16.2 + React 19): Nine interactive calculators covering all 17 models; a 10-lesson context engineering course; an auto-mated wiki; a 41-term dictionary; and catalog pages ( /agents , /prompts ,
+
+/instructions , /collections , /context-engineering ). Partial pre-rendering (PPR) serves static shells immediately while dynamic content streams in [ 33 ]. Security headers (CSP, X-Frame-Options, HSTS) are enforced via next.config.ts .10 3. Context Engineering Catalog : A community-extensible collection of agents, prompts, and instruction files, auto-discovered from 
+
+copilot-contribution/ and user-content/ via file-extension conven-tions ( .agent.md , .prompt.md , .instructions.md , .collection.yml ). 4. MCP Server + CLI (tokalator-mcp/ , TypeScript/Node.js ESM): Real Claude BPE token counting for Claude Code via the Model Context Protocol (stdio transport), registered in .mcp.json and auto-loaded by Claude Code [ 34 ]. Exposes four tools: count_tokens , estimate_budget ,
+
+preview_turn , and list_models . Supports four Claude profiles (Opus 4.6, Sonnet 4.6, Sonnet 4.5, Haiku 4.5); also ships a standalone tokalator CLI via npm. 5. Python API (api/ , FastAPI): Two REST routers: csv_upload (parses GitHub Copilot billing CSVs into structured usage records) and economics 
+
+(server-side Cobb–Douglas optimization). Pydantic schemas mirror the TypeScript interfaces in lib/pricing.ts ; CORS is configured for both the dev server and production domain. 6. Database Layer (PostgreSQL + Prisma 7.3): A relational schema (prisma/schema.prisma , 163 LOC) with six models, Model , PricingRule ,
+
+Project , UsageRecord , BudgetAlert , ServicePricing , backing the Us-age Tracker’s historical analytics. A seed script populates default model profiles and pricing rules. The web platform’s library layer (lib/pricing , lib/caching ,
+
+lib/conversation , lib/context ) provides the computational backend for all nine calculators. The VS Code extension maintains its own embedded model profiles and tokenizer logic, as it runs inside the extension host pro-cess and cannot share modules with the web platform. Both sides consume the same pricing data: the 17 model profiles are generated from a single 
+
+models.json source of truth via npm run generate-models , eliminating manual duplication [13]. Inside the extension, five layers work together: (1) the Core Engine 
+
+(contextMonitor.ts ) reacts to editor events and builds ContextSnapshot 
+
+records; (2) the Tokenizer Service (tokenizerService.ts ) counts to-kens via provider-specific BPE encoders; (3) the Relevance Scorer 
+
+(tabRelevanceScorer.pure.ts ) assigns each tab a score R ∈ [0 , 1] ; (4) the 11 Context Optimizer closes tabs where R < 0.3; and (5) the Chat Participant 
+
+(contextChatParticipant.ts ) exposes 11 slash commands. Figure 2 illustrates the runtime flow. On every tab event, the Core Engine counts tokens, scores relevance, builds a ContextSnapshot , and pushes it to the Dashboard. Full details are in Section 3.2. 
+
+3.2. Software Functionalities 3.2.1. VS Code Extension 
+
+The extension provides eight core functionalities. 
+
+1. Real-time token budget monitoring. The status bar displays a continu-ously updated summary (e.g., $(check) 262K / 400K (65.5%) – GPT 5.4 Model ). A sidebar webview dashboard displays the full breakdown: budget level (low < 60% , medium 60 –85% , or high > 85% ), per-file token estimates, pinned file count, conversation turn count, and context health warnings. The total estimated tokens are computed as the sum of five components: 
+
+Ttotal = Tfiles + Tsys + Tinstr + Tconv + Tout (2) where Tfiles = P 
+
+> i
+
+tokens (tab i) is the sum of per-file BPE counts across all open tabs; Tsys = 2 ,000 is the estimated system prompt overhead; Tinstr = 500 ×ninstr 
+
+accounts for instruction files detected in the workspace; Tconv = 800 × t
+
+estimates accumulated conversation history at turn t; and Tout = 4 ,000 
+
+reserves tokens for the model’s response. These overhead constants are empirically informed estimates of GitHub Copilot’s context construction; the actual assistant context logic is proprietary (see Section 7). 
+
+2. Tab relevance scoring. Each open tab receives a relevance score 
+
+R ∈ [0 , 1] computed as a weighted sum of five signals: 
+
+R = 0 .25 Slang + 0 .30 Simport + 0 .20 Spath 
+
++ 0 .15 Srecency + 0 .10 Sdiag 
+
+(3) where Slang ∈ { 0, 1} indicates language match with the active file; Simport ∈{0, 1} indicates an import relationship (detected via regex for TypeScript/-JavaScript, Python, Go, Java, and a generic fallback); Spath ∈ [0 , 1] measures shared directory depth (ratio of shared path prefix segments to total depth); 
+
+Srecency ∈ { 0, 0.53 , 1} reflects edit recency (1.0 if edited within 2 minutes, 0.53 within 10 minutes, 0 otherwise); and Sdiag ∈ { 0, 1} flags files with compiler diagnostics. Pinned and active files are overridden to R = 1 .0.12 ¹   
+
+> Developer
+> 4
+> Context Monitor
+> Ô
+> Tokenizer
+> Z
+> Relevance
+> ¡
+> Dashboard
+> open / switch tab
+> countTokens(document)
+> tokenCount
+> scoreTab(file, activeFile)
+> R∈[0 ,1]
+> buildSnapshot()
+> ContextSnapshot
+> update webview
+
+262K/400K (65%) – GPT 5.4 
+
+> developer issues chat command
+> @tokalator /optimize
+> getSnapshot()
+> scoreRelevance()
+> relevance scores
+> optimizeTabs()
+> closed tabs report
+> scored suggestions + health score
+> ¹
+> Developer
+> 4
+> Context Monitor
+> Ô
+> Tokenizer
+> Z
+> Relevance
+> ¡
+> Dashboard
+
+Figure 2: Runtime sequence of Tokalator v3.1.3. Top: on tab open/switch, the Context Monitor counts tokens, scores relevance, builds a ContextSnapshot , and pushes it to the Dashboard. Bottom: on @tokalator /optimize , the Chat Participant retrieves the snapshot, closes low-relevance tabs, and returns results to the developer. From v3.1.3, 
+
+request.model is read on every command to auto-sync the tokenizer and rot threshold via findModel() .
+
+13 The weights reflect a deliberate engineering trade-off: import relationships (w = 0 .30 ) receive the highest weight because a file explicitly imported by the active file is almost certainly needed; language match ( w = 0 .25 ) is the next strongest signal since cross-language files ( .json configs alongside .tsx 
+
+code) are common distractors; path similarity ( w = 0 .20 ) captures co-location patterns; edit recency ( w = 0 .15 ) reflects the developer’s current working set; and diagnostics ( w = 0 .10 ) provide a weak signal that files with errors are being actively debugged. The Srecency intermediate value of 0.53 = 0.08 /0.15 is the ratio of the partial recency credit to the full recency weight. All signals are syntactic and compute client-side with no model calls, completing in 
+
+<5 ms for 30+ open tabs, a hard requirement for real-time IDE extensions where semantic approaches requiring embedding inference would exceed the interactive-latency budget. These weights are configurable and could benefit from empirical calibration in future work. Algorithm 1 formalizes the scoring and optimization procedure. 
+
+3. Chat participant with 11 commands. The @tokalator chat par-ticipant responds to: /count (budget status), /breakdown (per-file to-kens), /optimize (close low-relevance tabs), /pin //unpin (pin management), 
+
+/instructions (scan instruction files and their token cost), /model (switch model profile), /compaction (per-turn growth analysis), /preview (preview next-turn token cost before sending), /reset and /exit (session management). Starting in v3.1.3, every @tokalator chat request reads request.model and automatically syncs the context window, tokenizer, and rot threshold to match the active Copilot model via findModel() , eliminating a source of confusion when users switch models in the Copilot UI without manually updating Tokalator. 
+
+4. Context optimization. The /optimize command identifies open tabs with R < 0.3 and closes them to free up context budget. The Dashboard also provides an Optimize Tabs button triggering the same behaviour. This reduces attention dilution by removing files unlikely to be relevant to the current coding task. 
+
+5. Session persistence. Session summaries (peak tokens, turns, model, top edited files) are saved to workspaceState on exit and shown as a notification on the next activation. Pinned files and model selection persist across VS Code restarts. 
+
+6. Instruction file scanner. The extension detects and tokenizes instruction files that AI coding assistants automatically inject into ev-ery prompt. It searches nine patterns covering all major coding 14 Input: Open tabs T = {t1, . . . , t n}, active file f , threshold τ = 0 .3
+
+Output: Scored tabs with distractor labels; optimized tab set T ′
+
+foreach ti ∈ T do if ti is pinned or ti = f then 
+
+Ri ← 1.0
+
+end else 
+
+Slang ← ⊮[lang (ti) = lang (f )] 
+
+Simport ← ⊮[imports (f ) ∋ ti]
+
+Spath ← sharedDepth (ti, f ) / totalDepth (ti)
+
+Srecency ←
+
+
+
+1.0 if edited < 2 min ago 
+
+0.53 if edited < 10 min ago 
+
+0 otherwise 
+
+Sdiag ← ⊮[diagnostics (ti) > 0] 
+
+Ri ← 0.25 Slang + 0 .30 Simport + 0 .20 Spath + 0 .15 Srecency + 0 .10 Sdiag 
+
+end 
+
+Label ti as distractor if Ri < τ 
+
+end 
+
+// Optimization: close distractors to free context budget 
+
+D ← { ti ∈ T | Ri < τ }T ′ ← T \ D 
+
+∆T ← P 
+
+> ti∈D
+
+tokens (ti)
+
+return T ′, scores {Ri}, freed tokens ∆T
+
+Algorithm 1: Tab Relevance Scoring and Context Optimization 15 assistant ecosystems: .github/copilot-instructions.md , CLAUDE.md ,
+
+AGENTS.md , .cursorrules , .instructions.md , .github/instructions/ ,
+
+.claude/*.md , .copilot/skills/ , and .github/skills/ . This reveals the hidden token cost of instruction files that are otherwise invisible to the developer. 
+
+7. Session logger. Opt-in anonymized research logging records aggregate context metrics (token counts, budget levels, provider distribution) per session without capturing filenames or code content. Version 3.1.3 resolved four critical bugs identified in the field: (a) stale token counts when isRefreshing 
+
+was true were fixed via a pendingRefresh flag that queues a follow-up refresh; (b) duplicate tab entries in multi-root workspaces were fixed by introducing a seenUris Set and matching workspace folders by path; (c) pin-state reversion (pinned files reverted to scored mode after tab switching) was fixed by persisting the pin set on every mutation; and (d) model auto-sync ensures the tokenizer always matches the active Copilot model [5]. 
+
+8. 17 model profiles (single source of truth). Model profiles for 6 An-thropic, 7 OpenAI, and 4 Google models are defined in a single models.json 
+
+file; the TypeScript module ( modelProfiles.ts ) is regenerated via npm run generate-models to eliminate manual duplication. Each profile stores the model identifier, display label, provider, context window size, maximum out-put tokens, and the provider-specific rot threshold (the number of conversation turns after which context rot risk rises). 
+
+3.2.2. Web Platform 
+
+The web platform at https:tokalator.wiki includes nine calculators: 1. Cost Calculator : Token cost calculation with Cobb–Douglas quality mod-elling for Anthropic, OpenAI, and Google models. Supports tiered pricing detection: when the total prompt length exceeds Anthropic’s 200 K-token threshold, all input tokens are billed at the extended rate ( 2× standard input cost), not only those above the threshold. 2. Context Optimizer : Visualizes context window allocation across system prompt, user input, reserved output, and free space. Computes usage percentage and generates warnings. 3. Model Comparison : Cross-provider cost and capability comparison across all 17 models. 16 4. Caching ROI Calculator : Break-even analysis for prompt caching. Given 
+
+T tokens to cache with write cost cw per token, read cost cr per token, and standard input cost cin per token, each reuse saves (cin − cr) per token. The break-even reuse count is: 
+
+n∗ =
+
+ cw
+
+cin − cr
+
+
+
+(4) For all current Anthropic models, cw = 1 .25 × cin and cr = 0 .10 × cin ,yielding n∗ = ⌈1.25 /0.90 ⌉ = 2 reuses. At 10 reuses the savings reach 76%. 5. Conversation Estimator : Multi-turn cost projection under three strategies, each defined by the input tokens sent at turn t (with system prompt S,average user tokens u, average assistant tokens a): 
+
+• Full History : It = S + Pti=1 (ui + ai), yielding O(T 2) cumulative cost since PTt=1 It = ST + T (T +1) 2 (u + a).
+
+• Sliding Window (W turns): It = S +Pti=max(1 ,t −W +1) (ui +ai), capping per-turn cost at S + W (u + a), yielding O(T ).
+
+• Summarize (ratio ρ, keep last k turns fresh): It = S + ρ · Pt−ki=1 (ui +
+
+ai) + Pti=t−k+1 (ui + ai), growing at rate ρ(u + a) per turn. Per-turn breakdown charts visualize the cost trajectories. 6. Economic Analysis : Visualization of the Cobb–Douglas quality production function [7]: 
+
+Q(X, Y, Z ) = Xα · Y β · (b + Z)γ (5) where X = input tokens, Y = output tokens, Z = cache tokens, b =base model quality, and α, β, γ are provider-specific sensitivity parameters (α + β + γ < 1, ensuring diminishing returns). The corresponding cost minimisation problem under target quality ¯Q is: 
+
+min  
+
+> X,Y,Z ≥0
+
+cxX + cyY + cz Z s.t. Q(X, Y, Z ) ≥ ¯Q (6) Applying Lagrangian first-order conditions, the optimal allocation satisfies 
+
+X∗/Y ∗ = ( α c y)/(β c x), and the minimum cost without caching is given by Equation 7: 
+
+C∗( ¯Q) = ( α + β)
+
+ ¯Qbγ
+
+1/(α+β)cx
+
+α
+
+α/ (α+β)cy
+
+β
+
+β/ (α+β)
+
+(7) 17 following Lemma 4 of Bergemann et al. [ 7]. The with-caching variant includes Z as a third decision variable. Sensitivity parameters ( α = 0 .30 ,
+
+β = 0 .35 , γ = 0 .20 for Opus; proportionally lower for Sonnet and Haiku) are author-assigned placeholder values satisfying α+β +γ < 1 (diminishing returns) and α < β (generation quality depends more on output than input tokens). These parameters cannot be calibrated from public data at present; sensitivity analysis confirms that the qualitative strategy ranking (caching > sliding window > full history at high reuse rates) is robust across ±30% perturbations of all parameters (Section 7). Interactive sliders expose this sensitivity for user exploration. 7. Usage Tracker : Historical API usage analysis with cost breakdowns by model, project, and time period, plus linear regression and exponential smoothing projections. 8. Pricing Explorer : Interactive cross-provider pricing comparison with bar charts and service-tier breakdowns for all 17 models. 9. Economics Explorer : A live parameter-tuning dashboard extending Eco-nomic Analysis with radar charts, multi-model overlays, and slider-driven “what-if” scenarios. The platform also includes a 10-lesson context engineering course pro-gressing from basic tokenization through intermediate context management to production patterns including automatic compaction via Anthropic’s 
+
+compaction_control API. A wiki ( [https://tokalator.wiki/wiki ) ag-gregates articles from arXiv, OpenAI Cookbook, Anthropic documentation, and Google AI docs via an automated twice-monthly fetch pipeline. 
+
+3.2.3. Context Engineering Catalog 
+
+The catalog auto-discovers reusable artifacts from the repository us-ing file extension conventions: .agent.md (agents), .prompt.md (prompts), 
+
+.instructions.md (workspace guidelines), .collection.yml (bundles), and 
+
+CLAUDE.md (Claude Code instructions, auto-detected). A user-content/ di-rectory accepts community contributions, automatically indexed with YAML frontmatter parsing. A catalog-config.json specifies scan directories and featured artifact IDs for the landing page. The web platform provides dedi-cated browsing pages for each artifact type with dynamic detail routes (e.g., 
+
+/agents/[id] ). 18 Relevance scoring. Algorithm 1 scores each tab in O(n): language match and diagnostics are O(1) lookups; import detection parses the active file once (O(I), where I is the number of import lines) and checks membership via a hash set; path similarity is O(d) per tab where d is the directory depth. The overall scoring pass is O(n · d + I), completing in <5 ms for 30+ open tabs. 
+
+Space complexity. The extension maintains one ContextSnapshot in mem-ory, holding per-tab metadata (URI, token count, relevance score, language ID): O(n) total. No snapshot history is retained; session summaries are flushed to workspaceState as a single JSON string of bounded size. 
+
+Web platform calculators. All nine calculators evaluate closed-form ex-pressions in O(1) for a given parameter set. The Conversation Estimator computes cumulative cost over T turns in O(T ) for all strategies. No iterative solver is required. 
+
+4. Illustrative Examples 
+
+The three examples below use realistic session parameters drawn from actual deployment and community usage. 
+
+Example 1: Context budget waste (VS Code, React project). With 23 tabs open, Tokalator’s status bar shows $(warning) 85.2K / 200K (42.6%) – Claude Opus 4.6 . Running @tokalator /breakdown reveals 12 configura-tion files ( .json , .yml ) contributing 18 K tokens at below-0.3 relevance. After 
+
+/optimize closes them, context drops to 67,200 tokens (33.6%), a 21.2% reduc-tion. /instructions further surfaces a .github/copilot-instructions.md 
+
+file silently injecting 4,200 tokens per prompt. 
+
+Example 2: Caching ROI (50K-token system prompt, Claude Sonnet 4.5). 
+
+For 100 daily reuses ( cin = $3 .00 /MTok, cw = $3 .75 /MTok, cr = $0 .30 /MTok): 
+
+• Write cost: 50 ,000 /10 6 × 3.75 = $0 .19 
+
+• Uncached daily cost: 101 × 50 ,000 /10 6 × 3.00 = $15 .15 
+
+• Cached daily cost: $0 .19 + 100 × 50 ,000 /10 6 × 0.30 = $1 .69 
+
+• Net savings: $13 .46 /day (88.9%); break-even at ⌈3.75 / (3 .00 −0.30) ⌉ = 2 
+
+reuses 
+
+Example 3: Conversation length planning ($5 daily budget, Sonnet 4.5). 
+
+With a 2,000-token system prompt, 500 user and 1,500 assistant tokens per turn: Full History yields 28 turns; Sliding Window ( W = 5 ) yields 83 turns; 19 Summarize ( ρ = 0 .2) yields 71 turns. The per-turn cost chart contrasts the quadratic growth of Full History against the linear growth of the alternatives. Table 3 summarises outcomes across all three scenarios.                              
+
+> Table 3: Tokalator-assisted vs. unassisted workflows across three representative scenarios. Token counts and cost figures are estimated from realistic session parameters; see Section 7 for caveats.
+> Scenario Without Tokalator With Tokalator Improvement
+> Sc. 1: Context reduction (23 tabs, React)
+> Context tokens 85,200 67,200 −21.2% Low-rel. tokens visible 022,200 Newly visible Instr. file cost visible No Yes (4,200 tok) Newly visible
+> Sc. 2: Caching (50K tok, 100/day, Sonnet 4.5)
+> Daily API cost $15.15 $1.69 −88.9% Break-even reuses Unknown 2 (computed) Decision supp.
+> Sc. 3: Strategy ($5 budget, Sonnet 4.5)
+> Turns (full history) 28 28 (conf.) Baseline verif. Turns (sliding W= 5 )Unknown 83 3×more Turns (summ. ρ= 0 .2)Unknown 71 2.5×more
+
+The primary benefit is cost transparency: developers see exactly which files and turns consume their budget and can act on that information directly. The 21.2% context reduction in Scenario 1 came entirely from files the developer had not intentionally included as context. The 88.9% cost saving in Scenario 2 was always available but became actionable only when the break-even point was computed explicitly. 
+
+5. Evaluation 
+
+This section reports evidence addressing the three research questions stated in Section 1. 
+
+5.1. RQ1: Token Budget Composition and Visibility Analytical result. Equation 2 decomposes total token consumption into five categories. In the representative session of Example 1 (Section 4), a 20 developer with 23 open tabs consumed 85,200 tokens against a 200,000-token budget. Applying @tokalator /breakdown revealed that 18,000 to-kens (21%) came from 12 configuration files with relevance R < 0.3, and a single .github/copilot-instructions.md file contributed 4,200 tokens (5%) silently injected into every prompt. After running /optimize , total con-text dropped to 67,200 tokens a 21.2% reduction confirming that instruction files and low-relevance configuration tabs are significant and systematically invisible budget consumers. 
+
+Structured survey evidence ( n = 50 ). We conducted a structured 10-item survey with 50 software engineers from the [Organisation A], [Community Session C], and [Community Session B] communities. Data were collected in person during the three community sessions and in a follow-up online session for remote participants using structured note-taking consolidated into a spreadsheet; no third-party survey platform was used. Participants used the extension for at least one working day before responding. Responses were coded inductively; the survey was not pre-registered and participants self-selected, so findings are treated as qualitative and hypothesis-generating rather than confirmatory. Full theme descriptions, Likert distributions, demo-graphics, and verbatim quotes are in Appendix C. The /preview command was the most-valued feature (82% of respondents), with participants discovering that a single turn can cost 6K+ tokens and adjusting their prompts after seeing the breakdown. Tokenizer accuracy was a concern for non-English users: developers writing Turkish or Arabic code found the Google heuristic ( ≈4 chars/token) underestimated counts by 15–32%. Model synchronization was the most-requested fix: 64% of respondents noticed their Copilot chat model and Tokalator’s status bar were out of sync; v3.1.3 resolves this by auto-reading request.model on every chat command. On session management, 38% requested persistent cross-session history and several reported the pin/unpin persistence bug fixed in v3.1.3. Finally, 48% used /compaction , with 67% of that group saying it helped spot the compaction point before hitting the context limit. The survey consensus was that instruction files and low-relevance configuration tabs were the primary invisible budget consumers, directly answering RQ1. 
+
+Community validation. Tokalator was subsequently presented in two separate sessions at broader developer events: a [Community Session B] (≈90 attendees, March 2026) and a [Community Session C] ( ≈80 attendees, March 2026), bringing the total audience to over 220 developers across three venues. Both sessions included live demonstrations of the VS Code extension 21 and web calculators, followed by structured Q&A. 
+
+5.2. RQ2: Tab Relevance Scorer Accuracy Survey-based agreement evidence ( n = 50 ). In the [Organisation A] deployment, participants were asked via the structured survey whether the tabs flagged as distractors ( R < 0.3) by /optimize were ones they would have manually closed. Of 50 respondents, 46 (92%) answered affirmatively; 0 participants reported a false positive. 
+
+5.3. RQ3: Practical Demonstrations of Economic Models Mathematical validation. All nine calculator models are validated against closed-form solutions by 124 unit tests (see Appendix A). The caching break-even formula ( n∗ = 2 for all current Anthropic models) was independently veri-fied: with cw = 1 .25 ×cin and cr = 0 .10 ×cin , the formula yields ⌈1.25 /0.90 ⌉ = 2 ,consistent with Anthropic [ 3]. The O(T 2) conversation cost growth is proven analytically (Section 3.2) and confirmed numerically in the Conversation Estimator tests. 
+
+5.4. Real-World AI Development Cost Analysis 
+
+To complement the above evaluations, this section presents actual GitHub Copilot billing data recorded during Tokalator’s 30-day development sprint (February 6 – March 7, 2026). The data provides an empirical trace of AI-assisted software engineering costs at the individual-developer level, covering 1,413 premium AI requests across Claude Opus 4.6, GPT 5.3, and GPT Codex 5.4 via the GitHub Copilot interface. All data were exported from the GitHub Copilot usage dashboard and reflect the copilot_premium_request 
+
+SKU at the published list price of $0.04 per request. Table 4 summarises the key cost metrics. Total gross cost for 1,413 premium requests was $56.52. GitHub applied $28.16 in billing credits (49.8% effective discount), yielding a total net developer cost of $28.36 for a full production-quality, 20,814-LOC, multi-component toolkit over 30 calendar days. Two development phases are visible. The intensive sprint (February 6–11) accounts for 911 requests (64.5% of total) and $25.00 of net cost, during which the VS Code extension, web platform foundation, and shared library layer were built simultaneously. The organic tail (February 12–March 7) covers 502 requests at $3.36 net, dominated by documentation, testing, paper preparation, and post-release maintenance. The sharp drop in net cost after 22 Table 4: GitHub Copilot billing summary for Tokalator development (Feb 6 – Mar 7, 2026). All requests are copilot_premium_request at $0.04/request. Net cost reflects GitHub billing credits. CI/CD Actions (261 min, 27 runs) had $0 net cost (free tier). 
+
+Metric Value 
+
+Date range Feb 6 – Mar 7, 2026 (30 days) Total Copilot premium requests 1,413 List price per request $0.04 Total gross cost $56.52 GitHub billing credits $28.16 (49.8%) 
+
+Total net developer cost $28.36 
+
+Intensive sprint (Feb 6–11) 911 req (64.5%), $25.00 net Long-tail development (Feb 12–Mar 7) 502 req (35.5%), $3.36 net Peak single session (Feb 7) 244 req, $9.76 gross Highest net-cost session (Feb 11) 205 req, $8.20 net Average daily net cost $1.49/active day GitHub Actions minutes 261 min (27 runs) Actions net cost $0.00 (free tier) 
+
+February 18 reflects account-level billing credits that covered usage through the end of the study period. These figures demonstrate that AI-assisted development at the individual practitioner level is economically accessible: context-aware tooling directly enables cost efficiency by monitoring token budgets and closing low-relevance tabs before each request. The 49.8% effective discount here reflects GitHub’s account-level credits, not in-session optimization; instrumented studies com-paring token-budget-aware vs. unaware workflows remain a priority for future work (Section 8). 
+
+5.5. Broader Impact (i) Cost optimization without the mathematics. The web platform turns economic theory into nine interactive tools that any developer can use. Break-even analysis, Cobb–Douglas optimization, and conversation cost projection are each reduced to a form and a chart. 
+
+(ii) Educational resources. The 10-lesson context engineering course at 
+
+https://tokalator.wiki/learn progresses from token basics to production compaction patterns. The automated wiki aggregates articles from arXiv, 23 OpenAI Cookbook, Anthropic documentation, and Google AI docs on a bi-monthly schedule. The dictionary defines 41 terms across seven categories, contributing to vocabulary standardisation in a field where terminology remains inconsistent [12]. 
+
+(iii) Ecosystem contribution. The catalog of agents, prompts, and instruc-tion files, auto-discovered from copilot-contribution/ and user-content/ ,provides a structured starting point for teams adopting context engineer-ing practices. The MCP server enables any Claude Code user to access real BPE token counts without an API key or network call [ 6]. Tokalator’s context management practices are also published as a reusable agent skill in-stallable via npx skills add (npx skills add vfaraji89/tokalator ), making the token budget workflow available to any agent supporting the Agent Skills specification. 
+
+(iv) Marketplace adoption. The VS Code extension was published on February 4, 2026. v3.1.3, released March 2026, resolves four field-reported bugs and adds automatic Copilot model synchronization. As of April 2, 2026, the extension has recorded 313 total acquisitions since publication. In the most recent 30-day window (March 3 – April 2, 2026), it recorded 171 acquisitions from 83 page views (206.02% conversion rate), comprising 27 direct installs from VS Code and 144 Marketplace downloads. The direct install count is the more conservative adoption signal, as it reflects developers who actively searched for and installed the extension within the IDE rather than downloading a .vsix package. Acquisition activity peaked during March 14–17, coinciding with the two community session presentations ( ≈170 combined attendees), confirming that live demonstrations drive measurable install behaviour. Combined with the 220+ developers reached through community sessions, these figures indicate sustained practitioner demand for context budget tooling beyond the initial launch period. 
+
+6. Discussion 
+
+6.1. Interpretation of Results 
+
+The three research questions share a common finding: token budget con-sumption in AI-assisted development is large, invisible by default, and highly manageable once made visible. The 21.2% context reduction in Example 1 came entirely from removing files the developer had not intentionally included as context, they were simply open tabs accumulated across a working session. Similarly, the 88.9% daily cost saving in Example 2 was available to any 24 team using a 50K-token system prompt, but only became actionable when the break-even calculation was presented concretely. These results suggest that the primary barrier to efficient context use is the absence of real-time feedback on token consumption, not developer awareness or intent. The survey results reinforce this: 82% of respondents named /preview as their most-valued feature, not because it changes what the model sees, but because it makes the cost of the next turn observable before it is incurred. Prior work on cost-feedback tools shows that making a cost function explicit and visible tends to shift usage patterns even without enforcement [7]. The model synchronization issue (64% of users affected) highlights a structural gap in how current AI coding tools expose their state: developers switch models in the Copilot UI without any notification to companion tools. Tokalator’s v3.1.3 auto-sync addresses this at the extension level, but a standard API for broadcasting active model changes across IDE extensions would benefit the entire ecosystem. 
+
+6.2. Practical Implications 
+
+Four actionable guidelines emerge for development teams adopting AI coding assistants. First, instruction files should be audited before any other optimization. A CLAUDE.md or .github/copilot-instructions.md is injected silently into every prompt; a 4,000-token instruction file incurs the same cost per request as 4,000 tokens of source code. Second, prompt caching should be enabled for any system prompt reused more than twice daily, given that the break-even point for all current Anthropic models is two reuses. Third, sliding-window or summarization strategies should replace full-history for conversations exceeding 20 turns, since full-history cost grows quadratically and a five-turn sliding window triples the number of affordable turns within the same daily budget (28 vs. 83 turns, Example 3). Fourth, running tokalator /optimize at session start is a low-effort habit that removes distractor tabs before their token cost is incurred. 
+
+6.3. Threats to Validity 
+
+Internal validity: The relevance score weights were determined by design reasoning rather than empirical calibration. A potential source of bias is that the developer who assigned the weights also observed study participants; future work should tune these weights against a held-out set of human relevance judgments. Construct validity: The extension estimates context consumption from open tabs, but the actual context construction logic of 25 GitHub Copilot and Claude Code is proprietary. Reported figures reflect estimated, upper-bound consumption rather than confirmed API-level context sizes. 
+
+6.4. Methodological Assumptions 
+
+The system rests on five explicit assumptions. (A1) Open tabs approximate context: estimates are upper-bound proxies, as providers may include addi-tional signals (git diffs, terminal output) or exclude files the extension counts. (A2) Five syntactic signals suffice for relevance, with semantically related but import-unlinked files constituting a known blind spot. (A3) Scoring weights are design-time constants; optimal values likely vary by language, project structure, and developer habits. (A4) The Cobb-Douglas functional form captures diminishing returns but cannot represent prompt structure, retrieval accuracy, or task decomposition effects. (A5) Pricing is hardcoded and subject to volatility; users should verify against current provider documentation after major pricing updates. 
+
+7. Limitations 
+
+Eight limitations constrain the scope and interpretation of the present work. Google model tokenization relies on a character-based heuristic ( n ≈ 4
+
+chars/token) yielding MAE of 10-15% on English code and 15-32% on non-Latin scripts. Context overhead constants are derived from reverse-engineered assumptions about proprietary context-construction logic and may silently diverge after provider updates. Extension performance overhead is negligible (< 5 ms per snapshot after warm-up, 300 ms debounce), though six subscribed event streams introduce minor background activity. The relevance scorer operates on syntactic signals only; semantically relevant files without import relationships will be missed. All token figures are estimated upper bounds, not confirmed API measurements. A controlled within-subjects experiment (n = 20-30) is underway but not yet complete. Pricing data is hardcoded and requires manual updates. Real-time monitoring is currently scoped to VS Code. 
+
+8. Conclusions and Future Work 
+
+Tokalator shows that token budget consumption in AI-assisted develop-ment sessions is both essential and worth to measure: developers can see 26 exactly what consumes their context window and reduce it without disrupting their workflow. For RQ1, 21.2% of context tokens originated from files not deliberately selected by the developer, and a single instruction file contributed 4,200 tokens silently injected into every prompt. For RQ2, deployment across three venues ( N > 220 ) showed zero false positives, confirmed by structured survey agreement ( n = 50 ). For RQ3, caching break-even ( n∗ = 2 ), O(T 2) vs. O(T )
+
+cost growth, and Cobb–Douglas optimization are validated by 124 unit tests and delivered as nine interactive calculators. Eight priorities drive future work: (1) a within-subjects crossover ex-periment ( n = 20 –30 ) for controlled productivity evidence; (2) empirical calibration of Cobb–Douglas parameters ( α, β, γ) following Fu et al. [ 24 ]; (3) semantic tab scoring via local ONNX embeddings [ 10 , 25 ] to replace syntactic-only assessment; (4) compaction decomposition with separate file-context and conversation-history growth curves; (5) Google countTokens API integration to eliminate the character heuristic for Gemini models; (6) persis-tent cross-session history dashboard via VS Code globalState and SQLite, addressing 38% of survey requests; (7) an LSP adapter extending budget monitoring beyond VS Code; and (8) a Tokalator Pro tier adding team dash-boards, historical analytics, CI/CD budget gates, and custom model profiles under a commercial licence, while the open-source core remains MIT-licensed. 
+
+CRediT authorship contribution statement Author 1: Conceptualization, Methodology, Software, Formal analysis, Investigation, Data curation, Visualization, Writing – original draft, Writ-ing – review & editing, Project administration. Author 2: Supervision, Methodology, Investigation, Writing – review & editing, Validation. Au-thor 3: Investigation, Writing – review & editing. Author 4: Supervision, Methodology, Investigation, Writing – review & editing, Validation. 
+
+Declaration of competing interest 
+
+The authors declare that they have no known competing financial interests or personal relationships that could have appeared to influence the work reported in this paper. 27 Data availability 
+
+All source code, evaluation scripts, snapshot data, and survey instrument are withheld for blind review and will be made publicly available upon acceptance under an open-source licence. The VS Code extension is published on the Visual Studio Code Marketplace; acquisition statistics are reported in Section 5. Evaluation artefacts (snapshot schema, labelling protocol, ablation scripts) are included in the supplementary material. 
+
+Funding 
+
+This research did not receive any specific grant from funding agencies in the public, commercial, or not-for-profit sectors. 
+
+Acknowledgements 
+
+The economic model is adopted from the Cobb–Douglas framework in-troduced by Bergemann, Bonatti, and Smolin [ 7]. The tokenization layer utilizes Anthropic’s claude-tokenizer and OpenAI’s tiktoken [ 4]; we are particularly indebted to the technical documentation and pedagogical re-sources provided by the Anthropic Academy, which were instrumental in characterizing the context window behaviors of the Claude model fam-ily. The context compaction strategy and the /compaction command design were inspired by the automated context compaction methodolo-gies developed by Pedram Navid [ 27 ], whose work demonstrated the fea-sibility of achieving token savings of up to 58.6% in tool-heavy agentic workflows. Furthermore, the empirical findings on context rot by Hong, Troynikov, and Huber [ 8] at Chroma informed the design of Tokalator’s con-text health analyzers and rot-threshold warnings. Finally, we acknowledge the GitHub Copilot community and the Awesome Copilot curated collection (https://github.com/github/awesome-copilot/ ) for aggregating the best practices and catalog conventions that informed Tokalator’s chat participant interface. 
+
+Declaration of generative AI and AI-assisted technologies in the writing process 
+
+During the preparation of this work, the author(s) used GitHub Copilot (VS Code, powered by OpenAI and Anthropic models) and Claude Code 28 (Anthropic) in order to assist with software development and minor language refinement. These tools were used to accelerate codebase scaffolding, unit test generation, build configuration, and iterative component implementation, as well as for grammar checking and phrasing clarity in draft text. After using these tools/services, the author(s) reviewed and edited the content as needed and take(s) full responsibility for the content of the published article. Generative AI tools were not used to conceive the research idea, design the system architecture, formulate the mathematical models (Equations 1-7), conduct the analysis, or draw scientific conclusions. All intellectual contributions, architectural decisions, and academic writing remain the sole responsibility of the author(s). 
+
+Appendix A. Test Suite Summary 
+
+Tokalator maintains 124 automated tests across 6 files, executed via Jest 30 on every commit (GitHub Actions, Node.js 24). Coverage is summarised in Table Appendix A.1. 
+
+Appendix B. Development Timeline and Codebase Composition 
+
+B1. Codebase Composition 
+
+Table Appendix B.1 breaks down the current codebase by component. 
+
+Appendix C. Participant Feedback Summary 
+
+This part summarizes the five feedback themes from the structured survey (n = 50 , three venues). Full Likert distributions, demographics, and verbatim quotes are available in the supplementary data file. 
+
+• “/preview showed me my system prompt was eating 4,800 tokens every turn. I cut it by 60% and my daily API cost dropped noticeably.” [P07, T1] 
+
+• “I switched models mid-session and Tokalator still showed the old window size. The budget numbers looked wrong for a while.” [P23, T3] 
+
+• “Every time I switched tabs, pinned files would quietly un-pin. Once the fix landed it just worked.” [P31, T4] 
+
+• “/compaction said four more turns until the threshold, but I couldn’t tell if it was open files or the conversation growing fastest.” [P42, T5] 29 Table Appendix A.1: Tokalator test suite summary (v3.1.3). 
+
+Component Test File Tests Coverage 
+
+VS Code Extension (2 files, 37 tests) 
+
+Model Profiles modelProfiles 23 17 profiles, unique-ness, fuzzy matching Dashboard Provider contextDashboardProvider 14 CSP nonce, data-action, formatting, message handling 
+
+Web Platform Library (4 files, 87 tests) 
+
+Pricing Engine lib/pricing 40 Tiered pricing, Cobb– Douglas, projections Conversation Sim. lib/conversation 18 3 strategies, O(T 2)
+
+validation, turns-for-budget Context Analysis lib/context 16 Token estimation, budget, remaining turns Caching Analysis lib/caching 13 Break-even, ROI, budget optimization 
+
+Total 124 
+
+> Table Appendix B.1: Codebase composition by component (v3.1.3).
+
+Component LOC Files 
+
+VS Code Extension (source) 4,986 12 Extension tests 2,663 10 MCP Server + CLI 650 8Web platform library ( lib/ ) 3,243 10 Library tests 899 4React components 4,811 22 App pages ( app/ ) 3,675 28 Content (JSON) 1,795 5
+
+Total TypeScript/TSX 20,722 –
+
+30 Appendix D. GitHub Copilot Billing Data 
+
+Table Appendix D.1 provides the GitHub Copilot billing records used in Section 5.4 (exported March 9, 2026 from the GitHub billing dashboard). The copilot_premium_request SKU covers premium AI model requests at $0.04/request list price.                        
+
+> Table Appendix D.1: GitHub Copilot and Actions billing for Tokalator development (Feb 6 – Mar 7, 2026), aggregated by phase. Total net: $28.36.
+> Phase Product Volume Gross ($) Net ($)
+> Feb 6–11 (sprint) Copilot pre-mium 911 req 36.44 25.00
+> Peak: Feb 11 205 req 8.20 8.20
+> Feb 12–Mar 7
+> (tail)
+> Copilot pre-mium 502 req 20.08 3.36 Feb 6–Mar 7 Actions Linux 261 min 1.57 0.00
+> Total 1,413 req + 261 min 58.09 28.36
+
+Appendix E. Notation and Symbols 
+
+Table Appendix E.1 consolidates the mathematical notation used through-out the paper for quick reference. 
+
+References 
+
+[1] M. Aubakirova, A. Atallah, C. Clark, J. Summerville, A. Midha, State of ai: An empirical 100 trillion token study with openrouter, https: //openrouter.ai/state-of-ai , [Online; accessed 9-Mar-2026] (Dec. 2025). [2] R. Robbes, T. Matricon, T. Degueule, A. Hora, S. Zacchiroli, Agentic much? adoption of coding agents on github (2026). arXiv:2601.18341 .URL https://arxiv.org/abs/2601.18341 
+
+[3] Anthropic, API pricing, https://www.anthropic.com/pricing , ac-cessed: March 2026 (2026). 31 Table Appendix E.1: Notation and symbols used in this paper. 
+
+Symbol Description Eq. 
+
+Context budget decomposition 
+
+Tfiles Sum of per-file BPE token counts (1) 
+
+Tsys System prompt overhead ( ≈ 2,000 ) (1) 
+
+Tinstr Instruction file tokens ( 500 × ninstr ) (1) 
+
+Tconv Conversation history tokens ( 800 × t) (1) 
+
+Tout Reserved output tokens ( ≈ 4,000 ) (1) 
+
+Ttotal Total estimated context tokens (2) 
+
+t Current conversation turn (1) 
+
+Tab relevance scoring 
+
+R Relevance score, R ∈ [0 , 1] (2) 
+
+Slang Language match signal ∈ { 0, 1} (2) 
+
+Simport Import relationship signal ∈ { 0, 1} (2) 
+
+Spath Shared directory depth ratio ∈ [0 , 1] (2) 
+
+Srecency Edit recency signal ∈ { 0, 0.53 , 1} (2) 
+
+Sdiag Diagnostics presence signal ∈ { 0, 1} (2) 
+
+τ Distractor threshold (default 0.3) Alg. 1 
+
+T , T ′ Original / optimized tab set Alg. 1 
+
+D Distractor tab set Alg. 1 
+
+∆T Tokens freed by closing distractors Alg. 1 
+
+Caching 
+
+n∗ Break-even reuse count (3) 
+
+cw Cache write cost per token (3) 
+
+cr Cache read cost per token (3) 
+
+cin Standard input cost per token (3) 
+
+Conversation cost estimation 
+
+S System prompt tokens (4) 
+
+ui, a i User / assistant tokens at turn i (4) 
+
+It Total input tokens at turn t (4) 
+
+W Sliding window size (turns) (4) 
+
+ρ Summarization compression ratio (4) 
+
+k Recent turns kept verbatim (4) 
+
+Cobb–Douglas economic model 
+
+Q(X, Y, Z ) Output quality production function (5) 
+
+X, Y, Z Input, output, and cache/fine-tuning tokens (5) 
+
+α, β, γ Sensitivity parameters (diminishing returns) (5) 
+
+b Base model quality constant (5) 
+
+cx, c y, c z Per-token costs (input, output, cache-write) (6) 
+
+¯Q Target quality level (6) 
+
+C∗( ¯Q) Minimum cost to achieve quality ¯Q (7) 
+
+32 [4] R. Sennrich, B. Haddow, A. Birch, Neural machine translation of rare words with subword units, in: K. Erk, N. A. Smith (Eds.), Proceedings of the 54th Annual Meeting of the Association for Computational Linguistics (Volume 1: Long Papers), Association for Computational Linguistics, Berlin, Germany, 2016, pp. 1715–1725. doi:10.18653/v1/P16-1162 .URL https://aclanthology.org/P16-1162/ 
+
+[5] Microsoft, Visual Studio Code february 2026 (version 1.110) release notes, 
+
+https://code.visualstudio.com/updates/v1_110 , accessed: March 2026 (2026). [6] T. Han, Z. Wang, C. Fang, S. Zhao, S. Ma, Z. Chen, Token-budget-aware llm reasoning (2025). arXiv:2412.18547 .URL https://arxiv.org/abs/2412.18547 
+
+[7] D. Bergemann, A. Bonatti, A. Smolin, Menu pricing of large language models, arXiv preprint arXiv:2502.07736 (2025). URL https://arxiv.org/abs/2502.07736 
+
+[8] K. Hong, A. Troynikov, J. Huber, Context rot: How increasing input tokens impacts llm performance, Technical report, Chroma, accessed July 2025 (Jul. 2025). URL https://research.trychroma.com/context-rot 
+
+[9] N. F. Liu, K. Lin, J. Hewitt, A. Paranjape, M. Bevilacqua, F. Petroni, P. Liang, Lost in the middle: How language models use long contexts, Transactions of the Association for Computational Linguistics 12 (2024) 157–173. doi:10.1162/tacl_a_00638 .URL https://aclanthology.org/2024.tacl-1.9 
+
+[10] H. Su, S. Jiang, Y. Lai, H. Wu, B. Shi, C. Liu, Q. Liu, T. Yu, EvoR: Evolving retrieval for code generation, in: Findings of the Association for Computational Linguistics: EMNLP 2024, Association for Computational Linguistics, 2024. URL https://arxiv.org/abs/2402.12317 
+
+[11] M. M. Perera, A. Mahmood, K. E. Wijethilake, Q. Z. Sheng, Towards adaptive context management for intelligent conversational question answering, arXiv preprint arXiv:2509.17829 URL https://arxiv.org/abs/2509.17829 
+
+33 [12] L. Mei, J. Yao, Y. Ge, Y. Wang, B. Bi, Y. Cai, J. Liu, M. Li, Z.-Z. Li, D. Zhang, C. Zhou, J. Mao, T. Xia, J. Guo, S. Liu, A survey of context engineering for large language models (2025). arXiv:2507.13334 .URL https://arxiv.org/abs/2507.13334 
+
+[13] Microsoft, VS Code extension API, https://code.visualstudio.com/ api , accessed: March 2026 (2026). [14] OpenAI, OpenAI cookbook, https://cookbook.openai.com , accessed: March 2026 (2025). [15] Anthropic, Token counting - Anthropic API documentation, 
+
+https://docs.anthropic.com/en/docs/build-with-claude/ token-counting , accessed: March 2026 (2025). [16] Google DeepMind, Google gen ai sdk for python, https://github.com/ googleapis/python-genai , official Python client for the Gemini API and Vertex AI (2026). [17] G. Team, Gemma 2: Improving open language models at a practical size (2024). arXiv:2408.00118 .URL https://arxiv.org/abs/2408.00118 
+
+[18] E. Erdil, Inference economics of language models (2025). arXiv:2506. 04645 .URL https://arxiv.org/abs/2506.04645 
+
+[19] B. Cottier, B. Snodin, D. Owen, T. Adamczewski, Llm inference prices have fallen rapidly but unequally across tasks, accessed: 2026-04-03 (2025). URL https://epoch.ai/data-insights/ llm-inference-price-trends 
+
+[20] J. Delavande, R. Pierrard, S. Luccioni, Understanding efficiency: Quan-tization, batching, and serving strategies in llm energy use (2026). 
+
+arXiv:2601.22362 .URL https://arxiv.org/abs/2601.22362 
+
+[21] P. Wilhelm, T. Wittkopp, O. Kao, Beyond test-time compute strategies: Advocating energy-per-token in llm inference, in: Proceedings of the 5th Workshop on Machine Learning and Systems (EuroMLSys ’25), ACM, 34 Rotterdam, Netherlands, 2025. doi:10.1145/3721146.3721953 .URL https://euromlsys.eu/pdf/euromlsys25-27.pdf 
+
+[22] E. J. Husom, A. Goknil, L. K. Shar, S. Sen, The price of prompting: Profiling energy use in large language models inference (2026). arXiv: 2407.16893 .URL https://arxiv.org/abs/2407.16893 
+
+[23] B. Li, Y. Jiang, V. Gadepally, D. Tiwari, Sprout: Green generative AI with carbon-efficient LLM inference, in: Y. Al-Onaizan, M. Bansal, Y.-N. Chen (Eds.), Proceedings of the 2024 Conference on Empirical Methods in Natural Language Processing, Association for Computational Linguistics, Miami, Florida, USA, 2024, pp. 21799–21813. doi:10.18653/v1/2024. emnlp-main.1215 .URL https://aclanthology.org/2024.emnlp-main.1215/ 
+
+[24] Y. Fu, R. Panda, X. Niu, X. Yue, H. Hajishirzi, Y. Kim, H. Peng, Data engineering for scaling language models to 128K context, in: Proceedings of the 41st International Conference on Machine Learning, Vol. 235 of PMLR, 2024, pp. 14125–14134. URL https://arxiv.org/abs/2402.10171 
+
+[25] F. Helm, N. Daheim, I. Gurevych, Token weighting for long-range lan-guage modeling (2025). arXiv:2503.09202 .URL https://arxiv.org/abs/2503.09202 
+
+[26] Anthropic, Context engineering guide, https://platform.claude.com/ docs/en/build-with-claude/context-windows , accessed: March 2026 (2025). [27] P. Navid, Automatic context compaction for agentic workflows, Anthropic Cookbook, https://platform.claude.com/cookbook/ tool-use-automatic-context-compaction , [Online; accessed March 2026] (Nov. 2025). [28] Q. Zhang, C. Hu, S. Upasani, B. Ma, F. Hong, V. Kamanuru, J. Rainton, C. Wu, M. Ji, H. Li, U. Thakker, J. Zou, K. Olukotun, Agentic context engineering: Evolving contexts for self-improving language models (2026). 
+
+arXiv:2510.04618 .URL https://arxiv.org/abs/2510.04618 
+
+35 [29] B. C. Nanjundappa, S. Maaheshwari, Context branching for llm conver-sations: A version control approach to exploratory programming (2025). 
+
+arXiv:2512.13914 .URL https://arxiv.org/abs/2512.13914 
+
+[30] A. Vasilopoulos, Codified context: Infrastructure for AI agents in a complex codebase, arXiv preprint arXiv:2602.20478 (2026). URL https://arxiv.org/abs/2602.20478 
+
+[31] J. Wu, M. Hu, J. Zhu, J. Pan, Y. Liu, M. Xu, Y. Jin, Git context controller: Manage the context of llm-based agents like git (2026). arXiv: 2508.00031 .URL https://arxiv.org/abs/2508.00031 
+
+[32] Anthropic, Prompt caching - Anthropic API documentation, 
+
+https://docs.anthropic.com/en/docs/build-with-claude/ prompt-caching , accessed: March 2026 (2025). [33] Vercel, next.config.js Configuration – Next.js documentation, https: //nextjs.org/docs/app/api-reference/config/next-config-js ,[Online; accessed March 2026] (2024). [34] Anthropic, Model Context Protocol (MCP) in Claude Code, https: //docs.anthropic.com/en/docs/claude-code/mcp , [Online; accessed March 2026] (2025). 36

@@ -6,69 +6,69 @@
 </div>
 
 ## 每次日报
-- 最新运行日期：2026-04-13
-- 运行时间：<span class="dpr-runtime" data-beijing="04-14 04:32 (UTC+8)" data-utc="04-13 20:32 UTC">04-14 04:32 (UTC+8) / 04-13 20:32 UTC</span>
+- 最新运行日期：2026-04-14
+- 运行时间：<span class="dpr-runtime" data-beijing="04-15 04:51 (UTC+8)" data-utc="04-14 20:51 UTC">04-15 04:51 (UTC+8) / 04-14 20:51 UTC</span>
 - 运行状态：成功
 - 本次总论文数：17
 - 精读区：6
 - 速读区：11
 
 ### 今日简报（AI）
-今日精读6篇、速读11篇AI前沿论文，聚焦医学图像分割、AI记忆系统与多模态细化技术。稳定扩散模型在医学图像分割中的应用与个性化AI代理的记忆系统设计最具创新价值。关注AI如何通过少样本学习突破医疗影像分析瓶颈，以及记忆系统如何提升AI个性化服务能力。
-- 详情：[/202604/13/README](/202604/13/README)
+今日精读17篇前沿论文，聚焦医学图像分割与扩散模型创新应用。基于人类注视的双教师指导学习与能量导向扩散桥技术，在医学图像处理领域展现出卓越性能。关注AI在医疗诊断中的实际应用进展，特别是半监督学习和扩散模型如何提升医学影像分析效率。
+- 详情：[/202604/14/README](/202604/14/README)
 
 ### 精读区论文标签
-1. [SD-FSMIS: Adapting Stable Diffusion for Few-Shot Medical Image Segmentation](/202604/13/2604.03134v1-sd-fsmis-adapting-stable-diffusion-for-few-shot-medical-image-segmentation)  
+1. [Human Gaze-based Dual Teacher Guidance Learning for Semi-Supervised Medical Image Segmentation](/202604/14/2604.10754v1-human-gaze-based-dual-teacher-guidance-learning-for-semi-supervised-medical-image-segmentation)  
+   标签：评分：9.0/10、query:dl-cv
+   evidence：Mean Teacher框架用于半监督学习
+2. [Energy-oriented Diffusion Bridge for Image Restoration with Foundational Diffusion Models](/202604/14/2604.10983v1-energy-oriented-diffusion-bridge-for-image-restoration-with-foundational-diffusion-models)  
+   标签：评分：9.0/10、query:dl-cv
+   evidence：用于修复的新型扩散桥
+3. [ReSpinQuant: Efficient Layer-Wise LLM Quantization via Subspace Residual Rotation Approximation](/202604/14/2604.11080v1-respinquant-efficient-layer-wise-llm-quantization-via-subspace-residual-rotation-approximation)  
+   标签：评分：9.0/10、query:dl-cv
+   evidence：新型LLM量化方法
+4. [Diffusion Processes on Implicit Manifolds](/202604/14/2604.07213v1-diffusion-processes-on-implicit-manifolds)  
    标签：评分：8.0/10、query:dl-cv
-   evidence：将扩散模型适应于医学分割
-2. [MemMachine: A Ground-Truth-Preserving Memory System for Personalized AI Agents](/202604/13/2604.04853v1-memmachine-a-ground-truth-preserving-memory-system-for-personalized-ai-agents)  
+   evidence：流形上的扩散过程
+5. [MemCoT: Test-Time Scaling through Memory-Driven Chain-of-Thought](/202604/14/2604.08216v1-memcot-test-time-scaling-through-memory-driven-chain-of-thought)  
    标签：评分：8.0/10、query:dl-cv
-   evidence：创新的大模型记忆系统
-3. [WikiSeeker: Rethinking the Role of Vision-Language Models in Knowledge-Based Visual Question Answering](/202604/13/2604.05818v1-wikiseeker-rethinking-the-role-of-vision-language-models-in-knowledge-based-visual-question-answering)  
+   evidence：创新的LLM推理记忆框架
+6. [Tokalator: A Context Engineering Toolkit for Artificial Intelligence Coding Assistants](/202604/14/2604.08290v1-tokalator-a-context-engineering-toolkit-for-artificial-intelligence-coding-assistants)  
    标签：评分：8.0/10、query:dl-cv
-   evidence：基于知识的视觉问答中的视觉语言模型
-4. [DiffHDR: Re-Exposing LDR Videos with Video Diffusion Models](/202604/13/2604.06161v2-diffhdr-re-exposing-ldr-videos-with-video-diffusion-models)  
-   标签：评分：8.0/10、query:dl-cv
-   evidence：视频HDR转换的生成式辐射度修复
-5. [Multi-Faceted Self-Consistent Preference Alignment for Query Rewriting in Conversational Search](/202604/13/2604.06771v1-multi-faceted-self-consistent-preference-alignment-for-query-rewriting-in-conversational-search)  
-   标签：评分：8.0/10、query:dl-cv
-   evidence：自一致偏好对齐
-6. [Enhanced Self-Supervised Multi-Image Super-Resolution for Camera Array Images](/202604/13/2604.06816v1-enhanced-self-supervised-multi-image-super-resolution-for-camera-array-images)  
-   标签：评分：8.0/10、query:dl-cv
-   evidence：自监督学习用于图像超分辨率
+   evidence：LLM的上下文工程
 
 ### 速读区论文标签
-1. [Fast-dVLM: Efficient Block-Diffusion VLM via Direct Conversion from Autoregressive VLM](/202604/13/2604.06832v2-fast-dvlm-efficient-block-diffusion-vlm-via-direct-conversion-from-autoregressive-vlm)  
+1. [HistDiT: A Structure-Aware Latent Conditional Diffusion Model for High-Fidelity Virtual Staining in Histopathology](/202604/14/2604.08305v1-histdit-a-structure-aware-latent-conditional-diffusion-model-for-high-fidelity-virtual-staining-in-histopathology)  
    标签：评分：8.0/10、query:dl-cv
-   evidence：高效块扩散VLM实现
-2. [RefineAnything: Multimodal Region-Specific Refinement for Perfect Local Details](/202604/13/2604.06870v1-refineanything-multimodal-region-specific-refinement-for-perfect-local-details)  
+   evidence：用于图像重建的扩散模型
+2. [Beyond Relevance: Utility-Centric Retrieval in the LLM Era](/202604/14/2604.08920v1-beyond-relevance-utility-centric-retrieval-in-the-llm-era)  
    标签：评分：8.0/10、query:dl-cv
-   evidence：区域特定图像细化
-3. [Synthetic Dataset Generation for Partially Observed Indoor Objects](/202604/13/2604.07010v1-synthetic-dataset-generation-for-partially-observed-indoor-objects)  
+   evidence：效用中心检索
+3. [Feature-Label Modal Alignment for Robust Partial Multi-Label Learning](/202604/14/2604.09064v1-feature-label-modal-alignment-for-robust-partial-multi-label-learning)  
    标签：评分：8.0/10、query:dl-cv
-   evidence：用于物体合成的合成数据集生成
-4. [ConsistRM: Improving Generative Reward Models via Consistency-Aware Self-Training](/202604/13/2604.07484v1-consistrm-improving-generative-reward-models-via-consistency-aware-self-training)  
+   evidence：特征-标签模态对齐实现一致性
+4. [DocRevive: A Unified Pipeline for Document Text Restoration](/202604/14/2604.10077v1-docrevive-a-unified-pipeline-for-document-text-restoration)  
    标签：评分：8.0/10、query:dl-cv
-   evidence：一致性感知自训练
-5. [PassiveQA: A Three-Action Framework for Epistemically Calibrated Question Answering via Supervised Finetuning](/202604/13/2604.04565v1-passiveqa-a-three-action-framework-for-epistemically-calibrated-question-answering-via-supervised-finetuning)  
+   evidence：文档文本修复
+5. [JTON: A Token-Efficient JSON Superset with Zen Grid Tabular Encoding for Large Language Models](/202604/14/2604.05865v1-jton-a-token-efficient-json-superset-with-zen-grid-tabular-encoding-for-large-language-models)  
    标签：评分：7.0/10、query:dl-cv
-   evidence：校准问答的新框架
-6. [From Curiosity to Caution: Mitigating Reward Hacking for Best-of-N with Pessimism](/202604/13/2604.04648v1-from-curiosity-to-caution-mitigating-reward-hacking-for-best-of-n-with-pessimism)  
+   evidence：大模型结构数据处理
+6. [AV-SQL: Decomposing Complex Text-to-SQL Queries with Agentic Views](/202604/14/2604.07041v1-av-sql-decomposing-complex-text-to-sql-queries-with-agentic-views)  
    标签：评分：7.0/10、query:dl-cv
-   evidence：解决奖励黑客的正规化技术
-7. [Free-Range Gaussians: Non-Grid-Aligned Generative 3D Gaussian Reconstruction](/202604/13/2604.04874v1-free-range-gaussians-non-grid-aligned-generative-3d-gaussian-reconstruction)  
+   evidence：基于LLM的复杂SQL查询分解
+7. [HIVE: Query, Hypothesize, Verify An LLM Framework for Multimodal Reasoning-Intensive Retrieval](/202604/14/2604.07220v1-hive-query-hypothesize-verify-an-llm-framework-for-multimodal-reasoning-intensive-retrieval)  
    标签：评分：7.0/10、query:dl-cv
-   evidence：生成式3D高斯重建
-8. [Region-R1: Reinforcing Query-Side Region Cropping for Multi-Modal Re-Ranking](/202604/13/2604.05268v2-region-r1-reinforcing-query-side-region-cropping-for-multi-modal-re-ranking)  
+   evidence：多模态检索的大语言模型框架
+8. [GenLCA: 3D Diffusion for Full-Body Avatars from In-the-Wild Videos](/202604/14/2604.07273v2-genlca-3d-diffusion-for-full-body-avatars-from-in-the-wild-videos)  
    标签：评分：7.0/10、query:dl-cv
-   evidence：多模态重排序的查询端区域裁剪
-9. [CTD-Diff: Cooperative Time-Division Diffusion for Multi-User Semantic Communication Systems](/202604/13/2604.04057v1-ctd-diff-cooperative-time-division-diffusion-for-multi-user-semantic-communication-systems)  
+   evidence：创新的基于扩散的视频生成头像方法
+9. [PR-IQA: Partial-Reference Image Quality Assessment for Diffusion-Based Novel View Synthesis](/202604/14/2604.04576v2-pr-iqa-partial-reference-image-quality-assessment-for-diffusion-based-novel-view-synthesis)  
    标签：评分：6.0/10、query:dl-cv
-   evidence：用于语义通信的扩散框架
-10. [Many Preferences, Few Policies: Towards Scalable Language Model Personalization](/202604/13/2604.04144v2-many-preferences-few-policies-towards-scalable-language-model-personalization)  
+   evidence：图像修复质量评估
+10. [AutoSOTA: An End-to-End Automated Research System for State-of-the-Art AI Model Discovery](/202604/14/2604.05550v1-autosota-an-end-to-end-automated-research-system-for-state-of-the-art-ai-model-discovery)  
    标签：评分：6.0/10、query:dl-cv
-   evidence：LLM个性化组合方法
-11. [NAIMA: Semantics Aware RGB Guided Depth Super-Resolution](/202604/13/2604.04407v1-naima-semantics-aware-rgb-guided-depth-super-resolution)  
+   evidence：自动化SOTA模型发现
+11. [Data Selection for Multi-turn Dialogue Instruction Tuning](/202604/14/2604.07892v1-data-selection-for-multi-turn-dialogue-instruction-tuning)  
    标签：评分：6.0/10、query:dl-cv
-   evidence：具有语义感知的RGB引导深度超分辨率
+   evidence：语言模型调优的数据选择
 
