@@ -6,69 +6,69 @@
 </div>
 
 ## 每次日报
-- 最新运行日期：2026-04-14
-- 运行时间：<span class="dpr-runtime" data-beijing="04-15 04:51 (UTC+8)" data-utc="04-14 20:51 UTC">04-15 04:51 (UTC+8) / 04-14 20:51 UTC</span>
+- 最新运行日期：2026-04-15
+- 运行时间：<span class="dpr-runtime" data-beijing="04-16 04:51 (UTC+8)" data-utc="04-15 20:51 UTC">04-16 04:51 (UTC+8) / 04-15 20:51 UTC</span>
 - 运行状态：成功
 - 本次总论文数：17
 - 精读区：6
 - 速读区：11
 
 ### 今日简报（AI）
-今日精读17篇前沿论文，聚焦医学图像分割与扩散模型创新应用。基于人类注视的双教师指导学习与能量导向扩散桥技术，在医学图像处理领域展现出卓越性能。关注AI在医疗诊断中的实际应用进展，特别是半监督学习和扩散模型如何提升医学影像分析效率。
-- 详情：[/202604/14/README](/202604/14/README)
+今日聚焦图像恢复与融合技术，精读17篇前沿论文。动态场景多曝光图像融合与无人机图像恢复技术值得关注。普通读者可关注图像增强技术在日常摄影和无人机航拍中的应用。
+- 详情：[/202604/15/README](/202604/15/README)
 
 ### 精读区论文标签
-1. [Human Gaze-based Dual Teacher Guidance Learning for Semi-Supervised Medical Image Segmentation](/202604/14/2604.10754v1-human-gaze-based-dual-teacher-guidance-learning-for-semi-supervised-medical-image-segmentation)  
+1. [NTIRE 2026 The 3rd Restore Any Image Model (RAIM) Challenge: Multi-Exposure Image Fusion in Dynamic Scenes (Track 2)](/202604/15/2604.09030v1-ntire-2026-the-3rd-restore-any-image-model-raim-challenge-multi-exposure-image-fusion-in-dynamic-scenes-track-2)  
    标签：评分：9.0/10、query:dl-cv
-   evidence：Mean Teacher框架用于半监督学习
-2. [Energy-oriented Diffusion Bridge for Image Restoration with Foundational Diffusion Models](/202604/14/2604.10983v1-energy-oriented-diffusion-bridge-for-image-restoration-with-foundational-diffusion-models)  
+   evidence：多曝光图像融合用于图像修复
+2. [Compositional-Degradation UAV Image Restoration: Conditional Decoupled MoE Network and A Benchmark](/202604/15/2604.09313v1-compositional-degradation-uav-image-restoration-conditional-decoupled-moe-network-and-a-benchmark)  
    标签：评分：9.0/10、query:dl-cv
-   evidence：用于修复的新型扩散桥
-3. [ReSpinQuant: Efficient Layer-Wise LLM Quantization via Subspace Residual Rotation Approximation](/202604/14/2604.11080v1-respinquant-efficient-layer-wise-llm-quantization-via-subspace-residual-rotation-approximation)  
+   evidence：UAV图像修复网络
+3. [Degradation-Consistent Paired Training for Robust AI-Generated Image Detection](/202604/15/2604.10102v1-degradation-consistent-paired-training-for-robust-ai-generated-image-detection)  
    标签：评分：9.0/10、query:dl-cv
-   evidence：新型LLM量化方法
-4. [Diffusion Processes on Implicit Manifolds](/202604/14/2604.07213v1-diffusion-processes-on-implicit-manifolds)  
+   evidence：退化一致性配对训练
+4. [Degradation-Aware and Structure-Preserving Diffusion for Real-World Image Super-Resolution](/202604/15/2604.11470v1-degradation-aware-and-structure-preserving-diffusion-for-real-world-image-super-resolution)  
+   标签：评分：9.0/10、query:dl-cv
+   evidence：感知降解的扩散模型用于图像修复
+5. [Beyond Single-Dimension Novelty: How Combinations of Theory, Method, and Results-based Novelty Shape Scientific Impact](/202604/15/2604.12471v1-beyond-single-dimension-novelty-how-combinations-of-theory-method-and-results-based-novelty-shape-scientific-impact)  
+   标签：评分：9.0/10、query:dl-cv
+   evidence：多维科学新颖性分析
+6. [Enhanced Self-Supervised Multi-Image Super-Resolution for Camera Array Images](/202604/15/2604.06816v2-enhanced-self-supervised-multi-image-super-resolution-for-camera-array-images)  
    标签：评分：8.0/10、query:dl-cv
-   evidence：流形上的扩散过程
-5. [MemCoT: Test-Time Scaling through Memory-Driven Chain-of-Thought](/202604/14/2604.08216v1-memcot-test-time-scaling-through-memory-driven-chain-of-thought)  
-   标签：评分：8.0/10、query:dl-cv
-   evidence：创新的LLM推理记忆框架
-6. [Tokalator: A Context Engineering Toolkit for Artificial Intelligence Coding Assistants](/202604/14/2604.08290v1-tokalator-a-context-engineering-toolkit-for-artificial-intelligence-coding-assistants)  
-   标签：评分：8.0/10、query:dl-cv
-   evidence：LLM的上下文工程
+   evidence：自监督学习用于图像修复
 
 ### 速读区论文标签
-1. [HistDiT: A Structure-Aware Latent Conditional Diffusion Model for High-Fidelity Virtual Staining in Histopathology](/202604/14/2604.08305v1-histdit-a-structure-aware-latent-conditional-diffusion-model-for-high-fidelity-virtual-staining-in-histopathology)  
+1. [Generative Phomosaic with Structure-Aligned and Personalized Diffusion](/202604/15/2604.06989v1-generative-phomosaic-with-structure-aligned-and-personalized-diffusion)  
    标签：评分：8.0/10、query:dl-cv
-   evidence：用于图像重建的扩散模型
-2. [Beyond Relevance: Utility-Centric Retrieval in the LLM Era](/202604/14/2604.08920v1-beyond-relevance-utility-centric-retrieval-in-the-llm-era)  
+   evidence：基于扩散模型的生成性照片马赛克
+2. [Adversarial Label Invariant Graph Data Augmentations for Out-of-Distribution Generalization](/202604/15/2604.08404v1-adversarial-label-invariant-graph-data-augmentations-for-out-of-distribution-generalization)  
    标签：评分：8.0/10、query:dl-cv
-   evidence：效用中心检索
-3. [Feature-Label Modal Alignment for Robust Partial Multi-Label Learning](/202604/14/2604.09064v1-feature-label-modal-alignment-for-robust-partial-multi-label-learning)  
+   evidence：对抗正则化处理分布偏移
+3. [Beyond Segmentation: Structurally Informed Facade Parsing from Imperfect Images](/202604/15/2604.09260v1-beyond-segmentation-structurally-informed-facade-parsing-from-imperfect-images)  
    标签：评分：8.0/10、query:dl-cv
-   evidence：特征-标签模态对齐实现一致性
-4. [DocRevive: A Unified Pipeline for Document Text Restoration](/202604/14/2604.10077v1-docrevive-a-unified-pipeline-for-document-text-restoration)  
+   evidence：对齐损失正则化保持结构一致性
+4. [RIRF: Reasoning Image Restoration Framework](/202604/15/2604.09511v1-rirf-reasoning-image-restoration-framework)  
    标签：评分：8.0/10、query:dl-cv
-   evidence：文档文本修复
-5. [JTON: A Token-Efficient JSON Superset with Zen Grid Tabular Encoding for Large Language Models](/202604/14/2604.05865v1-jton-a-token-efficient-json-superset-with-zen-grid-tabular-encoding-for-large-language-models)  
+   evidence：基于推理的图像修复框架
+5. [WikiSeeker: Rethinking the Role of Vision-Language Models in Knowledge-Based Visual Question Answering](/202604/15/2604.05818v2-wikiseeker-rethinking-the-role-of-vision-language-models-in-knowledge-based-visual-question-answering)  
    标签：评分：7.0/10、query:dl-cv
-   evidence：大模型结构数据处理
-6. [AV-SQL: Decomposing Complex Text-to-SQL Queries with Agentic Views](/202604/14/2604.07041v1-av-sql-decomposing-complex-text-to-sql-queries-with-agentic-views)  
+   evidence：基于知识的视觉问答中的视觉语言模型
+6. [HumANDiff: Articulated Noise Diffusion for Motion-Consistent Human Video Generation](/202604/15/2604.05961v1-humandiff-articulated-noise-diffusion-for-motion-consistent-human-video-generation)  
    标签：评分：7.0/10、query:dl-cv
-   evidence：基于LLM的复杂SQL查询分解
-7. [HIVE: Query, Hypothesize, Verify An LLM Framework for Multimodal Reasoning-Intensive Retrieval](/202604/14/2604.07220v1-hive-query-hypothesize-verify-an-llm-framework-for-multimodal-reasoning-intensive-retrieval)  
+   evidence：运动一致性噪声采样用于视频生成
+7. [Improving Local Feature Matching by Entropy-inspired Scale Adaptability and Flow-endowed Local Consistency](/202604/15/2604.06713v1-improving-local-feature-matching-by-entropy-inspired-scale-adaptability-and-flow-endowed-local-consistency)  
    标签：评分：7.0/10、query:dl-cv
-   evidence：多模态检索的大语言模型框架
-8. [GenLCA: 3D Diffusion for Full-Body Avatars from In-the-Wild Videos](/202604/14/2604.07273v2-genlca-3d-diffusion-for-full-body-avatars-from-in-the-wild-videos)  
+   evidence：图像匹配中的局部一致性
+8. [LASER: A Data-Centric Method for Low-Cost and Efficient SQL Rewriting based on SQL-GRPO](/202604/15/2604.06804v1-laser-a-data-centric-method-for-low-cost-and-efficient-sql-rewriting-based-on-sql-grpo)  
    标签：评分：7.0/10、query:dl-cv
-   evidence：创新的基于扩散的视频生成头像方法
-9. [PR-IQA: Partial-Reference Image Quality Assessment for Diffusion-Based Novel View Synthesis](/202604/14/2604.04576v2-pr-iqa-partial-reference-image-quality-assessment-for-diffusion-based-novel-view-synthesis)  
+   evidence：基于大模型的SQL优化
+9. [AI-Augmented Peer Review and Scientific Productivity: A Cross-Country Panel and SEM Analysis](/202604/15/2604.05463v1-ai-augmented-peer-review-and-scientific-productivity-a-cross-country-panel-and-sem-analysis)  
    标签：评分：6.0/10、query:dl-cv
-   evidence：图像修复质量评估
-10. [AutoSOTA: An End-to-End Automated Research System for State-of-the-Art AI Model Discovery](/202604/14/2604.05550v1-autosota-an-end-to-end-automated-research-system-for-state-of-the-art-ai-model-discovery)  
+   evidence：新型AI评审能力指数
+10. [AI-Driven Research for Databases](/202604/15/2604.06566v1-ai-driven-research-for-databases)  
    标签：评分：6.0/10、query:dl-cv
-   evidence：自动化SOTA模型发现
-11. [Data Selection for Multi-turn Dialogue Instruction Tuning](/202604/14/2604.07892v1-data-selection-for-multi-turn-dialogue-instruction-tuning)  
+   evidence：用于数据库优化的语言模型
+11. [Bi-Lipschitz Autoencoder With Injectivity Guarantee](/202604/15/2604.06701v1-bi-lipschitz-autoencoder-with-injectivity-guarantee)  
    标签：评分：6.0/10、query:dl-cv
-   evidence：语言模型调优的数据选择
+   evidence：保持流形几何的自动编码器
 

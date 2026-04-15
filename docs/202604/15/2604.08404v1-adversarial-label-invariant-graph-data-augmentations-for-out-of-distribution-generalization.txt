@@ -1,0 +1,625 @@
+Title: Adversarial Label Invariant Graph Data Augmentations for Out-of-Distribution Generalization
+
+URL Source: https://arxiv.org/pdf/2604.08404v1
+
+Published Time: Fri, 10 Apr 2026 01:19:11 GMT
+
+Number of Pages: 21
+
+Markdown Content:
+# Adversarial Label Invariant Graph Data Augmentations for Out-of-Distribution Generalization 
+
+Simon Zhang * Ryan P. DeMilt † Kun Jin ‡ Cathy H. Xia §
+
+Abstract 
+
+Out-of-distribution (OoD) generalization occurs when representation learning encounters a distribution shift. This occurs frequently in practice when training and testing data come from di ff erent environments. Covariate shift is a type of distribution shift that occurs only in the input data, while the concept distribution stays invariant. We propose RIA - Regularization for Invariance with Adversarial training, a new method for OoD generalization under convariate shift. Motivated by an analogy to Q-learning, it performs an adversarial exploration for training data environments. These new environments are induced by 
+
+adversarial label invariant data augmentations that prevent a collapse to an in-distribution trained learner. It works with many existing OoD generalization methods for covariate shift that can be formulated as constrained optimization problems. We develop an alternating gradient descent-ascent algorithm to solve the problem, and perform extensive experiments on OoD graph classification for various kinds of synthetic and natural distribution shifts. We demonstrate that our method can achieve high accuracy compared with OoD baselines. 
+
+## 1 Introduction 
+
+The out-of-distribution (OoD) generalization problem is an important topic in machine learning Li et al. [2022], Shen et al. [2021] where one attempts to extrapolate from training data to in-the-wild distribution shifted data. For example, in computer vision this is commonly demonstrated by the example of identifying cows vs. camels on green or sandy backgrounds Beery et al. [2018] or the colored MNIST example from [Arjovsky et al., 2019]. Covariate shift is when the covariate, or input, distribution shifts while the concept distribution does not change. These varying data conditions are known as varying environments, which can be defined as data distributions conditioned on some varying environmental factors. A covariate shift is an example of a change in environment. Common approaches such as Empirical Risk Minimization (ERM), which selects a model with minimal loss over an average of the training environments, cannot generalize to OoD test data as the training environment(s) often rarely reflect the testing environments. Thus OoD generalization requires specialized methods and assumptions beyond minimizing the loss over the training environment(s). When there is covariate shift, the distribution of input data shifts due to the change of environments. For various reasons, there may be a scarcity of training environments. It is common, in fact, to just have a few, or possibly one, training environment. Existing OoD generalization methods are based on the concept of achieving invariance, or stability amongst learners on various environments. Due to the lack of diverse training environments, there is a possibility of such a learner collapsing to an ERM solution. 
+
+> *Department of Computer Science, Purdue University, West Lafayette, USA
+> †Department of Computer Science and Engineering, The Ohio State University, Columbus Ohio, USA
+> ‡Department of Computer Science and Engineering, The Ohio State University, Columbus Ohio, USA
+> §Department of Industrial and Systems Engineering, The Ohio State University, Columbus Ohio, USA
+
+1
+
+> arXiv:2604.08404v1 [cs.LG] 9 Apr 2026
+
+RIA: Regularization for Invariance with Adversarial Training Non-Euclidean data such as graphs o ff er new challenges to the problem of OoD generalization. The primary challenge is the variable structure of the graphs. The number of nodes of each graph is variable and the interconnection structure of a graph is represented by a 0-1 matrix space di ff erent from the graph signal space of node attributes. It is particularly computationally expensive to handle the edges whose count grows quadratically in the number of nodes. Both tensors must be accounted for to define a graph. Furthermore, graphs have the permutation invariance inductive bias. We will assume a common concept distribution across environments and only covariate shift exists between training and testing distributions. Existing OoD solution methods do not prevent the collapse to an ERM solution during training due to a lack of diverse training environments. We design an algorithm to search, using alternating gradient descent-ascent, for counterfactually generated environments that are hard to learn. This adversarial search prevents collapse to an ERM solution by introducing di ffi cult and diverse environments. The contributions of this paper are as follows: 1. We formulate a causal data generation process for graphs. This model separates spurious and causal factors that determine the graph label. 2. We identify a common issue with many existing OoD solutions, namely when there is a “collapse", or fitting, to the ERM solution. We briefly discuss this phenomenon in the context of our graph data model. 3. We formulate what an adversarial label invariant data augmentation is and the counterfactual training distribution it can generate. 4. We introduce RIA: Regularization for Invariance with Adversarial training, a black-box defense to learn more environments for improved OoD generalization. The approach simulates counterfactual test environments in the form of a black-box evasion attack. This is motivated by an analogy to Q-learning. 5. We perform extensive experiments to demonstrate the e ff ective OoD generalizability of our method on real world as well as synthetic datasets by comparing with existing graph OoD generalization approaches. 
+
+## 2 Related Work 
+
+A common approach to tackling the OoD problem is to find a representation that performs stably across multiple environments Arjovsky et al. [2019], Bagnell [2005], Ben-Tal et al. [2009], Chang et al. [2020], Duchi et al. [2016], Krueger et al. [2021], Liu et al. [2021a], Mahajan et al. [2021], Mitrovic et al. [2020], Sinha et al. [2017]. The goal of such an approach is to eliminate spurious or shortcut correlations that would normally be learned through empirical risk minimization (ERM). ERM is the common approach taken in machine learning to minimize the training error over a union of training environments in order to achieve well known generalization bounds Vapnik [1991a]. For graph data, Wu et al. [2022] assume an underlying data generation process, then their assumptions provide a guarantee Xie et al. [2020] that they can learn a representation that is stable across environments. In their data generation assumptions, they assume graph data can be decomposed into causal and spurious parts. By learning stably across environments, their objective is to learn to ignore the spurious parts of the data. Adversarial training Croce et al. [2020], Szegedy et al. [2013], Goodfellow et al. [2014], Barreno et al. [2006], Kearns and Li [1988] is when a model is trained with adversarial examples. Adversarial examples Goodfellow et al. [2014] are perturbations of the original data which change the output of a learner. When the adversarial examples are used to fool the learner Goodfellow et al. [2014], Moosavi-Dezfooli et al. 2RIA: Regularization for Invariance with Adversarial Training [2016], Carlini and Wagner [2017], this is called an adversarial attack. When the attack is on the testing data, this is called an evasion attack Biggio et al. [2013]. Adversarial training is a defense to these kinds of attacks. Non-Euclidean data such as graphs o ff er new challenges to the OoD problem. Many of the existing works on this topic are explained in the survey Li et al. [2022]. 
+
+## 3 Causal Data Generation Process 
+
+It is common for data to be generated through causality, or cause and e ff ect relationships. We define structural causal models (SCM), which model these causal relationships in the data distribution. Underlying any SCM is a combinatorial object called a directed acyclic graph (DAG), whose edges can be used to model cause and eff ect. 
+
+Definition 3.1. A Directed Acyclic Graph (DAG) is a directed graph G = (V, E), E ⊆ V × V for V = [n] =
+
+{1, ..., n} where any directed path of nodes ( v1, ..., vk) with ( vi, vi+1) ∈ E for i = 1, ..., k − 1 cannot have v1 = vk
+
+Consider a joint distribution P(V1, ..., Vn) over random variables V = {Vi}ni=1. A random variable Vi is observable if it can be sampled from P(V1, ..., Vn) and hidden if it cannot be. 
+
+Definition 3.2. Given a DAG G = (V = [n], E), define a structural causal model (SCM) M on G as the following tuple: ( V, F , U) where [ n] indexes V and U, meaning we can index every V ∈ V as V = Vi
+
+for some i ∈ [n] where Vi , V j if i , j and similarly for U. The set V is a set of endogenous random variables. The set U is a set of exogenous random variables, each being i.i.d. uniform random variable in [0 , 1]. Each endogenous variable Vi has a set of parents Vpa i ≜ {V j : ( j, i) ∈ E}. If pa i is nonempty, we have the relationship: 
+
+Vi = fi(Vpa i , Ui) (1) where fi ∈ F and Ui ∈ U .If U1 ⊥ U2 ⊥ ... ⊥ Un (joint independence), then the SCM is called Markovian. For a Markovian SCM the joint distribution can be factored into conditional distributions for each endogenous variable Pearl [2009]: 
+
+P(V1, ..., Vn) = Π ni=1P(Vi|Vpa i ), (2) where P(Vi|Vpa i ) = P(Vi) if Vpa i = ∅.
+
+A Structural Causal Model over Environments: We will be using a specific data generation process to model the graph data distribution. It is based on the generic causal model presented in Arjovsky et al. [2019]. We define the following random variables: V = {E, XC , XS , AC , AS , X, A, Y}.The causal relationships are shown graphically by the directed edges in the DAG of Figure 1. The variable E is the exogenous environmental variable. It takes values from a finite set Eall . The physical meaning of these environments include: 1. Having certain causal OR spurious properties of the graph topology such as treewidth, forbidden graph minors, isomorphism classes, spectral distributions etc. 2. AND Having certain causal OR spurious properties on the signal at the nodes: e.g. inherent embedding dimension, large magnitude moments, long tails, fat tails, pairwise correlation etc. To generate a graph, it is necessary to have two tensor representations: a node attribute tensor and an adjacency matrix. The two tensor representations: XC , AC are causal. The two tensor representations: XS , AS
+
+are spurious. These two graphs are “attached" in the causal model. The attachment process is determined by the two deterministic concatenation maps JX , JA.3RIA: Regularization for Invariance with Adversarial Training 
+
+Figure 1: (a): A casual graph for the data generation process. The exogenous variable E is an integer that indexes a data environment. (b) A labeled attributed graph instance with the joining operation for causal /spurious attributes and edges shown. In the figure, the joining operation JX is shown as the node-wise concatenation of causal and spurious attribute tensors. The joining operation JA shown in the figure provides the sum of the adjacency matrices AC and AS where the hadamard product AC ⊙ AS = 0. The half grey color on nodes represents the XS while the half blue color represents the XC .1. The node attribute tensor is defined as follows: 
+
+X = JX (XC , XS) (3) where JX is a deterministic column-wise concatenation map. 2. The node attribute tensor is defined as follows: 
+
+A = JA(AC , AS ) (4) where JA is a deterministic addition map. We assume that there is no agreement between AC and AS
+
+on the nonzeros. The ground truth label Y is generated by the following deterministic composition, see Hamilton et al. [2017]: 
+
+Y = AGG (rL(XC , AC )) (5) 1. The map rL is the composition of an L-hop local neighborhood recursive expansion map over a deterministic map: [rL(XC , AC ))] v := sL(v) (6a) 
+
+sL(v) : = m(Xv +
+
+X
+
+> u∈Nbd( v)
+
+sL−1(u)) (6b) 
+
+s0(Xv) = m(Xv) (6c) 2. The map m : Rd → Rd is deterministic. 3. The map AGG : RD → { 0, 1} is a row-wise set map to the booleans {0, 1} over the tensor rL(XC , AC ). The data generation process proceeds from the exogenous environment variable through the chain of children over the SCM. The causal chains end on the covariate and label variables. These are both observable variables. 1. From the environmental variable E taking on environment e ∈ E all , two conditionally independent causal and a spurious graphs are randomly generated. 4RIA: Regularization for Invariance with Adversarial Training 2. These two graphs are “attached" to form the covariate data. For environment e, we denote the tensor representation as: Ge := (Xe, Ae). 3. The causal graph is passed through a deterministic recursive neighborhood expansion map. For environment e, this produces a label Ye.4. The covariate data and the label are paired to form the observable data: ( Ge, Ye). We denote this distribution by Pe
+
+## 4 The Out-of-Distribution Generalization Problem 
+
+We will assume that there are in total only a finite number of environments. We also assume that there is a shift in the covariate distribution for testing di ff erent from the training distribution. The out-of-distribution generalization problem seeks to predict a label on any unseen testing distribution. Since we do not know the testing distribution(s), we optimize for worst case data distributions in the following minimax optimization problem, called the OoD generalization problem. 
+
+OoD (Eall ) ≜ min  
+
+> h∈H
+
+sup 
+
+> e∈E all
+
+Re(h) (7) where H is a hypothesis space of boolean functions over graphs called learners. Let the risk of a learner 
+
+h ∈ H over an environment be defined as: 
+
+Re(h) ≜ E(Ge,Ye)∼Pe [l(h(Ge), Ye)] (8) The distribution Pe is over the data ( Ge, Ye), and h(·) is a learner to predict ground truth target label Y from 
+
+Ge.
+
+Definition 4.1. Denote Eall the set of all environment indices that index all data distributions for some classification task that we want to learn. Let Etr ⊊ Eall be a strict subset of training environments that are accessible during training. 
+
+ERM: When there is no distribution shift at all, the standard approach would be to take Etr , and minimize the average risk over these training environments. This is known as Empirical Risk Minimization (ERM), which is given in the following equation: 
+
+ERM (Etr ) ≜ min 
+
+> h
+
+1
+
+|E tr |
+
+X
+
+> e∈E tr
+
+Re(h) (9) Let hERM denote the minimizer to the ERM equation (e.g. zero risk). Standard generalization bounds for in-distribution testing data are known for ERM Vapnik [1991b]. However, these generalization bounds are invalid when there is a distribution shift of Pe from training environments with e ∈ E tr to testing distributions with e ∈ E all Ahuja et al. [2021]. 
+
+IRM: ( Arjovsky et al. [2019]) This is a bi-level optimization problem that learns 1. a single data embedding and 2. a downstream boolean predictor that minimizes jointly across all environments. min 
+
+> Φ:G→ V,w:V→{ 0,1}
+
+X
+
+> e∈E tr
+
+Re(w ◦ Φ) (10a) s.t. w ∈ arg min 
+
+> ¯w:V→{ 0,1}
+
+Re( ¯ w ◦ Φ), ∀e ∈ E tr (10b) 5RIA: Regularization for Invariance with Adversarial Training 
+
+4.1 ERM Collapse 
+
+When training over the training environments a common phenonenom called ERM collapse may occur, namely that the learner h∗ determined by a learning algorithm A : Πe∈E tr De → H over the data sample sets of size n, De ∼ (Pe)n : e ∈ E tr converges to the ERM solution: hERM .In the context of out-of-distribution generalization and a learning algorithm that attempts to minimize each environmental risk, this can occur for some of the following reasons: 1. (Single Environment) There is only one training environment, making hERM a feasible solution to converge to. 2. (Zero Risk) The risk over all of Etr is zero, making hERM a feasible solution. 3. (Few Samples) There are very few training samples, none repeating, resulting in overfitting. (a) e.g. Learning on a single data sample. (b) e.g. A single data sample from one of three separate environments with common support. We notice the following property of ERM collapse: 
+
+Proposition 4.2. (Properties of Su ffi cient Conditions for ERM collapse) When all distributions P e, e ∈ E tr have common support: 1. Case 3 (Few Samples) implies a simulation of Case 1 (Single Environment). 2. Case 1 (Single Environment) implies Case 2 (Zero Risk). Proof. 1. When there are few samples: 
+
+S :=
+
+[
+
+> e∈E tr
+
+S e : S e = {se : se ∼ Pe}, |S e| ≪ ∞ , (11) Then S forms an environment of its own. This environment is a uniform distribution over S .
+
+2. If there is only a single environment, then there is no competing environment to prevent zero risk. Thus, risk minimization over this only environment must result in zero risk. □
+
+4.2 A Simple Example for Graphs 
+
+In the context of our SCM graph data generation process, we give a very simple example of ERM collapse for the IRM learning algorithm: 
+
+Example 4.1. Consider the following two environments: 1. A complete graph which has a decomposition into a causal spanning tree with signal 1 and its remaining spurious edges with signal 1.2. A graph consisting of both causal and spurious undirected paths of even number of nodes with signal 1
+
+at all nodes. Let m : R → R be the map f (x) : = x − 1 and let L = 1.The ground truth label is predicted as for either environment: 
+
+Y = 1odd [ max 
+
+> v∈V(Ge)
+
+(deg (v) : v ∈ V(Ge)})] (12) 
+
+which checks the parity of the maximum degree node and outputs 1 when the maximum degree of a node in 
+
+Ge is odd. 
+
+6RIA: Regularization for Invariance with Adversarial Training 
+
+• IRM with w = 1 will learn: Φ∗(G) : = 0.This achives zero risk for both environments, thus by Proposition 4.1 we have ERM collapse. This solution happens to not be the ground truth predictor, which would recognize that the spanning tree in environment one can have odd degree nodes. 
+
+4.3 Adversarial Label Invariant Data Augmentations 
+
+We design a training algorithm for OoD generalization that adversarially explores data points by data augmentation for extrapolation beyond the training environments for OoD generalization. We focus on graph data, however our method can be generalized to any kind of data. The exploration is done by stochastic gradient ascent updates, adversarially maximizing against the ERM loss of any regularized OoD loss to search over environments Yi et al. [2021]. The updates alternately minimizes the learner h and data augmentations a
+
+for the h.In order to not violate the causality of our data generation process, the augmentations should not a ff ect the map from causal graph to label , see Figure 1. The covariate graph data and the label share the causal graph variable as their common confounder. If an intervention on the covariates changes the ground truth label, then the learner would not know since the causal graph variable is hidden. Thus, we restrict our data augmentations to not change the label. Such data augmentations are called label invariant data augmentations: 
+
+Definition 4.3. (Label Invariant Data Augmentation) For covariate distribution P and ground truth labeling function f , a label invariant data augmentation for 
+
+h is the following map: 
+
+a : supp (P) → supp (P) s.t. f (a(X)) = f (X) (13) A label invariant data augmentation only a ff ects the ground truth label. In the data generation setting of Wang et al. [2022], it can be shown that causally invariant transformations are label invariant. Their setting requires a collapsed posterior. In the case of our data generation process for graphs, data augmentations that only a ff ect the spurious subgraph of an input graph G cannot change the ground truth label function. Thus such data augmentations are label invariant. A related data augmentation involves changing the output of the learner. These are called adversarial data augmentations. 
+
+Definition 4.4. (Adversarial data augmentation) Goodfellow et al. [2014] Let h be a learner and covariate distribution P,
+
+a : supp (P) → supp (P) s.t. h(a(X)) , h(X) (14) We say a data augmentation is an adversarial label invariant data augmentation if it is an adversarial data augmentation that is label invariant. 
+
+## 5 Method 
+
+We design the following method that interleaves exploration (stochastic gradient ascent) and exploitation (stochastic gradient descent) in order to extrapolate beyond the training data. The exploration phase is motivated by Q-Learning Watkins and Dayan [1992]. This is a reinforcement learning method where an agent seeks to maximizes an expected reward. The agent takes a sequence of actions and collects rewards after each action. 7RIA: Regularization for Invariance with Adversarial Training In Q-Learning, there is a Markov Decision Process (MDP) M = (S, A, pt, pr) consisting of a set of states, a set of actions that connect a state to a next state, a transition probability pt(s a
+
+−→ t) = P(t | s, a) for 
+
+s, t ∈ S , a ∈ A and a reward probability pr(r | s, a). If starting at s there is an optimal expected reward, or 
+
+value at s: V∗(s), then we define Q∗(s, a) to be the expected reward when taking action a starting at state s.In Q-learning, the agent computes a Q(s, a) function over states and actions that estimates this optimal Q∗
+
+function. The estimator can be learned through temporal updates. This is a dynamic programming recurrence called the Bellman-Equation Watkins and Dayan [1992]: 
+
+Qn(s, a) ← (1 − α)Qn−1(s, a) + α(rn(s, a) + γ max  
+
+> a′∈A
+
+Qn−1(t, a′)) where pt(s a
+
+−→ t) > 0 (15) where n is the episode number. Our method will use Q-Learning as an analogy for its explorative adversarially label invariant data augmentations. 
+
+5.1 Relating Risk and Reward 
+
+Consider the following “analogy" conditioned over an environment e between a MDP and deep learning: 1. (States ⇐⇒ Learners ): The set of states are in analogy with the set of learners. 2. (Actions ⇐⇒ Weights w ∈ W : Aw,e ): The weights w ∈ W parameterize a distribution of label invariant data augmentations. Let Aw,e be this distribution. Assume that the weight space W is compact. By forming this analogy, the learners obtained through gradient updates correspond to states updated through actions. This lets us view the graph learning problem over a changing learner as a Q-learning problem. Continuing with the analogy, we relate the reinforcement learning expected reward with an “augmented" risk. This “augmentation" is a distribution over label invariant data augmentations parameterized by a weight 
+
+w ∈ W.3. (Reward ⇐⇒ Risk over the Augmentations from (2)) The reward at state-action pair ( h, w) is the risk augmented by Aw,e:
+
+re(h, w) : = Ea∼Aw,e [Re(h ◦ a)] (16) The Value function is thus analogous to maximization of the weight w ∈ W:4. (The Value function ⇐⇒ Maximum w)
+
+wmax := arg max 
+
+> w
+
+Ea∼Aw,e [Re(h ◦ a)] (17) We obtain the following for the relationship between the Q-function and the data augmentations in deep learning. 
+
+Lemma 5.1. (The Risk-Reward Analogy) Assume α = 1. The Q-function in our analogy to deep learning must have n = 1. Thus: Q1(h, wmax ) ← re(h, wmax ) (18) 
+
+In our analogy, the Q -function is memory-less and exploitative and in the analogous deep learning average risk, this is pure exploration. 
+
+8RIA: Regularization for Invariance with Adversarial Training 
+
+Proof. In deep learning, we can assume that the sequence of learners formed by SGD do not repeat due to stochasticity. Thus, we can assume that in the analogous Q-learning case, we are always in episode n = 1. Equation 18 follows by α = 1. This is does not use past states and maximizes the reward at its current state. Analogously, in deep learning there is maximization over the risk. Thus, the data augmentations are exploring for the learning process. □
+
+The physical meaning of the arg max in Equation 17 is to skew the original data distribution Pe toward a pushforward distribution ( a)# representing a “hard" counterfactual distribution, where we measure hardness by the distance from the ERM loss over the training. In this context, the easiest possible data augmentations are just those that can reproduce the ERM loss. In other words, Awmax ,e is a distribution of data augmentations for environment e that maximizes this hardness metric. This prevents collapse to an ERM solution. 
+
+5.1.1 Adversarial Counterfactual Distributions 
+
+It would be presumed that by maximizing this hardness metric the augmentations from Awmax ,e can act as adversarial label invariant data augmentations in distribution through the risk. We call this an adversarial counterfactual distribution :
+
+Paug (e) := (a)#(Pe) : a ∼ Awmax ,e, e ∈ E tr (19) 
+
+Lemma 5.2. Paug (e) exists for any e ∈ E tr .Proof. 1. The distribution Awmax ,e is determined by Equation 17. It exists since the space W of weights for 
+
+A•,e is compact. Let us simplify our data generation SCM to the causal path alone and denote Cause for the causal variable(s) that by the map m deterministically cause the label. 
+
+2. Since this map is deterministic, the set of data samples ( x, y) ∼ Pe form a deterministic map. Proof by contradiction: Say ( x, y), (x, y′) were a pair of covariate-label data pairs. These must have the same causation: C. Then by determinism of the map m, we must have y = m(C) = y′, contradiction. 
+
+3. Because of the label invariance relation, we must have that f = f ◦ a, a ∼ Awmax ,e. This means that the variable a(X), a ∼ Awmax ,e is caused by X.Thus, we have an environment aug (e) that is the following chain: ( E = e) → Cause . It generates the causal variable X and labels Y with f ◦ a.This can be summarized in the following diagram: 
+
+E = e Cause 
+
+E = aug (e) X a(X) Y 
+
+> f
+> f◦a
+
+(20) 
+
+□
+
+The distribution Paug (e) can contain many instances where the output of the learner changes. This is not necessarily true over all instances, however. 9RIA: Regularization for Invariance with Adversarial Training 
+
+5.2 Regularization for Invariance with Adversarial Training: RIA 
+
+We formulate the following minimax optimization problem called Regularization for Invariance with Adversarial Training : RIA. It uses the label invariance of existing causal learning methods with adversarial training. The data augmentations form an adversarial counterfactual distribution as in Equation 19. 
+
+RIA (Etr )• ≜ min  
+
+> h∈H
+
+E(( Ge)′,Y)∼Paug (e) [λ · OoD-Reg •(h(( Ge)′), Y) + le(h(( Ge)′), Ye)] where Paug (e)(h) = P[( a(Ge), Ye)] satisfies a ∼ Awmax ,e, and λ > 0(21) The subscript • indexes the constraints of some OoD generalization method. 
+
+Why Regularization? In traditional OoD generalization methods, stabilization across environments imposes an invariance to a symmetry a over the data as a constraint for the learner h:
+
+h(a(X)) = h(X) : X ∼ Pe, e ∈ E tr (22) This, however, prevents the data augmentation from being adversarial. Thus, in order to break the symmetry, we loosen this constraint and view the OoD generalization method through regularization. We denote the regularization provided by existing OoD generalization methods by OoD-Reg •(h). The regulaization maintains the original goal of stabilization across environments and extrapolation to an OoD test dataset. If there is ERM collapse, extrapolation cannot occur. The adversarially trained data augmentations help push the data away from ERM collapse. Intuitively, Equation 21 aims to find the optimal OoD generalization classifier that minimizes the worst-case ERM loss, achieved via data augmentation. See Appendix Figure 3 for how this loss behaves during training and testing. 
+
+Theorem 5.3. (RIA can Escape ERM-Collapse) When † is a constrained OoD generalization optimization problem with its risk denoted †(Etr ), we have: 
+
+RIA (Etr )† ≥ † (Etr ) ≥ ERM (Etr ) ≥ 0 (23) 
+
+Thus RIA (Etr )† can avoid ERM collapse. Proof. For the left inequality, by the temporal update rule from the Q-learning analogy in Lemma 5.1, that the a ∼ Awmax ,e is risk maximizing. Thus: 
+
+Ea∼Awmax ,e(h†,e)[Re(h† ◦ a)] ≥ Re(h†), ∀e ∈ E tr (24) where the left hand side is over the distribution Paug (e) which exists by Lemma 5.2 For equality, if we set supp (Awmax ,e(h)) = {id } then the minimizer of RIA (Etr )† in that case is an invariant risk minimizer. The second inequality follows because there is a constraint of joint minimization in † but no such constraint in ERM. The last inequality follows because the risks are all non-negative. The conclusion follows by the inequalities and the escape from Condition (3) for ERM collapse. Thus, by the contrapositive of Proposition 4.1, there is atleast one other environment. This gives the learner a chance to escape from ERM collapse. □
+
+10 RIA: Regularization for Invariance with Adversarial Training 
+
+Figure 2: Geometric view of the minimax optimization procedure RIA algorithm on Regularized_Loss (θ, w)as given in Equation 21 where w ∈ W indexes the artificial search environments, θ indexes the learner’s neural weights. The map π j,..., k : j < k is a projection of a set into k − j + 1 independent dimensions. 
+
+5.3 Algorithm 
+
+To solve the minimax optimization equation posed in Equation 21, we propose an alternating gradient descent-ascent algorithm, which is shown in Algorithm 1. The adversarial label invariant data augmentations are black-box Guo et al. [2019], Zhang et al. [2024]. On the contrary, in a white-box adversarial data augmentation, there would have to be the computationally expensive di ff erentiation of a combinatorial object such as a graph. The algorithm proceeds in the form of a deep learning algorithm. The outer loop iterates epochs over the data. For T steps, we compute the following three phases: 1. Over all environments in Etr , a random mask augmentation is computed over the graph. It is applied to the data. 2. For all T steps, the distribution Aw,• is updated on parameter w with (stochastic) gradient ascent. 3. In one of the T steps, the leaner hθ is updated on parameter θ with (stochastic) gradient descent. In the algorithm, the GNN fw, with neural weights w, determines a tensor of Bernoulli probabilities for which an adversarial data augmentation with k entries is sampled. The GNN hθ is some graph representation learner parameterized by θ.A geometric view of the optimization algorithm is shown in Figure 2. In our implementation, we learn a distribution of node attribute masking data augmentations to prevent ERM collapse. 
+
+The Choice of Data Augmentation: We chose a mask to augment the training data. The only requirement of RIA is that the data augmentation be label invariant. In Algorithm 1, the mask only applies to the node signal. Thus, it is spurious to a ground truth graph classification that only depends on the graph topology. This is true, for example, in the datasets CMNIST and Motif . In general, a label invariant data augmentation is required. 
+
+## 6 Experiments 
+
+We ran all our experiments on a 64 core Intel(R) Xeon(R) CPUs @2.40 GHz with 128 GB DRAM equipped with one 40 GB DRAM Ampere A100 GPU. The corresponding test scores for the best in-distribution 11 RIA: Regularization for Invariance with Adversarial Training 
+
+Algorithm 1: RIA by Alternating (Stochastic) Gradient Ascent-Descent with Adversarial Data Augmentation for OoD Generalization on Graphs 
+
+Data: Training graph data ( Gei = (Xei , Aei ), Yei ), Gei ∈ Pene ∼ (Pe)ne , e ∈ E tr , i = 1, ..., ne; ne the number of training data for environment e. Parameters of minimizing /maximizing GNN: θ/w, Learning rates lr θ, lr w, k: Number of entries of Xei to keep, OoD-Reg • is an OoD generalization regularizer from some existing method. T is the ratio of num. maximization to num. minimization steps 
+
+while not converged or max epochs not reached do for t = 1... T do for e = 1... |E tr | do 
+
+Me,iw ← s(σ(( fw(Xei , Aei ))); for i = 1... ne // fw is a GNN; s is a 0-1 sampler from a tensor of Bernoulli probs., sampling k times to update a tensor of 0’s. 
+
+Ge,iw ← (Me,iw ⊙ Xei , Aei )
+
+end 
+
+E(w, θ ) ← 1 
+
+> |E tr |
+
+P|E tr |
+
+> e=11
+> ne
+
+Pne
+
+> i=1
+
+[le(hθ, Ge,iw , Yei )] 
+
+J(w, θ ) ← 1 
+
+> |E tr |
+
+P|E tr |
+
+> e=11
+> ne
+
+Pne
+
+> i=1
+
+[OoD-Reg •(hθ, Ge,iw , Yei )] + E(w, θ )Update w ← w + lr w · ∇ wE(w, θ )
+
+if t== T then 
+
+Update θ ← θ − lr θ · ∇ θ J(w, θ ) ; 
+
+end end end 
+
+validation score are averaged across 3 runs for both real world and synthetic datasets. Hyperparameters follow the defaults of the GOOD benchmark Gui et al. [2022], see the Appendix. We implement Algorithm 1 (referred to as RIA in Table 1) using the regularizations of RICE, IRM, VREx. We compare our approach with the baselines of Coral Sun and Saenko [2016], DANN Ganin et al. [2016], DIR Wu et al. [2022], ERM Vapnik [1999], GSAT Miao et al. [2022], GroupDRO Sagawa et al. [2019], IRM Arjovsky et al. [2019], Mixup Wang et al. [2021], RICE Wang et al. [2022], VREx Krueger et al. [2021], EdgeDrop Rong et al. [2020] all implemented in the GOOD Gui et al. [2022] benchmark. For the following datasets the graph data G is split between signal X and topology A. Since the signal is spurious for the graph classification task for our datasets, we naturally have a disentanglement between causal and spurious parts of the graph. This allows us to define causally invariant data augmentations on the data as perturbations on the signal X. This is one of the reasons why our theory is designed for graphs. Images do not have a natural tensor disentanglement such as between foreground and background without labels. 
+
+Additive Spurious Attributes Synthetic Dataset: We develop a synthetic binary classification dataset that models a noisy data generation process as in the SCM in Appendix Figure 1. For more information on the dataset, see Appendix, section B. It is designed to model attribute shifts instead of just shifts in the graph topologies as in M otif .
+
+Real World Graph Classification Experiments: We also perform experiments on real world benchmarks. For all the scores, see Table 1. We use the datasets of CMNIST Arjovsky et al. [2019], SST2 Liu et al. [2021b], and M otif Wu et al. [2022] from the GOOD framework as well as AM otif , a modification of M otif .Each of these datasets follows the causal model as shown in Appendix Figure 1. Accuracy is used to measure the performance on all the datasets, as is standard. Each dataset involves di ff erent kinds of covariate shift. For more details about each dataset and the kind of covariate shift imposed on them, see the Appendix. 12 RIA: Regularization for Invariance with Adversarial Training 
+
+Dataset (acc) CMNIST ↑ SST2 ↑ Motif ↑ AM otif ↑ Synth ↑
+
+covariate color length basis size basis size basis +std, r = 1             
+
+> ID OOD ID OOD ID OOD ID OOD ID OOD ID OOD ID OOD
+
+RIA-RICE 61.7 ±1.6 48 .1 ± 0.8 89.4 ±0.6 81 .9 ± 0.2 92 .4 ± 0.2 65.1 ±5.9 92 .4 ± 0.2 55 .3 ± 0.4 79.3 ±1.6 36.8 ±4.2 67.4 ±1.5 33.4 ±1.3 48.0 ±9.0 58.5 ±1.5 
+
+RIA-IRM 65 .5 ± 2.8 41 .6 ± 0.6 89 .7 ± 0.6 81 .7 ± 0.5 33 .7 ± 0.8 33 .9 ± 0.7 33 .5 ± 0.8 34 ± 2.9 89 .6 ± 0.8 40 .5 ± 3.8 48 .6 ± 0.4 48 .6 ± 2 51 ± 0.6 54 ± 0.8
+
+RIA-VRE x 79 .3 ± 0.7 38 .7 ± 0.7 89 .8 ± 2 80 .2 ± 4 32 .2 ± 2.3 34 ± 1.7 33 .5 ± 0.5 34 ± 1.0 90 .5 ± 4.5 42 .4 ± 0.6 90 .3 ± 0.9 47 ± 0.87 40 ± 0.8 60 ± 1.9
+
+ERM 77.5 ±0.5 28.3 ±0.3 89.4 ±0.4 81.2 ±0.2 92.3 ±0.3 68.3 ±0.3 92.1 ±0.1 51.4 ±0.4 80.8 ±1.1 33.2 ±1.0 67.9 ±2.2 33.2 ±1.0 53.5 ±1.5 53.5 ±1.5 
+
+DIR 39 ± 2.9 28 .1 ± 10 83 .6 ± 4.6 81 .1 ± 4.9 82 .2 ± 5.2 73 .6 ± 5.8 75 .6 ± 3.9 39 .3 ± 1 34 .7 ± 2.5 35 ± 2.9 36 .3 ± 5.2 33 .1 ± 3.3 48 ± 1.2 61 ± 1.4
+
+RICE 68.2 ±0.9 26.3 ±0.5 90 .0 ± 0.2 80.7 ±0.7 92.4 ±0.2 65.1 ±5.9 92.2 ±0.0 55.1 ±0.2 69.3 ±9.8 36.2 ±1.7 50.5 ±9.2 33.5 ±1.2 54.5 ±2.5 54.0 ±1.0 
+
+Coral 78 .3 ± 0.3 29.0 ±0.0 89.3 ±0.3 79.4 ±0.4 92.3 ±0.3 68.4 ±0.4 92.1 ±0.1 50.5 ±0.5 81.0 ±0.2 33.9 ±1.3 67.9 ±0.6 32.9 ±0.8 54.0 ±2.0 51.5 ±2.5 
+
+DANN 77.5 ±0.5 29.1 ±0.6 89.3 ±0.8 79.4 ±0.9 92.3 ±0.8 65.2 ±0.7 92.1 ±0.6 51.2 ±0.7 81.1 ±0.2 38.1 ±1.4 69.2 ±1.1 33.1 ±0.5 54.5 ±1.8 52.0 ±0.5 
+
+Group DRO 77.0 ±1.0 28.5 ±0.5 88.8 ±0.8 80.7 ±0.7 91.8 ±0.8 67.6 ±0.6 91.6 ±0.6 51.0 ±1.0 74.0 ±1.0 38.6 ±0.6 83.9 ±0.8 35.8 ±0.8 50.5 ±0.5 52.5 ±0.5 
+
+GSAT 67.0 ±2.6 39.9 ±0.6 89.0 ±0.1 80.6 ±1.1 92 .5 ± 0.0 57.1 ±6.8 92.1 ±0.1 53.3 ±0.3 69.3 ±9.8 36.2 ±1.7 50.5 ±9.2 33.5 ±1.2 58.5 ±7.5 50.5 ±6.5 
+
+IRM 77.0 ±1.0 26.9 ±0.9 88.7 ±0.7 79.0 ±1.0 91.8 ±0.8 69.8 ±0.8 91.6 ±0.6 50.9 ±0.9 79.0 ±1.0 37.9 ±0.9 79.6 ±0.6 33.6 ±0.6 62 .5 ± 0.5 48.5 ±0.5 
+
+Mixup 76.7 ±0.7 25.7 ±0.7 88.9 ±0.9 79.9 ±0.9 91.8 ±0.8 69.5 ±0.5 91.5 ±0.5 50.7 ±0.7 70.9 ±0.9 36.7 ±0.7 68.7 ±0.7 33.0 ±1.0 41.5 ±0.5 58.5 ±0.5 
+
+VRE x 77.0 ±1.0 27.7 ±0.7 88.8 ±0.8 79.8 ±0.8 91.8 ±0.8 70 .7 ± 0.7 91.6 ±0.6 51.8 ±0.8 78.6 ±0.6 33.9 ±0.9 65.6 ±0.6 34.0 ±1.0 50.5 ±0.5 52.5 ±0.5 
+
+Drop Edge 56.9 ±0.9 19.7 ±0.7 88.8 ±0.8 81.7 ±0.7 34.7 ±0.7 31.5 ±0.5 34.8 ±0.8 31.6 ±0.6 37.9 ±0.9 33.9 ±0.9 33.8 ±0.8 33.0 ±1.0 59 .5 ± 0.5 43.5 ±0.5 
+
+Table 1: Accuracy of all baseline approaches as well as RIA-RICE, RIA-IRM, RIA-VRE x on all datasets under di ff erent covariate shifts. For each covariate shift, the columns labeled ID refer to the in-distribution test accuracies while the columns labeled OOD refer to the out-of-distribution test scores. Red and gray entries are the max and second max test accuracies, respectively, for each column. As shown in Table 1, our method, RIA, performs well both in the in-distribution ID and out-of-distribution OoD settings. For the ID case, RIA performs the highest or second highest on all datasets in at least one method except for the synthetic dataset. This suggests that even in the ID setting, the data is never truly in-distribution. There is always some benefit to pushing away from the ERM solution. For the OoD case, the adversarial data augmentations seem able to counterfactually generate environments similar to the testing input data. This is the benefit to minimax optimization. Of course there is no guarantee that RIA is converting the training distribution into the testing distribution exactly. However, the training distribution is no longer the same thing. RIA obtains the highest or second highest score for every dataset except M otif by at least one method. The performance on M otif is not high since M otif has very simple attributes. The ablation comparison between each existing method: IRM, RICE, VREx, and RIA applied to it are included in Table 1. We see that RIA not only improves upon the existing method, but oftentimes outperforms many other baselines. 
+
+6.1 Illustrating ERM Collapse 
+
+In Figure 3, we show the training and OoD testing losses across 150 epochs of training for ERM, IRM and VREx as well as RIA applied to IRM and VREx. We can see the ERM collapse phenomenon. SST2 does not have as much of a distribution shift so it is harder to observe ERM collapse. CMNIST has a synthetic distribution shift attached to a natural data distribution and only two very similar training environments so it is easier to observe ERM collapse. On CMNIST, VREx and IRM both follow the training loss curve of ERM since they must converge to zero training loss. RIA-VREx and RIA-IRM, on the other hand, are prevented from converging to zero loss. For OoD generalization for both SST2 and CMNIST, we see that by preventing ERM collapse, we can in fact maintain low OoD loss and prevent mimicking the behavior of ERM. The other methods, IRM and VREx, on the other hand, diverge like ERM. 13 RIA: Regularization for Invariance with Adversarial Training 0 20 40 60 80 100 120 140                      
+
+> Epochs
+> 0.25
+> 0.50
+> 0.75
+> 1.00
+> 1.25
+> 1.50
+> 1.75
+> 2.00
+> Training loss
+> ERM
+> IRM
+> RIA_IRM
+> RIA_VREx
+> VREx 020 40 60 80 100 120 140
+> Epochs
+> 0
+> 5
+> 10
+> 15
+> 20
+> 25
+> 30
+> OoD Test loss
+> ERM
+> IRM
+> RIA_IRM
+> RIA_VREx
+> VREx 020 40 60 80 100 120 140
+> Epochs
+> 0.0
+> 0.1
+> 0.2
+> 0.3
+> 0.4
+> 0.5
+> Training loss
+> ERM
+> IRM
+> RIA_IRM
+> RIA_VREx
+> VREx 020 40 60 80 100 120 140
+> Epochs
+> 0
+> 1
+> 2
+> 3
+> 4
+> 5
+> 6
+> 7
+> OoD Test loss
+> ERM
+> IRM
+> RIA_IRM
+> RIA_VREx
+> VREx
+
+Figure 3: Illustration of ERM Collapse on the CMNIST (above) and SST2 (below) dataset. Left: Training loss where ERM collapse is happening to traditional constrained optimization OoD generalization methods. Red and Green are RIA on IRM and VRex, respectively. Right: Test OoD loss. The consequences of ERM collapse are prevented. 
+
+## 7 Discussion 
+
+We observe widespread ERM collapse in existing methods in our experiments. Many of the methods such as IRM, VREx, Mixup and DropEdge behave very similar to ERM. We believe that these particular methods do not veer from ERM aggressively enough. IRM and VREx, may not have enough training environments. Mixup and DropEdge, as static data augmentations, are not actually changing the training distribution or achieving any kind of invariance across environments. RIA prevents ERM collapse and due to the adversarial generation of environments against the ERM loss the learner has enhanced robustness. Although we only did experiments on graph data, we believe RIA can easily be implemented for images and other data modalities. One caveat we have observed empirically is that the data augmentations should be diverse and only slightly a ff ect the training distribution. Sudden changes to the training distribution can over-correct the learner. 
+
+## 8 Conclusion 
+
+We have introduced adversarial data augmentations to provide a search for a robust OoD solution. We formulate and motivate the OoD problem as a minimax optimization problem over a set of environments. To address the lack of training environments and to prevent an early collapse of the classifier onto an ERM 14 RIA: Regularization for Invariance with Adversarial Training solution on the training distribution during OoD training, we propose RIA: Regularization for invariance with adversarial training. We compare our approach, RIA, with state of the art OoD generalization approaches including DIRWu et al. [2022] and RICE Wang et al. [2022] as well as the classical ERM on graphs. This shows that for graph classification, preventing ERM collapse in the OoD setting improves existing OoD generalization methods. 
+
+## Acknowledgment 
+
+This work was supported in part by the National Science Foundation under Grant OAC-2310510. 
+
+## References 
+
+Haoyang Li, Xin Wang, Ziwei Zhang, and Wenwu Zhu. Out-of-distribution generalization on graphs: A survey. arXiv preprint arXiv:2202.07987 , 2022. Zheyan Shen, Jiashuo Liu, Yue He, Xingxuan Zhang, Renzhe Xu, Han Yu, and Peng Cui. Towards out-of-distribution generalization: A survey. arXiv preprint arXiv:2108.13624 , 2021. Sara Beery, Grant Van Horn, and Pietro Perona. Recognition in terra incognita. In Proceedings of the European conference on computer vision (ECCV) , pages 456–473, 2018. Martin Arjovsky, Léon Bottou, Ishaan Gulrajani, and David Lopez-Paz. Invariant risk minimization. arXiv preprint arXiv:1907.02893 , 2019. J Andrew Bagnell. Robust supervised learning. In AAAI , pages 714–719, 2005. Aharon Ben-Tal, Laurent El Ghaoui, and Arkadi Nemirovski. Robust optimization. In Robust optimization .Princeton university press, 2009. Shiyu Chang, Yang Zhang, Mo Yu, and Tommi Jaakkola. Invariant rationalization. In International Conference on Machine Learning , pages 1448–1458. PMLR, 2020. John Duchi, Peter Glynn, and Hongseok Namkoong. Statistics of robust optimization: A generalized empirical likelihood approach. arXiv preprint arXiv:1610.03425 , 2016. David Krueger, Ethan Caballero, Joern-Henrik Jacobsen, Amy Zhang, Jonathan Binas, Dinghuai Zhang, Remi Le Priol, and Aaron Courville. Out-of-distribution generalization via risk extrapolation (rex). In 
+
+International Conference on Machine Learning , pages 5815–5826. PMLR, 2021. Jiashuo Liu, Zheyuan Hu, Peng Cui, Bo Li, and Zheyan Shen. Heterogeneous risk minimization. In 
+
+International Conference on Machine Learning , pages 6804–6814. PMLR, 2021a. Divyat Mahajan, Shruti Tople, and Amit Sharma. Domain generalization using causal matching. In 
+
+International Conference on Machine Learning , pages 7313–7324. PMLR, 2021. Jovana Mitrovic, Brian McWilliams, Jacob C Walker, Lars Holger Buesing, and Charles Blundell. Represen-tation learning via invariant causal mechanisms. In International Conference on Learning Representations ,2020. Aman Sinha, Hongseok Namkoong, Riccardo Volpi, and John Duchi. Certifying some distributional robustness with principled adversarial training. arXiv preprint arXiv:1710.10571 , 2017. 15 RIA: Regularization for Invariance with Adversarial Training V. Vapnik. Principles of risk minimization for learning theory. In J. Moody, S. Han-son, and R.P. Lippmann, editors, Advances in Neural Information Processing Systems , vol-ume 4. Morgan-Kaufmann, 1991a. URL https://proceedings.neurips.cc/paper/1991/file/ ff4d5fbbafdf976cfdc032e3bde78de5-Paper.pdf .Ying-Xin Wu, Xiang Wang, An Zhang, Xiangnan He, and Tat-Seng Chua. Discovering invariant rationales for graph neural networks. arXiv preprint arXiv:2201.12872 , 2022. Chuanlong Xie, Haotian Ye, Fei Chen, Yue Liu, Rui Sun, and Zhenguo Li. Risk variance penalization. arXiv preprint arXiv:2006.07544 , 2020. Francesco Croce, Maksym Andriushchenko, Vikash Sehwag, Edoardo Debenedetti, Nicolas Flammarion, Mung Chiang, Prateek Mittal, and Matthias Hein. Robustbench: a standardized adversarial robustness benchmark. arXiv preprint arXiv:2010.09670 , 2020. Christian Szegedy, Wojciech Zaremba, Ilya Sutskever, Joan Bruna, Dumitru Erhan, Ian Goodfellow, and Rob Fergus. Intriguing properties of neural networks. arXiv preprint arXiv:1312.6199 , 2013. Ian J Goodfellow, Jonathon Shlens, and Christian Szegedy. Explaining and harnessing adversarial examples. 
+
+arXiv preprint arXiv:1412.6572 , 2014. Marco Barreno, Blaine Nelson, Russell Sears, Anthony D Joseph, and J Doug Tygar. Can machine learning be secure? In Proceedings of the 2006 ACM Symposium on Information, computer and communications security , pages 16–25, 2006. Michael Kearns and Ming Li. Learning in the presence of malicious errors. In Proceedings of the twentieth annual ACM symposium on Theory of computing , pages 267–280, 1988. Seyed-Mohsen Moosavi-Dezfooli, Alhussein Fawzi, and Pascal Frossard. Deepfool: a simple and accurate method to fool deep neural networks. In Proceedings of the IEEE conference on computer vision and pattern recognition , pages 2574–2582, 2016. Nicholas Carlini and David Wagner. Towards evaluating the robustness of neural networks. In 2017 ieee symposium on security and privacy (sp) , pages 39–57. Ieee, 2017. Battista Biggio, Igino Corona, Davide Maiorca, Blaine Nelson, Nedim Šrndi´ c, Pavel Laskov, Giorgio Giacinto, and Fabio Roli. Evasion attacks against machine learning at test time. In Joint European conference on machine learning and knowledge discovery in databases , pages 387–402. Springer, 2013. Judea Pearl. Causal inference in statistics: An overview. 2009. Will Hamilton, Zhitao Ying, and Jure Leskovec. Inductive representation learning on large graphs. Advances in neural information processing systems , 30, 2017. Vladimir Vapnik. Principles of risk minimization for learning theory. Advances in neural information processing systems , 4, 1991b. Kartik Ahuja, Ethan Caballero, Dinghuai Zhang, Jean-Christophe Gagnon-Audet, Yoshua Bengio, Ioannis Mitliagkas, and Irina Rish. Invariance principle meets information bottleneck for out-of-distribution generalization. Advances in Neural Information Processing Systems , 34:3438–3450, 2021. Mingyang Yi, Lu Hou, Jiacheng Sun, Lifeng Shang, Xin Jiang, Qun Liu, and Zhiming Ma. Improved ood generalization via adversarial training and pretraing. In International Conference on Machine Learning ,pages 11987–11997. PMLR, 2021. 16 RIA: Regularization for Invariance with Adversarial Training Ruoyu Wang, Mingyang Yi, Zhitang Chen, and Shengyu Zhu. Out-of-distribution generalization with causal invariant transformations. In Proceedings of the IEEE /CVF Conference on Computer Vision and Pattern Recognition , pages 375–385, 2022. Christopher JCH Watkins and Peter Dayan. Q-learning. Machine learning , 8(3):279–292, 1992. Chuan Guo, Jacob Gardner, Yurong You, Andrew Gordon Wilson, and Kilian Weinberger. Simple black-box adversarial attacks. In International conference on machine learning , pages 2484–2493. PMLR, 2019. Simon Zhang, Cheng Xin, and Tamal K Dey. Expressive higher-order link prediction through hypergraph symmetry breaking. arXiv preprint arXiv:2402.11339 , 2024. Shurui Gui, Xiner Li, Limei Wang, and Shuiwang Ji. Good: A graph out-of-distribution benchmark. arXiv preprint arXiv:2206.08452 , 2022. Baochen Sun and Kate Saenko. Deep coral: Correlation alignment for deep domain adaptation. In Computer Vision–ECCV 2016 Workshops: Amsterdam, The Netherlands, October 8-10 and 15-16, 2016, Proceedings, Part III 14 , pages 443–450. Springer, 2016. Yaroslav Ganin, Evgeniya Ustinova, Hana Ajakan, Pascal Germain, Hugo Larochelle, François Laviolette, Mario Marchand, and Victor Lempitsky. Domain-adversarial training of neural networks. The journal of machine learning research , 17(1):2096–2030, 2016. Vladimir N Vapnik. An overview of statistical learning theory. IEEE transactions on neural networks , 10(5): 988–999, 1999. Siqi Miao, Mia Liu, and Pan Li. Interpretable and generalizable graph learning via stochastic attention mechanism. In International Conference on Machine Learning , pages 15524–15543. PMLR, 2022. Shiori Sagawa, Pang Wei Koh, Tatsunori B Hashimoto, and Percy Liang. Distributionally robust neural networks for group shifts: On the importance of regularization for worst-case generalization. arXiv preprint arXiv:1911.08731 , 2019. Yiwei Wang, Wei Wang, Yuxuan Liang, Yujun Cai, and Bryan Hooi. Mixup for node and graph classification. In Proceedings of the Web Conference 2021 , pages 3663–3674, 2021. Yu Rong, Wenbing Huang, Tingyang Xu, and Junzhou Huang. Dropedge: Towards deep graph convolutional networks on node classification. In International Conference on Learning Representations , 2020. URL 
+
+https://openreview.net/forum?id=Hkx1qkrKPr .Meng Liu, Youzhi Luo, Limei Wang, Yaochen Xie, Hao Yuan, Shurui Gui, Haiyang Yu, Zhao Xu, Jingtun Zhang, Yi Liu, Keqiang Yan, Haoran Liu, Cong Fu, Bora M Oztekin, Xuan Zhang, and Shuiwang Ji. DIG: A turnkey library for diving into graph deep learning research. Journal of Machine Learning Research , 22 (240):1–9, 2021b. URL http://jmlr.org/papers/v22/21-0343.html .Richard Socher, Alex Perelygin, Jean Wu, Jason Chuang, Christopher D Manning, Andrew Y Ng, and Christopher Potts. Recursive deep models for semantic compositionality over a sentiment treebank. In Proceedings of the 2013 conference on empirical methods in natural language processing , pages 1631–1642, 2013. 17 RIA: Regularization for Invariance with Adversarial Training 
+
+## A The Regularizer for the Constraints of OoD Generalization 
+
+We have identified three OoD generalization methods that are formulated as constrained optimization problems: IRM, VREx, and RICE. We go over each method and how they can be rewritten as regularized ERM methods. Regularized ERM methods risk the possiblity of ERM collapse since their constraints may fail to be e ff ective. Let Re denote the risk function over a given environment e.
+
+IRM : IRM is the following optimization problem: min 
+
+> Φ:X→H,w:H→Y
+
+X
+
+> e∈E tr
+
+Re(w ◦ Φ)s.t. w ∈ arg min 
+
+> w:H→Y
+
+Re(w ◦ Φ), ∀e ∈ E tr 
+
+(25) This can be written as the following regularized ERM problem called IRMv1 whose minimization implies the IRM constrained optimization problem: min 
+
+> Φ:X→Y
+
+X
+
+> e∈E tr
+
+Re(Φ) + λ · |∇ w|w=1.0Re(w · Φ)|2 (26) For graph learning, the map Φ can be implemented as a graph representation learner such as a GNN. The w
+
+learnable scalar parameter just multiplies the representation before taking the cross entropy loss. One can check that the causal model of Section 3 is still compatible with IRM. 
+
+VREx : VREx is the following optimization problem: 
+
+RMM-REx (h) = max Pe∈E tr λe=1,λ e≥λmin 
+
+X
+
+> e∈E tr
+
+λe · Re(h) =
+
+(1 − m · λmin ) · max  
+
+> e
+
+Re(h) + λmin ·
+
+X
+
+> e∈E tr
+
+Re(h) (27) This can be approximated as the following regularized ERM problem called VREx whose minimization gives a smoother version of the MM-REx constrained optimization problem: 
+
+RV-REx (h) = β · Var( {R1(h), ..., Rm(h)}) +
+
+X
+
+> e∈E tr
+
+Re(h) (28) The implementation for VREx on graphs should be straight forward since it is just a new regularized loss for a graph representation learner. 
+
+RICE : We describe here in full detail the implementation of RIA using the RICE regularizer and how RICE still fits the causal model we define in Section 3. Let the the support of a distribution be the subset of its domain where it has nonzero measure. This is denoted supp (P) = {x ∈ dom (P)|P(x) > 0}
+
+Definition A.1. Ptr := P  
+
+> e∈E tr :Pe∈E tr λe=1,λ e≥0
+
+λe · Pe is the mixture of the training distributions with some λe
+
+from which it is possible to sample the training datasets Dtr := ⊔e∈E tr De, De ⊂ supp (Pe) for e ∈ E tr . Ptr is conditional on Dtr .RICE assumes a causal model. The causal model we define in Section 3 is compatible with the causal model of RICE. The causal model of RICE assumes that, given the data, the label is generated by the map 18 RIA: Regularization for Invariance with Adversarial Training 
+
+Y = m(c∗(X, A), η ) where η is an exogenous variable, c∗ coincides with the map we defined in Section 3 and 
+
+m is any label producing map. RICE is formulated as a constrained optimization problem: min  
+
+> θ
+
+E(G,Y)∼Ptr [l(hθ(G), Y)] (29a) s.t. hθ ◦ T = hθ∀T ∈ I c∗ (supp (Ptr ) (29b) where Ic∗ (supp (Ptr )) is defined below: 
+
+Definition A.2. (Causal Essential Invariant Transformations) Wang et al. [2022] 
+
+Ic∗ (S ) = {Ti|c∗(X1, A1) = c∗(X2, A2) ⇒∃T1... Tk with c∗ ◦ Ti = c∗∀i, s.t. 
+
+T1 ◦ ... ◦ Tk(X1, A1) = (X2, A2)and ∀(X1, A1), (X2, A2) ∈ S }
+
+(30) We notice that a subset of the causal essential invariant transformations are just the invertible data augmenta-tions which satisfy c∗ ◦ T = c∗. Implementing these data augmentations, such as edge addition and deletion on graphs, to approximate Ic∗ (S ) is simple and e ff ective for graphs. We can thus narrow down the number of hyper parameters. 
+
+Proposition A.3. The Ic∗ (S ) of Definition A.2 contains the set Iinv c∗ (S ) of invertible transformations on data support S that satisfy c ∗ ◦ T = c∗.Proof. We show that if T is invertible and satisfies c∗ ◦ T = c∗, then T ∈ I c∗ (S). We first show that the identities {In0 }n0≤N , which depend on the number of graph nodes n0, is in Ic∗ (S ). Let ( X1, A1) = (X2, A2) represent a graph of n0 nodes, then we have that c∗(X1, A1) = c∗(X2, A2) and that 
+
+In0 (X1, A1) = (X2, A2) for In0 the identity on ( X1, A1). For any ( X1, A1), (X2, A2) ∈ S , c∗(X1, A1) = c∗(X2, A2) then there exists T ′ ∈ I c∗ (P) s.t. In0 ◦ T ′(X1, A1) =
+
+T −1 ◦ T ◦ T ′(X1, A1) = (X2, A2). This shows that both T and T −1 are in Ig(S ) for all T invertible over all graph sizes in the data support S .
+
+□
+
+Proposition A.3, tells us that we may use the invertible transformations on graphs such as edge dele-tion /addition in the regularization term of RICE. This means we can implement a regularizer for an OoD loss by the following OoD regularization term: 
+
+OoD-Reg RICE (hθ, {(Gew, Ye)}e∈E tr ) = α
+
+n
+
+> n
+
+X
+
+> e=1
+
+E[ max  
+
+> T∈I inv edge (GX,A)
+
+|(hθ ◦ T (Gew) − hθ(Gew)|2] (31) where Ye is a set of labels for environment e, Gew is a set of adversarially augmented graphs for environment 
+
+e and hθ is a graph representation learner. 
+
+## B Hyperparameters and Dataset Information 
+
+We describe here some more information about each dataset we use in our experiments: 
+
+• CMNIST Arjovsky et al. [2019] Dataset is derived from the MNIST dataset from computer vision. It is curated by Gui et al. [2022]. Digits are colored according to their domains. Specifically, in covariate shift split, we color digits with 7 di ff erent colors, and digits with the first 5 colors, the 6th color, and the 7th color are categorized into training, validation, and test sets. 19 RIA: Regularization for Invariance with Adversarial Training                                                                            
+
+> Hyperparameters acc CMNIST SST2 Motif AM otif Synth
+> covariate color length basis size basis size basis lr 1e-3 1e-3 1e-3 1e-3 1e-3 1e-3 1e-3
+> lr adv 1e-4 1e-4 1e-4 1e-4 1e-4 1e-4 1e-4
+> epochs 500 200 200 200 200 200 100
+> num. edge augs. 10 10 10 10 10 10 10
+> k11005520
+> arch GIN GIN GIN GIN GIN GIN GIN
+> num layers 5533332
+> padd edge 0.1 0.1 0.01 0.01 0.01 0.01 0.01
+> pdel edge 0.1 0.1 0.01 0.01 0.01 0.01 0.01
+
+Table 2: Superset of all hyper parameters shared across all datasets and shifts for all experiments. 
+
+• SST2 Socher et al. [2013] Derived from a natural language sentiment classification dataset. Each sentence is transformed into a grammar tree graph, where each node represents a word with correspond-ing word embeddings as node features. The dataset forms a binary classification task to predict the sentiment polarity of a sentence. We select sentence lengths as domains since the length of a sentence should not a ff ect the sentimental polarity. 
+
+• Motif Wu et al. [2022] Each graph in the dataset is generated by connecting a base graph and a motif, and the label is determined by the motif solely. Instead of combining the base-label spurious correlations and size covariate shift together as in Wu et al. [2022], the size and basis shifts are separated. Specifically, we generate graphs using five label irrelevant base graphs (wheel, tree, ladder, star, and path) and three label determining motifs (house, cycle, and crane). To create covariate splits, we select the base graph type and the size as domain features. There are no node attributes in this dataset. 
+
+• AM otif (a modification of M otif to have attributes) Taking the same graph structures from M otif , we use node attributes of dimension 256 all sampled from a N(0 , (e + 1) 2), where e is the environment index. Covariate shifts are achieved by changing the basis or size as in M otif each shift indexed by some e.
+
+• Synth We construct a synthetic dataset as described in Section 6. The dataset is a modification of Motif , which generates data by a joining operation between causal and spurious graphs. In our construction, we construct ( XC , A), (XS , A) as in AM otif . We let the joining operation be the map (JX (XC , XS ), JA(XC , XS )) = c−1 
+
+> ξ
+
+(XC + XS , A) = (X, A) where ξ are neural weights. We assume that the map cξ is invertible and has an inverse c−1 
+
+> ξ
+
+defined by a GIN neural network that maps from the graph ( XC + XS , A) to the graph G = (X, A). GIN is not guaranteed to be injective, however it is a good enough approximation to one in practice. The label is defined by Y = m(XC , A) + η where m is a MLP and η ∼ N(0 , σ (MLP ( ˜e))) where ˜e is a one-hot encoding of the environment index and σ ◦ MLP 
+
+is a fixed neural mapping to a tensor of numbers in (0 , 1). We can further assume that c∗, the causal map, can be obtained by c∗(X, A) = cξ(X, A) − sξ(X, A) where c∗ is deterministic and ξ is initialized by 
+
+ξ ∼ N(0 , MLP ( ˜e). For the RIA-RICE implementation c∗ is assumed to exist and allows us to obtain a solution of the form ϕ ◦ c∗. For RIA-IRM and RIA-VREx, so long as our data generation process coincides with the model of Arjovsky et al. [2019] is satisfied, The distribution shifts are induced by 20 RIA: Regularization for Invariance with Adversarial Training varying ˜e and thus a ff ecting η and α simultaneously. There are 4 environments in E. Two environments are combined together for training, the third for validation, and the remaining environments are for testing. We list in Appendix-Table 2 the hyperparameters of our approachs on all datasets experimented with. 21
