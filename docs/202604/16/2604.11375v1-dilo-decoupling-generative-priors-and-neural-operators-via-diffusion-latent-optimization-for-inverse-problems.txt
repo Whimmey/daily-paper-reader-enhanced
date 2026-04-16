@@ -1,0 +1,1220 @@
+Title: DiLO: Decoupling Generative Priors and Neural Operators via Diffusion Latent Optimization for Inverse Problems
+
+URL Source: https://arxiv.org/pdf/2604.11375v1
+
+Published Time: Tue, 14 Apr 2026 02:43:20 GMT
+
+Number of Pages: 28
+
+Markdown Content:
+# DiLO: Decoupling Generative Priors and Neural Operators via Diffusion Latent Optimization for Inverse Problems 
+
+## Haibo Liu ∗ Guang Lin †
+
+## April 14, 2026 
+
+Abstract 
+
+Diffusion models have emerged as powerful generative priors for solving PDE-constrained inverse problems. Compared to end-to-end approaches relying on massive paired datasets, explicitly decoupling the prior distribution of physical parameters from the forward physical model, a paradigm often formalized as Plug-and-Play (PnP) priors, offers enhanced flexibility and generalization. To accelerate inference within such decoupled frameworks, fast neural operators are employed as surrogate solvers. However, directly integrating them into standard diffusion sampling introduces a critical bottleneck: evaluating neural surrogates on partially denoised, non-physical intermediate states forces them into out-of-distribution (OOD) regimes. To eliminate this, the physical surrogate must be evaluated exclusively on the fully denoised parameter, a principle we formalize as the Manifold Consistency Requirement. To satisfy this requirement, we present Diffusion Latent Optimization (DiLO), which transforms the stochastic sampling process into a deterministic latent trajectory, enabling stable backpropa-gation of measurement gradients to the initial latent state. By keeping the trajectory on the physical manifold, it ensures physically valid updates and improves reconstruction accuracy. We provide theoretical guarantees for the convergence of this optimization trajectory. Ex-tensive experiments across Electrical Impedance Tomography, Inverse Scattering, and Inverse Navier-Stokes problems demonstrate DiLO’s accuracy, efficiency, and robustness to noise. 
+
+# 1 Introduction 
+
+Inverse problems aim at recovering hidden physical properties from indirect observations. For example, Electrical Impedance Tomography (EIT) tries to reconstruct the internal conductivity distribution of a patient from electrical signals received from the skin [1, 2]. Inverse Scattering Problem, crucial for seismic exploration and non-destructive testing, aims at reconstructing the refractive index from far-field or near-field data [3, 4]. Furthermore, inverse problems in fluid dynamics recover the initial state from lateral boundary measurements in a Navier–Stokes (N-S) system[5]. Despite their broad application, these problems remain challenging due to highly non-linear physical models and the ill-posedness caused by complex underlying parameter distributions. Traditionally, adjoint-based iterative methods were developed to solve problems involving PDE constraints, combined with various regularization techniques to address the severe ill-posedness. However, these methods suffer from high computational costs, and artificially imposed regular-ization terms limit their application scenarios while increasing the difficulty of parameter tuning [6, 7]. To bridge this gap, deep learning has emerged as a powerful alternative for data-driven 
+
+> 1
+
+School of Engineering, Westlake University, Hangzhou 310030, P.R. China. ( haibo.liu.research@gmail.com )
+
+> 2
+
+Department of Mathematics, School of Mechanical Engineering, Purdue University, 610 Purdue Mall, West Lafayette, IN 47907, USA. ( guanglin@purdue.edu )
+
+1
+
+> arXiv:2604.11375v1 [math.NA] 13 Apr 2026
+
+reconstruction. In particular, generative models trained on underlying data distributions provide strong priors for solving inverse problems [8, 9, 10]. Recently, diffusion models [11, 12] have proven to be highly effective generative priors, setting new benchmarks in inverse problems through unsupervised score-based sampling methods [13], Dif-fusion Posterior Sampling (DPS) [14], and variational regularization techniques like RED-diff [15]. Recent benchmarking efforts, such as InverseBench [16], further demonstrate the efficacy of these models. Advanced optimization and consistency techniques, such as exploiting the inherent de-noising capabilities of diffusion priors via projection gradient descent (ProjDiff) [17] or accelerating data consistency steps using deep learning (DDC) [18], have been developed to improve reconstruc-tion speed and robustness. However, most diffusion-based solvers are designed for linear or mildly nonlinear operators [19]. For complex PDE-constrained problems, the computational burden of iteratively evaluating the forward model during the reverse diffusion process is prohibitive. To address these challenges, recent research has explored the integration of generative modeling and operator learning. Early hybrid approaches attempted to formulate diffusion models as prob-abilistic neural operators [20], physics-aware generative operators for discontinuous inputs (e.g., DGenNO) [21], or explicitly embed discretized physical constraints into score-based models like CoCoGen [22] and continuous flow matching models like PCFM [23]. Alongside generative models, advancements in operator learning have directly targeted inverse problems through novel archi-tectures like Invertible Fourier Neural Operators (iFNO) [24] and Physics-Informed Deep Inverse Operator Networks (PI-DIONs) [25], which learn the solution operator without massive labeled datasets. For problems with partial observations, frameworks like DiffusionPDE [26] proposed modeling the joint distribution of PDE coefficients and solutions. While effective at handling ar-bitrary sparsity, such joint-embedding methods carry a heavy computational burden: they require training a task-specific diffusion model from scratch on massive datasets of paired observations for every new physical system. Consequently, the focus has shifted toward explicitly decoupling the generative prior from the physical constraints, a paradigm central to plug-and-play priors. Methods like Function-space Dif-fusion Posterior Sampling (FunDPS) [27] and the Decoupled Diffusion Inverse Solver (DDIS) [28] successfully mitigate the guidance attenuation inherent to joint-embedding models by applying plug-and-play guidance or decoupled noise annealing to functional priors. However, evaluating the physical surrogate within these iterative sampling loops requires feeding it partially denoised ap-proximations—typically posterior means derived via Tweedie’s estimate (ˆ x0(xt)). Because physical surrogates are trained exclusively on clean, fully-resolved data manifolds with sharp high-frequency details, feeding them these blurry, non-physical intermediate states forces the operators into OOD regimes, leading to inaccurate guidance and gradient instability. Furthermore, directly modeling diffusion in the ambient function space inherently limits their capacity to capture highly complex underlying parameter distributions. Building upon these insights, we introduce Diffusion Latent Optimization (DiLO) , a novel framework designed to address the bottlenecks of plug-and-play decoupled diffusion inverse solvers. First, it operates within a compressed latent space to strictly decouple the diffusion prior from the physical model, thereby bypassing dimensional limitations and eliminating the need for task-specific retraining. Second, to overcome the aforementioned OOD errors, we posit that a stable solver must evaluate the physical surrogate exclusively on fully denoised, physically valid param-eters—a principle we define as the Manifold Consistency Requirement. DiLO inherently satisfies this requirement by breaking away from stochastic sampling and reformulating the inverse problem as a deterministic optimization over the initial latent noise. This deterministic trajectory ensures the surrogate is evaluated strictly on fully denoised parameters, naturally bypassing the guidance instability that hinders existing methods. With rigorous theoretical guarantees for geometric con-vergence, DiLO achieves excellent reconstruction accuracy and exceptional noise robustness across three challenging physical domains: EIT, Inverse Scattering, and Inverse N-S. Table 1 presents 2a systematic comparison between DiLO and representative PDE-constrained solvers, highlight-ing fundamental differences in inference paradigms, prior spaces, data requirements, and physics evaluation mechanisms. Table 1: Comparison of DiLO with existing PDE-constrained inverse solvers. DiLO uniquely combines a compressed latent prior with a deterministic, OOD-free physics guidance mechanism. Abbreviations: NO = Neural Operator, Gen. = Generative, Opt. = Optimization, OOD = Out-of-Distribution, Req. = Required.                                          
+
+> Property PINN Direct NO DiffusionPDE DPS/FunDPS DiLO (Ours) Paradigm Physics Opt. End-to-End Joint Gen. Decoupled Decoupled Prior Space None None Function Space Ambient/Func. Latent Space Paired Data No (PDE) Yes (Massive) Yes (Massive) No (Unpaired) No (Unpaired) Retraining †Yes Yes Yes No No Physics Eval. Clean N/A N/A (Joint) Noisy (OOD Risk) Clean (No OOD) Trajectory Deterministic Feed-forward Stochastic Stochastic Det. Opt. Physics Cost High (PDE) Low (Surrogate) N/A Varies Low (Surrogate)
+> †Indicates if the model requires retraining when the observation operator changes.
+
+This paper is structured as follows. Section 2 introduces the mathematical framework for the target inverse problems and reviews diffusion models. Section 3 details the proposed DiLO framework and provides a rigorous theoretical convergence analysis. Section 4 evaluates DiLO’s accuracy and extreme noise robustness against baseline methods. Finally, Section 5 concludes the paper and discusses future research directions. 
+
+# 2 Background. 
+
+## 2.1 Mathematical Framework. 
+
+Let Ω ⊂ Rd be a bounded domain with a smooth boundary ∂Ω. We define the computational domain as X = Ω (stationary) or X = Ω × (0 , T ) (time-dependent), with boundary ∂X . Let a ∈ A 
+
+be an unknown physical parameter (e.g., a coefficient field) in an admissible function space. The forward PDE is formulated as: 
+
+Lau = f in X, Bu = g on ∂X, (1) where La and B are the parameter-dependent differential operator and the boundary operator, respectively. The state variable u ∈ U , source term f ∈ F , and boundary condition g ∈ G belong to appropriate Banach or Hilbert spaces. Solving the forward problem yields u given a, f , and g. In practice, the full internal field u is rarely accessible. Instead, we typically rely on boundary measurements, defined by an observation operator: Λa : G → H , g 7 → Λa(g) = h(u)|∂X , (2) which maps the boundary input g to a measurement h(u) in space H. For a fixed f , this induces the parameter to observable map (or forward operator) F:
+
+F : A → L (G, H), a 7 → F (a) = Λ a, (3) where L(G, H) is the space of bounded linear operators from G to H.3The inverse problem aims to reconstruct a ∈ A from measurements Λ a. The inverse map is defined as: 
+
+F−1 : Ran( F) ⊂ L (G, H) → A , Λa 7 → a = F−1(Λ a). (4) While recovering a from a single measurement is generally ill posed, utilizing the full observation operator Λ a often restores uniqueness. Theoretical guarantees for inverse problems focus on the uniqueness and stability of F−1. We recommend [29] for a systematic introduction. Following this abstract mathematical framework, we provide four concrete examples of PDE-constrained inverse problems to which this framework is applicable. 
+
+## 2.2 EIT. 
+
+EIT is a non-invasive modality that reconstructs the internal conductivity σ of a medium from boundary electrical measurements. This technique is highly valued for real time applications such as lung ventilation monitoring and stroke detection due to its portability and lack of ionizing radiation. Based on the quasi-static approximation of Maxwell’s equations where displacement currents are neglected, the electric potential u satisfies[1]: 
+
+∇ · (σ(x)∇u(x)) = 0 . x ∈ Ω ⊂ R2 (5) The forward problem determines the potential u given a conductivity σ and applied current density j via the Neumann boundary condition σ∂u/∂ n = j on ∂Ω. In practice, measurements are acquired through M discrete electrode patterns, yielding voltage data V k = u|(k) 
+
+> ∂Ω
+
+for k = 1 , . . . , M .We define the forward mapping as V = G[σ], where the numerical solution is typically obtained via the Finite Element Method (FEM). The inverse problem seeks to invert this mapping to recover the unknown conductivity: 
+
+σ∗ = G−1(V ). (6) This is formulated as a PDE-constrained optimization task to minimize the discrepancy between observed and predicted voltages: 
+
+σ∗ = arg min 
+
+> σ∈A
+> M
+
+X
+
+> k=1
+
+∥V k − (G[σ]) k∥2, (7) where A is the set of admissible conductivities satisfying physical bounds σmin ≤ σ ≤ σmax .The EIT inverse problem is notoriously ill posed in the sense of Hadamard. This manifests as an exponential decay of singular values in the linearized forward operator, meaning high frequency spatial components are severely attenuated at the boundary. Consequently, reconstructions are highly sensitive to noise. 
+
+## 2.3 Inverse Scattering. 
+
+We consider two dimensional time harmonic acoustic scattering governed by the Helmholtz equa-tion. This model represents the temporal Fourier transform of the constant density wave equation[3]: ∆u(x) + ω2n(x)u(x) = 0 , x ∈ Ω ⊂ R2 (8) where u is the total wave field, ω the angular frequency, and n(x) the refractive index. Defining the perturbation η(x) = n(x) − 1, we assume supp( η) ⊂ Ω within a homogeneous background. 4The forward problem determines the scattered field usc = u − uin generated by an incident plane wave uin = eiωs ·x with direction s ∈ S1. The scattered field satisfies: 
+
+(∆usc + ω2(1 + η)usc = −ω2ηu in 
+
+lim |x|→∞ 
+
+p|x|
+
+ ∂u sc  
+
+> ∂|x|
+
+− iωu sc 
+
+
+
+= 0 (9) where the second line is the Sommerfeld radiation condition ensuring uniqueness. Measurements are acquired on a circle D of radius R enclosing Ω. For receivers at r ∈ S1, the scattering data is Λω (r, s ) = usc (Rr ; s), defining the forward map Λ ω = Fω [η]. The inverse problem seeks to reconstruct the perturbation η from scattering data across a set of frequencies Ω f req :
+
+η∗ = F−1({Λω }ω∈Ωf req ). (10) This is formulated as a PDE-constrained optimization task minimizing the L2 data misfit: 
+
+η∗ = arg min 
+
+> η
+
+X
+
+> ω∈Ωf req
+
+Z
+
+> [0 ,2π]2
+
+|Λω (r, s ) − (Fω η)( r, s )|2 dr ds. (11) 
+
+## 2.4 Inverse N-S. 
+
+We focus on recovering the initial state of a 2D incompressible fluid from later observations. Under the velocity-vorticity formulation, the Navier-Stokes equations are defined by the scalar vorticity 
+
+w(x, t ) = ∇× u, where u is the velocity field. Given an initial vorticity distribution w(x, 0) = w0(x), the forward problem determines the state of the fluid w(x, T ) at a target time T :
+
+∂tw(x, t ) + u(x, t ) · ∇ w(x, t ) = ν∆w(x, t ) + f (x), x ∈ (0 , 2π)2, t ∈ (0 , T ]
+
+∇ · u(x, t ) = 0 , x ∈ (0 , 2π)2, t ∈ [0 , T ] (12) 
+
+w(x, 0) = w0(x), x ∈ (0 , 2π)2
+
+where ν denotes the kinematic viscosity and f represents external forcing. We denote the forward evolution operator as ST , such that wT = ST [w0]. The mapping ST is highly nonlinear and exhibits sensitive dependence on initial conditions. The inverse N-S problem seeks to reconstruct the initial vorticity field w0 from observations of the vorticity wobs acquired at time t = T . Mathematically, this entails solving: 
+
+w∗ 
+
+> 0
+
+= S−1 
+
+> T
+
+(wobs ). (13) This is formulated as a PDE-constrained optimization problem aimed at minimizing the discrep-ancy between the evolved state and the observed data: 
+
+w∗ 
+
+> 0
+
+= arg min 
+
+> w0
+
+12 ∥S T [w0] − wobs ∥2. (14) The inverse N-S problem is inherently ill posed as the diffusion term ν∆w dissipates high-frequency information resulting highly sensitive to noise. Furthermore, nonlinear convection in-duces a non-convex optimization landscape prone to converging to local minima. 
+
+## 2.5 Denoising Diffusion Probabilistic Models. 
+
+Given a dataset sampled from an unknown distribution pdata (x), generative models aim to draw samples from this distribution. Diffusion models define a forward stochastic differential equation 5(SDE) that diffuses the data distribution pdata (x) into a known prior distribution π(x) (typically a Gaussian) over a time horizon t ∈ [0 , T ]: dxt = f (t)xtdt + g(t)d wt, (15) where f (t) and g(t) are drift and diffusion coefficients, and wt is a standard Wiener process. The marginal distribution pt(x) transitions from the data distribution p0(x) = pdata (x) to the noise distribution pT (x) ≈ N (0 , I). The generative process corresponds to the time reversal of (15). The reverse-time SDE is given by: dxt = f (t)xt − g(t)2∇xt log pt(xt) dt + g(t)d ¯ wt, (16) where ¯wt is a standard Wiener process in the reverse time. The critical term here is the score function ∇xt log pt(xt), which points towards high density regions of the data distribution at each noise level. Since the true score function is unknown, it is estimated by a time dependent neural network 
+
+sθ (xt, t ). This network is trained via Denoising Score Matching to minimize: 
+
+L(θ) = Et,x 0,x t
+
+h
+
+sθ (xt, t ) − ∇ xt log pt|0(xt|x0) 2i
+
+, (17) where t is uniformly sampled from [0 , T ] and the expectation is taken over t, xt ∼ p(xt|x0), and 
+
+x0 ∼ pdata (x). 
+
+Denoising Diffusion Implicit Models. Once trained, the score model sθ replaces the true score for sample generation. Samples are typically generated by solving the reverse process using numerical solvers such as Denoising Diffusion Implicit Models (DDIM). To accelerate the generation process, DDIM constructs a non-Markovian diffusion process as a non-Markovian process to remedy this. This enables a faster sampling process with the sampling steps given by 
+
+xt−1 = √¯αt−1 ˆx0(xt) + 
+
+q
+
+1 − ¯αt−1 − ηδ 2 
+
+> t
+
+sθ (xt, t ) + ηδ tϵ, t = T, . . . , 0, (18) where αt = 1 − βt, ¯ αt = Qti=1 αi, ϵ ∼ N (0, I), η is the temperature parameter, δt controls the stochasticity of the update step, and ˆ x0(xt) denotes the predicted x0 from xt which takes the form ˆx0(xt) = 1
+
+√¯αt
+
+(xt + √1 − ¯αtsθ (xt, t )) , (19) which is an application of Tweedie’s formula. Here, sθ is usually trained using the epsilon matching score objective. DDIM will be a crucial part of our approach. 
+
+Solving Inverse Problems with Diffusion Models. This work focuses on the inference of physical parameters x (e.g., conductivity, permeability) from sparse or noisy observations y. The inverse problem could be modeled as sampling from the posterior distribution p(x|y). Analogous to the unconditional sampling process by solving the reverse time SDE (16), we can sample from the posterior distribution p(x|y) by solving the following conditional reverse time SDE [12]: dxt = f (t)xt − g(t)2∇xt log pt(xt|y)dt + g(t)d ¯ wt, t ∈ [0 , 1] . (20) The core challenge in diffusion-based inverse solvers lies in integrating physical measurements into this generative process. While conditional score models [12] often require extensive paired 6datasets for supervised learning, unsupervised test-time guidance methods, such as Diffusion Poste-rior Sampling (DPS) [14] and RED-diff [15], approximate conditional inference using unconditionally-trained priors. For complex PDE-constrained problems, the computational burden of iteratively evaluating the true forward physical model during the reverse diffusion process is prohibitive. To mitigate this, recent methods like FunDPS [27] and DDIS [28] have shifted toward explicitly de-coupling the generative prior from physical constraints, often employing neural operators as fast surrogate solvers. Despite these structural advancements, existing decoupled methods still face fundamental lim-itations that hinder their application to highly nonlinear physical systems. A critical bottleneck in these iterative sampling loops is the reliance on Tweedie’s estimate, ˆ x0(xt), to approximate the clean state for physics evaluation. Crucially, while ˆ x0(xt) aims to predict the target, at early and intermediate timesteps it mathematically evaluates to a posterior mean ( E[x0|xt])—a blurry, smoothed-out approximation lacking the high-frequency structural details of a true physical state. While mathematically viable for simple linear masking (as in joint-embedding models), using these partially denoised, low-fidelity predictions as inputs for highly nonlinear PDE surrogates is fun-damentally flawed. It inevitably forces the surrogate models to process data distributions they were never trained on, yielding unpredictable OOD errors and severe gradient instabilities. To fundamentally resolve these algorithmic mismatches, we introduce the DiLO framework. 
+
+# 3 Diffusion Latent Optimization (DiLO) 
+
+As illustrated in Figure 1, DiLO decouples generative priors from physical constraints through a two phase framework. A. Offline Training establishes the core models: (i) a Latent Diffusion Model (LDM) trained in a compressed space Z via an Encoder ( E) and Decoder ( D) to capture the prior distribution of physical parameters a ∈ A , and (ii) a fast Differentiable Surrogate ˜Fϕ pre-trained on paired data to replace traditional numerical PDE solvers. Building upon these components, 
+
+B. Online Inference reformulates the inverse problem as a strictly deterministic optimization over the initial latent noise zT . By projecting zT through a variance free denoising trajectory, we obtain a fully denoised latent state z0. Crucially, the surrogate ˜Fϕ evaluates the physical loss exclusively on the clean, reconstructed parameter field ˆ a = D(z0), eliminating OOD errors. Precise measurement gradients are then backpropagated through D and the deterministic sampling pathway via Solver-in-the-Loop Backpropagation. This stable optimization directly updates zT ,guiding the optimization along the learned physical manifold to recover the unique optimal field 
+
+a∗.
+
+## 3.1 Offline Training 
+
+Efficient Inference via Compressed Diffusion Direct optimization in the original high di-mensional parameter space A is often ill-posed and prone to converging to unphysical local minima. To enable efficient and stable inference for high dimensional physical parameters, we perform the diffusion process in a compressed representation space. Operating in a compressed space inherently constrains the search process to a valid, low dimensional physical manifold. We define the inference trajectory in a lower dimensional space Z. To this end, we first pre-train an autoencoder consisting of an encoder E and a decoder D by minimizing the reconstruction error: 
+
+Lae = Ea∼pdata (a)
+
+∥a − D (E(a)) ∥2
+
+> A
+
+ , (21) where E : A → Z maps the high-dimensional physical parameters to a latent representation z, and 
+
+D : Z → A performs the inverse reconstruction. 7Figure 1: The DiLO framework. (A) Offline Training : Pre-training the Latent Diffusion Model (LDM) to serve as a plug-and-play prior, alongside a Differentiable Surrogate (e.g., FNO) acting as a forward physics operator. (B) Online Inference : Solving the inverse problem via deterministic latent optimization, where precise gradients from the measurement loss are backpropagated to the initial noise zT .
+
+Latent Diffusion Model. Once the compressed latent space is established, we apply the diffu-sion framework introduced previously to learn the prior distribution of the latent codes z = E(a). Following the noise-prediction parameterization commonly adopted in DDIMs, we formulate the score model sθ as a noise prediction network ϵθ (zt, t ). The training objective is thus adapted from the standard denoising score matching to the latent epsilon-matching objective: 
+
+Ldiff = Ez∼E (a),ϵ ∼N (0 ,I),t 
+
+∥ϵ − ϵθ (zt, t )∥2 , (22) where zt = √¯αtz + √1 − ¯αtϵ represents the noisy latent state at timestep t. This pre-trained network ϵθ (zt, t ) now serves as a powerful, low dimensional generative prior for our subsequent optimization. 
+
+Neural Operator as Differentiable Forward Physics. To bridge the gap between the gen-erative prior and the observed measurements y ∈ H , we utilize a Neural Operator ˜Fϕ (e.g., FNO or DeepONet), which provides a fast, differentiable mapping from the parameter space A to the observation space H. The surrogate operator is pre-trained on paired datasets ( a, y ) generated from the underlying true PDE forward map F:
+
+Lop = E(a,y )
+
+h
+
+∥y − ˜Fϕ(a)∥2
+
+> H
+
+i
+
+. (23) 
+
+The Bottleneck of Standard Diffusion Guidance. With both models pre-trained, a natural approach to solve the inverse problem is to enforce measurement consistency during the genera-tive process. This is typically achieved by utilizing the differentiable surrogate ˜Fϕ to guide the 8reverse diffusion trajectory step-by-step. Specifically, at each noise level t, the likelihood gradient is approximated via Tweedie’s estimate ˆ a0(at): 
+
+∇at log p(y|at) ≈ − γ∇at ∥y − ˜Fϕ(ˆ a0(at)) ∥2
+
+> H
+
+, (24) where y is the observation and γ scales the guidance strength. However, this direct integration exposes a critical theoretical bottleneck. During the early and middle stages of diffusion, the intermediate estimates of the physical state, ˆ a0(at), are mathematically equivalent to posterior means E[a0|at]. These averaged states inherently exhibit smoothing artifacts and lack the sharp, high-fidelity structures characteristic of true physical fields. Conversely, physical surrogates like FNO are trained exclusively on Avalid , the manifold of fully-resolved parameter fields governed by precise PDE dynamics. Feeding these blurry, non-physical conditional mean states into a highly nonlinear surrogate creates a fundamental physics mismatch. Due to the intrinsic nonlinearity of the PDE forward map F, evaluating the surrogate on an averaged state is mathematically flawed: by Jensen’s inequality, F(E[a0|at]) ̸ = E[F(a0)|at]. This structural mismatch forces the neural operator into OOD regimes, yielding uninformative loss evaluations and gradient instabilities. To systematically resolve this bottleneck, we formalize the Manifold Consistency Require-ment : the physical surrogate must be evaluated exclusively on states within the valid physical manifold Avalid . Recognizing that evaluating the surrogate on intermediate posterior means inher-ently violates this requirement, we introduce the DiLO framework to fundamentally reformulate the inference trajectory. 
+
+## 3.2 Diffusion Latent Optimization 
+
+To solve the inverse problem yobs ≈ ˜Fϕ(a) while strictly satisfying the Manifold Consistency Requirement, we must treat the generative process as an end-to-end differentiable computational graph and directly optimize the initial latent state zT .
+
+Deterministic Sampling Trajectory. To make this end-to-end optimization mathematically tractable and numerically stable, DiLO completely eliminates the inherent randomness of standard diffusion sampling. We adopt the deterministic Denoising Diffusion Implicit Model (DDIM) by setting the temperature parameter η = 0. The reverse trajectory in the latent space Z thus collapses into a purely deterministic Ordinary Differential Equation (ODE) process: 
+
+zt−1 = √¯αt−1 ˆz0(zt) + p1 − ¯αt−1ϵθ (zt, t ), (25) where ˆ z0(zt) is the predicted clean latent state. By transforming the stochastic generation into a strictly deterministic trajectory, we establish a stable, bijective-like mapping between the initial noise zT and the final latent code z0. In this framework, the pre-trained diffusion model provides a powerful structural prior that constrains the optimization landscape to a manifold of physically valid states. The deterministic DDIM trajectory acts as a deterministic differentiable pathway to reach the optimal solution. 
+
+Remark. From a numerical optimization perspective, retaining the stochasticity (i.e., η > 0)renders direct gradient-based optimization practically infeasible. A stochastic sampling path implies that evaluating the measurement loss L(zT ) for the exact same initial noise zT would yield widely varying results across different iterations. The deterministic ODE formulation is thus not merely a design choice, but a fundamental mathematical prerequisite for establishing a fixed, reproducible loss landscape. 
+
+9Latent Space Optimization. With the deterministic mapping established, the inverse problem is solved by minimizing the discrepancy between the predicted observation and the measured data yobs ∈ H . Instead of sequentially modifying intermediate scores, we define the physical measurement loss L and optimize the initial latent noise zT directly: 
+
+L(zT ) = ∥ ˜Fϕ(D(z0(zT ))) − yobs ∥2
+
+> H
+
+. (26) Utilizing the chain rule, precise gradients flow from the clean, physically valid reconstructed man-ifold back through the deterministic sampling trajectory to zT :
+
+∂L
+
+∂z T
+
+= ∂L
+
+∂y · ∂ ˜Fϕ
+
+∂a · ∂D
+
+∂z 0
+
+· ∂z 0
+
+∂z T
+
+, (27) where we denote the intermediate physical parameter as a = D(z0) and the predicted observation as y = ˜Fϕ(a). Equipped with this gradient, we can iteratively update the initial latent state zT using standard gradient-based optimizers (e.g., Adam or Gradient Descent). We formally summarize this iterative procedure as the Diffusion Latent Optimization (DiLO) framework in Algorithm 1. 
+
+Algorithm 1 Diffusion Latent Optimization (DiLO)  
+
+> 1:
+
+Require: Pre-trained Score Model sθ , Decoder D, Differentiable Surrogate ˜Fϕ, Observations 
+
+yobs , Iterations M , Learning rate η 
+
+> 2:
+
+Initialize: Initial latent noise zT ∼ N (0 , I) 
+
+> 3:
+
+for i = 1 to M do ▷ Outer optimization loop  
+
+> 4:
+
+1. Deterministic Trajectory ( η = 0 ):  
+
+> 5:
+
+for t = T down to 1 do  
+
+> 6:
+
+ˆz0 = 1√ ¯αt
+
+ zt + √1 − ¯αtsθ (zt, t ) ▷ Predict clean latent via Tweedie’s formula  
+
+> 7:
+
+zt−1 = √¯αt−1 ˆz0 + √1 − ¯αt−1sθ (zt, t ) ▷ Deterministic DDIM update step  
+
+> 8:
+
+end for  
+
+> 9:
+
+▷ Yields final deterministic latent code z0 
+
+> 10:
+
+2. Physical Reconstruction:  
+
+> 11:
+
+ˆa = D(z0) ▷ Map latent code to physical parameter  
+
+> 12:
+
+3. Forward Physics & Loss:  
+
+> 13:
+
+ˆy = ˜Fϕ(ˆ a) ▷ Fast evaluation via Neural Operator  
+
+> 14:
+
+Lphysics = ∥ˆy − yobs ∥2 
+
+> H
+> 15:
+
+4. Latent Gradient Guidance:  
+
+> 16:
+
+g = ∇zT Lphysics ▷ Solver-in-the-loop backpropagation  
+
+> 17:
+
+zT ← zT − ηg ▷ Update initial noise  
+
+> 18:
+
+end for  
+
+> 19:
+
+Output: Optimized physical parameter a∗ = D(z0(z∗ 
+
+> T
+
+)) 
+
+## 3.3 Convergence Analysis 
+
+We ground our analysis in Electrical Impedance Tomography (EIT); the convergence analysis for other physical systems follows a similar methodology. The forward physical model F : σ 7 → u|∂Ω
+
+is governed by: (
+
+∇ · (σ(x)∇u(x)) = 0 , x ∈ Ω
+
+σ(x) ∂u ∂n = g. x ∈ ∂Ω (28) 10 Assume the conductivity is restricted to an admissible set of uniformly elliptic L∞ functions: Σad = {σ ∈ L∞(Ω) | 0 < λ ≤ σ(x) ≤ Λ < ∞ a.e. in Ω } . (29) DiLO optimizes the initial latent state zT ∈ Z through a deterministic generation path σ = M(zT ). By substituting the Tweedie estimate (19), the Deterministic Sampling Trajectory update (25) expands to: 
+
+zt−1 =
+
+√¯αt−1
+
+√¯αt
+
+| {z }
+
+> ct
+
+zt +
+
+p1 − ¯αt−1 −√¯αt−1
+
+√¯αt
+
+√1 − ¯αt
+
+| {z }
+
+> dt
+
+ϵθ (zt, t ). (30) Given that the generative prior is trained exclusively on physically valid parameters, we assume that the deterministic mapping projects strictly into the admissible set: M(zT ) ∈ Σad for all 
+
+zT ∈ Z , which unconditionally guarantees the uniform ellipticity of the EIT forward equation. Let the exact physical data misfit and its corresponding composite objective in the latent space be defined respectively as: 
+
+Lphys (σ) = 12 ∥F (σ) − Vobs ∥2
+
+> L2(∂Ω)
+
+, Lexact (zT ) = Lphys (M(zT )) . (31) DiLO optimizes a surrogate objective parameterized by a fast neural operator ˜Fϕ ≈ F :
+
+Lsurr (zT ) = 12 ∥ ˜Fϕ(M(zT )) − Vobs ∥2
+
+> L2(∂Ω)
+
+. (32) By the continuous adjoint state method[30], the first-order Fr´ echet derivative of the physical misfit is ∇σ Lphys (σ) = −∇ u · ∇ w, where w(x) is the adjoint potential satisfying: 
+
+(
+
+∇ · (σ(x)∇w(x)) = 0 , x ∈ Ω
+
+σ(x) ∂w ∂n = u − Vobs . x ∈ ∂Ω (33) Differentiating Eq. 30, the single-step generative Jacobian explicitly evaluates to: 
+
+Jt = ∂z t−1
+
+∂z t
+
+= ctI + dt∇zt ϵθ (zt, t ). (34) By the chain rule, the exact first-order gradient with respect to the initial latent noise zT is: 
+
+∇zT Lexact (zT ) = JM(zT )T   − ∇ u · ∇ w, (35) where JM(zT ) is the full Jacobian of the generative mapping M with respect to zT :
+
+JM(zT ) = ∂M(zT )
+
+∂z T
+
+= JD (z0)
+
+> T
+
+Y
+
+> t=1
+
+ ctI + dt∇zt ϵθ (zt, t ). (36) To establish the L-smoothness of ∇zT Lexact , we evaluate its second-order derivative. It is explicitly characterized through the second-order adjoint state method. 
+
+Lemma 3.1 (Hessian via Second-Order Adjoints and Unrolled Dynamics) . Let u and w be the solutions to the forward equation (28) and the first-order adjoint equation (33) , respectively. For any conductivity perturbation ˆσ pushed forward from the latent space, we define the tangent state 
+
+ˆu and the second-order adjoint state ˆw as the unique solutions to the following boundary value problems: 
+
+(
+
+∇ · (σ∇ˆu) = −∇ · (ˆ σ∇u)
+
+σ ∂ ˆu∂n = −ˆσ ∂u ∂n
+
+and 
+
+(
+
+∇ · (σ∇ ˆw) = −∇ · (ˆ σ∇w)
+
+σ ∂ ˆw∂n = ˆ u − ˆσ ∂w ∂n
+
+(37) 11 Using these solutions, the Hessian matrix HzT = ∇2 
+
+> zT
+
+Lexact (zT ) ∈ Rdim( Z)×dim( Z) admits: 
+
+HzT = JM(zT )T h
+
+Hphys 
+
+i
+
+JM(zT ) + 
+
+Z
+
+> Ω
+
+  − ∇ u · ∇ w∇2 
+
+> zT
+
+M(x; zT ) dx, (38) 
+
+where JM(zT )T acts as the adjoint operator mapping from the dual space L1(Ω) back to the finite-dimensional latent space Z. The action of the continuous physical Hessian operator Hphys on the perturbation ˆσ is given by: 
+
+Hphys ˆσ = −∇ ˆu · ∇ w − ∇ u · ∇ ˆw, (39) 
+
+and the generative curvature tensor ∇2 
+
+> zT
+
+Mi(zT ) is explicitly unrolled as a sum of step-wise diffusion Hessians pulled back via the accumulated Jacobians Js = csI + ds∇zs ϵθ (zs, s ):
+
+∇2 
+
+> zT
+
+Mi(zT ) = 
+
+> T
+
+Y
+
+> s=1
+
+Js
+
+!T h
+
+∇2 
+
+> z0
+
+Di(z0)
+
+i TY
+
+> s=1
+
+Js
+
+!
+
++
+
+> T
+
+X
+
+> t=1
+> T
+
+Y
+
+> s=t+1
+
+Js
+
+!T " X
+
+> k
+
+JD (z0)
+
+> t−1
+
+Y
+
+> m=1
+
+Jm
+
+!
+
+> i,k
+
+dt∇2 
+
+> zt
+
+ϵ(k) 
+
+> θ
+
+(zt, t )
+
+# TY
+
+> s=t+1
+
+Js
+
+!
+
+.
+
+(40) 
+
+Proof. The decomposition follows from applying the generalized tensor chain rule to Lphys ◦ M .The explicit bilinear formulation of the physical Hessian Hphys is derived by taking the directional Fr´ echet derivative of the first-order gradient, yielding the tangent and second-order adjoint PDEs. Concurrently, the unrolled generative curvature is derived by applying the multivariate chain rule for second derivatives to the discrete DDIM trajectory. The full step-by-step derivation is detailed in Appendix A. To rigorously analyze convergence, we constrain the neural network components using the following boundedness and approximation assumptions. 
+
+Assumption 1 (Neural Network and Surrogate Bounds) .
+
+• The continuous time-conditioned neural network ϵθ (zt, t ) possesses uniformly bounded first and second spatial derivatives: ∥∇ zt ϵθ ∥ ≤ Lϵ, 1 and ∥∇ 2 
+
+> zt
+
+ϵθ ∥ ≤ Lϵ, 2.
+
+• The spatial decoder D(z0) is twice continuously differentiable with bounded Jacobians and Hessians: ∥JD (z0)∥ ≤ LD,1 and ∥∇ 2 
+
+> z0
+
+D(z0)∥ ≤ LD,2.
+
+• The well-trained neural surrogate closely tracks the exact adjoint-derived gradient on the restricted manifold M(Z), such that ∥∇ zT Lsurr − ∇ zT Lexact ∥Z ≤ δ.
+
+Lemma 3.2 (Hessian-Bounded L-Smoothness) . Under the domain restriction M(zT ) ∈ Σad , the exact objective Lexact (zT ) is globally L-smooth (i.e., its Hessian is uniformly bounded: ∥HzT ∥ ≤ L). Guided by Assumption 1, the surrogate objective Lsurr (zT ) inherits this global L-smoothness in Z.Proof. To establish global L-smoothness, we bound the spectral norm of the composite Hessian HzT
+
+derived in Eq. 38. Applying the triangle inequality to the unrolled decomposition, we independently bound the generative and physical components. 
+
+Step 1: Generative Boundedness. 
+
+By Assumption 1, the norm of the step-wise diffusion Jacobian Js = csI + ds∇zs ϵθ is uniformly bounded by ∥Js∥ ≤ cs +dsLϵ, 1 ≡ ρs. Consequently, any accumulated backward or forward Jacobian is strictly bounded by the product of these constants, e.g., ∥ QTs=t+1 Js∥ ≤ QTs=t+1 ρs.12 Applying the triangle and submultiplicative inequalities to the explicitly unrolled generative curvature (Eq. 40), we obtain: 
+
+∥∇ 2 
+
+> zT
+
+M(zT )∥ ≤ 
+
+> T
+
+Y
+
+> s=1
+
+ρs
+
+!2
+
+∥∇ 2 
+
+> z0
+
+D∥ +
+
+> T
+
+X
+
+> t=1
+> T
+
+Y
+
+> s=t+1
+
+ρs
+
+!2
+
+∥JD ∥
+
+> t−1
+
+Y
+
+> m=1
+
+ρm
+
+!
+
+dt∥∇ 2 
+
+> zt
+
+ϵθ ∥≤ LD,2
+
+> T
+
+Y
+
+> s=1
+
+ρs
+
+!2
+
++ LD,1Lϵ, 2
+
+> T
+
+X
+
+> t=1
+
+dt
+
+> T
+
+Y
+
+> s=t+1
+
+ρs
+
+!2 t−1Y
+
+> m=1
+
+ρm
+
+!
+
+≡ CH < ∞.
+
+(41) Similarly, the full generative Jacobian is bounded by ∥JM(zT )∥ ≤ LD,1
+
+QTt=1 ρt ≡ CJ < ∞. Since 
+
+T is finite, CH and CJ are well-defined finite constants. 
+
+Step 2: Physical Regularity and Boundedness. 
+
+The generative prior unconditionally restricts the conductivity to the admissible set Σ ad , ensuring uniform ellipticity σ ≥ λ > 0. By standard elliptic regularity and the Lax-Milgram theorem, the weak solutions to the forward equation (28) and the adjoint equation (33) are bounded in H1(Ω) norms: ∥u∥H1 ≤ Cu and ∥w∥H1 ≤ Cw.To bound the physical Hessian action (Eq. 39), we evaluate the dependence of the tangent state ˆu and the second-order adjoint state ˆ w on the latent perturbation ˆ σ. The tangent linear equation is governed by ∇· (σ∇ˆu) = −∇· (ˆ σ∇u). Testing this weak form with v = ˆ u and applying Poincar´ e’s and H¨ older’s inequalities yields the strict energetic bound: 
+
+λ∥∇ ˆu∥2 
+
+> L2(Ω)
+
+≤
+
+Z
+
+> Ω
+
+σ|∇ ˆu|2 = −
+
+Z
+
+> Ω
+
+ˆσ∇u · ∇ ˆu ≤ ∥ ˆσ∥L∞(Ω) ∥∇ u∥L2(Ω) ∥∇ ˆu∥L2(Ω) . (42) Dividing by ∥∇ ˆu∥L2 confirms that ∥∇ ˆu∥L2 ≤ 1 
+
+> λ
+
+∥∇ u∥L2 ∥ˆσ∥L∞ ≤ Cˆu∥ˆσ∥L∞ .A parallel elliptic regularity argument, augmented by trace theorems for the state-dependent boundary condition σ∂ n ˆw = ˆ u − ˆσ∂ nw, establishes that the second-order adjoint gradient is simi-larly bounded: ∥∇ ˆw∥L2 ≤ C ˆw∥ˆσ∥L∞ .Consequently, applying the Cauchy-Schwarz inequality to the explicit physical Hessian bilinear form (Eq. 39) yields: 
+
+∥Hphys ˆσ∥L1(Ω) = ∥ − ∇ ˆu · ∇ w − ∇ u · ∇ ˆw∥L1(Ω) 
+
+≤ ∥∇ ˆu∥L2(Ω) ∥∇ w∥L2(Ω) + ∥∇ u∥L2(Ω) ∥∇ ˆw∥L2(Ω) 
+
+≤  CˆuCw + CuC ˆw
+
+∥ˆσ∥L∞(Ω) ≡ Cphys ∥ˆσ∥L∞(Ω) .
+
+(43) This proves that the physical Hessian operator Hphys is uniformly bounded by a constant Cphys on the admissible manifold. Furthermore, the first-order gradient satisfies ∥∇ σ Lphys (σ)∥L1 ≤ CuCw ≡
+
+CG < ∞.
+
+Step 3: Synthesis. 
+
+Substituting the explicit bounds derived in Step 1 and Step 2 back into the composite Hessian decomposition (Eq. 38) yields the global strict upper bound: 
+
+∥HzT ∥ ≤ C2 
+
+> J
+
+Cphys + CGCH ≡ L < ∞. (44) Because the spectral norm of the explicit composite Hessian is globally bounded by L, the exact objective Lexact (zT ) is strictly L-smooth. Based on the L-smoothness established above, we now prove that the surrogate trajectory reliably converges to a stationary point within this well-behaved subspace. 13 Theorem 3.3 (Convergence to a Stationary Point) . Let {z(k) 
+
+> T
+
+}Kk=0 be the trajectory generated by gradient descent on the surrogate loss: z(k+1)  
+
+> T
+
+= z(k) 
+
+> T
+
+− ηlr ∇zT Lsurr (z(k) 
+
+> T
+
+) with a learning rate 
+
+ηlr ≤ 1 
+
+> L
+
+. Under Assumption 1 and Lemma 3.2, the gradient of the surrogate loss asymptotically converges to zero: 
+
+lim  
+
+> K→∞
+
+∥∇ zT Lsurr (z(K) 
+
+> T
+
+)∥Z = 0 . (45) 
+
+Furthermore, as K → ∞ , the trajectory asymptotically reaches a δ-approximate stationary point of the exact physical objective: 
+
+lim sup 
+
+> K→∞
+
+∥∇ zT Lexact (z(K) 
+
+> T
+
+)∥Z ≤ δ. (46) 
+
+Proof. By the explicit Hessian-bounded L-smoothness of the surrogate objective established in Lemma 3.2, the standard descent inequality holds for any iteration k:
+
+Lsurr (z(k+1)  
+
+> T
+
+) ≤ L surr (z(k) 
+
+> T
+
+) − ηlr ∥∇ zT Lsurr (z(k) 
+
+> T
+
+)∥2 
+
+> Z
+
++ Lη 2
+
+> lr
+
+2 ∥∇ zT Lsurr (z(k) 
+
+> T
+
+)∥2 
+
+> Z
+
+. (47) Setting the optimal learning rate ηlr = 1 
+
+> L
+
+, this simplifies to a strict functional decrease: 
+
+Lsurr (z(k+1)  
+
+> T
+
+) ≤ L surr (z(k) 
+
+> T
+
+) − 12L ∥∇ zT Lsurr (z(k) 
+
+> T
+
+)∥2 
+
+> Z
+
+. (48) Rearranging the terms yields a bound on the squared gradient norm at step k:12L ∥∇ zT Lsurr (z(k) 
+
+> T
+
+)∥2 
+
+> Z
+
+≤ L surr (z(k) 
+
+> T
+
+) − L surr (z(k+1)  
+
+> T
+
+). (49) Summing this inequality over K iterations from k = 0 to K − 1, the intermediate terms telescope: 12L
+
+> K−1
+
+X
+
+> k=0
+
+∥∇ zT Lsurr (z(k) 
+
+> T
+
+)∥2 
+
+> Z
+
+≤ L surr (z(0)  
+
+> T
+
+) − L surr (z(K) 
+
+> T
+
+). (50) Since the surrogate loss is bounded below by its global minimum L∗
+
+> surr
+
+, the right side is strictly bounded by the initial optimality gap Lsurr (z(0)  
+
+> T
+
+) − L ∗
+
+> surr
+
+. Taking the limit as K → ∞ , the infinite series of squared gradient norms must converge. A necessary condition for the convergence of this non-negative series is that the individual terms vanish: lim  
+
+> K→∞
+
+∥∇ zT Lsurr (z(K) 
+
+> T
+
+)∥Z = 0 . (51) This confirms that the trajectory asymptotically reaches a stationary point of the surrogate objec-tive. Finally, we evaluate the exact physical gradient at this limit point. By applying the triangle inequality and the surrogate approximation bound from Assumption 1, we strictly bound the exact gradient norm: 
+
+∥∇ zT Lexact (z(∞) 
+
+> T
+
+)∥Z ≤ ∥∇ zT Lexact (z(∞) 
+
+> T
+
+) − ∇ zT Lsurr (z(∞) 
+
+> T
+
+)∥Z + ∥∇ zT Lsurr (z(∞) 
+
+> T
+
+)∥Z
+
+≤ δ. (52) This concludes the proof. 14 4 Experimental Results. 
+
+## 4.1 Dataset Preparation and Pretraining Setup 
+
+For each physical domain, the offline pretraining phase involves two components: (1) training a Latent Diffusion Model (LDM) to capture the physical parameter distribution, and (2) training a Fourier Neural Operator (FNO) [31] on paired data generated via high-precision numerical solvers to act as the forward surrogate. The configurations are summarized below: 
+
+Electrical Impedance Tomography (EIT). We use the LIDC dataset [32], extracting 130,304 2D CT slices (320 × 320) to train the LDM. For the FNO, we generate 3 , 000 training and 200 testing samples at a 256 × 256 resolution, with conductivity values bounded within [0 .01 , 1.0]. To generate the paired input data, boundary voltage measurements are lifted into a complete 2D internal potential field by solving the Laplace equation (∆ u = 0) using a finite difference scheme. The FNO surrogate is configured with 4 layers and 8 Fourier modes. 
+
+Inverse Scattering. Using the InverseBench dataset [16], we train the LDM on 10,000 HL60 nucleus permittivity images. To generate high-fidelity paired data for the FNO, we solve the 2D Helmholtz equation using a 4th-order Finite Element Method (FEM) via NGSolve. The scattering system is simulated across 5 distinct frequencies (1.0 to 5.0 Hz) under 64 incident plane wave directions. The scattered fields are collected by 360 receivers on a 1.6m-radius ring and interpolated onto a 128 × 128 grid for FNO training. 
+
+Inverse Navier-Stokes (N-S). Using 10,000 initial state samples from InverseBench [16], we simulate the fluid flow at Re = 200. The forward physics are governed by the 2D incompressible Navier-Stokes equations with a Kolmogorov forcing term f = −4 cos(4 y). The equations are integrated on a high-resolution 512 × 512 grid (∆ t = 10 −3) using a pseudo-spectral method. After a burn-in period of T = 100 to ensure fully developed turbulence, the vorticity fields are downsampled to a 128 × 128 resolution to train a 4-layer, 8-mode spatio-temporal FNO. 
+
+## 4.2 Inference Setting and Intermediate Results 
+
+EIT For the EIT problem, the latent optimization is run for 3 ,000 iterations with a step size of 5 × 10 −3 using an AdamW optimizer. At each iteration, a fixed 50-step deterministic DDIM trajectory generates a forward prediction, which is compared against the measured voltage data on a 256 × 256 boundary-element mesh (360 electrodes equally spaced on a unit circle). Figure 2 illustrates the iterative reconstruction process for the EIT problem. The top row displays the conductivity fields reconstructed at specific intervals, with the final column showing the Ground Truth (GT) distribution for reference. The bottom row depicts the corresponding absolute error maps between the current reconstruction and the GT. Starting from a random Gaussian latent code, the surrogate-guided prior rapidly resolves the boundary contours of inclusion bodies within the first few hundred iterations, converging stably to an accurate physical field. 
+
+Inverse Scattering For the Inverse Scattering problem (Figure 3), the latent optimization pro-ceeds over 3 ,000 steps using an AdamW optimizer. The FNO surrogate is trained with 64 propaga-tion directions, 5 Fourier modes, width 64, and 6 layers. At each step, 50-step deterministic DDIM sampling projects the latent contrast to the physical domain, and the scattered field residual is evaluated at 360 equispaced sensors ( Lx = Ly = 1 .0, radius = 1 .6). The physics loss combines an absolute term (weight = 5 .0) and a relative term (weight = 2 .0). Starting from a randomly initial-ized scattering contrast, the optimization recovers complex internal structural patterns within the 15 (a) Iteration 0000 (b) Iteration 0050 (c) Iteration 0100 (d) Iteration 0500 (e) Iteration 1000 
+
+Figure 2: Detailed iterative reconstruction of the conductivity distribution for EIT. first several hundred iterations, while maintaining physical consistency between the predicted and measured scattered fields throughout the entire trajectory.      
+
+> (a) Iteration 0000 (b) Iteration 0050 (c) Iteration 0200 (d) Iteration 1000 (e) Iteration 2000 (f) Ground Truth
+
+Figure 3: Detailed iterative reconstruction of the scattering contrast. 
+
+Inverse N-S For the Inverse Navier-Stokes problem, the latent optimization runs for 2 ,000 it-erations with a step size of 1 × 10 −2 using an Adam optimizer ( β1 = 0 .9, β2 = 0 .999, ϵ = 10 −8). The autoencoder compresses the 32 × 32 vorticity field (1 ,024 pixels) into a 128-dimensional latent code, and the diffusion model operates in the corresponding 128-dimensional latent space with 1,000 inference steps. The FNO forward model is trained on 40 timesteps with 20 neurons and 8 Fourier modes, and the measurement loss is the L2 distance between the predicted velocity field and the target observations. As demonstrated in Figure 4, coarse flow topology emerges as early as Iteration 20, and the prediction aligns closely with the ground truth by Iteration 80, confirming that the latent prior effectively constrains the trajectory to a physically valid manifold, accelerating convergence. 16 (a) Iteration 0000 (b) Iteration 0020 (c) Iteration 0040 (d) Iteration 0060 (e) Iteration 0080 (f) Ground Truth 
+
+Figure 4: Detailed iterative reconstruction of the initial vorticity field for the Inverse N-S problem. 
+
+## 4.3 Main Evaluation Results 
+
+We compare our proposed method against several established approaches to evaluate its perfor-mance. We evaluate recent neural operator baselines including FNOs [31], PINO [33], and Deep-ONet [34]. Note that for boundary-value inverse problems such as EIT and inverse scattering, the raw observation f is defined strictly on the domain boundary ∂Ω rather than as a full spatial im-age. To directly employ these volumetric neural operators for inversion, we dimensionally lift the boundary data by computing its harmonic extension. Specifically, we solve the source-free Laplace equation ∆ u = 0 in Ω subject to the Dirichlet boundary condition u|∂Ω = f . The resulting interior field u is then utilized as the spatial input for the neural operators to predict the unknown physical parameter a. Furthermore, we include DiffusionPDE [5] as a key baseline. The qualitative comparison of our proposed framework against various baselines is illustrated in Figure 5. We visualize the reconstruction results for the EIT, Inverse Scattering, and Inverse N-S problems to highlight the structural fidelity and noise-suppression capabilities of our method. To rigorously evaluate the robustness of our framework, we synthesize the noisy observation 
+
+ynoisy by perturbing the clean physical field yclean with zero-mean Gaussian noise, scaled relative to the standard deviation of the original signal: 
+
+ynoisy = yclean + γ · std( yclean ) · ϵ, (53) where γ = 0 .50 controls the relative noise level (50%), std( ·) denotes the standard deviation computed over the spatial field, and ϵ ∼ N (0 , I) is a standard normal distribution matrix of the same dimension. The qualitative impact of this 50% Gaussian noise is further visualized in Figure 6. Our method effectively suppresses the corruption by strictly restricting the solution space to the learned latent manifold. The quantitative performance across the three tasks, under both standard (clean) conditions and an extreme 50% Gaussian noise regime, is summarized in Table 2. Our method consistently outperforms both classical and neural operator-based baselines. To evaluate the robustness of our framework, we added 50% Gaussian noise to the observation data. High-intensity measurement noise often causes traditional and pure neural operator-based inversion methods to fail or suffer from severe artifacts due to the extreme ill-posedness of the problem. However, as demonstrated in the noise evaluation columns, our framework maintains accurate reconstructions. 17 GT Ours DiffusionPDE FNO DeepONet PINO PINN 
+
+(a) Electrical Impedance Tomography 
+
+(b) Inverse Scattering 
+
+(c) Inverse Navier-Stokes 
+
+Figure 5: Qualitative comparison of reconstruction results. 
+
+GT Ours DiffusionPDE FNO DeepONet PINO PINN 
+
+(a) Electrical Impedance Tomography 
+
+(b) Inverse Scattering 
+
+(c) Inverse Navier-Stokes 
+
+Figure 6: Qualitative comparison of reconstruction robustness under 50% Gaussian noise. 18 Table 2: Quantitative comparison of reconstruction accuracy (MAE ↓) across EIT, Inverse Scat-tering, and Inverse N-S problems under standard (Clean) and 50% Gaussian noise conditions.                                             
+
+> Method EIT Inverse Scattering Inverse N-S Clean 50% Noise Clean 50% Noise Clean 50% Noise
+> DeepONet 0.0709 0.1041 0.8539 0.8994 0.0372 0.1083 FNO 0.0613 0.0884 0.5830 0.6130 0.0438 0.1275 PINNs 0.0379 0.0546 0.1334 0.1403 0.0281 0.0816 PINO 0.0758 0.1103 0.6083 0.6396 0.0775 0.2264 DiffusionPDE 0.1218 0.1781 0.7213 0.7590 0.0486 0.1411
+> Ours 0.0128 0.0190 0.0611 0.0645 0.0061 0.0179
+
+## 4.4 More Experiment Results 
+
+To further demonstrate the generalization and numerical stability of the DiLO framework, we evaluate a diverse array of experimental configurations. The following results across multiple physical domains substantiate the algorithm’s robust performance and high-fidelity reconstruction capabilities. 
+
+EIT. To comprehensively evaluate the reconstruction performance, Figures 7 to 10 share a con-sistent layout: subfigures (a) and (b) display the predicted reconstruction result and its absolute error map at the initial state (Iteration 0); (c) and (d) show the finalized reconstruction result and the minimized error map at the final iteration; (e) represents the ground truth (GT) distribution; and (f) plots the log-scale loss curve demonstrating model convergence. 
+
+> (a)
+> (b)
+> (c)
+> (d)
+> (e) GT
+> (f)
+
+Figure 7: Reconstruction analysis for a GT characterized by prominent, large-scale internal struc-tures, demonstrating rapid boundary localization and sharp initial loss reduction. 
+
+Inverse Scattering. To systematically evaluate the efficacy of DiLO in inverse scattering, Fig-ures 11–12 adopt a unified layout: the left panel presents a 3 × 4 matrix displaying the predicted parameter η alongside the real part, imaginary part, and magnitude of the scattered field u at the initial state (top row), the final iteration (middle row), and the Ground Truth (bottom row). The right panel shows the corresponding real-time loss trajectory. 19 (a) 
+
+> (b)
+> (c)
+> (d)
+> (e) GT
+> (f)
+
+Figure 8: Reconstruction analysis for a GT featuring multiple closely spaced, distinct anatomical targets, showing successful target separation without merging artifacts. 
+
+> (a)
+> (b)
+> (c)
+> (d)
+> (e) GT
+> (f)
+
+Figure 9: Reconstruction analysis for an abdominal GT containing small, localized high-contrast targets within a large uniform background, highlighting the structural regularization provided by the diffusion prior. 20 (a) 
+
+> (b)
+> (c)
+> (d)
+> (e) GT
+> (f)
+
+Figure 10: Reconstruction analysis for a chest GT exhibiting large, low-conductivity lung fields contrasted with very small, sharp anomalies, demonstrating the algorithm’s robustness to scale variations and its ability to preserve sharp boundaries. 
+
+> (d) Real-time Loss Curve
+
+Figure 11: Reconstruction analysis for sparse cell structures with heterogeneous internal contrasts, demonstrating rapid localization of internal details and stable convergence. 21 (d) Real-time Loss Curve 
+
+Figure 12: Reconstruction analysis for a tightly packed cluster of biological-like cells, confirming accurate recovery of fine details despite complex multiple scattering and inter-cellular interactions. 
+
+Inverse Navier-Stokes. The framework’s capability in recovering complex fluid dynamics is validated in Figures 13–17. To systematically present the reconstruction performance, each figure shares a consistent layout: panel (a) displays the initial state (Iteration 0) comprising the ground truth, the predicted field, and the absolute difference; panel (b) shows the corresponding finalized reconstruction state; and panel (c) plots the log-scale loss curve.   
+
+> (a) ns1: Iteration 0000 (b) ns1: Final (0670) (c) ns1: Loss Curve
+
+Figure 13: Reconstruction analysis for an initial vorticity field generated via a Gaussian random field (GRF), featuring an irregular, dipole-like vortex pair. The results demonstrate the rapid, high-fidelity recovery of these fragmented fluid structures. 
+
+# 5 Discussion and Conclusion 
+
+In this study, we presented DiLO, a stable framework for solving PDE-constrained inverse prob-lems. By explicitly decoupling the generative prior from the forward physical constraints, our approach leverages the versatility of plug-and-play diffusion priors and adapts to varying observa-tional setups without computationally expensive retraining. To overcome the guidance instability that typically hinders decoupled solvers, DiLO employs a strictly deterministic latent optimization trajectory. This ensures the fast differentiable surrogate is evaluated exclusively on fully denoised parameter fields, eliminating the OOD problem while retaining the expressive capacity of gen-erative priors. Extensive evaluations across EIT, Inverse Scattering, and Inverse N-S problems 22 (a) ns2: Iteration 0000 (b) ns2: Final (1990) (c) ns2: Loss Curve 
+
+Figure 14: Reconstruction analysis for a GRF-generated vorticity field characterized by a highly localized, dominant positive vortex amidst fragmented background flows, confirming the rapid matching of ground truth targets.   
+
+> (a) ns3: Iteration 0000 (b) ns3: Final (1990) (c) ns3: Loss Curve
+
+Figure 15: Reconstruction analysis for a chaotic, multi-scale vorticity distribution sampled from a GRF. The results highlight the latent prior’s effectiveness in resolving elongated fluid filaments and complex interactions.   
+
+> (a) ns4: Iteration 0000 (b) ns4: Final (1990) (c) ns4: Loss Curve
+
+Figure 16: Reconstruction analysis for a large-scale, coherent vortex structure originating from a GRF.   
+
+> (a) ns5: Noisy Iteration 0000 (b) ns5: Final Recovery (1990) (c) ns5: Noisy Loss Curve
+
+Figure 17: Robustness analysis under 50% observation noise. 23 demonstrate DiLO’s accuracy and efficiency. Notably, under 50% Gaussian noise, the latent prior effectively suppresses severe measurement noise. Despite these advantages, a limitation of the cur-rent framework is its fundamental reliance on the accuracy of the pretrained physical surrogate. Because the deterministic optimization is guided entirely by surrogate-derived gradients, general-ization errors in the neural operator, such as encountering complex physical geometries outside its training distribution, can bias the final reconstructed state. Looking forward, extending DiLO to high-dimensional 3D volumetric domains, such as full-waveform seismic inversion or 3D medical imaging, is a natural progression. We also plan to incorporate multi-modality fusion into the deterministic trajectory, for instance, utilizing high-resolution structural CT priors to condition EIT reconstructions. Ultimately, to address the cur-rent surrogate bottleneck, integrating emerging large-scale physics foundation models as forward evaluators could mitigate these generalization errors and enable zero-shot generalization across complex geometries, paving the way for real-time, physics-consistent imaging in critical clinical and engineering applications. 
+
+# 6 Acknowledgement 
+
+Guang Lin would like to thank the support of National Science Foundation (DMS-2533878, DMS-2053746, DMS-2134209, ECCS-2328241, CBET-2347401 and OAC-2311848), and U.S. Depart-ment of Energy (DOE) Office of Science Advanced Scientific Computing Research program DE-SC0023161, the SciDAC LEADS Institute, and DOE–Fusion Energy Science, under grant number: DE-SC0024583. 
+
+# References 
+
+[1] Liliana Borcea. Electrical impedance tomography. Inverse problems , 18(6):R99, 2002. [2] David S Holder. Electrical impedance tomography: methods, history and applications . CRC press, 2004. [3] David L Colton, Rainer Kress, and Rainer Kress. Inverse acoustic and electromagnetic scat-tering theory , volume 93. Springer, 1998. [4] Peter M van den Berg, AL Van Broekhoven, and Aria Abubakar. Extended contrast source inversion. Inverse problems , 15(5):1325, 1999. [5] Maziar Raissi, Paris Perdikaris, and George E Karniadakis. Physics-informed neural networks: A deep learning framework for solving forward and inverse problems involving nonlinear partial differential equations. Journal of Computational physics , 378:686–707, 2019. [6] Curtis R Vogel. Computational methods for inverse problems . SIAM, 2002. [7] Anatoly B Bakushinsky, Mihail Yu Kokurin, and Alexandra Smirnova. Iterative methods for ill-posed problems: An introduction , volume 54. Walter De Gruyter, 2010. [8] Junqing Chen, Bangti Jin, and Haibo Liu. Solving inverse obstacle scattering problem with latent surface representations. Inverse Problems , 40(6):065013, 2024. [9] Alexander Denker, Fabio Margotti, Jianfeng Ning, Kim Knudsen, Derick Nganyu Tanyu, Bangti Jin, Andreas Hauptmann, and Peter Maass. Deep learning based reconstruction meth-ods for electrical impedance tomography. arXiv preprint arXiv:2508.06281 , 2025. 24 [10] Haibo Liu, Junqing Chen, and Guang Lin. Generative prior-guided neural interface recon-struction for 3d electrical impedance tomography. Journal of Computational Physics , page 114841, 2026. [11] Jonathan Ho, Ajay Jain, and Pieter Abbeel. Denoising diffusion probabilistic models. In H. Larochelle, M. Ranzato, R. Hadsell, M.F. Balcan, and H. Lin, editors, Advances in Neural Information Processing Systems , volume 33, pages 6840–6851. Curran Associates, Inc., 2020. [12] Yang Song, Jascha Sohl-Dickstein, Diederik P Kingma, Abhishek Kumar, Stefano Ermon, and Ben Poole. Score-based generative modeling through stochastic differential equations. In 
+
+International Conference on Learning Representations , 2021. [13] Yang Song, Liyue Shen, Lei Xing, and Stefano Ermon. Solving inverse problems in medical imaging with score-based generative models. arXiv preprint arXiv:2111.08005 , 2021. [14] Hyungjin Chung, Jeongsol Kim, Michael Thompson Mccann, Marc Louis Klasky, and Jong Chul Ye. Diffusion posterior sampling for general noisy inverse problems. In The Eleventh International Conference on Learning Representations , 2023. [15] Morteza Mardani, Jiaming Song, Jan Kautz, and Arash Vahdat. A variational perspective on solving inverse problems with diffusion models. arXiv preprint arXiv:2305.04391 , 2023. [16] Hongkai Zheng, Wenda Chu, Bingliang Zhang, Zihui Wu, Austin Wang, Berthy Feng, Caifeng Zou, Yu Sun, Nikola Borislavov Kovachki, Zachary E Ross, Katherine Bouman, and Yisong Yue. Inversebench: Benchmarking plug-and-play diffusion priors for inverse problems in phys-ical sciences. In The Thirteenth International Conference on Learning Representations , 2025. [17] Jiawei Zhang, Jiaxin Zhuang, Cheng Jin, Gen Li, and Yuantao Gu. Unleashing the denoising capability of diffusion prior for solving inverse problems. Advances in Neural Information Processing Systems , 37:47636–47677, 2024. [18] Hanyu Chen, Zhixiu Hao, and Liying Xiao. Deep data consistency: a fast and robust diffusion model-based solver for inverse problems. Neural Networks , page 108334, 2025. [19] Enze Jiang, Jishen Peng, Zheng Ma, and Xiong-Bin Yan. Ode-dps: Ode-based diffusion posterior sampling for linear inverse problems in partial differential equation. Journal of Scientific Computing , 102(3):69, 2025. [20] Katsiaryna Haitsiukevich, Onur Poyraz, Pekka Marttinen, and Alexander Ilin. Diffusion mod-els as probabilistic neural operators for recovering unobserved states of dynamical systems. In 
+
+2024 IEEE 34th International Workshop on Machine Learning for Signal Processing (MLSP) ,pages 1–6. IEEE, 2024. [21] Yaohua Zang and Phaedon-Stelios Koutsourelakis. Dgno: A novel physics-aware neural op-erator for solving forward and inverse pde problems based on deep, generative probabilistic modeling. Generative Probabilistic Modeling , 2025. [22] Christian Jacobsen, Yilin Zhuang, and Karthik Duraisamy. Cocogen: Physically consistent and conditioned score-based generative models for forward and inverse problems. SIAM Jour-nal on Scientific Computing , 47(2):C399–C425, 2025. [23] Utkarsh Utkarsh, Pengfei Cai, Alan Edelman, Rafael Gomez-Bombarelli, and Christopher Vin-cent Rackauckas. Physics-constrained flow matching: Sampling generative models with hard constraints. arXiv preprint arXiv:2506.04171 , 2025. 25 [24] Da Long, Zhitong Xu, Qiwei Yuan, Yin Yang, and Shandian Zhe. Invertible fourier neural operators for tackling both forward and inverse problems. arXiv preprint arXiv:2402.11722 ,2024. [25] Sung Woong Cho and Hwijae Son. Physics-informed deep inverse operator networks for solving pde inverse problems. arXiv preprint arXiv:2412.03161 , 2024. [26] Jiahe Huang, Guandao Yang, Zichen Wang, and Jeong Joon Park. Diffusionpde: Generative pde-solving under partial observation. Advances in Neural Information Processing Systems ,37:130291–130323, 2024. [27] Jiachen Yao, Abbas Mammadov, Julius Berner, Gavin Kerrigan, Jong Chul Ye, Kamyar Azizzadenesheli, and Anima Anandkumar. Guided diffusion sampling on function spaces with applications to pdes. ArXiv , abs/2505.17004, 2025. [28] Thomas YL Lin, Jiachen Yao, Lufang Chiang, Julius Berner, and Anima Anandkumar. Decoupled diffusion sampling for inverse problems on function spaces. arXiv preprint arXiv:2601.23280 , 2026. [29] David L Colton, Richard E Ewing, William Rundell, et al. Inverse problems in partial differ-ential equations , volume 42. Siam, 1990. [30] Joel Feldman, Mikko Salo, and Gunther Uhlmann. The calder´ on problem–an introduction to inverse problems. Preliminary notes on the book in preparation , 30, 2019. [31] Zongyi Li, Nikola Kovachki, Kamyar Azizzadenesheli, Burigede Liu, Kaushik Bhattacharya, Andrew Stuart, and Anima Anandkumar. Fourier neural operator for parametric partial differential equations. arXiv preprint arXiv:2010.08895 , 2020. [32] Samuel G Armato III, Geoffrey McLennan, Luc Bidaut, Michael F McNitt-Gray, Charles R Meyer, Anthony P Reeves, Binsheng Zhao, Denise R Aberle, Claudia I Henschke, Eric A Hoffman, et al. The lung image database consortium (lidc) and image database resource initiative (idri): a completed reference database of lung nodules on ct scans. Medical physics ,38(2):915–931, 2011. [33] Zongyi Li, Hongkai Zheng, Nikola Kovachki, David Jin, Haoxuan Chen, Burigede Liu, Kamyar Azizzadenesheli, and Anima Anandkumar. Physics-informed neural operator for learning partial differential equations. ACM/IMS Journal of Data Science , 1(3):1–27, 2024. [34] Lu Lu, Pengzhan Jin, and George Em Karniadakis. Deeponet: Learning nonlinear opera-tors for identifying differential equations based on the universal approximation theorem of operators. arXiv preprint arXiv:1910.03193 , 2019. 26 A Proof of Lemma 3.1 
+
+Proof. Let Lexact (zT ) = Lphys (M(zT )). The proof proceeds by evaluating the exact first- and second-order Fr´ echet derivatives of the composite functional through continuous variational anal-ysis. 
+
+Step 1: First-order variations and the adjoint state. 
+
+Recall the physical objective Lphys (σ) = 12 ∥u − Vobs ∥2
+
+> L2(∂Ω)
+
+, subject to the forward boundary value problem ∇ · (σ∇u) = 0 in Ω with σ ∂u ∂n = g on ∂Ω. Introducing the first-order adjoint state 
+
+w ∈ H1(Ω), the standard adjoint state method yields the Lagrangian variation with respect to the state u, leading to the adjoint equation: 
+
+∇ · (σ∇w) = 0 in Ω , σ ∂w ∂n = u − Vobs on ∂Ω. (54) The Fr´ echet derivative of Lphys with respect to σ is thus given by the spatial inner product 
+
+∇σ Lphys (σ) = −∇ u · ∇ w. By the multivariate chain rule, the continuous first-order gradient with respect to the latent variable zT ∈ Z unfolds as: 
+
+∇zT Lexact (zT ) = JM(zT )T ∇σ Lphys (M(zT )) = JM(zT )T   − ∇ u · ∇ w, (55) where JM(zT ) = ∂M(zT )/∂z T denotes the full Jacobian of the generative mapping. 
+
+Step 2: Second-order physical variations. 
+
+Differentiating (55) with respect to zT yields the exact composite Hessian HzT ∈ Rdim( Z)×dim( Z):
+
+HzT = JM(zT )T Hphys (σ)JM(zT ) + X
+
+> i
+
+  − ∇ u · ∇ w
+
+> i
+
+∇2 
+
+> zT
+
+Mi(zT ). (56) The physical Hessian operator Hphys (σ) is characterized by its action on a perturbation ˆ σ via the directional Fr´ echet derivative of the continuous gradient: 
+
+Hphys ˆσ = δˆσ
+
+  − ∇ u · ∇ w = −∇ ˆu · ∇ w − ∇ u · ∇ ˆw, (57) where the tangent state ˆ u ∈ H1(Ω) is the unique weak solution to the linearized forward equation: 
+
+(
+
+∇ · (σ∇ˆu) = −∇ · (ˆ σ∇u), in Ω ,σ ∂ ˆu∂n = −ˆσ ∂u ∂n , on ∂Ω. (58) By linearizing the first-order adjoint equation and accounting for the state-dependent boundary variation δˆσ (u − Vobs ) = ˆ u, the second-order adjoint state ˆ w ∈ H1(Ω) is determined as the solution to: (
+
+∇ · (σ∇ ˆw) = −∇ · (ˆ σ∇w), in Ω ,σ ∂ ˆw∂n = ˆ u − ˆσ ∂w ∂n , on ∂Ω. (59) These characterizations provide the explicit bilinear forms required for the spectral norm analysis. 
+
+Step 3: Unrolling the generative curvature. 
+
+The generative mapping M(zT ) = D(z0) is formed by the composition of T deterministic diffusion steps zt−1 = ctzt + dtϵθ (zt, t ). The corresponding step-wise Jacobian and Hessian are given by: 
+
+Jt = ctI + dt∇zt ϵθ (zt, t ), Ht = dt∇2 
+
+> zt
+
+ϵθ (zt, t ). (60) 27 By applying the multivariate chain rule for second derivatives to the composed mapping M(zT ), the tensor derivative distributes across the discrete sequence. Specifically, differentiating the component-wise gradient ∇zT Mi(zT ) = 
+
+QTs=1 Js
+
+T
+
+∇z0 Di(z0) via the product rule exactly ex-pands the generative curvature by propagating the local step-wise curvatures Ht and the spatial Hessian ∇2 
+
+> z0
+
+Di backward through the accumulated Jacobians: 
+
+∇2 
+
+> zT
+
+Mi(zT ) = ∇zT
+
+
+
+> T
+
+Y
+
+> s=1
+
+Js
+
+!T
+
+∇z0 Di(z0)
+
+
+
+=
+
+> T
+
+Y
+
+> s=1
+
+Js
+
+!T h
+
+∇2 
+
+> z0
+
+Di(z0)
+
+i TY
+
+> s=1
+
+Js
+
+!
+
++
+
+> T
+
+X
+
+> t=1
+> T
+
+Y
+
+> s=t+1
+
+Js
+
+!T " X
+
+> k
+
+JD (z0)
+
+> t−1
+
+Y
+
+> m=1
+
+Jm
+
+!
+
+> i,k
+
+Ht,k 
+
+# TY
+
+> s=t+1
+
+Js
+
+!
+
+.
+
+(61) Substituting this exact unrolled tensor alongside the physical Hessian action into (56) establishes the analytical decomposition. 28
