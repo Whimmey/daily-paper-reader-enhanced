@@ -1,0 +1,437 @@
+Title: Disentangle-then-Refine: LLM-Guided Decoupling and Structure-Aware Refinement for Graph Contrastive Learning
+
+URL Source: https://arxiv.org/pdf/2604.14746v1
+
+Published Time: Fri, 17 Apr 2026 00:47:50 GMT
+
+Number of Pages: 6
+
+Markdown Content:
+# Disentangle-then-Refine: LLM-Guided Decoupling and Structure-Aware Refinement for Graph Contrastive Learning 
+
+Zhaoxing Li 1, Hai-Feng Zhang 2, Xiaoming Zhang 1,3,B
+
+1Institute of Physical Science and Information Technology, Anhui University 
+
+2School of Mathematical Sciences, Anhui University 
+
+3Qinghai Institute of Science and Technology Information, Xining, China lzx@ahu.edu.cn,haifengzhang1978@gmail.com, Bxmzhang@ustc.edu 
+
+Abstract —Conventional Graph Contrastive Learning (GCL) on Text-Attributed Graphs (TAGs) relies on blind stochastic augmentations, inadvertently entangling task-relevant signals with noise. We propose SDM-SCR, a robust framework anchored in Approximate Orthogonal Decomposition. First, the Semantic Decoupling Module (SDM) leverages the instruction-following capability of Large Language Models (LLMs) to actively parse raw attributes into asymmetric, task-oriented signal and noise views. This shifts the paradigm from random perturbation to semantic-aware disentanglement. Subsequently, Semantic Consis-tency Regularization (SCR) exploits the spectral observation that semantic signals are topologically smooth while residual noise is high-frequency. SCR functions as a selective spectral filter, enforcing consistency only on the signal subspace to eliminate LLM hallucinations without over-smoothing. This “Disentangle-then-Refine” mechanism ensures rigorous signal purification. Ex-tensive experiments demonstrate that SDM-SCR achieves SOTA performance in accuracy and efficiency. 
+
+Index Terms —Text-Attributed Graphs, Large Language Mod-els, Orthogonal Decomposition, Semantic Decoupling 
+
+I. I NTRODUCTION 
+
+Graph data have long been valued for their unique struc-tural information, particularly Text-Attributed Graphs (TAGs), which encompass both complex topology and rich semantic information. While Graph Neural Networks (GNNs) have become the primary tool for graph learning [1], the high cost of labeled data has shifted attention toward Graph Contrastive Learning (GCL) empowered by Self-Supervised Learning [2]. The core challenge of GCL lies in constructing high-quality views that preserve semantic invariance while perturbing noise 
+
+[3]. In Computer Vision, this is effectively achieved through transformations like rotation or color desaturation [4], which inherently maintain the identity of the object (e.g., a rotated plane remains a plane). However, graph data, being non-Euclidean, cannot directly adopt these methods [5]. Conse-quently, mainstream GCL approaches resort to stochastic aug-mentations such as random edge dropping or feature masking. Research [6] indicates that these “blind” stochastic operations are theoretically flawed for TAGs because the definition of “Signal” vs. “Noise” is strictly task-dependent.  
+
+> B
+
+Corresponding Author. This work was supported by the “Kunlun Talent” Program of Qinghai. 
+
+For instance, consider a product review graph where nodes are reviews. If the downstream task is Sentiment Analysis ,emotional adjectives (e.g., “amazing”, “terrible”) constitute the Signal. However, if the task is Product Categorization ,those same adjectives become Noise, and technical speci-fications (e.g., “lens aperture”, “battery life”) become the Signal. Random perturbation is agnostic to this distinction; it might inadvertently delete a key technical term crucial for categorization while preserving irrelevant sentiment words. This semantic misalignment prevents the model from learning optimal representations [7]. Node Text: \n [So much ... is for 
+
+？] \n Which sentences 
+
+are useful for [ Description of Downstream Tasks ] and 
+
+which are noise ?
+
+So much fun! I take mine with me everywhere! The 
+
+camera itself is very user-friendly. There are icons on 
+
+the front to tell you which focus setting you need, and 
+
+guess what the big yellow button is for? 
+
+> User
+> LLM
+
+Fig. 1. The text [ So much fun... ] is from the Ele-Photo dataset. Each node’s text represents a comment for a product, and the model needs to perform a node classification task based on these comments. We use the green font to indicate sentences related to the downstream task and the blue font to indicate noise sentences. 
+
+To address this, we propose that robust graph representation learning should strive for Task-Aware Approximate Orthog-onal Decomposition . The core intuition is to encourage the decoupling of the embedding space into a semantic-dominant subspace (Signal) and a noise-dominant subspace (Noise), aiming for minimal mutual information between them. Since the definition of “Signal” varies by task, static augmentations fail. Motivated by the impressive instruction-following and semantic reasoning capabilities of Large Language Models (LLMs), we propose the Semantic Decoupling Module (SDM) . Unlike random perturbations, SDM leverages LLMs as a dynamic semantic parser. As illustrated in Fig. 1, given a specific prompt for product classification, SDM explicitly separates the text into a Relevant View (containing “camera”, “user-friendly”) and an Irrelevant View (containing “So much fun”). This allows the model to maximize agreement with the 
+
+> arXiv:2604.14746v1 [cs.AI] 16 Apr 2026
+
+signal while explicitly pushing away the noise, reshaping the contrastive paradigm from random perturbation to semantic decoupling. However, relying solely on instance-level LLM decoupling is insufficient. While our geometric verification confirms that SDM effectively cleaves the embedding space—evidenced by a sharp reduction in cosine similarity compared to random per-turbations (see Appendix Fig 3), the observed non-zero resid-ual similarity indicates that LLMs are not perfect oracles; they inevitably leak trace noise (hallucinations) into the relevant view, rendering the decoupling approximate rather than strictly orthogonal. To suppress these residues, we introduce Semantic Consistency Regularization (SCR). Grounded in Graph Signal Processing, SCR leverages the observation that semantic sig-nals are topologically smooth low-frequency whereas random noise is structurally independent high-frequency [8]. By func-tioning as a selective spectral low-pass filter specifically on the decoupled Relevant View, SCR refines instance-level se-mantics without over-smoothing, thereby establishing a robust “Disentangle-then-Refine” workflow. In summary, our contributions are as follows:  
+
+> •
+
+We propose the SDM, which leverages LLMs to construct asymmetric, task-oriented views. By instructing LLMs to parse content based on downstream objectives, SDM fundamentally shifts contrastive learning from reliance on blind random perturbations to genuine, task-specific semantic signals.  
+
+> •
+
+We design SCR, a structure-aware filter grounded in the spectral properties of graph homophily. SCR is engi-neered to suppress residual noise inherited from LLMs by exploiting the observation that semantic signals are topologically smooth while noise is random. This pre-vents the over-smoothing of noise dimensions common in traditional GNNs.  
+
+> •
+
+Extensive experiments across multiple datasets demon-strate that our method achieves SOTA performance while exhibiting significantly higher computational efficiency than competing approaches. Furthermore, we provide rigorous mathematical proofs to validate the theoretical soundness of our orthogonal decomposition framework. II. R ELATED WORK 
+
+A. Semantic Decoupling and View Construction 1) From Random Perturbation to LLM Guidance: Early GCL frameworks, such as GRACE [9] and MVGRL [10], heavily rely on stochastic input augmentations. They generate views via random edge dropping, node feature masking, or graph diffusion techniques like PageRank [11]. While effective benchmarks, these methods operate under the assumption that noise is uniformly distributed, which is often flawed for TAGs. Randomly removing a keyword or an edge can inadvertently destroy semantic integrity or, conversely, leave structural noise intact [12]. To address the limitations of random augmentation, recent approaches have integrated LLMs to enhance feature quality. GIANT [13] leverages XMC (Extreme Multi-label Text Classification) as a supervisory signal to refine node fea-tures. GAugLLM [2] further utilizes LLMs to augment node sequences, achieving robust performance. Similarly, LATEX-GCL [14] instructs LLMs to perform summarization and rewriting tasks to generate augmented views. 
+
+2) The Need for Orthogonal Decomposition: Although these LLM-based methods outperform stochastic baselines, they face two critical issues: (1) Computational Inefficiency :Methods like GAugLLM and LATEX-GCL require multiple LLM inference passes per node, incurring prohibitive costs for large-scale graphs. (2) Entangled Representations : They typically treat LLM outputs as enriched features without explicitly separating semantic signals from noise. Recent stud-ies on disentangled graph representation [15], [16] suggest that effective learning requires identifying and decomposing underlying factors. Inspired by this, our SDM departs from simple augmentation. Instead, it employs LLMs to perform an efficient, instance-level Approximate Orthogonal Decom-position (AOD), projecting raw text into asymmetric Relevant 
+
+(Signal) and Irrelevant (Noise) subspaces. 
+
+B. Spectral Filtering and Structural Regularization 1) Contrastive Mechanisms and Homophily: Standard GCL methods optimize pairwise agreements using objectives like InfoNCE, an implicit semantic-alignment objective [17]. BGRL [18] introduces an asymmetric online-target encoder architecture updated via Exponential Moving Average (EMA) to avoid collapse without negative sampling. A key trend in recent years is incorporating structural priors into the contrastive objective. HomoGCL [6] explicitly utilizes the homophily assumption, treating neighbors as positive samples to guide representation learning. Similarly, LanSAGNN [19] leverages language semantics to refine structural interactions, mitigating interference from irrelevant neighbors. 
+
+2) Spectral Graph Filtering: However, relying solely on spatial neighbors can lead to the “over-smoothing” problem, where node representations become indistinguishable in deep layers or noisy graphs. Recent theoretical advances in Spectral Graph Neural Networks (SGNNs) emphasize the importance of tailored graph filters. For instance, Li et al. [8] proposed ERGNN with explicitly optimized rational filters to better handle high-frequency noise. Furthermore, entropy-based anal-yses [20] have shown that preserving high-entropy features is crucial for mitigating over-smoothing in graph classification. Existing methods like PolyGCL [21] attempt to use frequency filters but often apply them indiscriminately to the entire fea-ture set. This leads to the “blind smoothing” of noise. Our SCR 
+
+module bridges the gap between disentanglement and spectral filtering. By leveraging the decoupled views from SDM, SCR applies a structure-aware low-pass filter specifically to the 
+
+Relevant subspace, while allowing the Irrelevant subspace to absorb high-frequency spectral residue. This design aligns with the latest findings in robust graph filtering [8], [22], ensuring that topological smoothing reinforces semantics without prop-agating noise. X irr View                       
+
+> Anchor
+> Node
+> GNN
+> GNN
+> GNN
+> GNN
+> Update
+> Neighbor
+> Long-Distance
+> Node
+> Long-Distance
+> Node
+> Neighbor
+> Neighbor
+> Anchor
+> Node
+> Neighbor
+> Long-Distance
+> Node
+> Long-Distance
+> Node
+> Neighbor
+> Neighbor
+> (|Id) = tori tirr trel
+> Text
+> Embedding
+> xori xirr xrel
+> Replace
+> SDM (Plugin ）
+> Instruction
+> Original
+> View
+> Random
+> Perturbation
+> View 1
+> Random
+> Perturbation
+> View 2
+> Classic GCL
+> Augmented( )
+> Augmented( )
+> Positive Sample Pair (Pull)
+> Negative Sample Pair (Push)
+> Xori View
+> Xrel View
+> tori
+> Triple-Text
+
+Fig. 2. The Difference Between Traditional Methods’ Data Augmentation and SDM Module. 
+
+Our SCR module fundamentally reconceptualizes topologi-cal regularization as a precision spectral gating mechanism .Rather than applying a monolithic filter, SCR synergizes with SDM to treat the graph structure as a selective semantic am-plifier : it enforces rigorous low-pass consistency exclusively within the Relevant subspace to distill shared semantics, while strategically utilizing the Irrelevant subspace as a “spectral sink” to sequester high-frequency noise. This design breaks the trade-off between smoothness and distinctiveness found in traditional GNNs [8], [22], establishing a robust Disentangle-then-Refine paradigm where structural propagation is strictly governed by semantic validity. III. M ETHODOLOGY 
+
+A. Formulation and Approximate Orthogonal Decomposition 
+
+Given a TAG G = (T, A ) with N nodes, where T =
+
+{tori i }Ni=1 denotes the set of raw text attributes and A ∈{0, 1}N ×N is the adjacency matrix. The goal is to learn a GNN-based encoder E(·) that obtains the final representation for node i based on the embedding xi derived from its raw text ti.We posit that the information within the raw embedding 
+
+xori i can be ideally modeled via an AOD principle: 
+
+xori i = si + ni, aiming for ⟨si, ni⟩ → 0 (1) where si represents the Semantic Signal (features causally related to the label) and ni represents the Noise (task-irrelevant patterns). Traditional GCL methods inadvertently entangle these components because random perturbations treat signal and noise symmetrically, and thus often destroy label-causal semantics together with nuisance factors. While strict orthogonality is impossible in complex semantic spaces, this formulation serves as the theoretical guiding objective for our approximation strategy. In contrast, our framework explic-itly exploits LLMs to obtain semantically guided views that approximate this decomposition, which is intrinsically more informed than random augmentation. 
+
+B. Semantic Decoupling Module (SDM) 
+
+The SDM aims to operationalize the AOD principle by leveraging the semantic reasoning capabilities of LLMs as a “soft” decomposition operator. Rather than relying on blind perturbations, SDM uses LLMs to produce views that are 
+
+signal-dominant and noise-dominant , respectively, yielding a substantially cleaner separation than random augmentation despite remaining imperfections. As illustrated in Fig. 2, SDM functions as a versatile plug-in for existing GCL frameworks. Instead of modifying the GNN encoder structure, it simply intercepts the input stage: the raw node attributes tori are processed by the LLM to generate disentangled views, which then replace the original noisy features (as denoted by the “Replace X” path in the figure). This design allows the SDM to upgrade many existing GCL frameworks on TAGs. 
+
+1) Instruction-Driven Decomposition with Residual Aware-ness: Instead of random augmentation, we input a task-specific instruction Id and the raw text tori  
+
+> i
+
+into an LLM. The instruction directs the LLM to parse the content, yielding two distinct textual components: 
+
+LLM (tori  
+
+> i
+
+| I d) → (trel  
+
+> i
+
+, t irr  
+
+> i
+
+). (2) Here, trel  
+
+> i
+
+denotes the task-relevant content, while tirr  
+
+> i
+
+cap-tures the task-irrelevant noise. We pass the resulting text set 
+
+{tori  
+
+> i
+
+, t rel  
+
+> i
+
+, t irr  
+
+> i
+
+} through a text embedding encoder to obtain their corresponding embeddings. These are formally defined with residual terms as follows: 
+
+xori i = si + ni, (3) 
+
+xrel i = si + ϵi (signal-dominant view) , (4) 
+
+xirr i = ni + ζi (noise-dominant view) . (5) Here, ϵi represents residual noise or hallucinations introduced by the LLM, and ζi denotes trace semantics leaked into the irrelevant view. Although modern LLMs are not per-fect semantic oracles, their strong language understanding is sufficient in our setting to provide a coarse semantic split, where xrel i tends to align with task-relevant signal while 
+
+xirr i predominantly captures nuisance factors. Crucially, Id
+
+incorporates only task background to resolve signal ambiguity, ensuring that no instance-level ground truth labels are exposed during this phase. 
+
+2) Asymmetric Contrastive Optimization: To approximate this orthogonal separation in the embedding space, SDM employs an asymmetric contrastive objective. Although xirr 
+
+> k
+
+may still contain trace semantic residuals (as shown in ablation studies), it is dominated by the noise subspace . Pushing away 
+
+xirr  
+
+> k
+
+enforces a stricter constraint, compelling the encoder to filter out nuisance factors and focus exclusively on the dis-criminative features in xrel  
+
+> i
+
+. Crucially, since SDM is designed to function as a versatile plug-in compatible with various GCL backbones, we exclusively utilize the irrelevant view as the negative sample to avoid interference with the instance discrimination mechanisms inherent in the host frameworks. For any anchor node i, the SDM loss is defined as: 
+
+LSDM  
+
+> i
+
+= − log 
+
+ exp 
+
+ sim (xori   
+
+> i,xrel
+> i)
+> τ
+
+
+
+exp 
+
+ sim (xori   
+
+> i,xrel
+> i)
+> τ
+
+
+
++ P  
+
+> k̸=i
+
+exp 
+
+ sim (xori   
+
+> i,xirr
+> k)
+> τ
+
+ ,
+
+(6) where sim (·, ·) denotes cosine similarity and τ is the tempera-ture. The final objective LSDM is obtained by averaging LSDM 
+
+> i
+
+over all N nodes. This mechanism acts as a “semantic mag-net,” pulling xori  
+
+> i
+
+towards the signal subspace si (approximated by xrel  
+
+> i
+
+) while expelling the noise components encoded in xirr  
+
+> k
+
+.
+
+C. Semantic Consistency Regularization (SCR) 
+
+Although SDM achieves instance-level decoupling, LLMs are inherently stochastic and not perfect oracles. As defined in Eq. (4), the relevant view xrel  
+
+> i
+
+= si + ϵi still contains a residual noise term ϵi. If left unaddressed, contrastive learning may overfit to these hallucinations. To further suppress ϵi in a structure-aware manner, we introduce SCR to exploit the spectral properties of the graph topology. 
+
+1) Mitigating Residuals via Spectral Filtering: The core insight of SCR is based on the distinct spectral characteristics of the signal s and the residual ϵ: 
+
+> •
+
+Signal ( s): Based on the structural consistency prior ,valid semantic signals tend to exhibit low-frequency 
+
+characteristics across the local topology (i.e., si ≈ sj
+
+for connected nodes in reliable neighborhoods).  
+
+> •
+
+Residual ( ϵ): Generated largely independently by the LLM, these errors manifest as high-frequency noise. Recent findings [23] corroborate that hallucinations are structurally inconsistent (i.e., random relative to topol-ogy); thus, our SCR can effectively suppress them through low-pass filtering. SCR acts as a variance reduction operator . By enforcing consistency on xrel within the neighborhood N (i), we im-plicitly perform a Laplacian-like smoothing operation. This mechanism is architecture-agnostic and applies to any Mes-sage Passing Neural Network (MPNN) framework. For a local neighborhood, the aggregated representation approximates: 
+
+1
+
+|N (i)|
+
+X 
+
+> j∈N (i)
+
+xrel  
+
+> j
+
+= 1
+
+|N (i)|
+
+X
+
+> j
+
+sj
+
+| {z } 
+
+> ≈si(signal)
+
++ 1
+
+|N (i)|
+
+X
+
+> j
+
+ϵj
+
+| {z }
+
+> variance-reduced residual
+
+. (7) Under mild independence and zero-mean assumptions on ϵj ,the second term exhibits reduced variance as the neighborhood size grows, consistent with the classical law of large numbers. While illustrated here using mean aggregation (typical of GraphSAGE or GCN), this variance reduction effect gener-alizes to other aggregation schemes, where the weighted sum of independent noise terms similarly tends towards zero [24], [25]. Thus, SCR effectively filters out LLM-induced residuals without requiring ground-truth supervision, while reinforcing structurally consistent semantic signals. Remarkably, this design also confers robustness against structural noise. Unlike traditional GNNs that blindly aggre-gate all neighbor features, SCR performs smoothing exclu-sively on the purified xrel , effectively blocking the propagation of task-irrelevant noise across potentially unreliable connec-tions. We provide a theoretical proof in the Appendix demon-strating that this mechanism yields a lower error bound than standard message passing, even under heterophilic settings. 
+
+2) The Irrelevant View as a Spectral Sink: Regarding the irrelevant view xirr = ni + ζi, we deliberately exclude it from topological regularization. Since the leakage term ζi
+
+(trace semantics) and structural noise ni are typically high-frequency or heterophilic, enforcing smoothness on xirr would result in negative transfer , propagating noise to neighbors. By leaving xirr unconstrained, we treat the noise subspace as a 
+
+spectral sink , allowing the model to offload non-smooth, high-frequency variations (including ϵ and n) into this orthogonal subspace, thereby purifying the relevant view. 
+
+3) Regularization Objective: Formally, SCR minimizes the cosine distance of the relevant views between connected nodes, acting as a structure-aware low-pass filter: 
+
+LSCR = 1
+
+N
+
+> N
+
+X
+
+> i=1
+
+1
+
+|N (i)|
+
+X 
+
+> j∈N (i)
+
+ 1 − sim (xrel  
+
+> i
+
+, xrel  
+
+> j
+
+) . (8) Both LSDM and LSCR are node-averaged scalar objectives. While their absolute magnitudes may differ due to the log-arithmic nature of the contrastive loss versus the linear nature of the cosine regularization, they are balanced via the trade-off hyperparameter λ, ensuring consistent gradient optimization. 
+
+D. Overall Objective 
+
+To strictly balance the contribution of instance-level de-coupling (which relies on LLM priors) and structure-level refinement (which relies on topological priors), we formulate the final objective as a convex combination: 
+
+L = λLSDM + (1 − λ)LSCR , (9) where λ ∈ [0 , 1] is a trade-off hyperparameter. Since both terms are dimensionless, node-averaged contrastive or reg-ularization losses, λ directly controls the relative emphasis between semantic decoupling and spectral refinement, allow-ing the model to leverage the semantic richness of LLMs while using the graph structure to correct their inevitable hallucinations. ·IV. E XPERIMENT 
+
+We conduct extensive testing of the proposed SDM and 
+
+SCR modules across datasets from multiple domains, includ-ing Citeseer [26], Wiki-CS [27], Pubmed [28], Ele-Photo, and Books-History [29]. For details on the dataset information, experimental setup, code, and other related content, please refer to the supplementary materials. To facilitate comparisons with existing GCL schemes, we use mainstream contrastive learning dataset splits for the node classification problem. Specifically, this section addresses the following research Category Method Input Citeseer Pubmed Wiki-CS Ele-Photo ∗ Books-History ∗                                                                                      
+
+> Classic and SOTA GCL Grace X, A 70.80±0.52 80.21±0.29 78.27±0.14 --DGI X, A 71.82±0.70 76.80±0.60 75.35±0.14 --MVGRL X, A 73.02±0.43 80.12±0.51 77.56±0.10 --ProGCL X, A 69.78±0.48 79.20±0.33 78.68±0.12 --HomoGCL X, A 72.18±0.62 81.04±0.37 79.12±0.07 --PolyGCL X, A 72.54±0.59 80.51±0.76 75.54±0.37 --IFL-GC X, A 71.72±0.44 80.93±0.21 79.25±0.28 --GIANT T, A 72.96±0.41 81.54±0.70 79.34±0.25 74.85±0.41 74.41±0.73 LM-Based LLM-ZeroShot T49.59 85.47 66.81 43.58 51.04 LLM-Embedding T, A 70.81±1.45 79.31±1.19 79.51±0.46 74.68±0.23 77.03±0.33 LATEX-GCL T, A 71.39±0.74 80.75±1.28 80.29±0.68 76.81±0.24 78.26±0.27 GAugLLM T, A 73.71±0.43 82.90±0.62 82.11±0.47 77.69±0.21 77.98±0.32 Ours SDM T, A 73.54±0.64 82.97±0.84 81.93±0.21 78.25±0.14 78.84±0.18
+> SDM - SCR T, A 73.70±0.93 83.03±0.52 82.18±0.60 78.89±0.21 78.93±0.15
+
+TABLE I COMPARISON OF SDM-SCR FRAMEWORK WITH OTHER METHODS . E LE -P HOTO ∗ AND BOOKS -H ISTORY ∗ , TWO TAG S DATASETS , ARE NOT INCLUDED IN COMMON GNN S LIBRARIES SUCH AS PYG AND DGL, AND THUS LACK OFFICIAL STANDARD EMBEDDINGS .                        
+
+> Category Component Citeseer Wiki-CS
+> SDM Plug-in GBT 71.09 ±0.45 80.21 ±0.38 GBT (+ SDM) 71.43 ±0.88 80.27 ±0.42 Grace 71.11 ±0.76 80.55 ±0.16 Grace (+ SDM) 71.56 ±1.10 81.06 ±0.48 HomoGCL 73.17 ±0.34 81.56 ±0.58 HomoGCL (+ SDM) 73.51 ±0.53 81.91 ±0.19 Subspace Embedding ( Xori )70.81 ±1.42 79.51 ±0.46 Embedding ( Xrel )71.41 ±0.61 80.00 ±0.32 Embedding ( Xirr )65.67 ±1.11 77.37 ±0.31
+
+TABLE II ABLATION STUDY OF SDM. W E TEST SDM AS A PLUG -IN FOR DIFFERENT GCL FRAMEWORKS AND EVALUATE THE QUALITY OF THE DECOMPOSED SUBSPACES .
+
+LLM Backbone Citeseer Wiki-CS 
+
+Llama-3.1-8B 73.70 ± 0.93 82.18 ± 0.60 DeepSeek-7B 73.10 ± 0.33 82.38 ± 0.41 Mistral-0.3-7B 73.63 ± 0.48 82.06 ± 0.21 GPT-4o-mini 73.86 ± 0.61 82.75 ± 0.29 Qwen-3-4B 73.20 ± 0.64 81.50 ± 0.41 Gemma-3-1B 72.40 ± 0.32 80.84 ± 0.26 
+
+TABLE III PERFORMANCE ROBUSTNESS OF SDM-SCR ACROSS DIFFERENT LLM S.
+
+questions: RQ1 : How does the SDM-SCR framework perform compared to state-of-the-art GCL methods? RQ2 : Can the SDM effectively decouple semantic signals from noise? How does it contribute to performance when used as a plug-in for other frameworks? RQ3 : Does the proposed framework demonstrate robust performance across diverse LLM back-bones with varying parameter scales and architectures? 
+
+A. Main Experiment (RQ1) 
+
+We compare our proposed modules against advanced meth-ods using the common GCL evaluation scheme: labels are unavailable during the representation learning phase and are only used post-training for node classification tasks via a logistic regression classifier. To ensure fairness, all LLM-based methods are replicated using the same LLM (Llama3.1-8b [30]). The results are reported in Tab. I. SDM-SCR represents our full “Disentangle-then-Refine” framework. As shown in Tab. I, the SDM module alone already achieves competitive performance against existing LLM-based methods (e.g., GAugLLM), verifying the effectiveness of the AOD strategy. Furthermore, the complete SDM-SCR framework achieves SOTA results, demonstrating that the spectral filtering mechanism of SCR successfully purifies the semantic subspace by removing high-frequency residual noise. 
+
+B. Ablation Study: Effectiveness of SDM (RQ2) 
+
+In this section, we investigate the contribution of the SDM. SDM is designed to replace stochastic perturbations with semantic-aware subspace decomposition. To verify its versa-tility and the validity of the decomposition hypothesis, we conduct two sets of experiments presented in Tab. II. 
+
+1) SDM as a General Plug-in: The ‘SDM Plug-in’ sec-tion in Tab. II demonstrates using SDM as a plug-in to enhance other GCL frameworks. By replacing the random augmentation (e.g., edge dropping) in these frameworks with the Relevant/Irrelevant views generated by SDM, we observe consistent performance gains. This proves that the semantic signal s extracted by SDM is universally more robust than the noisy features preserved by random perturbations. 
+
+2) Subspace Quality Analysis: To further verify the quality of the decoupled subspaces and the necessity of our contrastive paradigm, we directly evaluate the classification capability of embeddings without any GCL training, comparing the original features Xori with the relevant subspace Xrel and the irrelevant/noise subspace Xirr . The results show that Xrel 
+
+consistently matches or surpasses Xori , whereas Xirr per-forms significantly worse, confirming that SDM concentrates discriminative semantics into the relevant view. Meanwhile, simply using Xrel as an “LLM-Embedding” plug-in baseline still lags behind the full SDM-SCR framework, indicating that the asymmetric contrastive repulsion is crucial to further align semantic signals and explicitly separate noise via the safe negative Xirr . Overall, these findings demonstrate both the effectiveness of our decoupling and the advantage of SDM-SCR as a lightweight and effective plug-in for existing GCL pipelines. 
+
+C. LLM Robustness Analysis (RQ3) 
+
+We evaluate the robustness of our framework by instanti-ating the SDM module with six different LLM backbones. As demonstrated in Tab. III, SDM-SCR exhibits remarkable 
+
+universal effectiveness : even when employing the lightweight Gemma-3-1B, our method maintains high performance. This indicates that the core decoupling mechanism operates in-dependently of the model scale. Furthermore, open-source models such as Llama-3.1-8B achieve results competitive with closed-source GPT models, confirming that SDM-SCR serves as a cost-effective and model-agnostic plug-in. V. C ONCLUSION 
+
+In this paper, we propose SDM-SCR, a novel graph con-trastive learning framework that leverages the semantic un-derstanding capabilities of LLMs to achieve task-oriented decoupling of signal and noise, and further utilizes the spectral properties of graph homophily for structure-aware refinement. Extensive experiments confirm that SDM-SCR achieves SOTA performance with significantly reduced inference time com-pared to existing LLM-enhanced methods. Furthermore, our framework demonstrates remarkable robustness across diverse mainstream LLM backbones and embedding initialization methods. The performance of SDM applied as a plug-in across different contrastive learning frameworks proves its potential as a universal enhancer for graph representation learning. To ensure reproducibility and theoretical rigor, we provide com-prehensive supplementary materials in the Appendix, cover-ing runtime comparisons, additional comparative experiments, dataset details, experimental environments, LLM instructions, and rigorous mathematical proofs validating the efficacy of our orthogonal decomposition and variance reduction mechanisms. REFERENCES [1] Qiaoyu Tan, Ninghao Liu, and Xia Hu, “Deep representation learning for social network analysis,” Frontiers in big Data , vol. 2, pp. 2, 2019. [2] Yi Fang, Dongzhe Fan, Daochen Zha, and Qiaoyu Tan, “Gaugllm: Improving graph contrastive learning for text-attributed graphs with large language models,” in Proceedings of the 30th ACM SIGKDD Conference on Knowledge Discovery and Data Mining , 2024, pp. 747–758. [3] Zonghan Wu, Shirui Pan, Fengwen Chen, Guodong Long, Chengqi Zhang, and Philip S. Yu, “A comprehensive survey on graph neural networks,” IEEE Transactions on Neural Networks and Learning Systems , p. 4–24, Jan 2021. [4] Alhassan Mumuni, Fuseini Mumuni, and Nana Kobina Gerrar, “A survey of synthetic data augmentation methods in computer vision,” arXiv preprint arXiv:2403.10075 , 2024. [5] Yixin Liu, Ming Jin, Shirui Pan, Chuan Zhou, Yu Zheng, Feng Xia, and S Yu Philip, “Graph self-supervised learning: A survey,” IEEE Transactions on Knowledge and Data Engineering , vol. 35, no. 6, pp. 5879–5900, 2022. [6] Wen-Zhi Li, Chang-Dong Wang, Hui Xiong, and Jian-Huang Lai, “Homogcl: Rethinking homophily in graph contrastive learning,” in 
+
+Proceedings of the 29th ACM SIGKDD Conference on Knowledge Discovery and Data Mining , 2023, pp. 1341–1352. [7] Jun Xia, Lirong Wu, Jintao Chen, Bozhen Hu, and Stan Z Li, “Sim-grace: A simple framework for graph contrastive learning without data augmentation,” in Proceedings of the ACM Web Conference 2022 , 2022, pp. 1070–1079. [8] Guoming Li, Jian Yang, and Shangsong Liang, “Ergnn: Spectral graph neural network with explicitly-optimized rational graph filters,” in 
+
+ICASSP 2025-2025 IEEE International Conference on Acoustics, Speech and Signal Processing (ICASSP) . IEEE, 2025, pp. 1–5. [9] Yanqiao Zhu, Yichen Xu, Feng Yu, Qiang Liu, Shu Wu, and Liang Wang, “Deep graph contrastive representation learning,” arXiv preprint arXiv:2006.04131 , 2020. [10] Kaveh Hassani and Amir Hosein Khasahmadi, “Contrastive multi-view representation learning on graphs,” in International conference on machine learning . PMLR, 2020, pp. 4116–4126. [11] Lawrence Page, “The pagerank citation ranking: Bringing order to the web,” Tech. Rep., Technical Report, 1999. [12] Wei Ju, Yifan Wang, Yifang Qin, Zhengyang Mao, Zhiping Xiao, Junyu Luo, Junwei Yang, Yiyang Gu, Dongjie Wang, Qingqing Long, et al., “Towards graph contrastive learning: A survey and beyond,” arXiv preprint arXiv:2405.11868 , 2024. [13] Eli Chien, Wei Cheng Chang, Cho Jui Hsieh, Hsiang Fu Yu, Jiong Zhang, Olgica Milenkovic, and Inderjit S Dhillon, “Node feature extraction by self-supervised multi-scale neighborhood prediction,” in 
+
+10th International Conference on Learning Representations, ICLR 2022 ,2022. [14] Haoran Yang, Xiangyu Zhao, Sirui Huang, Qing Li, and Guandong Xu, “Latex-gcl: Large language models (llms)-based data augmen-tation for text-attributed graph contrastive learning,” arXiv preprint arXiv:2409.01145 , 2024. [15] Baao Xie, Qiuyu Chen, Yunnan Wang, Zequn Zhang, Xin Jin, and Wenjun Zeng, “Graph-based unsupervised disentangled representation learning via multimodal large language models,” Advances in Neural Information Processing Systems , vol. 37, pp. 103101–103130, 2024. [16] Yuya Sasaki, “Benchmarking fairness-aware graph neural networks in knowledge graphs,” arXiv preprint arXiv:2510.18473 , 2025. [17] Zixu Wang, Bingbing Xu, Yige Yuan, Huawei Shen, and Xueqi Cheng, “Infonce is a free lunch for semantically guided graph contrastive learn-ing,” in Proceedings of the 48th International ACM SIGIR Conference on Research and Development in Information Retrieval , 2025, pp. 719– 728. [18] Shantanu Thakoor, Corentin Tallec, Mohammad Gheshlaghi Azar, Mehdi Azabou, Eva L Dyer, Remi Munos, Petar Veliˇ ckovi´ c, and Michal Valko, “Large-scale representation learning on graphs via bootstrap-ping,” in International Conference on Learning Representations , 2021. [19] Zhaoxing Li, Haifeng Zhang, Xiaoming Zhang, and Chengxiang Liu, “Refining interactions: Enhancing anisotropy in graph neural networks with language semantics,” in 2025 IEEE International Conference on Multimedia and Expo (ICME) , 2025, pp. 1–6. [20] Feifei Qian, Lu Bai, Lixin Cui, Ming Li, Hangyuan Du, Yue Wang, and Edwin Hancock, “Exploring the over-smoothing problem of graph neural networks for graph classification: an entropy-based viewpoint,” in Proceedings of the Thirty-Fourth International Joint Conference on Artificial Intelligence , 2025, pp. 3235–3244. [21] Jingyu Chen, Runlin Lei, and Zhewei Wei, “Polygcl: Graph contrastive learning via learnable spectral polynomial filters,” in The Twelfth International Conference on Learning Representations , 2024. [22] Youming Liu, Lin Shu, Chuan Chen, and Zibin Zheng, “Fine-grained semantics enhanced contrastive learning for graphs,” IEEE Transactions on Knowledge and Data Engineering , 2024. [23] Noa Nonkes, Sergei Agaronian, Evangelos Kanoulas, and Roxana Petcu, “Leveraging graph structures to detect hallucinations in large language models,” in Proceedings of TextGraphs-17: Graph-based Methods for Natural Language Processing . Association for Computational Linguis-tics, 2024, pp. 93–104. [24] Weilin Cong, Rana Forsati, Mahmut Kandemir, and Mehrdad Mahdavi, “Minimal variance sampling with provable guarantees for fast training of graph neural networks,” in Proceedings of the 26th ACM SIGKDD international conference on knowledge discovery & data mining , 2020, pp. 1393–1403. [25] Jana Vatter, Maurice L Rochau, Ruben Mayer, and Hans-Arno Jacob-sen, “Size does (not) matter? sparsification and graph neural network sampling for large-scale graphs,” Proceedings of the VLDB Endowment. ISSN , vol. 2150, pp. 8097, 2024. [26] Prithviraj Sen, Galileo Namata, Mustafa Bilgic, Lise Getoor, Brian Galligher, and Tina Eliassi-Rad, “Collective classification in network data,” AI Magazine , vol. 29, no. 3, pp. 93–93, 2008. [27] P´ eter Mernyei and C˘ at˘ alina Cangea, “Wiki-cs: A wikipedia-based bench-mark for graph neural networks,” arXiv preprint arXiv:2007.02901 ,2020. [28] Prithviraj Sen, Galileo Namata, Mustafa Bilgic, Lise Getoor, Brian Galligher, and Tina Eliassi-Rad, “Collective classification in network data,” AI Magazine , p. 93, Jul 2017. [29] Jianmo Ni, Jiacheng Li, and Julian McAuley, “Justifying recommen-dations using distantly-labeled reviews and fine-grained aspects,” in 
+
+Proceedings of the 2019 Conference on Empirical Methods in Natural Language Processing and the 9th International Joint Conference on Natural Language Processing (EMNLP-IJCNLP) , Jan 2019. [30] Abhimanyu Dubey, Abhinav Jauhri, Abhinav Pandey, Abhishek Kadian, Ahmad Al-Dahle, Aiesha Letman, Akhil Mathur, Alan Schelten, Amy Yang, Angela Fan, et al., “The llama 3 herd of models,” arXiv preprint arXiv:2407.21783 , 2024.

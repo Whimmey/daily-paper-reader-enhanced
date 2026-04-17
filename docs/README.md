@@ -6,69 +6,69 @@
 </div>
 
 ## 每次日报
-- 最新运行日期：2026-04-16
-- 运行时间：<span class="dpr-runtime" data-beijing="04-17 04:18 (UTC+8)" data-utc="04-16 20:18 UTC">04-17 04:18 (UTC+8) / 04-16 20:18 UTC</span>
+- 最新运行日期：2026-04-17
+- 运行时间：<span class="dpr-runtime" data-beijing="04-18 04:51 (UTC+8)" data-utc="04-17 20:51 UTC">04-18 04:51 (UTC+8) / 04-17 20:51 UTC</span>
 - 运行状态：成功
 - 本次总论文数：17
 - 精读区：6
 - 速读区：11
 
 ### 今日简报（AI）
-今日精读17篇论文，聚焦异常检测与医疗大模型应用，深入分析AI在医疗领域的最新进展。医疗大模型比较研究和异常检测新场景评估方法值得关注，为AI医疗应用提供重要参考。关注AI医疗问答系统和小型开放模型的实用框架，这些技术正逐步改变日常医疗服务获取方式。
-- 详情：[/202604/16/README](/202604/16/README)
+今日研读17篇前沿论文，聚焦视频修复与图像生成技术突破。视频人脸修复与噪声图像清洁生成技术取得显著进展，扩散模型应用尤为突出。关注AI修复技术如何提升日常影像质量，未来手机视频或将实现专业级修复效果。
+- 详情：[/202604/17/README](/202604/17/README)
 
 ### 精读区论文标签
-1. [Novel Anomaly Detection Scenarios and Evaluation Metrics to Address the Ambiguity in the Definition of Normal Samples](/202604/16/2604.07097v1-novel-anomaly-detection-scenarios-and-evaluation-metrics-to-address-the-ambiguity-in-the-definition-of-normal-samples)  
+1. [DVFace: Spatio-Temporal Dual-Prior Diffusion for Video Face Restoration](/202604/17/2604.14560v1-dvface-spatio-temporal-dual-prior-diffusion-for-video-face-restoration)  
    标签：评分：9.0/10、query:dl-cv
-   evidence：新颖异常检测场景
-2. [Comparative Analysis of Large Language Models in Healthcare](/202604/16/2604.10316v1-comparative-analysis-of-large-language-models-in-healthcare)  
-   标签：评分：9.0/10、query:dl-cv
-   evidence：医疗领域LLM比较分析
-3. [NovBench: Evaluating Large Language Models on Academic Paper Novelty Assessment](/202604/16/2604.11543v1-novbench-evaluating-large-language-models-on-academic-paper-novelty-assessment)  
-   标签：评分：9.0/10、query:dl-cv
-   evidence：评估大语言模型对学术新颖性的判断能力
-4. [DreamStereo: Towards Real-Time Stereo Inpainting for HD Videos](/202604/16/2604.12270v1-dreamstereo-towards-real-time-stereo-inpainting-for-hd-videos)  
-   标签：评分：9.0/10、query:dl-cv
-   evidence：立体视频修复方法
-5. [Lightweight LLM Agent Memory with Small Language Models](/202604/16/2604.07798v1-lightweight-llm-agent-memory-with-small-language-models)  
+   evidence：单步扩散视频人脸修复
+2. [SCoRe: Clean Image Generation from Diffusion Models Trained on Noisy Images](/202604/17/2604.09436v1-score-clean-image-generation-from-diffusion-models-trained-on-noisy-images)  
    标签：评分：8.0/10、query:dl-cv
-   evidence：轻量级大模型记忆系统
-6. [EditCrafter: Tuning-free High-Resolution Image Editing via Pretrained Diffusion Model](/202604/16/2604.10268v1-editcrafter-tuning-free-high-resolution-image-editing-via-pretrained-diffusion-model)  
+   evidence：用于清洁图像生成的谱再生
+3. [A Minimal Model of Representation Collapse: Frustration, Stop-Gradient, and Dynamics](/202604/17/2604.09979v1-a-minimal-model-of-representation-collapse-frustration-stop-gradient-and-dynamics)  
    标签：评分：8.0/10、query:dl-cv
-   evidence：基于扩散模型的高分辨率图像编辑
+   evidence：自监督学习中的表示崩溃
+4. [Which Discoveries Are Paradigm Shifting?](/202604/17/2604.11343v1-which-discoveries-are-paradigm-shifting)  
+   标签：评分：8.0/10、query:dl-cv
+   evidence：范式转变发现度量
+5. [On the Creativity of AI Agents](/202604/17/2604.13242v1-on-the-creativity-of-ai-agents)  
+   标签：评分：8.0/10、query:dl-cv
+   evidence：AI代理创造力分析
+6. [Disentangle-then-Refine: LLM-Guided Decoupling and Structure-Aware Refinement for Graph Contrastive Learning](/202604/17/2604.14746v1-disentangle-then-refine-llm-guided-decoupling-and-structure-aware-refinement-for-graph-contrastive-learning)  
+   标签：评分：8.0/10、query:dl-cv
+   evidence：大模型引导的一致性正则化
 
 ### 速读区论文标签
-1. [MatRes: Zero-Shot Test-Time Model Adaptation for Simultaneous Matching and Restoration](/202604/16/2604.10081v1-matres-zero-shot-test-time-model-adaptation-for-simultaneous-matching-and-restoration)  
+1. [SyncFix: Fixing 3D Reconstructions via Multi-View Synchronization](/202604/17/2604.11797v2-syncfix-fixing-3d-reconstructions-via-multi-view-synchronization)  
    标签：评分：8.0/10、query:dl-cv
-   evidence：匹配与修复同步
-2. [Evaluating Small Open LLMs for Medical Question Answering: A Practical Framework](/202604/16/2604.10535v1-evaluating-small-open-llms-for-medical-question-answering-a-practical-framework)  
+   evidence：多视图同步3D重建一致性框架
+2. [Rethinking Satellite Image Restoration for Onboard AI: A Lightweight Learning-Based Approach](/202604/17/2604.12807v1-rethinking-satellite-image-restoration-for-onboard-ai-a-lightweight-learning-based-approach)  
    标签：评分：8.0/10、query:dl-cv
-   evidence：LLM评估注重一致性
-3. [DiLO: Decoupling Generative Priors and Neural Operators via Diffusion Latent Optimization for Inverse Problems](/202604/16/2604.11375v1-dilo-decoupling-generative-priors-and-neural-operators-via-diffusion-latent-optimization-for-inverse-problems)  
+   evidence：轻量级卫星图像修复
+3. [Seen-to-Scene: Keep the Seen, Generate the Unseen for Video Outpainting](/202604/17/2604.14648v1-seen-to-scene-keep-the-seen-generate-the-unseen-for-video-outpainting)  
    标签：评分：8.0/10、query:dl-cv
-   evidence：用于逆问题的扩散模型
-4. [When Drawing Is Not Enough: Exploring Spontaneous Speech with Sketch for Intent Alignment in Multimodal LLMs](/202604/16/2604.11964v1-when-drawing-is-not-enough-exploring-spontaneous-speech-with-sketch-for-intent-alignment-in-multimodal-llms)  
+   evidence：视频外修复新框架解决一致性问题
+4. [An Axiomatic Benchmark for Evaluation of Scientific Novelty Metrics](/202604/17/2604.15145v1-an-axiomatic-benchmark-for-evaluation-of-scientific-novelty-metrics)  
    标签：评分：8.0/10、query:dl-cv
-   evidence：结合草图和语音的多模态LLM
-5. [Improving Robustness In Sparse Autoencoders via Masked Regularization](/202604/16/2604.06495v1-improving-robustness-in-sparse-autoencoders-via-masked-regularization)  
+   evidence：新颖性评估基准
+5. [From Papers to Property Tables: A Priority-Based LLM Workflow for Materials Data Extraction](/202604/17/2604.07584v1-from-papers-to-property-tables-a-priority-based-llm-workflow-for-materials-data-extraction)  
    标签：评分：7.0/10、query:dl-cv
-   evidence：掩码正则化提升鲁棒性
-6. [MoBiE: Efficient Inference of Mixture of Binary Experts under Post-Training Quantization](/202604/16/2604.06798v1-mobie-efficient-inference-of-mixture-of-binary-experts-under-post-training-quantization)  
+   evidence：基于LLM的论文数据提取工作流
+6. [BracketRank: Large Language Model Document Ranking via Reasoning-based Competitive Elimination](/202604/17/2604.08834v1-bracketrank-large-language-model-document-ranking-via-reasoning-based-competitive-elimination)  
    标签：评分：7.0/10、query:dl-cv
-   evidence：创新的MoE二值化框架
-7. [Fast-dVLM: Efficient Block-Diffusion VLM via Direct Conversion from Autoregressive VLM](/202604/16/2604.06832v1-fast-dvlm-efficient-block-diffusion-vlm-via-direct-conversion-from-autoregressive-vlm)  
+   evidence：大语言模型文档排序系统
+7. [CatalogStitch: Dimension-Aware and Occlusion-Preserving Object Compositing for Catalog Image Generation](/202604/17/2604.08836v1-catalogstitch-dimension-aware-and-occlusion-preserving-object-compositing-for-catalog-image-generation)  
    标签：评分：7.0/10、query:dl-cv
-   evidence：基于块扩散的高效视觉语言模型
-8. [Private Seeds, Public LLMs: Realistic and Privacy-Preserving Synthetic Data Generation](/202604/16/2604.07486v1-private-seeds-public-llms-realistic-and-privacy-preserving-synthetic-data-generation)  
+   evidence：维度感知的图像生成对象合成
+8. [MAB-DQA: Addressing Query Aspect Importance in Document Question Answering with Multi-Armed Bandits](/202604/17/2604.08952v2-mab-dqa-addressing-query-aspect-importance-in-document-question-answering-with-multi-armed-bandits)  
    标签：评分：7.0/10、query:dl-cv
-   evidence：隐私保护的LLM数据生成
-9. [A Noise Constrained Diffusion (NC-Diffusion) Framework for High Fidelity Image Compression](/202604/16/2604.06568v1-a-noise-constrained-diffusion-nc-diffusion-framework-for-high-fidelity-image-compression)  
+   evidence：多臂赌博机文档问答方法
+9. [Rag Performance Prediction for Question Answering](/202604/17/2604.07985v2-rag-performance-prediction-for-question-answering)  
    标签：评分：6.0/10、query:dl-cv
-   evidence：噪声约束的图像重建扩散
-10. [Workmanship of Learning: Embedding Craftsmanship Values in AI-Integrated Educational Tools](/202604/16/2604.07118v1-workmanship-of-learning-embedding-craftsmanship-values-in-ai-integrated-educational-tools)  
+   evidence：问答系统的RAG性能预测
+10. [Revise: A Framework for Revising OCRed text in Practical Information Systems with Data Contamination Strategy](/202604/17/2604.08115v1-revise-a-framework-for-revising-ocred-text-in-practical-information-systems-with-data-contamination-strategy)  
    标签：评分：6.0/10、query:dl-cv
-   evidence：教育工具中的AI工艺价值观
-11. [LitXBench: A Benchmark for Extracting Experiments from Scientific Literature](/202604/16/2604.07649v2-litxbench-a-benchmark-for-extracting-experiments-from-scientific-literature)  
+   evidence：基于LLM的OCR错误修正框架
+11. [RewardFlow: Generate Images by Optimizing What You Reward](/202604/17/2604.08536v1-rewardflow-generate-images-by-optimizing-what-you-reward)  
    标签：评分：6.0/10、query:dl-cv
-   evidence：使用语言模型提取实验的基准
+   evidence：基于奖励的图像生成
 

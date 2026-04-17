@@ -1,0 +1,1169 @@
+Title: MAB-DQA: Addressing Query Aspect Importance in Document Question Answering with Multi-Armed Bandits
+
+URL Source: https://arxiv.org/pdf/2604.08952v2
+
+Published Time: Fri, 17 Apr 2026 00:44:14 GMT
+
+Number of Pages: 20
+
+Markdown Content:
+## MAB-DQA: Addressing Query Aspect Importance in Document Question Answering with Multi-Armed Bandits 
+
+Yixin Xiang 1, Yunshan Ma 2, Xiaoyu Du 1*, Yibing Chen 3, Yanxin Zhang 4, Jinhui Tang 5,
+
+1Nanjing University of Science and Technology, 
+
+2Singapore Management University, 3Nanjing Pami Intelligent Technology Co., Ltd., 
+
+4University of Wisconsin - Madison, 5Nanjing Forestry University 
+
+elephantoh@qq.com, ysma@smu.edu.sg, duxy@njust.edu.cn, chenyibing@pami-ai.com, yzhang2879@wisc.edu, tangjh@njfu.edu.cn 
+
+Abstract 
+
+Document Question Answering (DQA) in-volves generating answers from a document based on a user’s query, representing a key task in document understanding. This task re-quires interpreting visual layouts, which has prompted recent studies to adopt multimodal Retrieval-Augmented Generation (RAG) that processes page images for answer generation. However, in multimodal RAG, visual DQA struggles to utilize a large number of images effectively, as the retrieval stage often retains only a few candidate pages (e.g., Top-4), caus-ing informative but less visually salient con-tent to be overlooked in favor of common yet low-information pages. To address this issue, we propose a Multi-Armed Bandit-based DQA framework (MAB-DQA) to explicitly model the varying importance of multiple implicit as-pects in a query. Specifically, MAB-DQA de-composes a query into aspect-aware subqueries and retrieves an aspect-specific candidate set for each. It treats each subquery as an arm and uses preliminary reasoning results from a small number of representative pages as re-ward signals to estimate aspect utility. Guided by an exploration-exploitation policy, MAB-DQA dynamically reallocates retrieval budgets toward high-value aspects. With the most in-formative pages and their correlations, MAB-DQA generates the expected results. On four benchmarks, MAB-DQA shows an average im-provement of 5%-18% over the state-of-the-art method, consistently enhancing document understanding. Codes are available at https: //github.com/ElephantOH/MAB-DQA .
+
+1 Introduction 
+
+Document Question Answering requires AI to answer user questions about given docu-ments (Tanaka et al., 2023; Lee et al., 2025). DQA proves valuable in real - world applications such as financial forms, medical report interpretation, and 
+
+> *
+
+Corresponding author. Query:  What is  total current assets  in  FY2023  for  Bestbuy ? Answer in million .                                           
+
+> Low Importance Subqueries but Necessary: [ Bestbuy ],
+> Interference Words: [ Answer in million ], Answer: 8,802
+> Ground -Truth Evidence Page (Page 39)
+> Answer:
+> (a) Chain of Evidence (b) Corresponding Details
+> (c) Heatmap of Maximum Similarity
+> Between Each Patch and the Query
+> Irrelevant Pages (Page 4, 52)
+> (d) Evidence of Low
+> Importance Subqueries
+> (e) Corresponding Heatmap of
+> Maximum Similarity Details
+> (f) Heatmap of Maximum Similarity
+> Between Each Patch and the Query
+> (Page 4 above, Page 52 below)
+> Sum of Maximum Similarity between
+> Patchs and Query: 0.892
+> Sum of Maximum Similarity between
+> Patchs and Query: 1.449
+> Link
+> (g) Phenomenon: (h) The Essence in Aspect Retrieval Degradation:
+> Retrieval Engine
+> Page containing
+> "Best Buy" ×𝑀 >1
+> Page containing
+> "Current Assets" ×1
+> Ground -Truth
+> Irrelevant Page
+> 𝐋𝐈 (𝑞 ,𝑝 𝑖 )=σ𝑖 ∈[1,𝑁 𝑞 ]max 𝐄 𝑞
+> (𝑖 )𝐄 𝑝 𝑖
+> (𝑗 ),Since
+> In Retrieval Engine: 𝐋𝐈 (𝑞 ,"Best Buy" ×𝑀 )
+> ≈𝑀 ×𝐋𝐈 (𝑞 ,"Best Buy" ×1)>𝐋𝐈 (𝑞 ,"Current Assets" ×1)
+> Frequent Words
+> Interference Words
+
+Figure 1: Aspect Retrieval Degradation in DQA. (a) Ground-truth evidence and answer. (b-c) Similarity heatmap between query and patches. (d) Aspects of low importance in the question. (e-f) High spurious similarity on irrelevant pages due to frequent terms. (g-h) Aspects of low importance’ aggregated score can exceed crucial evidence. 
+
+academic literature assistance (Ye et al., 2024; Huo et al., 2025). Accomplishing this task relies on visual -language models and retrieval - augmented generation (RAG) to understand long documents with complex layouts (Zhou et al., 2024). Exist-ing advanced approaches, such as Colpali (Faysse et al., 2024) and MoloRAG (Wu et al., 2025), adopt a vision -query late interaction (LI) paradigm for retrieval. They compute the dot product be-tween each query token embedding and all docu-ment image patch embeddings, retaining the maxi-mum similarity score between each query token 
+
+> arXiv:2604.08952v2 [cs.CL] 16 Apr 2026
+
+and the most relevant image patch (Santhanam et al., 2022). This operator preserves fine - grained token - patch interactions but merely performs a me-chanical "max - pooling + summation" operation. As a result, it cannot mimic the human ability to weigh the importance of multiple aspects in a query and selectively focus on them, which limits perfor-mance on complex multi-aspect questions. Fig. 1 illustrates an example from MMLong-Bench using a financial report. Fig. 1(a) -(c) show the maximum similarity scores obtained by Col-pali on the ground - truth evidence page (Page 39). The green box in Fig. 1(a) highlights the correct retrieval chain, while Fig. 1(b) - (c) dis-play interpretability heatmaps. The color in the heatmaps indicates the maximum similarity (dot product) between each image patch embedding and the query, with red representing high sim-ilarity and blue indicating irrelevance. Based on the LI paradigm, Colpali assigns Page 39 a score of LI (Query , Page 39 ) = 0 .892 , as shown in Fig. 1(c). However, as seen in Fig. 1(d), pages unrelated to the answer, such as those contain-ing high - frequency but low -importance words like "Best Buy" or irrelevant terms like "million", can also receive high scores (Fig. 1(e) - (f)), such as 
+
+LI (Query , Page 4 ) = 1 .449 .To address this limitation, we propose the MAB -DQA, a multi - armed bandit-guided DQA framework that explicitly models and exploits the varying importance of multiple implicit aspects in a query. Our core idea is to dynamically decompose a query into aspect - aware subqueries, treat each subquery as an arm in a multi - armed bandit, and use preliminary reasoning feedback as a reward signal to estimate the utility of each aspect. Guided by an exploration-exploitation policy, MAB - DQA reallocates retrieval attention and budget toward high - value aspects, thereby retrieving a more infor-mative and balanced set of evidence pages. The final answer is generated by reasoning over the re-trieved pages and their correlations. MAB - DQA outperforms existing methods on four benchmarks, with a 10.38% average gain in answer accuracy over the strongest baseline, and achieves best re-trieval performance. Our contributions are: • We propose MAB -DQA, a novel multi - armed bandit-based multi-modality DQA framework that advances multi -aspect query by dynami-cally discerning the importance of query aspects, thereby guiding retrieval to prioritize evidence containing critical information. • We design a bandit -guided retrieval strategy that treats each aspect - aware subquery as an arm and uses preliminary reasoning feedback from vision-language model as rewards, enabling adaptive exploration-exploitation in page retrieval. • We conduct extensive experiments on the four open-source benchmarks, demonstrating that MAB -DQA consistently enhances multi-modality document understanding performance and outper-forms existing methods significantly. 
+
+2 Related Work 
+
+Document Question Answering. DQA serves as a key task for evaluating models’ document comprehension capabilities (Cao et al., 2025; Zhu et al., 2025). With the advancement of large lan-guage models (LLMs) and vision language models (VLMs), research focus has shifted from short-form unimodal to long-form multimodal under-standing (Liu et al., 2025; Shen et al., 2026, 2025). LLMs such as GPT-4o (OpenAI et al., 2024) and Qwen-VL (Bai et al., 2023) support long document inputs by extending context windows, but suffer from information dilution (Ye et al., 2025; Peng et al., 2025; Cheng et al., 2025; Jiang et al., 2025). For this, RAG is a mainstream paradigm that im-proves quality via external indexes. 
+
+Retrieval-Augmented Generation (RAG). Acommon strategy in RAG is the "chunk-vectorize" approach, which uses models like BERT (Devlin et al., 2019), Colpali (Faysse et al., 2024), and Col-BERT (Santhanam et al., 2022) to generate embed-dings, and leverages LLMs for optimization. For instance, MDocAgent (Han et al., 2025) employs multi-agent collaboration for DQA (Zhang et al., 2025a). Still, chunk-based RAG fails to represent complex relationship (Tang et al., 2019). 
+
+Graph-based RAG and Query Decomposition. 
+
+Graph-based RAG (Edge et al., 2025) has gained at-tention for enhancing reasoning through knowledge graphs and relational paths (Zhang et al., 2025c). Simultaneously, research on query decomposition and query rewriting has also progressed (Zhang et al., 2023). Some studies advance from the per-spectives of GraphRAG or query decomposition. For example, Cog-RAG (Hu et al., 2025) con-structs hypergraph indexes to improve topic consis-tency; Self-RAG (Asai et al., 2023) trains models to autonomously evaluate retrieval and query qual-Similarity  
+
+> Construction VLM validates result
+> validity.
+
+Query     
+
+> 𝐞 1𝐞 2𝐞 3
+> Global Reference Pages
+> 𝐂 𝑏
+> ×M
+> Query -Specific Candidate Pages
+> 𝐂 𝑗
+> Embedding
+> 𝐐 𝑏 𝐐 𝑗
+> (a) Query -Aware Page Hypergraph Construction
+
+Document                                  
+
+> Query -Agnostic Page Graph
+> 𝐞 0
+> 𝐞 1
+> 𝐞 2
+> 𝐞 4
+> 𝐞 5
+> 𝐆 =(𝐕 𝐆 ,𝐄 𝐆 )
+> 𝐞 6
+> 𝐞 7𝐞 8
+> 𝐞 3
+> Embedding
+> 𝐞 0
+> 𝐞 1
+> ...
+> 𝐞 2
+> 𝐞 4
+> 𝐞 3
+> 𝐞 5
+> 𝐇 =(𝐕 𝐇 ,𝐄 𝐇 ∪𝐄 𝐆 )
+> 𝐞 6
+> 𝐞 7𝐞 8
+> Query -Aware Page Hypergraph
+> 𝐐 𝑏
+> 𝐐 1
+> 𝐐 2
+> Filtering by Global Reference
+> 𝐐 1
+> Hyperedge Set 𝐄 𝐇
+> 𝐞 0𝐞 1𝐞 4
+> 𝐞 1𝐞 2𝐞 3𝐐 𝑏
+> ...
+> Query -Specific
+> Beta Distribution
+> 𝐐 1:
+> ...:
+> 𝐐 𝑏 :
+> 𝐐 1
+> 𝐐 𝑏
+> 𝐐 2
+> 𝐐 1
+> 𝐐 𝑏
+> 𝐐 2
+> Visited?
+> 𝐞 1
+> 𝐞 1𝐞 4𝐞 6𝐞 2𝐞 5...
+> 𝐞 1𝐞 4𝐞 𝟑 𝐞 2𝐞 5...
+> 𝐞 5
+> Select Top -k Pages
+> Yes,
+> Best Neighbor →
+> Replace
+> 75%
+> No
+> 𝐞 5𝐐 2
+> Correlated
+> Subqueries
+> Update
+> Update
+> Iteration 2
+> Iteration 3
+> (b) Multi -Arm Bandit -Guided Retrieval
+> Yes
+> 𝐞 1
+> 𝐞 2
+> 𝐞 3
+> 𝐞 5
+> Query -Focused Page Subgraph
+
+Answer  
+
+> 𝐞 1𝐞 𝟑 𝐞 2𝐞 5
+
+Query       
+
+> Answer
+> Generator
+> Question
+> Reflection
+> Answer
+> Reflection
+> No
+> (c) Hypergraph -based Reflective Reasoning Agent
+> Page Ranking by Answer Relevance
+> (Initial ranking by Late Interaction)
+> Late Interaction
+> Iteration m
+> Atomic and Global Subqueries Set
+> Decomposition
+> ,𝑗 ∈[1,M]
+
+Figure 2: The overview of our proposed framework MAB-DQA. (a) Decompose a query into aspect-aware subqueries and model the relationships using hyperedges to construct a hypergraph; (b) For the hypergraph’s jumping retrieval pages, model each subquery as an arm and use the Bandit-based method to select the next page based on VLM feedback; (c) Derive the final answer through reflective reasoning. 
+
+ity; RA-DIT (Lin et al., 2023) jointly optimizes the retriever and generator; DRAG (Zhang et al., 2025b) deconstructs complex query risks. MBA-RAG (Tang et al., 2025) also employs MAB but differs from MAB-DQA, focusing on unimodal contexts, where MAB selects retrieval strategies for cost control. MoloRAG (Wu et al., 2025) is a state-of-the-art multimodal method that enhances DQA by constructing a graph and applying a VLM for graph traversal. It advances retrieval through modeling page relationships, yet operates under a fixed retrieval budget (Fu et al., 2026). A key drawback is uniform attention across queries, ig-noring subtle but valuable content (Du et al., 2026). However, existing methods are unable to replicate the ability of humans to evaluate aspects of a query while visually reading documents. 
+
+3 Methodology 
+
+We propose a Multi-Armed Bandit–based Doc-ument Question Answering framework (MAB-DQA). As illustrated in Fig. 2, the key to our ap-proach is the explicit modeling of aspect - aware subqueries and the dynamic allocation of retrieval effort among them. To achieve this, we first de-compose the query and represent the document as a hypergraph (Sec. 3.2, Fig. 2(a)), where hyperedges represent an aspect-specific candidate set relevant to each subquery. Subsequently, a MAB mecha-nism treats each subquery as an arm and uses pre-liminary Vision -Language Model (VLM) feedback as rewards to guide an exploration-exploitation pol-icy over the hypergraph (Sec. 3.3, Fig. 2(b)). Fi-nally, the answer is obtained through multi -stage verification via a Hypergraph - based Reflective Rea-soning Agent (Sec. 3.4, Fig. 2(c)). 
+
+3.1 Preliminary: Late Interaction Retrieval 
+
+Given a query q and N document pages pi, their multi-vector embeddings in RD are Eq ∈ RNq ×D
+
+and Ep ∈ RNp×D per page, with Nq and Np as vec-tor counts. The Late Interaction (LI) (Santhanam et al., 2022) operator LI (q, p ) computes for each query vector Eq(k) the maximum dot product with all Ep(l), denoted max ⟨·|·⟩ , and sums these: 
+
+LI (q, p i) = 
+
+Nq
+
+X
+
+k=1 
+
+Np
+
+max 
+
+l=1 ⟨Eq(k)|Epi
+
+(l)⟩. (1) A limitation of this formulation is that it assigns equal weight to every query vector E(k)
+
+q , which may not reflect the varying importance of different semantic aspects in the query. 
+
+3.2 Query-Aware Page Hypergraph 
+
+To capture the multi -aspect nature of complex queries, we first build a Query-Agnostic Page Graph G(VG, EG) to represent the relationships between pages. Each node pi ∈ VG corresponds to a page. An edge EG is added between nodes 
+
+{pi, p j }, i ̸ = j if the similarity between the two pages exceeds the threshold θG, expressed as: 
+
+EG = {{ pi, p j } | sim ⟨Epi , Epj ⟩ ≥ θG}, (2) where sim ⟨· , ·⟩ denotes the inner product. Based on the graph G, a VLM rewrites the original query 
+
+q and decomposes it into a set of subqueries Eq =
+
+{q1, q 2, ..., q M }, as detailed in Appendix C.1. We then define the Atom-Integral Subqueries Set as: 
+
+Q = {{ ˆq} | ˆq ∈ E q} ∪ {E q}, (3) which includes both fine - grained (atomic) sub-queries and the global query Eq (denoted as EM +1 ). We select the top -θH pages with the highest 
+
+LI (Qj , p i) scores to form the Query -Specific Can-didate Pages set Cj . We then select pages not in the global reference candidate pages set Cb, b =
+
+M + 1 , or those in both Cj and Cb, with better ranking under Qj , to construct a hyperedge: 
+
+ˆEj = {p ∈ Cj | p / ∈ Cb ∨ rank (LI (Qj , p )) 
+
+≤ rank (LI (Qb, p )) }, (4) where rank (LI (·, p )) denotes the descending - order position of page p under the corresponding query based on its LI score. Finally, the Query-Aware Page Hypergraph is defined as: 
+
+H(VH, EH ∪ EG) = ( VG, { ˆEj }M +1  
+
+> j=1
+
+∪ EG).
+
+(5) 
+
+3.3 Multi-Arm Bandit-Guided Retrieval 
+
+We frame the retrieval process over H as a combina-torial multi -armed bandit problem. Each subquery 
+
+Qj is treated as an arm, and the goal is to sequen-tially decide which arms (subqueries) to "pull" in order to retrieve the most informative pages. 
+
+Reward Model and Thompson Sampling. When the VLM inspects a retrieved page pi, it produces a relevance score svlm  
+
+> i
+
+∈ [0 , 1] indicating whether the page contains useful evidence for the query (Wu et al., 2025), as detailed in Appendix C.2. This score serves as the reward signal for the bandit. Each arm Qj maintains a Beta distribution Beta (αj , β j ) to model its reward probability. Ini-tially, αj = βj = 1 (uniform prior). The probabil-ity density function is: 
+
+f (x; αj , β j ) = 1
+
+Beta (αj , β j ) xαj −1(1 − x)βj −1
+
+(6) Beta (αj , β j ) = 
+
+Z 10
+
+tαj −1(1 − t)βj −1dt 
+
+= Γ( αj )Γ( βj )Γ( αj + βj ) , (7) where Γ( ·) is the Gamma function, and x ∈ [0 , 1] .The initial parameters are set as αj = 1 and βj = 1 .We employ Thompson sampling (Agrawal and Goyal, 2012; Chapelle and Li, 2011) to balance exploration and exploitation. In each retrieval step, a sample is drawn from each arm’s Beta distribu-tion, and the arm with the highest sample value is selected to guide the subsequent page retrieval. 
+
+Scoring and Node Expansion. During a jump-ing retrieval of H, each page node pi receives a composite score for sorting: score (pi) = (1 − α) max   
+
+> j∈[1 ,M +1]
+
+LI (Qj , p i)+ αs vlm  
+
+> i
+
++ β[(1 − λ)hi + λ¯scb  
+
+> i
+
+], (8) where hi is the degree of page pi in H. ¯scb  
+
+> i
+
+denotes the Thompson Sampling confidence score of the associated subqueries, calculated as: 
+
+¯scb  
+
+> i
+
+= 1
+
+| ˆQi|
+
+X  
+
+> Qj∈ˆQi
+
+E[Beta (αj , β j )] , (9) where ˆQi denotes all subqueries linked to page pi
+
+via hyperedges in H. Generally, hi emphasizes the page’s own contribution, whereas ¯scb  
+
+> i
+
+focuses more on the contribution of subqueries. A larger 
+
+α ∈ [0 , 1] gives greater weight to the VLM evalua-tion results. The β is used to adjust the proportion between hyperparameters. The λ ∈ [0 , 1] balances the page degree and arm confidence; Larger λ val-ues favor retrieval toward the highest overall sub-query combinations expectation across a subquery rather than a single page. The top -k nodes with the highest scores are ex-panded in each round. After the VLM evaluates a retrieved page pi and returns svlm  
+
+> i
+
+, all arms Qj
+
+associated with pi update their parameters: 
+
+∀Qj ∈ ˆQi, (αj , β j ) ← (αj + svlm  
+
+> i
+
+, β j + 1 − svlm  
+
+> i
+
+).
+
+(10) This update increases αj if the page is rele-vant (high VLM score) and increases βj other-wise, thereby refining the reward estimate for each aspect-specific subquery. 3.4 Hypergraph-based Reflective Reasoning Agent 
+
+After the MAB-guided retrieval obtains a set of relevant pages from the hypergraph H, the Hypergraph - based Reflective Reasoning Agent (HRRA) synthesizes the final answer through a multi - stage question and answer verification pro-cess. Employing an "initial response-verification-optimization" pipeline, HRRA first generates an initial answer using the retrieved evidence. If in-consistencies or evidence gaps are detected, the agent re - enters the hypergraph and constructs the Query-Focused Page Subgraph in a reflective loop. 
+
+4 Experiment 
+
+4.1 Implementation Details 
+
+The main experiments employ the QWen-2.5VL-7B-Instruct model (Bai et al., 2023) for both retrieval-augmented generation and question an-swering. Additional vision-language models are also included in the ablation studies. For generat-ing embeddings, the ColPali (Faysse et al., 2024) model is selected as a vision-language embedding model specifically optimized for documents. All embedding generation, information retrieval, and question answering processes are conducted on a system equipped with four NVIDIA V100 GPUs.                 
+
+> Table 1: Statistics of Datasets. "Issue" refers to the number of samples in the labeled dataset that the Colpali model may be ignoring regarding key query conditions.
+> Dataset Document Question Issue
+> MMLongBench 134 1073 212 (19.8%) LongDocURL 396 2325 647 (27.8%) PaperTab 307 393 -FetaTab 871 1016 -
+
+Datasets. To validate the effectiveness of the pro-posed method, experiments were conducted on four benchmark datasets, which are briefly de-scribed below. MMLongBench (Ma et al., 2024) comprehensively evaluates model document under-standing capabilities. Its questions often require cross-page reasoning (33.7%) and include approxi-mately 20.6% unanswerable questions, specifically designed to detect "hallucination" tendencies in DQA systems. LongDocURL (Deng et al., 2025) is a multimodal dataset focused on long document processing. It contains a large number of cross-modal questions to assess model performance in long-text contexts. PaperTab (Hui et al., 2024) is a specialized dataset for scientific paper compre-hension, with particular emphasis on interpreting document structure and tabular data. FetaTab (Nan et al., 2022) is a Wikipedia-based question answer-ing dataset that includes rich tabular and chart in-formation. Key statistics for all datasets are listed in Table 1. Furthermore, we perform a dedicated analysis based on the labeled data. The "Issue" column in Table 1 shows the proportion of retrieval errors in the Colpali model caused by ignoring key query constraints. The judging rule is: an error is counted if the retrieval performance for a subquery 
+
+Qj is better than that for the original query q.
+
+Baselines. We selected three types of frameworks as baselines: A pure VLM-based DQA framework; A multimodal DQA framework based on multi-RAG and multi-agent, represented by MDocA-gent (Han et al., 2025); A multimodal RAG-based DQA system. In the pure VLM approach, docu-ments are directly provided as context to the VLM for question answering. In the multimodal RAG approach, M3DocRAG (Cho et al., 2024), and the MoloRAG (Wu et al., 2025), which also employs graph structures and VLM evaluation, were se-lected. For fair comparison, MoloRAG uses a 7B model instead of the 3B model. The MoloRAG+ model, compared to MoloRAG, employs a fine-tuned model for retrieval. 
+
+Metrics. For the DQA evaluation metrics, the ex-periments are the same as those used in MDocA-gent, LongDocURL, and MMLongBench, employ-ing GPT - 4o (OpenAI et al., 2024) to assess the outputs. Given a question and its reference an-swer, GPT - 4o compares the DQA system’s output and returns a Boolean value indicating whether the answer is correct and complete. For the RAG eval-uation metrics, the experimental evaluation met-rics align with those in MoloRAG, including Re-call, Precision, Normalized Discounted Cumulative Gain (NDCG), and Mean Reciprocal Rank (MRR). 
+
+4.2 Main Results 
+
+The comparative results between our method and various baselines are presented in Table 2 and Ta-ble 3. Our approach consistently outperforms all baseline methods across the four evaluated datasets in terms of question answering accuracy, achiev-ing an average improvement of 10.38% over the strongest baseline. Notably, the performance gain is especially pronounced on the PaperTab dataset (+18.50%), which emphasizes the understanding of document structure and tables. Table 2: Comparison of our method with DQA approaches. Pure VLM-based, Multi-Agent-based, and RAG-based methods are evaluated using accuracy (%).                                                      
+
+> Model RAG Method MMLongBench LongDocURL FetaTab PaperTab Avg
+> Qwen-2.5-VL-7B Direct 0.204 0.398 0.350 0.112 0.266 LLaVA-1.6-7B Direct 0.176 0.110 0.301 0.102 0.172 MDocAgent ColPali + ColBert 0.315 0.527 0.598 0.227 0.417 M3DocRAG ColPali (Top-4) 0.296 0.503 0.537 0.152 0.372 MoloRAG ColPali (Top-4) 0.371 0.536 0.554 0.157 0.405 MoloRAG+ MoloRAG+ (Top-4) 0.372 0.528 0.600 0.195 0.424
+> MAB-DQA (Ours) ColPali (Top-4) 0.399 0.564 0.638 0.269 0.468 Improvement over second-best (%) +7.25% +5.22% +6.33% +18.50% +10.38%
+
+Table 3: Retrieval Performance Comparison on MMLongBench and LongDocURL Benchmarks under Top-K (K = 1 , 3, 5) Settings. All values are in %. The best results are in bold.                                                                                                                                                           
+
+> Top-K Method MMLongBench LongDocURL Recall Precision NDCG MRR Recall Precision NDCG MRR
+> 1M3DocRAG 45.31 56.80 56.80 56.80 46.82 64.51 64.45 64.51 MDocAgent (ColBert) 30.65 40.50 40.50 40.50 40.72 56.31 56.31 56.31 MDocAgent (Colpali) 46.61 59.86 59.86 59.86 46.90 64.18 64.18 64.18 MoLoRAG 48.93 64.11 64.11 64.11 49.59 67.84 67.84 67.84 MoLoRAG+ 50.30 64.82 64.82 64.82 48.70 66.90 66.90 66.90 MAB-DQA (Ours) 50.97 66.35 66.35 66.35 50.60 69.95 69.95 69.95
+> 3M3DocRAG 64.69 32.74 38.04 65.47 66.98 33.53 38.79 72.51 MDocAgent (ColBert) 45.70 21.92 30.84 47.64 56.70 28.35 39.84 63.44 MDocAgent (Colpali) 65.90 32.47 38.42 67.73 68.14 34.45 40.91 72.92 MoLoRAG 67.40 33.18 39.70 70.66 69.58 35.27 42.30 75.60 MoLoRAG+ 66.95 33.10 39.97 71.02 69.42 35.18 42.07 74.89 MAB-DQA (Ours) 69.53 34.32 41.05 72.94 70.46 35.73 43.07 77.78
+> 5M3DocRAG 72.43 22.67 30.06 66.92 74.54 23.52 32.07 73.99 MDocAgent (ColBert) 53.15 16.06 26.43 49.27 64.53 20.09 30.60 64.88 MDocAgent (Colpali) 73.07 23.07 30.25 69.04 75.49 23.87 31.81 74.30 MoLoRAG 71.42 21.96 30.13 71.27 73.86 23.20 32.01 76.18 MoLoRAG+ 70.32 21.42 29.99 71.58 73.69 23.15 31.83 75.56 MAB-DQA (Ours) 75.86 24.13 32.14 73.85 77.02 24.30 33.13 78.73
+
+Moreover, as shown in Table 3, our method also establishes a new state-of-the-art in retrieval per-formance on both the MMLongBench and Long-DocURL benchmarks, surpassing existing methods across all Top -K settings and all retrieval metrics (Recall, Precision, NDCG, and MRR). Our pro-posed method outperforms the baseline (Colpali) by an average of 6.55% across all metrics. These re-sults demonstrate the effectiveness of MAB-DQA in enhancing both the precision of retrieval and the accuracy of answer generation in DQA tasks. 
+
+4.3 Ablation Studies 
+
+This section evaluates the contributions of two core modules: Multi-Arm Bandit-Guided Retrieval (MABR) and Hypergraph - based Reflective Reason-ing Agent (HRRA) to the framework performance through ablation experiments. As in Table 4, when only basic retrieval is used (Colpali), the perfor-mance is the weakest. This indicates that the lack of differentiation among condition importance leads to retrieval interference from secondary informa-tion, severely limiting the accuracy of evidence localization and answer generation. When using MABR (w/ MABR), performance improves (an average gain of 22.8%), yet remains significantly lower than the full model. This demonstrates that the absence of a dynamic path selection mecha-nism reduces retrieval precision and robustness. When query decomposition (QD) guided retrieval and HRRA is retained, but MAB is removed (w/ HRRA), the model achieves an average improve-ment of 26.5%, yet still underperforms on complex questions requiring aspect reasoning. This suggests that reflective reasoning and multi -stage verifica-tion are essential for information validation and er-ror correction. The full model (Ours) achieves the best performance across all datasets, with an aver-Table 4: Ablation Study on the Proposed MAB-DQA Modules. Additional ablation in the Appendix. 
+
+Model Variant QD MABR HRRA MMLongBench LongDocURL FetaTab PaperTab Avg. Imp. 
+
+Colpali (Baseline) × × × 0.296 0.554 0.537 0.152 0.0% w/ MABR ◦ ◦ × 0.388 0.543 0.609 0.226 22.8% w/ HRRA ◦ × ◦ 0.395 0.561 0.624 0.236 26.5% MAB-DQA (Ours) ◦ ◦ ◦ 0.399 0.564 0.638 0.269 33.1% 
+
+age improvement of 33.1%; the gain from HRRA is most pronounced on complex datasets. MABR and HRRA progressively build upon and reinforce each other: MABR enables adaptive retrieval focusing on key aspects, and HRRA further integrates and validates information through reflective reasoning. Meanwhile, we conducted an ablation study on the performance of different VLMs under the MAB-DQA framework, as shown in Table 5. In the table, we used the MoloRAG model as a reference and considered the top-3 retrieval results as the evaluation scope. This experiment was designed to evaluate whether "measuring the importance of aspects" is essential for different VLM backbones in DQA tasks. We selected four models: Qwen2.5-7B (Bai et al., 2023), Llava-13B (Liu et al., 2024), Qwen3-30B (a MoE model), and Qwen3-32B. 
+
+4.4 Sensitivity Analysis 0.2 0.4 0.6 0.8                        
+
+> 34.0
+> 35.0
+> 36.0
+> Precision@3
+> (a) Parameter:
+> Precision@3
+> Recall@3 69.0
+> 70.0
+> 71.0
+> Recall@3
+> 0.0 0.1 0.2 0.3
+> 35.5
+> 36.0
+> Precision@3
+> (b) Parameter:
+> Precision@3
+> Recall@3
+> 70.0
+> 70.5
+> 71.0
+> Recall@3
+> 0.2 0.4 0.6 0.8
+> 35.0
+> 36.0
+> Precision@3
+> (c) Parameter:
+> Precision@3
+> Recall@3 69.0
+> 70.0
+> 71.0
+> Recall@3
+> 0.2 0.4 0.6 0.8
+> 35.8
+> 35.9
+> 36.0
+> 36.1
+> Precision@3
+> (d) Parameter: G
+> Precision@3
+> Recall@3
+> 70.8
+> 70.9
+> 71.0
+> 71.1
+> Recall@3
+> 246810
+> 34.0
+> 35.0
+> 36.0
+> Precision@3
+> (e) Parameter: H
+> Precision@3
+> Recall@3 70.0
+> 70.5
+> 71.0
+> Recall@3
+> 510 15 20 25
+> 35.5
+> 36.0
+> Precision@3
+> (f) Parameter: m
+> Precision@3
+> Recall@3
+> 69.0
+> 70.0
+> 71.0
+> Recall@3
+
+Figure 3: Sensitivity Analysis of Key Hyperparameters of the MAB-DQA Framework under Top-3 Retrieval on LongDocURL. The blue dashed line represents Preci-sion. The red line represents Recall. 
+
+To evaluate the robustness of the MAB-DQA framework to key hyperparameters, we conducted a systematic sensitivity analysis on the Long-DocURL dataset (Fig. 3). Using a controlled vari-able approach, we adjusted one target parameter at a time and observed changes in Recall and Preci-sion under the Top-3 retrieval setting, while keep-0 20 40 60 80     
+
+> Average Inference Time (s)
+> Ours
+> MoloRAG
+> MDocAgent
+> M3DocRAG
+> 17.5s
+> 20.2s
+> 6.4s
+> 6.8s
+> 15.4s
+> 60.4s
+> 32.9s
+> 21.6s
+> 66.8s
+> 8.1s
+> (a) Average Time Comparison
+> 020 40 60 80
+> Time Distribution (s)
+> (b) Time Distribution
+> Retrieval Time
+> QA Time
+
+Figure 4: Comparison of Average Inference Time Across Different Models on 4 NVIDIA V100 GPUs, with retrieval time (Top-10) in blue and QA time (Top-4) in orange. 
+
+ing all other parameters fixed. The results indicate that: (1) Parameter α has a significant positive ef-fect on performance (Fig. 3a), with higher values better leveraging the visual-language model (VLM) to extract effective semantics; (2) Parameter β has a relatively minor impact on performance (Fig. 3b); (3) Parameter λ reflects the model’s focus on con-ditional importance, and increasing it clearly im-proves performance (Fig. 3c). Additionally, we ex-amined the effects of the edge connection threshold 
+
+θG, hyperedge capacity θH, and retrieval iteration number m. Based on the analysis, the hyperparam-eters are set as follows for subsequent experiments: 
+
+α = 0 .8, β = 0 .1, λ = 0 .75 , θG = 0 .8, θH = 10 ,and m = 20 , ensuring stable and reliable perfor-mance across different configurations. Appendix F contains more ablation and sensitivity experiments. 
+
+4.5 Mechanism Analysis 
+
+We provide the complete algorithm table for MAB-DQA in Appendix D. During the retrieval phase, the time complexity of the MABR algorithm is 
+
+O(mT VLM ), where TVLM denotes the time cost of VLM evaluation. We also tested the DQA ef-ficiency of different frameworks under the same hardware environment, as shown in Fig. 4. Qualitative cases of the MAB-DQA are provided to analyze the underlying mechanism of the model. In Fig. 5, we selected a representative multi-aspect query. For this query, the MAB-DQA framework Table 5: Evaluation on MMLongBench and LongDocURL across VLM Backbones and Methods. Retrieval performance was evaluated based on Top-3 settings. 
+
+Backbone Method MMLongBench LongDocURL Recall Precision NDCG MRR Recall Precision NDCG MRR 
+
+Qwen2.5-VL-7B MoloRAG 67.40 33.18 39.70 70.66 69.58 35.27 42.30 75.60 LLaVa-13B 65.46 32.23 38.05 67.00 - - - -Qwen3-30B-A3B 68.41 34.08 40.13 70.78 69.80 36.02 42.47 75.77 Qwen3-32B 72.67 35.46 42.23 73.34 70.57 35.93 43.40 77.95 Qwen2.5-VL-7B Ours 69.53 34.32 41.05 72.94 70.46 35.73 43.07 77.78 LLaVa-13B 66.24 32.37 38.21 67.12 - - - -Qwen3-30B-A3B 72.12 35.60 42.15 74.23 70.97 35.97 43.09 77.52 Qwen3-32B 73.05 36.25 43.19 76.09 73.65 36.11 43.91 80.45 Retrieval Engine Top-1 Top-2 Top-3                          
+
+> Colpali 14 (×)20 16
+> MoloRAG 16 ( ×)14 11
+> Ours 107 (√) 14 92
+> Query: In the Nextcloud Files application , you can discuss files in the sidebar ,yes or no ?
+> Distracting C ondition but Necessary: [ Nextcloud Files application ],
+> Possible Interference Conditions, Discarded by VLM: [ yes or no ],
+> (a) Beta Distributions of Different Sub-Query Arms
+> (d) Retrieval Result Pages for Different
+> Retrieval Engines
+> (b) Score Distribution of Top-k
+> Pages (c) Score Correlation
+> of Top-k Pages
+> (e) Hypergraph Visualization
+> Ground Truth
+> Page
+> Interfering Page
+> The arms of the "Condition
+> 'Nextcloud Files application'" are
+> deemed as "Low-Important" arms
+> during online updates.
+> Query : sidebar Query : discuss files Query: Nextcloud Files application
+> Gobal Reference Query Original Query
+
+Figure 5: Qualitative Analysis of the MAB-DQA Framework. 
+
+correctly retrieved the evidence page (Page 107), while the other two baseline methods failed to do so. In this Fig. 5(a), there exists a low-importance condition, "Nextcloud Files application." The ev-idence lies in the fact that queries containing this condition (indicated by the red dashed section in Fig. 5(a)) are all assigned low rewards by the VLM (the Beta distribution tends towards 0.0). After correctly evaluating the importance of conditions, MAB-DQA successfully retrieved the evidence on the query-aware page hypergraph (Fig. 5(e)). 
+
+5 Conclusion 
+
+This paper addresses a key challenge in multi-aspect DQA, where the retrieval process is often dominated by less important query aspects, leading to the omission of critical evidence. To tackle this, we propose MAB-DQA, a Multi-Armed Bandit-based DQA framework that explicitly models and dynamically allocates attention to the varying im-portance of implicit aspects within a query. By de-composing the query into aspect-aware subqueries and treating each as an arm in a bandit setup, MAB-DQA uses preliminary reasoning signals to esti-mate aspect utility and dynamically redistributes retrieval budget toward high-value aspects. Extensive experiments on four benchmarks demonstrate that MAB-DQA significantly en-hances document understanding performance, achieving an average improvement of 10.38% in answer accuracy over the strongest baseline. Moreover, MAB-DQA establishes new state-of-the-art retrieval performance, outperforming existing methods across all Top-K settings ( K = 1 , 3, 5) on MMLongBench and LongDocURL benchmarks, as shown in the comprehensive evaluation table. Acknowledgements 
+
+This work is supported by Noncommunicable Chronic Diseases-National Science and Technol-ogy Major Project (Grant No. 2024ZD0524603) and the Singapore Ministry of Education (MOE) Academic Research Fund (AcRF) Tier 1 grant. 
+
+Limitations 
+
+While the proposed MAB-DQA framework demon-strates significant improvements in multi-aspect Document Question Answering, several limitations remain to be addressed in future work. 
+
+Dependence on Visual-Language Model Perfor-mance. The framework heavily relies on the capa-bility of the underlying VLM for both query decom-position and evidence evaluation. If the VLM per-forms poorly in specific domains, such as technical, legal, or medical documents, or under low-resource scenarios, the retrieval and reasoning performance may degrade accordingly. 
+
+Scalability with Document Length and Com-plexity. The MAB-DQA method we proposed is applied in our study to long documents (ranging from 40 to 500 pages). If a query requires retriev-ing a larger number of pages (e.g., as many as over 100 pages of evidence, though this is uncommon), it may be necessary to adjust hyperparameters or perform optimization. 
+
+Limitations of Hyperparameter Balancing. Our method relies on several hyperparameters ( α, β,and λ) to balance different scoring components. Although we selected values via grid search, they may not generalize optimally to all document/query types. Our experiments show that adjustments to these hyperparameters lead to consistent perfor-mance fluctuations across multiple datasets. In future work, we plan to develop a version of MAB-DQA that incorporates Bayesian optimization for hyperparameter selection, thereby enhancing its adaptability to diverse DQA scenarios. 
+
+Restriction to Thompson Sampling. Our study exclusively employs Thompson Sampling (TS) as the core bandit algorithm, driven by its principled Bayesian approach, which aligns naturally with the probabilistic reward signals from the VLM. The Bernoulli-like feedback (relevant/irrelevant) is well-modeled by the Beta-Bernoulli conjugate prior, facilitating efficient online updates. How-ever, this focus precludes a comparative analysis against other bandit strategies, such as Upper Con-fidence Bound (UCB) or Epsilon-Greedy. UCB offers stronger theoretical regret bounds and de-terministic action selection, which might provide more stable retrieval paths. Epsilon-Greedy, while simpler, could be more effective in highly non-stationary environments where query aspect im-portance shifts rapidly. The superiority of TS in our specific combinatorial bandit setting has been empirically observed. Future work should include a comprehensive study to explore adaptive mech-anisms that dynamically select the most suitable bandit strategy based on query characteristics. 
+
+Ethical Statement 
+
+In this work, we utilize models and datasets sourced from open -source platforms. All models and datasets are licensed under the Creative Commons Attribution 4.0 International License (CC BY 4.0). Their use fully complies with the corresponding li-cense terms and is strictly limited to academic and research purposes. No private, sensitive, or person-ally identifiable information was employed in this study. Our research adheres to the ACL Code of Ethics and follows the ACL ethics guidelines, en-suring integrity, transparency, and reproducibility throughout the work. 
+
+References        
+
+> Shipra Agrawal and Navin Goyal. 2012. Analysis of thompson sampling for the multi-armed bandit prob-lem. In Conference on learning theory , pages 39.1– 39.26. JMLR Workshop and Conference Proceed-ings. Akari Asai, Zeqiu Wu, Yizhong Wang, Avirup Sil, and Hannaneh Hajishirzi. 2023. Self-RAG: Learning to Retrieve, Generate, and Critique through Self-Reflection. In The Twelfth International Conference on Learning Representations .Jinze Bai, Shuai Bai, Yunfei Chu, Zeyu Cui, Kai Dang, Xiaodong Deng, Yang Fan, Wenbin Ge, Yu Han, and Fei Huang. 2023. Qwen technical report. arXiv preprint .Ruisheng Cao, Hanchong Zhang, Tiancheng Huang, Zhangyi Kang, Yuxin Zhang, Liangtai Sun, Hanqi Li, Yuxun Miao, Shuai Fan, Lu Chen, and Kai Yu. 2025. NeuSym-RAG: Hybrid neural symbolic retrieval with multiview structuring for PDF question answering. In Proceedings of the 63rd Annual Meeting of the Association for Computational Linguistics (Volume 1: Long Papers) , pages 6211–6239, Vienna, Austria. Association for Computational Linguistics. Olivier Chapelle and Lihong Li. 2011. An empirical evaluation of thompson sampling. Advances in neu-ral information processing systems , 24.
+
+Rong Cheng, Jinyi Liu, Yan Zheng, Fei Ni, Jiazhen Du, Hangyu Mao, Fuzheng Zhang, Bo Wang, and Jianye Hao. 2025. DualRAG: A dual-process approach to in-tegrate reasoning and retrieval for multi-hop question answering. In Proceedings of the 63rd Annual Meet-ing of the Association for Computational Linguistics (Volume 1: Long Papers) , pages 31877–31899, Vi-enna, Austria. Association for Computational Lin-guistics. Jaemin Cho, Debanjan Mahata, Ozan Irsoy, Yujie He, and Mohit Bansal. 2024. M3DocRAG: Multi-modal Retrieval Is What You Need for Multi-page Multi-document Understanding. arXiv preprint .Chao Deng, Jiale Yuan, Pi Bu, Peijie Wang, Zhong-Zhi Li, Jian Xu, Xiao-Hui Li, Yuan Gao, Jun Song, Bo Zheng, and Cheng-Lin Liu. 2025. LongDocURL: a comprehensive multimodal long document bench-mark integrating understanding, reasoning, and locat-ing. In Proceedings of the 63rd Annual Meeting of the Association for Computational Linguistics (Vol-ume 1: Long Papers) , pages 1135–1159, Vienna, Austria. Association for Computational Linguistics. Jacob Devlin, Ming-Wei Chang, Kenton Lee, and Kristina Toutanova. 2019. Bert: Pre-training of deep bidirectional transformers for language understand-ing. In Proceedings of the 2019 conference of the North American chapter of the association for com-putational linguistics: human language technologies, volume 1 (long and short papers) , pages 4171–4186. Xiaoyu Du, Shuangqing Li, Yanxin Zhang, Boying Li, Tailai Zhou, Yibing Chen, Lizi Liao, and Jinhui Tang. 2026. From uncertainty to decision: Enhancing goal-oriented dialogue planning under hesitation. IEEE Transactions on Audio, Speech and Language Pro-cessing .Darren Edge, Ha Trinh, Newman Cheng, Joshua Bradley, Alex Chao, Apurva Mody, Steven Truitt, Dasha Metropolitansky, Robert Osazuwa Ness, and Jonathan Larson. 2025. From Local to Global: A Graph RAG Approach to Query-Focused Summa-rization. arXiv preprint .Manuel Faysse, Hugues Sibille, Tony Wu, Bilel Omrani, Gautier Viaud, Celine Hudelot, and Pierre Colombo. 2024. ColPali: Efficient Document Retrieval with Vision Language Models. In The Thirteenth Interna-tional Conference on Learning Representations .ShunLiang Fu, Yanxin Zhang, Yixin Xiang, Xiaoyu Du, and Jinhui Tang. 2026. Dmap: Human-aligned structural document map for multimodal document understanding. arXiv preprint arXiv:2601.18203 .Siwei Han, Peng Xia, Ruiyi Zhang, Tong Sun, Yun Li, Hongtu Zhu, and Huaxiu Yao. 2025. MDocAgent: A Multi-Modal Multi-Agent Framework for Document Understanding. arXiv preprint .Hao Hu, Yifan Feng, Ruoxue Li, Rundong Xue, Xingliang Hou, Zhiqiang Tian, Yue Gao, and Shaoyi Du. 2025. Cog-RAG: Cognitive-Inspired Dual-Hypergraph with Theme Alignment Retrieval-Augmented Generation. arXiv preprint arXiv:2511.13201 .Yulong Hui, Yao Lu, and Huanchen Zhang. 2024. UDA: A Benchmark Suite for Retrieval Augmented Gen-eration in Real-World Document Analysis. In The Thirty-eight Conference on Neural Information Pro-cessing Systems Datasets and Benchmarks Track .Nan Huo, Jinyang Li, Bowen Qin, Ge Qu, Xiaolong Li, Xiaodong Li, Chenhao Ma, and Reynold Cheng. 2025. Micro-act: Mitigate knowledge conflict in question answering via actionable self-reasoning. In 
+
+Proceedings of the 63rd Annual Meeting of the As-sociation for Computational Linguistics (Volume 1: Long Papers) , pages 18550–18574, Vienna, Austria. Association for Computational Linguistics. Songtao Jiang, Chenyi Zhou, Yan Zhang, Yeying Jin, and Zuozhu Liu. 2025. Fast or slow? integrating fast intuition and deliberate thinking for enhancing visual question answering. In Proceedings of the 63rd An-nual Meeting of the Association for Computational Linguistics (Volume 2: Short Papers) , pages 525– 534, Vienna, Austria. Association for Computational Linguistics. Dosung Lee, Wonjun Oh, Boyoung Kim, Minyoung Kim, Joonsuk Park, and Paul Hongsuck Seo. 2025. ReSCORE: Label-free iterative retriever training for multi-hop question answering with relevance-consistency supervision. In Proceedings of the 63rd Annual Meeting of the Association for Computational Linguistics (Volume 1: Long Papers) , pages 341–359, Vienna, Austria. Association for Computational Lin-guistics. Xi Victoria Lin, Xilun Chen, Mingda Chen, Weijia Shi, Maria Lomeli, Richard James, Pedro Rodriguez, Ja-cob Kahn, Gergely Szilvasy, and Mike Lewis. 2023. Ra-dit: Retrieval-augmented dual instruction tuning. In The Twelfth International Conference on Learning Representations .Haotian Liu, Chunyuan Li, Yuheng Li, and Yong Jae Lee. 2024. Improved baselines with visual instruc-tion tuning. In Proceedings of the IEEE/CVF con-ference on computer vision and pattern recognition ,pages 26296–26306. Runxuan Liu, Bei Luo, Jiaqi Li, Baoxin Wang, Ming Liu, Dayong Wu, Shijin Wang, and Bing Qin. 2025. Ontology-guided reverse thinking makes large lan-guage models stronger on knowledge graph question answering. In Proceedings of the 63rd Annual Meet-ing of the Association for Computational Linguistics (Volume 1: Long Papers) , pages 15269–15284, Vi-enna, Austria. Association for Computational Lin-guistics. Yubo Ma, Yuhang Zang, Liangyu Chen, Meiqi Chen, Yizhu Jiao, Xinze Li, Xinyuan Lu, Ziyu Liu, Yan Ma, Xiaoyi Dong, and 1 others. 2024. Mmlongbench-doc: Benchmarking long-context document understanding with visualizations. Advances in Neural Information Processing Systems , 37:95963–96010. Linyong Nan, Chiachun Hsieh, Ziming Mao, Xi Vic-toria Lin, Neha Verma, Rui Zhang, Wojciech Kry´ sci´ nski, Hailey Schoelkopf, Riley Kong, Xian-gru Tang, Mutethia Mutuma, Ben Rosand, Isabel Trindade, Renusree Bandaru, Jacob Cunningham, Caiming Xiong, Dragomir Radev, and Dragomir Radev. 2022. FeTaQA: Free-form Table Question Answering. Transactions of the Association for Com-putational Linguistics , 10:35–49. Place: Cambridge, MA Publisher: MIT Press. OpenAI, Aaron Hurst, Adam Lerer, Adam P. Goucher, Adam Perelman, Aditya Ramesh, Aidan Clark, A. J. Ostrow, Akila Welihinda, Alan Hayes, Alec Radford, Aleksander M ˛ adry, Alex Baker-Whitcomb, Alex Beu-tel, Alex Borzunov, Alex Carney, Alex Chow, Alex Kirillov, Alex Nichol, and 400 others. 2024. GPT-4o System Card. arXiv preprint .Boci Peng, Yongchao Liu, Xiaohe Bo, Jiaxin Guo, Yun Zhu, Xuanbo Fan, Chuntao Hong, and Yan Zhang. 2025. M³GQA: A multi-entity multi-hop multi-setting graph question answering benchmark. In Proceedings of the 63rd Annual Meeting of the Association for Computational Linguistics (Volume 1: Long Papers) , pages 30594–30620, Vienna, Austria. Association for Computational Linguistics. Keshav Santhanam, Omar Khattab, Jon Saad-Falcon, Christopher Potts, and Matei Zaharia. 2022. Col-BERTv2: Effective and Efficient Retrieval via Lightweight Late Interaction. In Proceedings of the 2022 Conference of the North American Chapter of the Association for Computational Linguistics: Hu-man Language Technologies , pages 3715–3734, Seat-tle, United States. Association for Computational Linguistics. Fei Shen, Xiaoyu Du, Liyan Zhang, Xiangbo Shu, and Jinhui Tang. 2025. Triplet contrastive representation learning for unsupervised vehicle re-identification. 
+
+ACM Transactions on Multimedia Computing, Com-munications and Applications , 21(11):1–23. Fei Shen, Jian Yu, Cong Wang, Xin Jiang, Xiaoyu Du, and Jinhui Tang. 2026. Imaggarment: Fine-grained garment generation for controllable fashion design. 
+
+IEEE Transactions on Visualization and Computer Graphics .Ryota Tanaka, Kyosuke Nishida, Kosuke Nishida, Taku Hasegawa, Itsumi Saito, and Kuniko Saito. 2023. SlideVQA: A Dataset for Document Visual Ques-tion Answering on Multiple Images. Proceedings of the AAAI Conference on Artificial Intelligence ,37(11):13636–13645. Jinhui Tang, Xiaoyu Du, Xiangnan He, Fajie Yuan, Qi Tian, and Tat-Seng Chua. 2019. Adversarial train-ing towards robust multimedia recommender system. 
+
+IEEE Transactions on Knowledge and Data Engi-neering , 32(5):855–867. Xiaqiang Tang, Qiang Gao, Jian Li, Nan Du, Qi Li, and Sihong Xie. 2025. MBA-RAG: a bandit approach for adaptive retrieval-augmented generation through question complexity. In Proceedings of the 31st Inter-national Conference on Computational Linguistics ,pages 3248–3254, Abu Dhabi, UAE. Association for Computational Linguistics. Xixi Wu, Yanchao Tan, Nan Hou, Ruiyang Zhang, and Hong Cheng. 2025. Molorag: Bootstrapping doc-ument understanding via multi-modal logic-aware retrieval. In Proceedings of the 2025 Conference on Empirical Methods in Natural Language Processing ,pages 14035–14056. Yixin Xiang, Xianhua Zeng, Tianxin Liao, and Xinyu Liu. 2025. Cfdm: Cascaded fractal diffusion model for visible-to-infrared image synthesis. Neurocom-puting , page 132472. Linhao Ye, Zhikai Lei, Jianghao Yin, Qin Chen, Jie Zhou, and Liang He. 2024. Boosting Conversational Question Answering with Fine-Grained Retrieval-Augmentation and Self-Check. In Proceedings of the 47th International ACM SIGIR Conference on Research and Development in Information Retrieval ,pages 2301–2305, Washington DC USA. ACM. Linhao Ye, Lang Yu, Zhikai Lei, Qin Chen, Jie Zhou, and Liang He. 2025. Optimizing question seman-tic space for dynamic retrieval-augmented multi-hop question answering. In Proceedings of the 63rd An-nual Meeting of the Association for Computational Linguistics (Volume 1: Long Papers) , pages 17814– 17824, Vienna, Austria. Association for Computa-tional Linguistics. Peitian Zhang, Shitao Xiao, Zheng Liu, Zhicheng Dou, and Jian-Yun Nie. 2023. Retrieve Anything To Aug-ment Large Language Models. CoRR .Taolin Zhang, Dongyang Li, Qizhou Chen, Chengyu Wang, and Xiaofeng He. 2025a. BELLE: A bi-level multi-agent reasoning framework for multi-hop ques-tion answering. In Proceedings of the 63rd Annual Meeting of the Association for Computational Lin-guistics (Volume 1: Long Papers) , pages 4184–4202, Vienna, Austria. Association for Computational Lin-guistics. Zhange Zhang, Yuqing Ma, Yulong Wang, Shan He, Tianbo Wang, Siqi He, Jiakai Wang, and Xianglong Liu. 2025b. Lexical Diversity-aware Relevance As-sessment for Retrieval-Augmented Generation. In 
+
+Proceedings of the 63rd Annual Meeting of the As-sociation for Computational Linguistics (Volume 1: Long Papers) , pages 27758–27781. Zheyuan Zhang, Yiyang Li, Nhi Ha Lan Le, Zehong Wang, Tianyi Ma, Vincent Galassi, Keerthiram Mu-rugesan, Nuno Moniz, Werner Geyer, Nitesh V Chawla, Chuxu Zhang, and Yanfang Ye. 2025c. NGQA: A nutritional graph question answering benchmark for personalized health-aware nutritional reasoning. In Proceedings of the 63rd Annual Meet-ing of the Association for Computational Linguistics (Volume 1: Long Papers) , pages 5934–5966, Vienna, Austria. Association for Computational Linguistics. Junjie Zhou, Zheng Liu, Shitao Xiao, Bo Zhao, and Yongping Xiong. 2024. VISTA: Visualized Text Em-bedding For Universal Multi-Modal Retrieval. In  
+
+> Proceedings of the 62nd Annual Meeting of the As-sociation for Computational Linguistics (Volume 1: Long Papers) , pages 3185–3200, Bangkok, Thailand. Association for Computational Linguistics. Rongzhi Zhu, Xiangyu Liu, Zequn Sun, Yiwei Wang, and Wei Hu. 2025. Mitigating lost-in-retrieval prob-lems in retrieval augmented multi-hop question an-swering. In Proceedings of the 63rd Annual Meeting of the Association for Computational Linguistics (Vol-ume 1: Long Papers) , pages 22362–22375, Vienna, Austria. Association for Computational Linguistics.
+
+A Details of Evaluation Metrics 
+
+This paper employs two categories of evaluation metrics: Document-based Question Answering accuracy metrics and Retrieval-Augmented Gen-eration retrieval metrics . The following details the definition, calculation, and application of each metric in the experiments. 
+
+A.1 Document-based Question Answering Accuracy Metrics 
+
+While the automated evaluation paradigm de-scribed herein is tailored for DQA, the principle of leveraging powerful pre-trained models for as-sessment shares conceptual ground with evaluation challenges in cross-modality generation tasks (Xi-ang et al., 2025). The DQA metrics are used to evaluate the correctness of the model-generated answers. The evaluation is specifically based on automated assessment using GPT-4o. The process is as follows: Given a question and its reference an-swer, GPT-4o compares the system output with the reference answer and judges whether the answer is "correct and complete." The evaluation results in a binary score (0 or 1). Score 1: The output answer is consistent with the reference answer in terms of facts and logic (including handling "unanswerable" questions; if the reference answer is "Not answer-able" and the model output is the same, it receives a score of 1). Score 0: The answer is incorrect or lacks key information. The final DQA accu-racy is defined as the proportion of correctly an-swered questions to the total number of questions, as shown in Table 2 of the main text. This metric emphasizes the precision of the answer rather than partial correctness. 
+
+A.2 Retrieval-Augmented Generation Retrieval Metrics 
+
+The retrieval metrics are used to evaluate the per-formance of the hypergraph retrieval module. They include Recall, Precision, Normalized Discounted Cumulative Gain (NDCG), and Mean Reciprocal Rank (MRR). These metrics are computed under Top-K ( K = 1 , 3, 5) settings. Assuming the re-trieval engine obtains a predicted page sequence 
+
+ˆppred and a ground-truth evidence page sequence 
+
+ˆpgt , the metrics are defined as follows: 
+
+Recall : Measures the proportion of retrieved rele-vant pages to all relevant pages. 
+
+Recall@K = |ˆppred @K ∩ ˆpgt ||ˆpgt | , (11) where ˆppred @K denotes the top-K retrieved pages, and | · | denotes the cardinality of a set. 
+
+Precision : Measures the proportion of relevant pages among the retrieved results. 
+
+Precision@K = |ˆppred @K ∩ ˆpgt |
+
+K . (12) 
+
+Normalized Discounted Cumulative Gain (NDCG) : Evaluates the quality of the retrieval ranking by considering positional weighting for relevant pages. The relevance score is based on the LI score. 
+
+DCG@K = 
+
+> K
+
+X
+
+> i=1
+
+2rel i − 1log 2(i + 1) , (13) 
+
+IDCG@K = 
+
+> |ˆpgt |
+
+X
+
+> i=1
+
+2rel (ideal)  
+
+> i
+
+− 1log 2(i + 1) , (14) 
+
+NDCG@K = DCG@K IDCG@K , (15) where rel i is the relevance score (e.g., LI score) of the i-th retrieved page, and rel (ideal)  
+
+> i
+
+is the relevance score of the i-th page in the ideal ranking (sorted by relevance in descending order). 
+
+Mean Reciprocal Rank (MRR) : Computes the average of the reciprocal rank of the first relevant page. The calculation formula is as follows: 
+
+MRR = 1
+
+QDQDX
+
+> j=1
+
+1rank j
+
+, (16) where QD is the number of queries, and rank j is the rank of the first relevant page for the j-th query. These metrics collectively provide a comprehen-sive view of the retrieval process: Recall empha-sizes coverage, Precision emphasizes accuracy, and NDCG and MRR emphasize ranking quality. Retrieval Engine Top-1 Top-2 Top-3 
+
+Colpali 38 (×) 8 (×) 37 (√) 
+
+MoloRAG 8 ( ×) 38 (×) 37 (√) 
+
+Ours 24 (√) 21 (√) 23 (√) 
+
+Query: How many pages include charts whose horizontal-axis are set as year (like 2024 )? 
+
+Distracting Subueries but Necessary: [ None, but a split query can retrieve all evidence. ],  
+
+> (a) Beta Distributions of Different Subquery Arms
+
+(d) Retrieval Result Pages for Different Retrieval 
+
+Engines   
+
+> (b) Score Distribution
+> (Normalization) of Top-k Pages (c) Score Correlation
+> of Top-k Pages
+
+(e) Hypergraph Visualization 
+
+> Interfering Page
+> Interfering Page
+
+Figure 6: Qualitative Analysis of the MAB-DQA Framework. We selected a representative query that requires extensive page regression. The evidence for the problem spans 13 pages (specifically required: 10, 12, 14, 15, 20, 21, 22, 23, 24, 25, 26, 30, 37). It is evident that this query contains a large number of correct pages. This example demonstrates that our method, in the presence of positive samples, recalls a broader range of correct pages more comprehensively. As shown in Fig. (a), MAB-DQA, by providing query decomposition, recalls more correct evidence pages. As shown in Fig. (e), when extensive recall is required, distractor pages are usually contained within a small number of hyperedges. Retrieval Engine Top-1 Top-2 Top-3 
+
+Colpali 1 (×) 22 (√) 35 (×)
+
+MoloRAG 22 ( √) 24 (√) 1 (×)
+
+Ours 22 (√) 24 (√) 25 (√) 
+
+Query: How many QR codes are shown in the " Academics and Related Resources " part 
+
+of this guidebook? 
+
+Distracting Subqueries but Necessary: [ None, but a split query can retrieve all evidence. ], 
+
+> (a) Beta Distributions of Different Sub query Arms
+
+(d) Retrieval Result Pages for Different Retrieval 
+
+Engines   
+
+> (b) Score Distribution
+> (Normalization) of Top-k Pages (c) Score Correlation
+> of Top-k Pages
+
+(e) Hypergraph Visualization 
+
+> Ground Truth
+> Page
+> Interfering Page
+> Ground Truth
+> Page
+> Ground Truth
+> Page
+
+Figure 7: Qualitative Analysis of the MAB-DQA Framework. We selected a representative query that requires a multi-hop answer. The evidence for the problem spans 3 pages (specifically required: 22, 24, 25). This query requires the QA framework to both accurately identify evidence and completely recall it. As shown in Fig. (b), the initial scores provided by Colpali include distractor pages (35, 1). As shown in Fig. (d), through multiple rounds of online evaluation, MAB-DQA correctly excludes the distractor pages. MAB-DQA provides an online reranking algorithm that correctly associates all evidence. Retrieval Engine Top-1 Top-2 Top-3                           
+
+> Colpali 44 (×)1(×)0(×)
+> MoloRAG 1(×)44 (×)-
+> Ours 7(√) 1(×)8(√)
+> Query: How many distinct notification and status icons are displayed in the guidebook ?
+> Distracting S ubqueries but Necessary: [ guidebook ],
+> (a) Beta Distributions of Different Subquery Arms
+> (d) Retrieval Result Pages for Different Retrieval
+> Engines
+> (b) Score Distribution
+> (Normalization) of Top-k Pages (c) Score Correlation
+> of Top-k Pages
+> (e) Hypergraph Visualization
+> Ground Truth
+> Page
+> Interfering Page
+> The arms of the " guidebook " are deemed as "Low-
+> Important" arms during online updates.
+> Ground Truth
+> Page
+> Interfering Page
+
+Figure 8: Qualitative Analysis of the MAB-DQA Framework. We selected a representative query that requires avoiding distracting conditions. The evidence for the problem spans 2 pages (specifically required: 7, 8). "Guide book" is likely a high-frequency term that appears frequently throughout the entire document. This causes the retrieval engine to consider every page as directly relevant to the evidence for this problem. As shown in Fig. (d), both Colpali and MoloRAG retrieve incorrectly. MAB-DQA avoids the unimportant condition "guide book," enabling the recall of the correct evidence pages. 
+
+B Additional Case Studies and Qualitative Analysis 
+
+The Appendix B provides detailed qualitative anal-yses to further illustrate the effectiveness of the proposed MAB-DQA framework in handling di-verse multi-aspect multi-modality DQA scenar-ios. Through three representative case studies, we demonstrate how MAB-DQA addresses key chal-lenges such as extensive page regression, multi-hop reasoning, and distraction from high-frequency terms. Each case includes a visual breakdown of the retrieval process, highlighting the framework’s ability to dynamically weigh query conditions via hypergraph-based retrieval and reflective reasoning. The figures below present real examples from the MMLongBench benchmark, with annotations to clarify the retrieval mechanisms. In Fig. 6, the query involves evidence spread across 13 pages, testing the framework’s ability to handle large-scale regression. MAB-DQA’s query decomposition and hypergraph structure allow it to prioritize relevant pages while containing dis-tractors within sparse hyperedges. Fig. 7 focuses on a multi-hop query, where the initial retrieval by baselines includes irrelevant pages (e.g., page 35). Through iterative VLM feedback, MAB-DQA refines the path to associate all correct evidence. Fig. 8 addresses a common pitfall where high-frequency terms like "guide book" mislead retrieval. By evaluating condition importance online, MAB-DQA suppresses such distractions and accurately locates the two evidence pages. Collectively, these cases validate the framework’s robustness in real-world multi-modality DQA settings. 
+
+C Prompt Settings 
+
+The Appendix C section provides a comprehen-sive collection of the prompt engineering templates utilized throughout the MAB-DQA framework. These carefully crafted prompts play a crucial role in enabling the framework’s multi-aspect multi-modality importance-aware retrieval and reflective reasoning capabilities. Each prompt serves a spe-cific function in the pipeline. 
+
+C.1 Prompt for Decompose Query 
+
+The following prompt template is designed to ex-tract meaningful subqueries from complex user questions, which form the foundation for the hypergraph-based retrieval approach: As an AI agent specialized in document retrieval query processing, your primary task is to han-dle each query by first ignoring any irrelevant information (such as output format requests or non-retrieval instructions). Then, extract meaningful entities and key phrases that capture the core intent of the query. Finally, output the result as a comma-separated list of key phrases, for example: "key_phrase1, key_phrase2, ...". Ensure clarity and concise-ness throughout. 
+
+C.2 Prompt for Evaluate the Retrieval Evidence 
+
+# GOAL # You are a Retrieval Expert, and your task is to evaluate how relevant the input docu-ment page is to the given query. Rate the relevance on a scale of 1 to 5, where: - 5: Highly relevant - contains COMPLETE in-formation to fully answer the query (be cautious with this rating) - 4: Very relevant - contains most information needed but may lack some details (be cautious with this rating) - 3: Moderately relevant - contains some useful information but significant gaps remain - 2: Slightly relevant - has minor connection to the query - 1: Irrelevant - contains no information related to the query # INSTRUCTION # Based on previous retrieval system judgment, we believe that this document snapshot is at least ’ + priori + ’ relevant. Please first read the given query, think about what spe-cific information is required to answer that query comprehensively, and then carefully examine the document snapshot. # IMPORTANT # Before giving a score of 4 or 5, verify that the page actually contains the specific facts needed to answer the query, not just related information. # QUERY# + query + Think step by step about the relevance, then provide just a single number (1-5) representing your judgment. 
+
+C.3 Prompt For Evaluation: 
+
+Question: {question} Predicted Answer: {answer} Ground Truth Answer: {gt} 
+
+Please evaluate if the predicted answer is correct compared to the ground truth, considering the following criteria: - If the Ground Truth Answer is "Not answer-able": - And the Predicted Answer indicates that the model cannot answer, then it is considered COR-RECT (score 1). - Otherwise: - Score based on whether the Predicted Answer is factually and logically consistent with the Ground Truth Answer. Score the answer on Binary correctness (0-1): 1 if the answer is correct, 0 if it is incorrect Re-turn only a JSON-parsable string in the format: {{"binary_correctness": <score>}} Output: 
+
+C.4 Prompt For Question Answering 
+
+The evaluation prompt ensures consistent assess-ment of answer quality across different bench-marks, maintaining standardization in the baseline performance measurement: Using the provided { num_images } document screenshots, answer this question: "{question}" Requirements: - Reply must be extremely concise (as short as possible) - Use only information visible in the screenshots - If the answer cannot be clearly found, respond exactly: "Not answerable" Answer: 
+
+C.5 Prompt For Question Reflection 
+
+The reflection prompt enables the HRRA compo-nent to refine ambiguous queries, improving re-trieval precision through iterative clarification: Based on the provided { num_images } docu-ment screenshots, rephrase the following ques-tion to make it clearer and more specific. Original question: "{ question }" Requirements for rewriting: 1. If the question is clear and can be answered us-ing ONLY information in the screenshots, keep it essentially the same 2. If the question is ambiguous or vague, clar-ify it based on what information appears to be available in the screenshots 3. If the question cannot be answered with the screenshots, note this, but still try to rephrase for clarity 4. The rewritten question should be specific, direct, and answerable using visible document content 5. Keep the core intent of the original question 6. If screenshots show specific entities (names, dates, numbers, terms), use them in the rewritten question 7. Output only the rewritten question, nothing else Rewritten question: 
+
+C.6 Prompt For Answer Reflection 
+
+This prompt template facilitates the multi-stage verification process by assessing whether answers adequately address the original query requirements: You will be given a question and a correspond-ing answer. Your task is to determine whether the answer addresses the question, regardless of whether the answer is correct or not. Focus only on whether the answer responds to the question and covers the necessary points (i.e., no essential content is missing). If no answer is provided, consider it as not an-swering. Question: { question } Answer: { answer } Did the answer address the question? (yes/no) 
+
+C.7 Prompt For Hypergraph Summary 
+
+The hypergraph summary prompt enables structural analysis of queries, summarizing their associations from hypergraph, and supporting the framework’s ability to handle multi-hop reasoning tasks: Analyze the following question and identify the core concepts and relationships that need to be understood to answer it properly. Question: "{ question }" { "Key aspects to focus on: " + hypergraph if hypergraph else "Identify the key concepts and relationships in this ques-tion." } Requirements: - Break down the question into fundamental com-ponents - Identify what specific information is needed to answer each component - Note any implicit relationships or assumptions in the question - Be concise but thorough in your analysis Analysis: 
+
+C.8 Prompt For Refined Question Answering 
+
+The final refinement prompt implements the crit-ical thinking component of the HRRA, enabling iterative improvement of initial answers through evidence synthesis and reflection: Based on the following context, provide a better answer to the question through careful reason-ing. Question: {question} Initial incomplete answer: {initial_answer} Relevant information summary: {summary} CRITICAL THINKING REQUIREMENTS: 1. First, analyze what the question is REALLY asking for 2. Compare the initial answer with the available information 3. Identify gaps or inaccuracies in the initial answer 4. Synthesize information from the summary to fill these gaps 5. Formulate a coherent response that directly addresses the question DO NOT simply copy phrases from the sum-mary. Instead, use the information to construct a thoughtful answer. If the summary indicates no relevant informa-tion, respond: "Not answerable" Reasoning process: - [Analyze the question requirements] - [Compare initial answer with evidence] - [Identify what needs to be improved] - [Synthesize the improved answer] Improved answer: 
+
+D Algorithm Design 
+
+This section provides detailed algorithmic descrip-tions of the two core components in our MAB-DQA framework: the hypergraph construction pro-cess and the MABR algorithm. 
+
+D.1 Hypergraph Construction Algorithm 
+
+As shown in Algorithm 1, the hypergraph construc-tion algorithm serves as the foundation for our multi-aspect multi-modality retrieval framework. It transforms the original document and query into a Algorithm 1 Query-Aware Page Hypergraph Construction 
+
+Require: Query q, document pages {p1, p 2, . . . , p N }, VLM V, graph threshold θG, hyperedge capacity 
+
+θH
+
+Ensure: Hypergraph H = ( VG, EH ∪ EG) 
+
+> 1:
+
+procedure HYPERGRAPH CONSTRUCTION (q, {pi}Ni=1 , θ G, θ H) ▷ Construct hypergraph structure from documents and query  
+
+> 2:
+
+Eq, Epi ← VLM embeddings of q and pi 
+
+> 3:
+
+G(VG, EG) ← empty graph  
+
+> 4:
+
+for i = 1 to N do  
+
+> 5:
+
+for j = i + 1 to N do  
+
+> 6:
+
+if sim (Epi , Epj ) ≥ θG then  
+
+> 7:
+
+EG ← EG ∪ {{ pi, p j }}  
+
+> 8:
+
+end if  
+
+> 9:
+
+end for  
+
+> 10:
+
+end for  
+
+> 11:
+
+Eq ← { q1, q 2, . . . , q M } ← V .decompose (q) ▷ VLM decomposes query  
+
+> 12:
+
+Q ← {{ ˆq} | ˆq ∈ E q} ∪ {E q} ▷ Atom-Integral Subqueries Set  
+
+> 13:
+
+Let Qb = Eq (global reference, b = M + 1 ) 
+
+> 14:
+
+H ← (VG, EH ∪ EG) ▷ Composite hypergraph  
+
+> 15:
+
+for j = 1 to M + 1 do  
+
+> 16:
+
+Cj ← Top-θH pages by LI (Qj , p ) ▷ Select top pages for each query subset  
+
+> 17:
+
+ˆEj ← { p ∈ Cj | p / ∈ Cb ∨ rank (LI (Qj , p )) ≤ rank (LI (Qb, p )) } ▷ Filter pages based on global reference  
+
+> 18:
+
+EH ← EH ∪ { ˆEj } 
+
+> 19:
+
+end for  
+
+> 20:
+
+return H 
+
+> 21:
+
+end procedure 
+
+structured hypergraph representation that captures complex conditional associations. The algorithm begins by computing visual-language embeddings for both the query and all document pages. It then constructs a query-agnostic page graph G where edges connect pages with similarity scores exceeding the threshold θG.This graph captures the intrinsic relationships be-tween pages based on their semantic content. A key innovation is the decomposition of the original query q into subqueries q1, q 2, . . . , q M us-ing the VLM, forming an Atomic and Global Sub-queries Set that includes both individual subqueries and their complete combination. For each query subset Qj , the algorithm selects the top-θH pages based on late interaction scores, then filters them against a global reference set Qb to ensure that only pages with improved ranking under the spe-cific subquery are included in the hyperedge. The time complexity of Algorithm 1 is O(N 2 ·
+
+D + M · N · D), where N is number of pages, 
+
+M is number of subqueries, and D is embedding dimension. The quadratic term arises from the query-agnostic page graph construction, while the linear term accounts for the hyperedge generation. 
+
+D.2 Multi-Armed Bandit-based Retrieval 
+
+Algorithm 2 implements our novel retrieval strategy that formulates the retrieval process as a combina-torial multi-armed bandit problem. Each subquery 
+
+Qj is treated as an "Arm" with a Beta distribution Beta (αj , β j ) modeling its reward distribution. The algorithm maintains a dynamic scoring func-tion that combines four components: (1) a late in-teraction score between the page and any subquery; (2) a direct VLM relevance assessment svlm i ; (3) a hypergraph-based term balancing page connectiv-ity hi; (4) a bandit confidence scores scb i .The retrieval proceeds iteratively, with the beam focusing on the most promising pages based on the composite score. Thompson sampling ensures a balance between exploration (trying less certain subqueries) and exploitation (focusing on combi-Algorithm 2 Multi-Armed Bandit–based Retrieval 
+
+Require: Hypergraph H = ( VG, EH ∪ EG), retrieval iteration m, hyperparameters α, β, λ , VLM V,query q, original pages {pi}Ni=1 
+
+Ensure: Top-10 retrieved page indices Rtop10  
+
+> 1:
+
+procedure MAB-R ETRIEVAL (H, m, α, β, λ ) ▷ Hypergraph Bandit Thompson Sampling Search  
+
+> 2:
+
+Initialize bandit arms: ∀j, α j = 1 , β j = 1  
+
+> 3:
+
+visited ← ∅ , scores ← ∅ , current_page ← ∅  
+
+> 4:
+
+Initialize score (pi) = LI (q, p i) for all pi ∈ VH 
+
+> 5:
+
+for iteration t = 1 to m do ▷ Main search loop  
+
+> 6:
+
+to_evaluate ← ∅ ▷ Set of pages to evaluate in this iteration  
+
+> 7:
+
+if current_page = ∅ then ▷ No current page, evaluate all pages  
+
+> 8:
+
+to_evaluate ← VH 
+
+> 9:
+
+else ▷ Start from current page  
+
+> 10:
+
+to_evaluate ← { current_page } 
+
+> 11:
+
+end if  
+
+> 12:
+
+for each page pi ∈ to_evaluate do  
+
+> 13:
+
+ˆQi ← subquery linked to pi 
+
+> 14:
+
+scb  
+
+> i
+
+← 1 
+
+> |ˆQi|
+
+P   
+
+> Qj∈ˆQi
+
+E[Beta (αj , β j )] ▷ Bandit score from Thompson sampling  
+
+> 15:
+
+hi ← deg( pi) in H 
+
+> 16:
+
+if pi ∈ visited then  
+
+> 17:
+
+Adj H(pi) ← { pj ∈ VH | ∃ e ∈ EH, {pi, p j } ⊆ e} 
+
+> 18:
+
+Unvisited ← Adj H(pi) \ visited  
+
+> 19:
+
+if Unvisited ̸ = ∅ then ▷ Found unvisited neighbors, jump to the best one  
+
+> 20:
+
+p∗ ← arg max pj ∈Unvisited score (pj ) 
+
+> 21:
+
+current_page ← p∗ ▷ Update current page for next iteration  
+
+> 22:
+
+else  
+
+> 23:
+
+Continue ▷ No unvisited neighbors, reset  
+
+> 24:
+
+end if  
+
+> 25:
+
+else  
+
+> 26:
+
+svlm  
+
+> i
+
+← VLM evaluates relevance of pi to q ▷ VLM evaluation for unvisited nodes  
+
+> 27:
+
+visited ← visited ∪ { pi} 
+
+> 28:
+
+current_page ← pi ▷ Stay on this page for potential jump next iteration  
+
+> 29:
+
+end if  
+
+> 30:
+
+score (pi) ← (1 − α) max j LI (Qj , p i) + αs vlm  
+
+> i
+
++ β[(1 − λ)hi + λs cb  
+
+> i
+
+] ▷ Composite scoring function  
+
+> 31:
+
+scores [pi] ← score (pi) 
+
+> 32:
+
+end for 
+
+▷ Update bandit parameters for all visited pages  
+
+> 33:
+
+for each pi ∈ visited do  
+
+> 34:
+
+ˆQi ← linked subqueries  
+
+> 35:
+
+if pi was evaluated by VLM in this iteration then  
+
+> 36:
+
+∀Qj ∈ ˆQi : ( αj , β j ) ← (αj + svlm  
+
+> i
+
+, β j + 1 − svlm  
+
+> i
+
+) 
+
+> 37:
+
+end if  
+
+> 38:
+
+end for  
+
+> 39:
+
+end for  
+
+> 40:
+
+R ← top 10 pages by final scores  
+
+> 41:
+
+return R 
+
+> 42:
+
+end procedure nations that have yielded high rewards). After each VLM evaluation, the algorithm updates the Beta pa-rameters for all subqueries associated with the eval-uated page, enabling online learning of the query’s condition importance. Ultimately, the time complexity of Algorithm 2 is O(m · TVLM + m · | EH|), where m is the num-ber of iterations and TVLM is the VLM evaluation time. The MABR algorithm’s efficiency stems from its focused preliminary evaluation strategy that prioritizes pages with high potential relevance while maintaining theoretical guarantees through the multi-armed bandit formulation. 
+
+E Randomness Statement and Control Measures 
+
+In the experiments presented in this paper, random-ness primarily stems from the following sources: (1) The Visual Language Model (VLM) for query decomposition may generate different subqueries; the VLM temperature is fixed at 0, but there may still be inherent stochastic risks. (2) The random initialization in page similarity computations (e.g., embedding generation) during the hypergraph con-struction process. (3) Uncertainties arising during hyperedge construction. (4) The random explo-ration strategy of Thompson Sampling in the multi-armed bandit problem. These stochastic factors may cause slight fluctuations in the results of a sin-gle experimental run. To mitigate their impact, we ensure that all key experiments are conducted with multiple independent runs (the specific number is detailed in the experimental setup) and employ a fixed random seed (set to 42) to guarantee repro-ducibility. For instance, in the hyperparameter sen-sitivity analysis (Sec. 4.4), we repeat experiments using a controlled variable method to isolate ran-dom noise. All experimental results reported in this paper are based on multiple runs (typically 3), and the best performance values are reported to demonstrate the potential of the method. In our experiments, we observe that performance fluctua-tions due to randomness are approximately ±0.5% ,which is considered acceptable. This assessment is primarily based on the following reasons: (1) Sensitivity analysis (Sec. 4.4) shows that variations in hyperparameters (such as α, β, λ ) exhibit dis-tinct peaks in their impact on the metrics; (2) Re-sults across multiple datasets (e.g., MMLongBench, LongDocURL with manually labeled retrieval tags) are highly consistent, and the observed fluctuations 0.2 0.4 0.6 0.8                      
+
+> 33.0
+> 34.0
+> 35.0
+> Precision@3
+> (a) Parameter:
+> Precision@3
+> Recall@3 66.0
+> 68.0
+> Recall@3
+> 0.0 0.1 0.2 0.3
+> 34.5
+> 35.0
+> Precision@3
+> (b) Parameter:
+> Precision@3
+> Recall@3
+> 69.0
+> 69.5
+> Recall@3
+> 0.2 0.4 0.6 0.8
+> 34.0
+> 34.5
+> 35.0
+> Precision@3
+> (c) Parameter:
+> Precision@3
+> Recall@3
+> 69.0
+> 69.5
+> Recall@3
+> 0.2 0.4 0.6 0.8
+> 34.5
+> 34.6
+> 34.7
+> 34.8
+> Precision@3
+> (d) Parameter: G
+> Precision@3
+> Recall@3
+> 69.2
+> 69.3
+> 69.4
+> Recall@3
+> 246810
+> 33.0
+> 34.0
+> 35.0
+> Precision@3
+> (e) Parameter: H
+> Precision@3
+> Recall@3 68.0
+> 68.5
+> 69.0
+> 69.5
+> Recall@3
+> 510 15 20 25
+> 34.0
+> 34.5
+> 35.0
+> Precision@3
+> (f) Parameter: iterations
+> Precision@3
+> Recall@3
+> 68.0
+> 69.0
+> Recall@3
+
+Figure 9: Sensitivity Analysis of Key Hyperparameters of the MAB-DQA Framework under Top-3 Retrieval on MMLongBench. The blue dashed line represents Precision. The red line represents Recall. 
+
+do not significantly alter the conclusions. 
+
+F Supplementary Ablation and Sensitivity Experiments 
+
+The Appendix F presents additional ablation stud-ies that investigate the individual contributions of key components in the MAB-DQA framework. Un-like the progressive ablation approach in the main text (Sec. 4.3), which sequentially added modules, here we examine the impact of removing single components while keeping others intact. This pro-vides a more granular understanding of each mod-ule’s role in the overall system performance. All experiments maintained the same evaluation met-rics (accuracy) and experimental conditions as de-scribed in Sec. 4.1. In Fig. 9, we have supple-mented the sensitivity analysis of the MAB-DQA framework on the MMLongBench dataset. Table 6 presents the quantitative results of the individual component ablation study. The ablation experiments were conducted on the same four open-source benchmark datasets as in the main experiments: MMLongBench, Long-DocURL, FetaTab, and PaperTab. We evaluated four modified versions of our framework by indi-vidually removing specific components: • w/o Query-Agnostic Page Graph : Removes the Query-Agnostic Page Graph construction (as shown in Sec. 3.1), disabling the modeling of inter-page relationships. • w/o Atomic and Global Subqueries Set :Uses only the Atomic Set (as shown in Eq. 3), Table 6: Individual Component Ablation Study on MAB-DQA Framework                         
+
+> Model Variant MMLongBench LongDocURL FetaTab PaperTab
+> w/o Query-Agnostic Page Graph 0.394 0.560 0.636 0.247 w/o Atomic and Global Subqueries Set 0.317 0.482 0.543 0.198 w/o Question Reflection 0.401 0.556 0.631 0.219 w/o Answer Reflection 0.397 0.561 0.625 0.247 Ours (Full Model) 0.399 0.564 0.638 0.269
+
+limiting the framework’s ability to capture global information. • w/o Question Reflection : Disable the ques-tion reflection component in HRRA, thus elim-inating the entire query clarification and re-finement process. • w/o Answer Reflection : Removes the answer reflection mechanism in the HRRA, disabling the multi-stage verification and refinement of generated answers. From the above analysis, several key observa-tions emerge: 
+
+Query-Agnostic Page Graph Contribution :The removal of the Query-Agnostic Page Graph Contribution causes performance degradation across all datasets, with the most significant im-pact on PaperTab (-8.2%), which contains complex tabular structures. This demonstrates that modeling inter-page relationships is particularly crucial for documents with strong structural dependencies. 
+
+Atomic and Global Subqueries Set : Remov-ing query decomposition results in the most sub-stantial performance drop overall, particularly on LongDocURL (-14.5%), which contains complex multi-aspect questions. This highlights that captur-ing both fine-grained and holistic query aspects is essential for handling diverse question types. 
+
+Reflection Components : The question and an-swer reflection mechanisms exhibit clear comple-mentary effects with each other. The impact of individual components varies across datasets. PaperTab, focusing on scientific document understanding, benefits most from struc-tural components (similarity graph), while Long-DocURL, emphasizing long-document reasoning, relies heavily on query decomposition strategies. These findings confirm that each component in MAB-DQA contributes uniquely to the frame-work’s overall effectiveness, with different mod-ules playing dominant roles depending on the spe-cific document characteristics and question types encountered in the DQA task.
