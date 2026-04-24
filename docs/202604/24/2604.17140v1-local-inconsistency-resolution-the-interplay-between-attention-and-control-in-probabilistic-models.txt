@@ -1,0 +1,2780 @@
+Title: Local Inconsistency Resolution: The Interplay between Attention and Control in Probabilistic Models
+
+URL Source: https://arxiv.org/pdf/2604.17140v1
+
+Published Time: Tue, 21 Apr 2026 01:03:33 GMT
+
+Number of Pages: 28
+
+Markdown Content:
+# Local Inconsistency Resolution: The Interplay between Attention and Control in Probabilistic Models 
+
+Oliver E. Richardson 1,4,5,† Mandana Samiei 2,5 Mehran Shakerinava 2,5
+
+Joseph D. Viviano 1,5 Abdessamad El Kabid 3,5 Ali Parviz 5 Yoshua Bengio 1,4,5
+
+> †
+
+Corresponding author: oliver.richardson@umontreal.ca 
+
+> 1
+
+Université de Montréal 2School of Computer Science, McGill University 
+
+> 3
+
+Institut Polytechnique de Paris 4LawZero 5Mila - Quebec Artificial Intelligence Institute 
+
+## Abstract 
+
+We present a generic algorithm for learning and approximate inference with an intuitive epistemic interpretation: iteratively focus on a subset of the model and resolve inconsisten-cies using the parameters under control. This framework, which we call Local Inconsistency Resolution (LIR) is built upon Probabilistic Dependency Graphs (PDGs), which provide a flexible representational foundation capable of capturing inconsistent beliefs. We show how LIR unifies and generalizes a wide variety of important algorithms in the literature, includ-ing the Expectation-Maximization (EM) algo-rithm, belief propagation, adversarial training, GANs, and GFlowNets. In the last case, LIR actually suggests a more natural loss, which we demonstrate improves GFlowNet conver-gence. Each method can be recovered as a spe-cific instance of LIR by choosing a procedure to direct focus (attention and control). We implement this algorithm for discrete PDGs and study its properties on synthetically gen-erated PDGs, comparing its behavior to the global optimization semantics of the full PDG. 
+
+## 1 Introduction 
+
+What causes one to change their mind, to learn, act, and draw inferences? From a neurocognitive perspective, the mind operates by resolving internal inconsistencies, whether they arise from conflicting new information or 
+
+Proceedings of the 29 th International Conference on Arti-ficial Intelligence and Statistics (AISTATS) 2026, Tangier, Morocco. PMLR: Volume 300. Copyright 2026 by the au-thor(s). 
+
+from new awareness of contradictions among prior be-liefs. Theories of cognitive dissonance (Festinger, 1962) famously explain much of human behavior as targeted adjustments to dispel the discomfort of psychological inconsistency. Predictive coding theories (Rao and Ballard, 1999; Friston, 2005) posit that discrepancies between expected and actual sensory inputs—known as prediction errors—are treated as inconsistency sig-nals that drive learning via local adjustments to neural representation. Inspired by the deeper underlying neu-rocognitive principle, we introduce a computational framework that formalizes the process of local incon-sistency resolution (LIR) in probabilistic models. The locality—which manifests in two ways—is essential for those of us with computational limitations. First, in-consistency can be difficult to detect, and impossible to address constructively unless it falls within our field of 
+
+attention . Second, we seldom have uniform control over our epistemic state; we are generally reluctant to revise our direct observations or bedrock principles, forcing us instead to adjust other more pliable beliefs. So in practice, we resolve inconsistencies locally —by looking at only a small part of the model, and modifying only a fraction of its parameters. This process isn’t guar-anteed to succeed: some inconsistencies simply cannot be seen or addressed with a narrow focus, and fixing one inconsistency can easily create others out of view. Nevertheless, we will show that LIR provides a power-ful recipe for learning and (approximate) inference and demonstrate that many foundational techniques in the literature arise naturally as instances of it. Our approach leans heavily on the theory of Proba-bilistic Dependency Graphs (PDGs), which are highly flexible graphical models capable of representing ar-bitrary (even inconsistent) probabilistic information, weighted by confidence (Richardson and Halpern, 2021). There is a natural way to measure how inconsistent a PDG is, and many standard loss functions can be 
+
+> arXiv:2604.17140v1 [cs.AI] 18 Apr 2026 Local Inconsistency Resolution: The Interplay between Attention and Control in Probabilistic Models
+
+viewed as measuring the inconsistency of a PDG that describes the appropriate situation (Richardson, 2022). LIR operationalizes training models as the process of adjusting parameters to resolve this inconsistency. Computing a PDG’s degree of inconsistency is easy in some cases, but it is often intractable and is NP-hard in general ( e.g. , the log number of solutions to a SAT problem and the log evidence of a latent variable model can both be represented as PDG inconsistencies). The problem is equivalent to inference in PDGs, which, like for other graphical models, can be achieved in polyno-mial time under the assumption of bounded tree-width (Richardson et al., 2023). Variational inference (Blei et al., 2017; Kingma and Welling, 2014; Jordan et al., 1999) can be understood as the practice of adopting extra beliefs to get an overapproximation of inconsis-tency that is easier to calculate (Richardson, 2022). Our approach also enables the opposite: focusing on small parts of the graph at a time to address tractable underapproximations of the global inconsistency. 
+
+## 2 Preliminaries and Parametric PDGs 
+
+Variables and Probability. We write VX for the set of values that a (random) variable X can take on, and ∆VX for the set of distributions over VX. A conditional probability distribution (cpd) is a map 
+
+p(Y |X) : VX → ∆VY . If X = {X1, X 2, . . . }i∈I is an (indexed) set of variables, we regard X itself as a variable that can take on joint settings VX = Q 
+
+> i∈I
+
+VXi.If μ ∈ ∆VX is a joint distribution and Y ⊆ X , we write 
+
+μ(Y ) for the marginal of μ on the variables Y .A directed hypergraph (N, A) is a set of nodes N and a set of arcs A, each a ∈ A of which is associated with a set Sa ⊆ N of source nodes, and Ta ⊆ N target nodes. We also write S a
+
+→T ∈ A to specify an arc a together with its sources S = Sa and targets T = Ta.
+
+Geometry. For our purposes, a pointed parameter space Θ is a convex subset of Rn for some n ≥ 0
+
+(that may differ between parameter spaces) with a distinguished default value θ0 ∈ Θ. A vector field over 
+
+Θ is a differentiable map X assigning to each θ ∈ Θ avector Xθ ∈ Rn. The gradient of a twice differentiable map f : Θ → R, which we write ∇Θf (Θ) , is a vector field. Given a vector field X and an initial point θ0 ∈
+
+Θ, there is a unique trajectory y(t) that solves the ordinary differential equation (ODE) { ddt y(t) = Xy(t),
+
+y(0) = θ0}. To refer to that solution compactly, we adopt the notation exp θ0 (X) := y(1) . Although exp 
+
+may appear to give us access only to y(1) , it is easily verified that exp θ0 (tX ) = y(t) for all t ≥ 0. Putting all the pieces together: the map t 7 → exp θ (t∇Θf (Θ)) 
+
+is the smooth path beginning at θ that follows the gradient of f . It is known as gradient flow .
+
+Probabilistic Dependency Graphs. A PDG is a di-rected (hyper)graph whose arcs carry probabilistic and causal information, weighted by confidence (Richard-son and Halpern, 2021). We define an unweighted (but for our purposes, equivalent) variant whose explicit parametric nature will prove useful. 
+
+Definition 1. An unweighted parametric PDG M(Θ) = ( X, A, Θ={Θa}a∈A , P={Pa}a∈A ) is a directed hyper-graph (X, A) whose nodes X are variables, and whose arcs a ∈ A are each associated with a parameter space 
+
+Θa and a map Pa : Θ a × VSa → ∆VTa that gives a cpd 
+
+Pa(Ta|Sa; θ) over a’s target variables given values of its sources and a parameter setting θ ∈ Θa.An unweighted PDG is the object obtained by fixing the parameters: a joint setting θ = ( θa)a∈A yields a concrete unweighted PDG M = M(θ)—which, at a syntactic level, is just a collection of cpds. When constructing PDGs from known cpds ( e.g. , p(Y |X)), we use the mathematical symbol representing that cpd (e.g. , p) for both the arc a and its associated cpd Pa.We typically depict (parametric) PDGs in graphical notation, specifying a cpd 
+
+pθ (Y |X, Z ) as Y 
+
+> X
+> Z
+
+p and qθ (A, B ) as A
+
+> B
+
+q .A PDG can be faithfully viewed as the special case of a parametric PDG in which each parameter space 
+
+Θa = {θ0} is a singleton containing only the default value. Conversely, a parametric PDG may be viewed as a PDG by adding each Θa as an explicit variable. 
+
+PDG Semantics and Inconsistency. The power of PDGs comes from their semantics, which sew their (possibly inconsistent) cpds and confidences together to describe features of a joint distribution μ(X ).A PDG contains two kinds of information: qualitative structure, encoding the types of causal mechanisms (the hypergraph A), and observational data, in the form of specific probabilistic beliefs (the cpds P). In the standard presentation (Richardson, 2024), a PDG also comes with weight vectors α, β ∈ RA over the arcs, encoding confidence in information of each type: αa
+
+can be thought of as the number of independent causal mechanisms by which Sa determines Ta (Richardson et al., 2024), while βa can be thought of as the effective number of independent reports endorsing that the prob-ability of Ta given Sa is Pa. Corresponding to these two types of information, PDG semantics provide a way of scoring compatibility of a joint distribution μ(X ) with information of each type. With respect to a PDG M, the observational incompat-ibility of a joint probability measure μ ∈ ∆VX is given by a weighted sum of relative entropy (KL) terms 
+
+OInc M(μ) := X  
+
+> Sa
+> →T∈A
+
+βa ID
+
+
+
+μ(T, S ) Pa(T |S)μ(S)
+
+
+
+, (1) Richardson, Samiei, Shakerinava, Viviano, El Kabid, Parviz, Bengio 
+
+where ID(p ∥ q) = Ex∼p[log p(x) 
+
+> q(x)
+
+]. This quantity can be thought of as the excess cost of using codes opti-mized for our beliefs P weighted by the confidence β
+
+we have in them, when in fact X ∼ μ. If β > 0, then 
+
+OInc M(μ) = 0 if and only if μ satisfies the constraints imposed by every cpd of P. Intuitively, the cpds of 
+
+P are inconsistent when constraints are not simulta-neously satisfiable, in which case the observational inconsistency ⟨⟨M⟩⟩0 := inf μ OInc M(μ) is an important measure of the magnitude of the unavoidable internal conflict between the probabilistic data in M.Modern machine learning usually prizes observational data above all else—in particular, above structural information such as causal influence or qualitative in-dependencies. For this reason, the scoring function 
+
+OInc and the corresponding observational inconsistency 
+
+⟨⟨M⟩⟩0 will suffice for most of our examples. That said, we can also score μ by its incompatibility with the struc-tural information in the weighted hypergraph (A, α).This structural deficiency (SDef ) is given by: 1
+
+SDef A,α(μ) := − H( X ) + X
+
+> a∈A
+
+αa H( Ta | Sa), (2) and, roughly speaking, measures μ’s failure to arise as a result of an independent causal mechanism along each hyperarc (Richardson et al., 2024). If A is a quali-tative Bayesian Network and α = 1, for instance, then 
+
+SDef A,α(μ) ≥ 0 with equality iff μ has the conditional independencies of A. With confidence γ ≥ 0 in the structural information overall, the γ-inconsistency of 
+
+M is the smallest possible overall incompatibility of any distribution with M, and denoted 
+
+M γ := inf 
+
+> μ
+
+
+
+OInc M(μ) + γ SDef (A,α)(μ)
+
+
+
+. (3) Richardson (2022) argues that this inconsistency mea-sure (3) is a “universal” loss function, largely by showing how it specializes to standard loss functions across a wide breadth of contexts. It follows that, at least at an abstract level, much of machine learning can be viewed as inconsistency resolution. We now take this idea a few steps further, by operationalizing the resolution process and allowing it to be done “locally”. 
+
+## 3 The Local Inconsistency Resolution (LIR) Algorithm 
+
+There are two distinct senses in which inconsistency resolution can be local : we can restrict what we can see,             
+
+> 1If the underlying variables are continuous, then we redefine entropy as follows. Assume each variable comes with a base measure λ, like the Lebesgue or counting mea-sure. Then define Hμ(X) := Eμ[log dμ(X)dλX], where dμ
+> dλis the Radon-Nikodym derivative of μ(X)with respect to λX.
+
+or what we can do about it. Correspondingly, there are two “focus” knobs for our algorithm: one restricts our attention to the inconsistency of a subset of arcs 
+
+A ⊆ A , and the other restricts our control to only the parameters of a subset C ⊆ A of arcs as we resolve that inconsistency. The former makes for an underestimate of the inconsistency that is easier to calculate, while the latter makes for an easier optimization problem. These restrictions are not just cheap approximations, though: they are also appropriate modeling assumptions for actors that cannot see and control everything at once. Attention and control need not be black and white. A more general approach would be to choose an attention mask φ ∈ RA and a control mask χ ∈ [0 , ∞]A. Large 
+
+φ(a) makes a salient while φ(a) = 0 keeps it out of mind; similarly, large χ(a) gives significant freedom to change a’s parameters, small χ(a) affords only minor adjustments, and χ(a) = 0 prevents change altogether. We often say “full control” to mean χ(a) = ∞, in which case we move θa to a fixed point. In full generality, we refine the types of φ and χ one step further by breaking the control and attention in each arcs into natural subcomponents. The behav-ior of the attention mask φ described in the previ-ous paragraph matches the role played by α and β
+
+in PDG semantics—which is why we needed only to define unweighted PDGs as our basic objects, but re-quire weighted semantics for them. The parameter 
+
+γ also describes a form of attention, to the overall qualitative information in the network. Thus, we can reinterpret all three classical weight parameters as com-ponents of the attention mask φ = ( α, β, γ ), a vector of dimension 2|A| + 1 . To simplify notation, we write 
+
+⟨⟨φ ⊙ M⟩⟩ := ⟨⟨M, α, β⟩⟩γ to denote the γ-inconsistency of the weighted PDG (M, α, β). We will typically set 
+
+γ = 0 , rendering α irrelevant (except in Section 4.4 where γ = 1 and α = β), and also assume β = α = 1
+
+unless otherwise specified. We also allow χ(a) to be a vector of dimension dim Θa, so overall χ is a vector of dimension P 
+
+> a∈A
+
+dim Θ a.
+
+Algorithm 1 Local Inconsistency Resolution (LIR) 
+
+Require: procedure Refocus 
+
+Input: knowledge base M(Θ) ,Initialize θ(0) ← 0;
+
+for t = 0 , 1, 2, . . . do 
+
+φ, χ ← Refocus () ;
+
+θ(t+1) ← exp θ(t)
+
+n
+
+−χ ⊙ ∇ θ
+
+DD
+
+φ ⊙ M(θ)
+
+EEo 
+
+;Formalized in Algorithm 1, LIR is a heuristic algorithm that adjusts the parameters of a parametric PDG M(Θ) 
+
+as to locally resolve inconsistencies as follows. Start with a belief state, in the form of a parametric PDG Local Inconsistency Resolution: The Interplay between Attention and Control in Probabilistic Models 
+
+M(Θ) , and initialize the parameters to their default values. In each iteration, choose focus consisting of an attention mask φ = ( α, β, γ ) and a control mask χ.Calculate ⟨⟨φ ⊙ M(Θ) ⟩⟩γ , the inconsistency of the com-bined context and memory, weighted by attention. In many cases ( e.g. , when β ≥ γα) these problems can be solved with techniques in conic optimization (Richard-son et al., 2023), but this may be intractable unless the attention is narrow or one can find a formula for it in closed form. Finally, resolve this local inconsistency by updating mutable memory via (an approximation to) gradient flow, changing the parameters associated with a in proportion to the degree of control χ(a).The ODE described in the final line may be approxi-mated with an inner loop running an iterative gradient-based optimization algorithm. Alternatively, if Refo-cus produces small χ, then it is well-approximated by a single gradient descent step of size χ. At the other extreme, if χ is infinite in every component, then we typically expect the final line to reduce to 
+
+θ(t+1) ← arg min  
+
+> θ
+
+φ ⊙ M(θ) , (4) at least in many cases of interest. For example: 
+
+Proposition 1. If M(Θ) is an unweighted parametric PDG whose parameterizations P are either constant or unconditional and log-concave and β ≥ γα, the map 
+
+θ 7 → ⟨ ⟨M(θ), α, β⟩⟩γ is convex. 2
+
+Surprisingly, inconsistency is not always convex in the parameters of conditional probability distributions— yet we conjecture that (4) holds nevertheless. Deter-mining whether or not ⟨⟨M + p(Y |X)⟩⟩ is quasi-convex in p remains a key open question in the theory of PDGs. In order to run Algorithm 1, we must select the pro-cedure Refocus that provides attention and control masks. We focus primarily on the case where Refocus 
+
+chooses non-deterministically from a fixed finite set of attention-control mask pairs F = {(φi, χ i)}ni=1 , which we call foci . Even so, Algorithm 1 is quite abstract. To give intuition for it, next we give a sample of important algorithms that are instances of LIR. 
+
+## 4 Unifying Important Algorithms as Instances of LIR 
+
+4.1 The Classification Setting 
+
+Consider a parametric classifier pθ (Y |X), perhaps aris-ing from a neural network whose final layer is a soft-max, and suppose we also have a labeled example (x, y ).Let’s capture this situation with a parametric PDG. Since VY is a discrete label space space, we regard 
+
+> 2All proofs can be found in the appendix.
+
+X Y
+
+p
+
+x
+
+x′
+
+y
+
+y′ ∼=
+
+X
+
+Y
+
+Θ p
+
+θ    
+
+> N(0 ,1)
+> N(x, 1)
+
+x′
+
+y
+
+y′
+
+Figure 1: Illustrations of adversarial training as LIR. Foci are in green and blue; dashes indicate control. Right: ex-plicit parameter variable Θ and exact symmetry. 
+
+labels as unconditional distributions over Y , viewing “hard” labels such as our y ∈ VY as vertices of this simplex, while also allowing for label smoothing (see Müller et al., 2019, for an overview). Doing the same for x may be intractable, but fortunately is not neces-sary; in the typical case where the space of inputs VX
+
+is itself a manifold ( e.g. , color images in [0 , 1] W ×H×3), we can regard a value x ∈ VX as parameterizing a deterministic unconditional probability over X. To communicate this deterministic parameterization visu-ally, we use a double-headed arrow, writing Xx .Combining the parametric classifier pθ (Y |X) with the sample (x, y ), we get a parametric PDG M(x, y, θ ) :=  
+
+> XY
+
+x ypθ ∼=
+
+X
+
+Y
+
+Θ p
+
+x
+
+θ
+
+y (5) whose observational inconsistency is − log pθ (y|x),the standard training objective for such a classifier (Richardson, 2022). Each cpd plays major role in this inconsistency. What happens when we resolve this it with control over different arcs? 
+
+• Adjusting θ amounts to training the network in the standard way. In this case, the value χ of the control mask corresponds roughly to the product of the learning rate and the number of optimization iterations spent on the example (x, y ).
+
+• Adjusting y amounts to inference : it adjusts y to match distribution pθ (Y |x).
+
+• Adjusting x amounts to forming an adversarial example : it makes small changes to the input until the (fixed) network gives it the desired label. Some readers may find the last point surprising. While adversarial examples (Goodfellow et al., 2014) are often presented as weird quirk of neural networks, they are, together with training and inference, one of the three basic resolutions ways of resolving this simple inconsis-tency. The sustained interest of the machine learning community on adversarial examples may appear to be a cultural phenomenon, but at a mathematical level, it is no accident (Shafahi et al., 2018). At this level of abstraction, there is no difference between the network parameters and inputs. Making the parameterization of 
+
+p explicit and adding L2 regularization, the symmetry Richardson, Samiei, Shakerinava, Viviano, El Kabid, Parviz, Bengio 
+
+becomes striking (see Figure 1, right). With minor modifications to M(x, y, θ ), we can capture variations of training procedures. 
+
+Stochastic Gradient Descent (SGD). Take the mutable state to be the classifier p as before. De-fine Refocus so that it draws a batch of samples 
+
+{(xi, y i)}mi=1 , places infinite attention on their empiri-cal distribution d(X, Y ) (reflecting high confidence in the data). If η := χ(p)φ(p) is small, then LIR reduces to SGD with batch size m and learning rate η.
+
+Adversarial training. Suppose we want to slightly alter x to obtain x′ that is classified as y′ instead of 
+
+y. Adding x′ and y′ to M and relaxing Px to be a Gaussian centered x rather than a point mass, we get the PPDG on the left of Figure 1. A LIR iteration whose focus consists of the edges marked in green (with control over the dashed green edge) is an adversarial attack with Euclidean distance (Biggio et al., 2013). The blue focus, by contrast, “patches” the adversarial example by adjusting the model parameters to again classify it correctly. Thus, LIR that alternates between the two and refreshes (x, y, y ′) is adversarial training, a standard defense to adversarial attacks (Goodfellow et al., 2014). Thus, it is just as sensible to train the inputs, as the network (Kishore et al., 2021). 
+
+4.2 The EM Algorithm and VAEs 
+
+Consider a latent variable model pθ (Z, X ). Given ob-servations of the form X=x, how can we learn model parameters θ despite the missing data z? The standard answer is the EM algorithm (Dempster et al., 1977; McLachlan and Krishnan, 2008), which iteratively im-proves an estimate of θ by first taking an Expectation over the missing values z (fixing the current estimate θ), and then performing Maximization over θ to update the parameters; altogether this amounts to computing: 
+
+θ(t+1)  
+
+> EM
+
+:= arg max  
+
+> θ
+
+Ez∼p(Z|x,θ (t)
+
+> EM )
+
+ log p(x, z |θ) .
+
+Proposition 2. LIR ZX
+
+x
+
+p
+
+q
+
+> (∞)
+
+!
+
+in which 
+
+Refocus re-samples x and alternates between full con-trol of p and q implements EM, in that θ(t) 
+
+> EM
+
+= θ(2 t)
+
+> LIR
+
+.3
+
+This result is closely related to one due to Neal and Hinton (1998), who view it as an intuitive explanation of why the EM algorithm works. Indeed, it is obvious in this form that every adjustment reduces the overall inconsistency, and that the M step need not fully solve the maximization problem, but merely make progress.   
+
+> 3The result can also be readily adapted to an entire dataset by replacing xwith a high confidence empirical distribution, or mini-batched as in Section 4.1.
+
+Variational inference as LIR. This form of the EM algorithm is closely related to variational inference. In-deed, the inconsistency of the PDG in Proposition 2 is equal to the evidence lower bound (ELBO), the optimization target for variational methods. Further-more, allowing q to depend on x and breaking up 
+
+p(X, Z ) = p(Z)d(X|Z) into two separate arcs yields a PDG containing the data of a variational autoencoder, or VAE (Kingma and Welling, 2014), and the resulting inconsistency is the variant of the ELBO used to train VAEs (Richardson, 2022). It follows that LIR where we control the encoder and decoder (but not the prior) and attend to various mini-batches of samples, trains a VAE with stochastic gradient descent. Mean-field vari-ational methods are ones where the latents Z = ( Zi)ni=1 
+
+are real-valued, and the variational family is restricted to those of the form q(Z) = Qni=1 qi(Z).
+
+4.3 Generative Adversarial Networks 
+
+LIR can also capture the procedure for training Gen-erative Adversarial Networks, or GANs (Goodfellow et al., 2020). The goal is to train a generator network 
+
+G to generate images that cannot be distinguished from real ones. Formally, let X be either a generated image Xfake ∼ G or one from a dataset Xreal ∼ pdata ,based on the outcome of a fair coin C. A discriminator 
+
+D then predicts the outcome C of the coin flip from the image X. The only additional ingredient we will need that is not explicit in the original formulation is a belief e that the coin is equally likely heads as tails given X—intuitively, representing the goal of the gen-erator and the opposite of the goal of the discriminator. All of these pieces of probabilistic information can be summarized by the (foci-annotated) PDG below. 
+
+M(Θ) := 
+
+Xfake 
+
+Xreal X
+
+C
+
+G
+
+pdata ! De
+
+> 50 /50!
+
+GAN training is often written as a 2-player game 
+
+min G max D LGAN (G, D ), where LGAN (G, D ) = 
+
+Ex∼pdata [ log D(x) ] + Ex′∼G[ log(1 − D(x′)) ] .
+
+The Discriminator’s Focus (φD , χ D ). The discrim-inator has control over D, and attends to everything but e. That inconsistency of this PDG is what might be called the discriminator’s objective: the expected KL divergence from D to the optimal discriminator. If 
+
+D also disbelieves that any image is equally likely to be fake as real (by choosing to give negative attention, 
+
+φD (e) = −1), then the inconsistency becomes −L GAN .
+
+The Generator’s Focus (φG, χ G). The generator has control over G. If it ignores D and attends only to Local Inconsistency Resolution: The Interplay between Attention and Control in Probabilistic Models 
+
+a X
+
+b1
+
+bm
+
+Y1
+
+Yn
+
+mb1 X
+
+mbm X
+
+mX a mY1 a
+
+mYn a ma X  
+
+> Xa
+
+X
+
+> Xb1
+> Xbm
+
+Y1
+
+Yn  
+
+> Ya
+> 1
+> Yan
+
+mb1 X
+
+mbm X
+
+mX a 
+
+mY1 a
+
+mYn a
+
+ma X ϕa
+
+⊆ Msg 
+
++MΦ.Figure 2: Left: an illustration of the local message-passing updates (6,7). Right: the PDG Msg of Section 4.4. 
+
+e, the inconsistency is the Jensen-Shannon Divergence between G and pdata . If the generator also disbelieves the discriminator D (i.e. , φG(D) = −1), then the inconsistency becomes +LGAN . It follows that: 
+
+Proposition 3. LIR (M) with foci alternating between 
+
+(φG, χ G) and (φD , χ D ) trains a GAN. 
+
+4.4 Message Passing 
+
+A factor graph over a set of variables X is a set of factors Φ = {ϕa : Xa → R≥0}a∈A , where each Xa ⊆ X 
+
+is called the scope of a. Conversely, for X ∈ X , let 
+
+∂X := {a ∈ A : X ∈ Xa} be the set of factors with X
+
+in scope. The factor graph Φ specifies a distribution 
+
+Pr Φ(X ) ∝ Q 
+
+> a
+
+ϕa(Xa), and corresponds to a PDG 
+
+MΦ =
+
+n
+
+Xa
+
+∝ ϕa
+
+> (α, β =1)
+
+o
+
+> a∈A
+
+that specifies the same distribution Pr Φ(X ) when γ=1 .Sum-product belief propagation (BP) (Kschischang et al., 2001) aims to approximate marginals of Pr Φ with local computations: interactions between neighboring factors and variables. The state consists “messages” 
+
+mX a and ma X both (unnormalized) distributions over X, for each variable X and factor a ∈ ∂X adjacent to it. After initialization, BP repeatedly recomputes: 
+
+mX a (x) : ∝ Y
+
+> b∈∂X \a
+
+mb X (x) (6) 
+
+ma X (x) : ∝ X
+
+> y∈V(Xa\X)
+
+ϕa(x, y) Y 
+
+> Y∈Xa\X
+
+mY a(Y (y)) , (7) where Y (y) is the value of Y in the joint setting y.Observe that these calculations are (marginals of) prod-ucts of factors, and thus correspond to inference in a “local” factor graph. The usual schematic illustration people draw to depict messages moving between vari-ables and factors according to Equations (6) and (7) is given on the left of Figure 2. While this standard diagram is only a schematic, simply writing down the messages as unconditional probability distributions, we get a PDG Msg that can be made to look very simi-lar. Formally, a variable Xa for every pair (X, a ) with 
+
+X ∈ Xa along with edges asserting that Xa = X, we obtain the equivalent PDG on the right of Figure 2. Indeed, (6,7) minimize inconsistency of the controlled beliefs in their appropriate contexts (illustrated in Fig-ure 2 (right) and formalized in Appendix B). At the end, variable marginals {bX }X∈X , which we regard as another PDG B, are computed from the messages according to bX (x) ∝ Q 
+
+> a∈∂X
+
+ma X (x).
+
+Proposition 4. If Refocus selects a focus non-deterministically from {a X, X a, X }X∈X ,a ∈∂X (see il-lustration above; details in Appendix B), then the pos-sible runs of LIR (MΦ, Msg + B) are precisely those of BP for different message schedules. 
+
+The same construction works for general cluster graphs, and we suspect it also reproduces the many message passing algorithms generated by α-divergences (Minka, 2005), because of the close relationship those diver-gences have with PDGs (Richardson, 2022, §5). 
+
+4.5 Transformer Layers 
+
+The key innovation of the transformer architecture (Vaswani et al., 2017), the basis of modern language models, is that of (scaled dot-product) (masked) self-attention . This notion of attention can be viewed as particularly useful prescription for how to set attention in a special case of our framework. Suppose that we are looking at a sequence of n tokens, whose current (pre-transformation) representations at some layer of the model are the vectors x1, . . . , x n ∈ Rd.The transformation is parameterized by three matrices 
+
+WK , W Q, W V ∈ Rd×d, that generate key ki = WK xi,query qi = WQxi, and value vi = WV xi representation vectors of each xi. The output of the transformation are the vectors x′
+
+> 1
+
+, . . . , x ′ 
+
+> n
+
+given by x′ 
+
+> j
+
+= Pni=1 αi|j vi,where αi|j := softmax i(⟨ki, q j ⟩).
+
+M(WK , W Q, W V , x, x ′):= 
+
+X1
+
+> ···
+
+Xi··· 
+
+Xn
+
+X′
+
+> 1
+> ···
+
+X′
+
+> j···
+
+X′
+
+> n
+
+Pij 
+
+x x′
+
+We can capture this with a relatively simple PDG (right). Start by assembling 
+
+2n Rd-valued variables X =
+
+{Xi}ni=1 ∪ { X′ 
+
+> i
+
+}ni=1 . Start with a bipartite graph: for each (i, j ) ∈ [n]2, add an arc with isotropic Gaussian cpd 
+
+Pij = N (X′ 
+
+> j
+
+| vi, I ); finally, add two additional arcs spec-ifying the joint values of x
+
+and x′. The resulting PDG encodes the transformer as the optimal resolution of these many conflicting beliefs. Richardson, Samiei, Shakerinava, Viviano, El Kabid, Parviz, Bengio 
+
+Proposition 5. LIR( M) in which attention is set to 
+
+φij = exp ⟨ki, q j ⟩, when controlling x′, leads to infer-ence in the transformer layer, i.e. , x′ 
+
+> j
+
+= P 
+
+> i
+
+αi|j vi.
+
+Notably, this straightforward model shows us that the softmax normalization must be row-wise, which is a common point of confusion; it tells us why attention 
+
+αi|j is a conditional probability pointing backwards in the network. Controlling the parameters WK , W Q, W V
+
+trains the layer in a sense, but we do not know whether or not this is equivalent to the standard way of training. 
+
+4.6 Generative Flow Networks 
+
+Generative Flow Networks, or GFlowNets (Bengio et al., 2021) aim to draw samples x ∈ X proportional to a density R(x) by modeling the flow of particles on a directed acyclic graph (S ⊇ X, A) from a source node s0 to a sink node sf . There are several differ-ent ways of parameterizing and training a GFlowNet. The most popular approach, called Trajectory Balance (TB) (Malkin et al., 2022a), involves parameterizing (1) a forward policy PF (s′ | s) supported on (s, s ′) ∈ A
+
+that locally chooses edges given current state, (2) a policy PB (s | s′) that travels backwards along edges, and (3) a normalizing constant Z ≈ P 
+
+> x∈X
+
+R(x). The the training procedure aims to ensure probabilistic consistency between PF and PB : for every trajectory 
+
+τ = ( s0, s 1, s n = x, s n+1 = sf ), we want to ensure that 
+
+PF (τ ) := 
+
+> n
+
+Y
+
+> i=0
+
+PF (si+1 ) ≈
+
+> n
+
+Y
+
+> i=1
+
+PB (si | si+1 ) =: PB (τ ),
+
+where PB ( · | sf ) = R(x)/Z . For any distribution Q(τ )
+
+with full support over possible trajectories, the quantity 
+
+LTB (Q) := E 
+
+> τ∼Q
+
+
+
+log 2 PF (τ )ZR(x)PB (τ | x)
+
+
+
+is positive and equals zero iff all constraints are satisfied. In the special case where Q(τ ) = P θF (τ ) and PB is fixed, the full gradient ∇θ LTB = ∇θ ID(P θF (τ ) ∥ PB (τ )) is the same as that of reverse KL (Malkin et al., 2022b). Yet 
+
+Q need not equal PF (known as off-policy training), so GFlowNet objectives are thought to extend beyond KL. Yet by using a certain adaptive refocus strategy, TB can be captured with LIR, which is fundamentally based on KL. Concretely, we define a PDG M(θ) := 
+
+S
+
+S′
+
+P θFPB
+
+τ
+
+i
+
+Q!Unif {0, 1, . . . , n }!
+
+(8) where S and S′ take possible values VS = VS′ = S, τ
+
+ranges over trajectories according to Q, i is an index in the trajectory chosen uniformly at random, and the complicated hyperarc simply ensures that τ [i] = S
+
+and τ [i + 1] = S′. These are essentially the minimal ingredients needed to put PF , PB , and Q together. Now for the key ingredient. Surprise draws attention; thus, we set the attention in PF is the forward policy’s excess surprisal relative to the baseline PB , that is, 
+
+φ(PF ) = I PF [τ ] − IPB [τ ] = log PB (τ )   
+
+> PF(τ)
+
+, and vice versa: 
+
+φ(PB ) = I PB [τ ] − IPF [τ ] = log PF (τ )   
+
+> PB(τ)
+
+. We then get: 
+
+Proposition 6. The inconsistency of the PDG M
+
+from (8) with centered surprisal-based attention φ is 
+
+⟨⟨φ ⊙ M⟩⟩ = E 
+
+> τ∼Q
+
+ 1
+
+|τ | log 2 PF (τ )ZR(x)PB (τ | x)
+
+
+
+=: LModTB .
+
+Furthermore, the gradients of LModTB differ only by a factor of two if φ is regarded as fixed and not a function of θ. Therefore, LIR on M with attention 
+
+φ and control of PF (and optionally PB ) amounts to training a GFlowNet with “re-weighted” TB loss. 
+
+This modified variant of trajectory-balance ( LModTB ), is closely related to the original ( LTB ); in particular, it has the same global minimum in which all flow con-straints are satisfied (Bengio et al., 2023). That said, there is a meaningful difference in training dynamics induced by the two losses, because of learning rates and batching. This is the first instance we know of in which the PDG framework has departed from standard practice for choosing a loss function in an established community. So how does it compare? As we will see in Section 5 and Appendix E, initial experiments suggest that LModTB actually works better than LTB . For an overview of experimental results, see Figure 3. 
+
+4.7 Decision Making 
+
+In this final illustration of the expressive power of LIR, we return to psychological models of agents, as we show how some standard decision rules can be viewed as inconsistency minimization. PDG inconsistencies can represent expected costs (Richardson, 2024, §4, §6), and thus can jointly represent an agent’s probabilistic beliefs and utilities. What does it mean to make decisions to as to minimize inconsistency in this context? Let’s formalize the traditional setup of decision theory with a PDG. Suppose we are trying to choose an action (a setting of the variable A), S but we are uncertain about the current state of the world (captured by a variable S). Let O be a variable representing the final outcome. To connect these pieces of the puzzle, the standard assumption is that we have 1. a belief p(S) about the state of the world, 2. a utility function u : VO → R on outcomes, and 3. an understanding τ (O | S, A ) of how our action A
+
+and the state S determine the outcome O.Local Inconsistency Resolution: The Interplay between Attention and Control in Probabilistic Models 
+
+It is easy to encode this information in a PDG: 
+
+S
+
+p O U
+
+u
+
+A
+
+τ . (9) What’s missing is the idea that a higher numerical utility should be “better” than a lower one. For this, we can add a “soft constraint” (see Richardson, 2024, §4.2.2). Let M represent the PDG above augmented with such a soft constraint. To give a stylized interpretation, imagine that there is a part of you that you cannot control called “Faith”. Faith is optimistic: she disbelieves outcomes that are undesirable, creating epistemic conflict in proportion to disutility. If you have no control over Faith, but still have to pay attention to her, then selecting ac-tions to minimize inconsistency is a decision rule that interpolates between (a) maximizing expected utility (when βp ≫ βb), and (b) maximizing maximum utility (when βp ≪ βb), where βp is your confidence in your prior probabilistic belief p(S), and βb is the attention to the soft constraint 
+
+b (i.e. , your “degree of faith”). 
+
+Proposition 7. Let M be the PDG in (9) together with the cpd b(T=t | U =u) = k · exp (u) for some k > 0.(a) If βp = ∞ and βb < ∞, then the action(s) a ∈
+
+VA that minimize the inconsistency are those that maximize expected utility. Formally, for all γ ≥ 0,
+
+arg min 
+
+> a∈VA
+
+M + A=a γ = arg max 
+
+> a∈VA
+
+Es∼po∼τ |s,a 
+
+u(o).
+
+(b) If βp < ∞ and βb = ∞, then the action(s) a ∈ VA
+
+that minimize overall inconsistency are those that can lead to the best possible outcome, i.e. ,
+
+arg min 
+
+> a∈VA
+
+M + A=a γ = arg max 
+
+> a∈VA
+
+max  
+
+> s∈VS
+
+E 
+
+> o∼τ|s,a
+
+[u(o)] .
+
+We suspect that it may also be possible to implement other decision rules such as minimax or maximin. Like the GAN objective however, these decision rules look like two-player games, and so will likely require two different focuses of LIR, rather than just one. We leave a careful exploration of this avenue to future work. We conclude with a high-level observation. One’s pref-erences, beliefs, and actions can be jointly modeled with a PDG; when when that PDG is inconsistent, there are three possible resolutions (just as in Section 4.1). You can resolve the inconsistency by changing your action, which amounts to maximizing expected utility (Propo-sition 7.1); this is thought of as the rational approach. Alternatively, you can change your preferences so as to become content with your current situation, which is perhaps a more zen perspective. These two resolutions of the internal conflict are two halves of the famous Serenity Prayer (Niebuhr, 1933): 
+
+> Give us the courage to change what must be al-tered, serenity to accept what can not be helped, and insight to know the one from the other.
+
+That “insight” amounts to the choice of the control mask 
+
+χ. There is also a third way to resolve the inconsistency: change beliefs p(S) about the state of the world ( i.e. ,wishful thinking). However, such a strategy may lead to more inconsistency in the future, making it undesirable and ineffective. This example clearly shows that there can be good reasons for restricting control χ beyond computational savings or the limits of one’s power. 
+
+## 5 Implementation & Experiments 
+
+Implementation. We implemented LIR by extending an existing code-base for PDGs. The primary challenge was in getting (sufficiently high-quality) gradients of the inconsistency efficiently enough to run the procedure on small examples and use an ODE solver. More details can be found in Appendix A.1. 
+
+Synthetic Experiments. As a proof-of-concept of our generic LIR implementation, we evaluate it by com-paring the effect of various Refocus procedures on a dataset of randomly generated PDGs. We compare the global uniform attention, in which all arcs are active (β = 1), to various more local foci, in which only a subset of edges are active ( β(a) = 1 for some arcs a
+
+and β(a′) = 0 for others). In all, we study four refo-cus strategies: global attention (all arcs active), local (half of arcs randomly deactivated), node-neighborhood (arcs active if they are sources or targets of a a randomly chosen node), and random smooth masks ( β drawn from an exponential distribution). In each case, we evaluate the behavior of LIR based on several criteria: (1) the (rate of) reduction of inconsistency from initial-ization; (2) the computational cost; (3) the degree to which the optimal distribution μ∗ ∈ arg min OInc M(μ)
+
+is distorted during the process. Details about these experiments, can be found in Appendix A.2. 
+
+Modified TB Losses. Arising from our observations in 4.6, we noted that the original TB loss omits a trajectory length scaling factor (see Proposition 6 for the definition of LModTB , the Modified TB loss). We analyze whether including this scaling factor during training produces meaningfully different results under four HyperGrid environments of varying difficulty. See Appendix E for all experimental details. A cousin of TB is the Log Partition Variance loss, or "VarGrad" (Richter et al., 2020; Malkin et al., 2023), Richardson, Samiei, Shakerinava, Viviano, El Kabid, Parviz, Bengio 10 0                        
+
+> 6 × 10 1
+> 2 × 10 0
+> Bitwise XOR
+> TB / ModTB L1 Dist LPV / ModLPV L1 Dist
+> 10 0
+> 10 1
+> 10 2
+> TB / ModTB Loss LPV / ModLPV Loss
+> 10 0
+> 4 × 10 1
+> 6 × 10 1
+> 2 × 10 0
+> Cosine
+> 0
+> 10 1
+> 10 0
+> 10 1
+> 10 2
+> 10 0
+> Multiplicative Coprime
+> 0
+> 10 1
+> 10 0
+> 10 1
+> 10 2
+> 02000
+> Iteration
+> 10 0
+> 4 × 10 1
+> 6 × 10 1
+> 2 × 10 0
+> Original
+> 02000
+> Iteration
+> 02000
+> Iteration
+> 0
+> 10 1
+> 10 0
+> 10 1
+> 10 2
+> 02000
+> Iteration
+> TB ModTB LPV ModLPV Rank 1 (best) Rank 2 Rank 3
+
+Figure 3: Performance (L1 distance between the estimated and true posterior distribution; left) and loss (computed using the unnormalized variant at evaluation time for visualization at the same scale; right) of the Trajectory Balance (TB) and Log-Partition Variance (LPV) losses and their normalized variants (Mod TB and Mod LPV, respectively). Figures show traces from the 3 top hyperparameter configurations (ranks) found with 5 seeds each rank. The performance curves show overlaid on the traces a 1D KDE fit in log space at each timestep, showing relative per-step density. 
+
+which admits an analogous modified variant. For a minibatch of trajectories (τi)mi=1 drawn from Q, let 
+
+si := log PF (τi)
+
+R(xi) PB (τi | xi) , ¯s = 1
+
+m
+
+X
+
+> i
+
+si
+
+be the mini-batch mean, and and define 
+
+LModLPV = 1
+
+m
+
+> m
+
+X
+
+> i=1
+
+(si − ¯s)2
+
+|τi| .
+
+Both were implemented using torchgfn (Viviano et al., 2026). Figure 3 shows 5 seeds from the top 3 hyperpa-rameter settings found after a 50 Optuna trials (Akiba et al., 2019). All models covered all modes in all en-vironments, but training stability varied, with larger differences apparent in the more difficult compositional environments The modified losses generally show faster convergence at the earlier stages of training. For the challenging environments (e.g., Bitwise XOR ), there was a substantial difference also in the fidelity of the learned distribution. Of note, the best gradient clipping (norm-based) value found for the best LPV models was much more aggressive (see Table 1), while the modi-fied variant was much more tolerant of larger gradient norms. See Appendix E Table 3 for more. 
+
+Environment LPV ModLPV Ratio Original 0.025 0.23 ∼ 10 ×
+
+Cosine 0.10 0.045 ∼ 2×
+
+Bitwise XOR 0.033 1.19 ∼ 36 ×
+
+Multiplicative Coprime 0.013 0.84 ∼ 65 ×
+
+Table 1: Median gradient clipping threshold (norm-based) across the top-10 Optuna trials for each loss. 
+
+## 6 Conclusion 
+
+We have introduced Local Inconsistency Resolution (LIR), a framework that unifies and explains a wide variety of important algorithms, as stemming from different allocations of attention and control. It has led us to a slightly better formulation of a standard loss, in the world of GFlowNets. Yet many fundamental questions remain. Under what assumptions does LIR converge? Can we learn adaptive 
+
+Refocus mechanisms (drawing inspiration from the transformer architecture)? Can we use it to discover new hybrid algorithms? Answering these questions could advance a new kind of intelligent system—one that is more interpretable and potentially safer: be-havior emerges from resolving conflicts among explicit adjustable beliefs rather than rigidly pursuing a fixed goal in the world. Local Inconsistency Resolution: The Interplay between Attention and Control in Probabilistic Models 
+
+Acknowledgments 
+
+This work was supported in part by funding from NSERC and CIFAR. 
+
+References 
+
+Akiba, T., Sano, S., Yanase, T., Ohta, T., and Koyama, M. (2019). Optuna: A next-generation hyperpa-rameter optimization framework. In Proceedings of the 25th ACM SIGKDD International Conference on Knowledge Discovery & Data Mining , KDD ’19, page 2623–2631, New York, NY, USA. Association for Computing Machinery. Bengio, E., Jain, M., Korablyov, M., Precup, D., and Bengio, Y. (2021). Flow network based generative models for non-iterative diverse candidate generation. 
+
+Advances in neural information processing systems ,34:27381–27394. Bengio, Y., Lahlou, S., Deleu, T., Hu, E. J., Tiwari, M., and Bengio, E. (2023). Gflownet foundations. 
+
+Journal of Machine Learning Research , 24(210):1–55. Biggio, B., Corona, I., Maiorca, D., Nelson, B., Š rndić, N., Laskov, P., Giacinto, G., and Roli, F. (2013). Evasion attacks against machine learning at test time. In Advanced Information Systems Engineering ,pages 387–402. Springer Berlin Heidelberg. Blei, D. M., Kucukelbir, A., and McAuliffe, J. D. (2017). Variational inference: A review for statisti-cians. Journal of the American statistical Association ,112(518):859–877. Dempster, A. P., Laird, N. M., and Rubin, D. B. (1977). Maximum likelihood from incomplete data via the em algorithm. Journal of the royal statistical society: series B (methodological) , 39(1):1–22. Festinger, L. (1962). Cognitive dissonance. Scientific American , 207(4):93–106. Friston, K. (2005). A theory of cortical responses. 
+
+Philosophical transactions of the Royal Society B: Biological sciences , 360(1456):815–836. Goodfellow, I., Pouget-Abadie, J., Mirza, M., Xu, B., Warde-Farley, D., Ozair, S., Courville, A., and Ben-gio, Y. (2020). Generative adversarial networks. 
+
+Communications of the ACM , 63(11):139–144. Goodfellow, I. J., Shlens, J., and Szegedy, C. (2014). Explaining and harnessing adversarial examples. Jordan, M. I., Ghahramani, Z., Jaakkola, T. S., and Saul, L. K. (1999). An introduction to variational methods for graphical models. Machine learning ,37:183–233. Kingma, D. P. and Welling, M. (2014). Auto-encoding variational bayes. Proceedings of the International Conference on Learning Representations (ICLR) .Kishore, V., Chen, X., Wang, Y., Li, B., and Wein-berger, K. Q. (2021). Fixed neural network steganog-raphy: Train the images, not the network. In Inter-national Conference on Learning Representations .Kschischang, F. R., Frey, B. J., and Loeliger, H.-A. (2001). Factor graphs and the sum-product algorithm. 
+
+IEEE Transactions on information theory , 47(2):498– 519. Madan, K., Rector-Brooks, J., Korablyov, M., Bengio, E., Jain, M., Nica, A. C., Bosc, T., Bengio, Y., and Malkin, N. (2023). Learning gflownets from par-tial episodes for improved convergence and stability. In International Conference on Machine Learning ,pages 23467–23483. PMLR. Malkin, N., Jain, M., Bengio, E., Sun, C., and Bengio, Y. (2022a). Trajectory balance: Improved credit assignment in gflownets. Advances in Neural Infor-mation Processing Systems , 35:5955–5967. Malkin, N., Lahlou, S., Deleu, T., Ji, X., Hu, E., Everett, K., Zhang, D., and Bengio, Y. (2022b). Gflownets and variational inference. arXiv preprint arXiv:2210.00580 .Malkin, N., Lahlou, S., Deleu, T., Ji, X., Hu, E. J., Everett, K. E., Zhang, D., and Bengio, Y. (2023). GFlownets and variational inference. In The Eleventh International Conference on Learning Representa-tions .McLachlan, G. J. and Krishnan, T. (2008). The EM algorithm and extensions . John Wiley & Sons. Minka, T. (2005). Divergence measures and message passing. Technical Report MSR-TR-2005–173, Mi-crosoft Research, Cambridge, U.K. Müller, R., Kornblith, S., and Hinton, G. E. (2019). When does label smoothing help? Advances in neural information processing systems , 32. Neal, R. M. and Hinton, G. E. (1998). A view of the em algorithm that justifies incremental, sparse, and other variants. In Learning in Graphical Models ,pages 355–368. Springer. Niebuhr, R. (1933). page 1. Rao, R. P. and Ballard, D. H. (1999). Predictive coding in the visual cortex: a functional interpretation of some extra-classical receptive-field effects. Nature neuroscience , 2(1):79–87. Richardson, O. E. (2022). Loss as the inconsistency of a probabilistic dependency graph: Choose your model, not your loss function. AISTATS ’22 , 151. Richardson, O. E. (2024). A Unified Theory of Prob-abilistic Modeling, Dependence, and Inconsistency .PhD thesis. Richardson, O. E. and Halpern, J. Y. (2021). Proba-bilistic dependency graphs. AAAI ’21 .Richardson, Samiei, Shakerinava, Viviano, El Kabid, Parviz, Bengio 
+
+Richardson, O. E., Halpern, J. Y., and Sa, C. D. (2023). Inference in probabilistic dependency graphs. UAI ’23 .Richardson, O. E., Peters, S., and Halpern, J. Y. (2024). Qualitative mechanism independence. In Globerson, A., Mackey, L., Belgrave, D., Fan, A., Paquet, U., Tomczak, J., and Zhang, C., editors, Advances in Neural Information Processing Systems , volume 37, pages 69471–69504. Curran Associates, Inc. Richter, L., Boustati, A., Nüsken, N., Ruiz, F., and Akyildiz, O. D. (2020). Vargrad: a low-variance gradient estimator for variational inference. Advances in Neural Information Processing Systems , 33:13481– 13492. Shafahi, A., Huang, W. R., Studer, C., Feizi, S., and Goldstein, T. (2018). Are adversarial examples in-evitable? arXiv preprint arXiv:1809.02104 .Vaswani, A., Shazeer, N., Parmar, N., Uszkoreit, J., Jones, L., Gomez, A. N., Kaiser, Ł., and Polosukhin, I. (2017). Attention is all you need. Advances in neural information processing systems , 30. Viviano, J. D., Younis, O. G., Choi, S., Schmidt, V., Bengio, Y., and Lahlou, S. (2026). torchgfn: Apytorch gflownet library. Local Inconsistency Resolution: The Interplay between Attention and Control in Probabilistic Models 
+
+## Checklist 
+
+1. For all models and algorithms presented, check if you include: (a) A clear description of the mathematical set-ting, assumptions, algorithm, and/or model. 
+
+Yes. 
+
+(b) An analysis of the properties and complexity (time, space, sample size) of any algorithm. 
+
+No. 
+
+(c) (Optional) Anonymized source code, with specification of all dependencies, including external libraries. Yes. 
+
+2. For any theoretical claim, check if you include: (a) Statements of the full set of assumptions of all theoretical results. Yes. 
+
+(b) Complete proofs of all theoretical results. 
+
+Yes. 
+
+(c) Clear explanations of any assumptions. Yes. 
+
+3. For all figures and tables that present empirical results, check if you include: (a) The code, data, and instructions needed to re-produce the main experimental results (either in the supplemental material or as a URL). 
+
+At least some. 
+
+(b) All the training details ( e.g. , data splits, hy-perparameters, how they were chosen). Yes. 
+
+(c) A clear definition of the specific measure or statistics and error bars ( e.g. , with respect to the random seed after running experiments multiple times). Yes. 
+
+(d) A description of the computing infrastructure used. ( e.g. , type of GPUs, internal cluster, or cloud provider). Yes. 
+
+4. If you are using existing assets ( e.g. , code, data, models) or curating/releasing new assets, check if you include: (a) Citations of the creator If your work uses existing assets. Not Applicable 
+
+(b) The license information of the assets, if appli-cable. Not Applicable 
+
+(c) New assets either in the supplemental material or as a URL, if applicable. Not Applicable 
+
+(d) Information about consent from data provider-s/curators. Not Applicable 
+
+(e) Discussion of sensible content if applicable, 
+
+e.g. , personally identifiable information or of-fensive content. Not Applicable 
+
+5. If you used crowdsourcing or conducted research with human subjects, check if you include: (a) The full text of instructions given to partici-pants and screenshots. Not Applicable 
+
+(b) Descriptions of potential participant risks, with links to Institutional Review Board (IRB) approvals if applicable. Not Applicable 
+
+(c) The estimated hourly wage paid to partici-pants and the total amount spent on partici-pant compensation. Not Applicable Richardson, Samiei, Shakerinava, Viviano, El Kabid, Parviz, Bengio 
+
+# Local Inconsistency Resolution: The Interplay between Attention and Control in Probabilistic Models Supplementary Materials 
+
+## A Experimental and Implementation Details 
+
+A.1 Implementation 
+
+We use PyTorch for our implementation. One of the most basic PDG computations is to compute the incompati-bility, denoted by f , of a PDG M given joint distribution μ and attention mask φ. The attention mask decides how much each arc contributes to the incompatibility. As a result, many variables may have no contribution at all. We prune these variables for computational efficiency. The γ-inconsistency of a PDG M (Equation (3)) is obtained by finding the joint distribution μ that minimizes incompatibility. We represent the joint distribution μ as a point on a simplex and use the Adam optimizer for minimizing incompatibility w.r.t. μ. This inner optimization procedure is warm-started from the last computed joint distribution to increase computational efficiency. To obtain the gradient of inconsistency w.r.t. learnable parameters, denoted by θ, we use the envelope theorem to simplify differentiation through the inner optimization problem 
+
+∇θ min  
+
+> μ
+
+f (μ, θ ) = ∇θ f (μ∗(θ), θ ),
+
+where μ∗(θ) = arg min μ f (μ, θ ). Hence, there is no need to backpropagate through the inner optimization: we simply plug in the numerically optimized joint distribution μ∗ and compute gradients of the incompatibility w.r.t. θ. This gradient is then scaled by the control mask χ. For the outer optimization of θ we implement both standard optimizers such as Adam as well as ODE solvers such as Runge-Kutta. 
+
+A.2 Synthetic Experiments 
+
+Local inconsistency resolution employs attention mechanisms to selectively focus computational resources on subsets of the model during training. However, the choice of refocus strategy fundamentally impacts both efficacy of inconsistency resolution and the computational efficiency of the learning process. To systematically evaluate different attention strategies, we designed a suit of synthetic experiments using PDGs with controllable structural properties and known inconsistencies. We generate synthetic PDGs with deliberately introduced inconsistencies to create a controlled experimental environment. Each PDG is constrained as follows: 
+
+Variables Each PDG contains n discrete random variables {X1, . . . , X n}, where each variable Xi has a small finite domain VXi (consisting of 2 or three possible values). 
+
+Graph Structure For these preliminary experiments, we study a simple class of discrete PDGs whose underlying hypergraph structure is an ordinary directed graph. The edge set is constructed in two phases: 1. Base Chain Construction We first create a chain structure with ⌊m/ 2⌋ edges, where m is the target number of edges: 
+
+Achain = {(i → i + 1) : i ∈ [1 , ⌊m/ 2⌋]}Local Inconsistency Resolution: The Interplay between Attention and Control in Probabilistic Models 
+
+2. Conflict Edge Addition: We then add additional edges preferentially targeting nodes that already have incoming edges, creating conflict points: 
+
+Aconflict = {(i → j) : j ∈ Targets (Achain ), i ̸ = j}
+
+This construction guarantees that certain nodes receive multiple incoming edges with potentially conflicting conditional probability specifications, ensuring non-zero inconsistency. 
+
+Conditional Probability Distributions For each edge (i → j) ∈ A , we assign a randomly initialized conditional probability table Pij (Xj |Xi) drawn uniformly from the probability simplex. Crucially, these CPDs are 
+
+not jointly consistent, there generally does not exist a joint distribution μ that satisfies all CPDs simultaneously, guaranteeing measurable inconsistency. We evaluate four PDG configurations, denoted as chain_ (n)v_ (m)e for n variables and m edges. 
+
+PDG Variables Edges Initial Inconsistency 
+
+chain_4v_3e 4 3 0.159294 
+
+chain_5v_4e 5 4 0.168060 
+
+chain_6v_5e 6 5 0.209741 
+
+chain_7v_6e 7 6 0.145324 
+
+A.2.1 Inconsistency Measure 
+
+As is the case for most of our results, our Given a PDG M with edge set A and a joint distribution μ over variables X = ( X1, . . . , X n), recall (from (1)) that the (observational) incompatibility is measured as: 
+
+OInc (μ, M) = X
+
+> (i,j )∈A
+
+βij · DKL (μ(Xj |Xi) ∥ Pij (Xj |Xi)) , (10) where: 
+
+• μ(Xj |Xi) is the conditional distribution induced by the joint distribution μ
+
+• Pij (Xj |Xi) is the conditional probability table specified by edge i → j
+
+• βij ∈ [0 , 1] is the attention weight for edge i → j
+
+• DKL (P ∥Q) = ID(P ∥ Q) = P 
+
+> x
+
+P (x) log P (x) 
+
+> Q(x)
+
+is the Kullback-Leibler divergence. The optimal joint distribution μ∗ for a given set of CPDs is obtained by solving: 
+
+μ∗ = arg min 
+
+> μ∈∆VX
+
+OInc (μ, M), (11) and the inconsistency of M is given by 
+
+M = OInc (μ∗, M) = inf  
+
+> μ∈∆VX
+
+OInc (μ, M). (12) 
+
+A.2.2 Refocus Strategies 
+
+We evaluate three refocus strategies that control the β weights. 
+
+Uniform Focus All edges receive full attention at all times: 
+
+βuniform  
+
+> ij
+
+= 1 ∀(i → j) ∈ A (13) This strategy optimizes all edges simultaneously, maximizing global consistency but requiring the most computa-tional resources. 
+
+Partial Focus At each training iteration t, we randomly select a subset Aactive (t) ⊆ A with |A active (t)| = ⌊|A| /2⌋,and focus attention only on this subset: 
+
+βpartial  
+
+> ij
+
+(t) = 
+
+(
+
+1 if (i → j) ∈ A active (t)0 otherwise (14) This strategy reduces computational cost by ignoring half the graph at any given time, but may achieve slower or incomplete convergence. Richardson, Samiei, Shakerinava, Viviano, El Kabid, Parviz, Bengio 
+
+Hub Focus At each iteration t, we select a random focus node Xfocus (t), and attend to all edges incident to this node: 
+
+βhub  
+
+> ij
+
+(t) = 
+
+(
+
+1 if Xi = Xfocus (t) or Xj = Xfocus (t)0 otherwise (15) This strategy focuses on potential inconsistencies that are, in a sense, localized to a single variable. 
+
+A.2.3 Training Procedure 
+
+For each PDG and focus strategy, we perform the following training procedure: 1. Initialization: Convert each fixed CPD to a learnable parameterized conditional probability distribution (ParamCPD ) initialized from the original CPD values. 2. Initial Joint Distribution: Compute the initial optimal joint distribution μ∗ 
+
+> init
+
+by solving: 
+
+μ∗ 
+
+> init
+
+= arg min 
+
+> μ
+
+OInc (μ, Minit ) (16) using the Adam optimizer with γ = 0 (no entropy regularization) for 50 iterations. 3. LIR Training: Apply LIR with the specified refocus strategy for T = 20 timesteps. At each timestep t, our implementation of LIR updates CPD parameters θ by approximating the solution to the ODE 
+
+θt+1 ← SolveODE 
+
+h ˙θ = ∇θ M(θ), β ; init = θt
+
+i
+
+by applying #outer_iterations gradient-based steps of learning rate η. (We have effectively set a uniform control mask χ = η equal to the learning rate.) The attention weights β are determined by the chosen focus strategy. In this particular experiment, that outer gradient step is done by the Adam optimizer. Within each outer iteration o = 1 , 2, · · · , we approximate the optimal joint distribution μ∗ 
+
+> (t,o )
+
+by fine-tuning the previous solution μ∗ 
+
+> (t,o )
+
+for #inner_iterations steps. For more details, see Section A.1 and the code in 
+
+lir_simpler.py .Our experiments use the following values: 
+
+• 10 outer iterations per timestep to approximate the ODE solution 
+
+• 20 inner iterations for optimizing μ∗ per outer iteration 
+
+• Learning rate η = 0 .05 
+
+4. Final Joint Distribution: After training, compute the final optimal joint distribution μ∗ 
+
+> final
+
+using the updated CPDs, for the purposes of analysis. 
+
+A.2.4 Evaluation Metrics 
+
+We evaluate each refocus strategy using three complementary metrics: 
+
+Resolution Percentage The resolution percentage measures the reduction in inconsistency: Resolution = OInc (μ∗
+
+> init
+
+, Minit ) − OInc (μ∗
+
+> final
+
+, Mfinal )
+
+OInc (μ∗
+
+> init
+
+, Minit ) × 100% = ⟨⟨Minit ⟩⟩ − ⟨ ⟨Mfinal ⟩⟩⟨⟨Minit ⟩⟩ × 100% (17) Higher resolution indicates more effective inconsistency reduction. Fig 4 compares the initial and final inconsistency values across multiple PDGs and three inconsistency-resolution refocus strategies: global focus, partial focus, and hub focus. Across all PDGs, inconsistency values consistently decreased after training, confirming that the optimization procedure effectively resolved contradictions in the dependency structure. The magnitude of reduction varied by both graph complexity and refocus procedure: Local Inconsistency Resolution: The Interplay between Attention and Control in Probabilistic Models 
+
+Figure 4: Initial vs. final inconsistency across PDGs for uniform , partial , and hub focus strategies. 
+
+Figure 5: A breakdown of TV distortion through the LIR process across refocus strategies and PDGs 
+
+Distortion Analysis: Measuring Changes to the Joint Distribution There is a simple but inadvisable and destructive way to instantly resolve all inconsistencies: set all beliefs to uniform (or delete them altogether). Does something like this happen in our case? While resolution percentage quantifies how effectively a refocus strategy reduces inconsistency, it does not capture how much the underlying probabilistic beliefs change during the resolution process. Two strategies might achieve similar resolution but differ substantially in the magnitude of changes they induce to the optimal joint distribution μ∗. To address this, we introduce a distortion metric that measures the distance between the initial and final joint distributions. We employ the Total Variation (TV) distance , a standard metric for comparing probability distributions, defined as: 
+
+DT V (μ∗
+
+> init
+
+, μ ∗
+
+> final
+
+) = 12
+
+X
+
+> x∈VX
+
+|μ∗
+
+> init
+
+(x) − μ∗
+
+> final
+
+(x)| = max  
+
+> A⊆VX
+
+μ∗
+
+> init
+
+(A) − μ∗
+
+> final
+
+(A) . (18) The reported TV distortion in Figure 5 is the distance between initial μinit and final optimized μfinal , not a regularized penalty for cpd change. So strategies that resolve inconsistency more aggressively can naturally produce larger mu shifts, and therefore larger TV distance. As seen in Figure 5, the hub refocus strategy induces higher distortion than alternatives, particularly for the larger PDGs. The partial focus strategy appears to induce less distortion, but in fact produces more distortion per unit of inconsistency resolution. All results presented here have additional distortion owing to the optimizer (here we’ve used Adam instead of a dedicated ODE solver), and the fact that we do not pre-multiply by the inverse Fisher matrix to get natural gradients. 
+
+Resolution Performance Figure 6 presents a resolution percentage heatmap comparing the effectiveness of three inconsistency-resolution focus strategies (uniform, partial, and hub) across four PDGs. The color scale represents the percentage reduction in inconsistency, with higher values (green) indicating faster convergence. Across all PDGs, both uniform and hub focus consistently achieved high resolution percentages, particularly in larger graphs such as chain_7v_6e , where both surpassed 90% . Partial focus, however, displayed considerably Richardson, Samiei, Shakerinava, Viviano, El Kabid, Parviz, Bengio 
+
+Table 2: Inconsistency resolution performance by refocus strategy 
+
+Refocus Strategy Avg Resolution (%) Avg TV Dist. 
+
+Uniform 99.23 0.3908 Partial 72.19 0.2627 Hub 99.37 0.3186 
+
+Figure 6: Mean cumulative total variation distance between current CPD parameters ( θ) and their initial values (θ0) across LIR refocus steps, shown separately for each PDG and refocus strategy (uniform, partial, hub), with shaded bands indicating ±1 standard deviation over CPD replicates. weaker performance in smaller PDGs. Fig 7 summarizes the resolution performance of the three inconsistency-resolution strategies—uniform, partial, and hub across four PDGs. Across all PDGs, the uniform and hub strategies consistently outperform the partial approach. The partial focus strategy catches up somewhat in larger graphs (up to 83 .5% ), suggesting that localized updates may become more effective when many more interdependencies exist. Overall, these results indicate that the uniform and hub focus may scale better across larger PDGs (at least with this kind of topology), while partial focus is typically less effective, and sensitive to graph density and connectivity. 
+
+Figure 7: Resolution performance by focus strategy across four PDGs. Uniform and hub approaches consistently achieve higher inconsistency reduction than local updates, with performance converging at larger graph sizes. 
+
+## B Details on Belief Propagation 
+
+We now define the foci. Modulo a small subtlety, the following is essentially true: (6) selects CX a := {mX a} so as to minimize 1-inconsistency in context AX a := {mb X }b∈∂X \a ∪ { mX a}, while (7) selects Ca X := {ma X }
+
+so as to minimize the 1-inconsistency in context Aa X := {ϕa, m a X } ∪ { mY a}Y ∈Xa\X .The only wrinkle is that we do not attend to the structural aspect of the edges e that we’re updating; i.e. ,we must select φ to effectively set αe = 0 . Intuitively: although all of the input messages summarize causal information, we’re trying to capture that information with a distribution. Thus, it’s not appropriate to attend to the causal structure of the edges that we’re modifying. Thus, for each f ∈ S 
+
+> a∈A ,X ∈Xa
+
+{a X, X a, X }, define a Local Inconsistency Resolution: The Interplay between Attention and Control in Probabilistic Models 
+
+focus (φf , χ f ) ∈ F according to 
+
+φf (a) := 
+
+ 11
+
+ if a ∈ Af \ Cf
+
+ 10
+
+ if a ∈ Cf
+
+ 00
+
+ otherwise 
+
+, χf (a) := 
+
+(
+
+∞ if a ∈ Cv
+
+0 otherwise .
+
+where  ϕ1
+
+> ϕ2
+
+ scales βa by ϕ1 and αa by ϕ2. With these definitions, Proposition 4 follows easily. 
+
+## C Note on Densities, Mass Functions, and Constants 
+
+Before we move on to the proofs, we start by explicitly addressing an (ultimately inconsequential) slight-of-hand. While ID(δx(X) ∥ p(X)) = − log p(X=x) = ∞ when p(X=x) = 0 , as is the case when p is the measure corresponding to a positive density on real numbers (such as a normal distribution), there is an important sense in which it effectively equals − log p(x) + const , where p(x) = dp 
+
+> dλ
+
+(x) is the density with respect to the base (Lebesgue) measure λ. For example, if we discretize the space VX of values of X as a countable collection of voxels of size ϵ, resulting in a new discrete variable Xϵ and a cpd pϵ over its values, then 
+
+ID(δx(Xϵ) ∥ pϵ(Xϵ)) = − log p(x) + o(ϵ2) + log 1
+
+ϵ .
+
+We obtain essentially the same limit if we use a definition of the Dirac distribution δx(X) as a limit of normal distributions whose variance goes to zero. In our case, since we are only ever interested in the gradient of the inconsistency with respect to parameters θ, and ∇θ log 1 
+
+> ϵ
+
+= 0 , so lim ϵ→0 ∇θ ID(δx(Xϵ) ∥ pϵ(Xϵ)) = −∇ θ log pθ (x).We therefore perform the remainder of our calculations as though ID(δx(X) ∥ pθ (X)) = − log pθ (x).The same slight-of-hand is standard practice in variational inference for essentially these reasons. For example, suppose we have a latent variable model p(X, Z ) where X and Z are both real-valued variables that we measure in meters; the density p(x, z ) is then probability per square meter. In the expression ELBO (x) = Eq
+
+h
+
+log p(x,z )
+
+> q(z)
+
+i
+
+,the units of p(x, z ) and q(z) do not cancel before the logarithm, and therefore the result is affected by changing our units of measurement from meters to feet. However, the effect is to add a constant, and so this semantic point becomes irrelevant when the quantity is used as a loss function. 
+
+## D Proofs 
+
+First, some extra details for Proposition 1. By parameteriations P log-concave, we mean that, for every a ∈ A ,and (s, t ) ∈ V(Sa, T a), the function 
+
+θ 7 → − log P θa (Ta = t | Sa = a) : Θ a → [0 , ∞]
+
+is convex. This is true for many families of distributions of interest. For example, if Sa, T a is discrete, and the cpd is parameterized by stochastic matrices θ := P = [ ps,t ] ∈ [0 , 1] V(Sa,T a), then 
+
+− log PP 
+
+> a
+
+(Ta = t|Sa = s) = − log( ps,t )
+
+which is clearly convex in P.To take another example: if Pa is linear Gaussian, i.e. , Pa(T |S) = N (T |As + b, σ 2), parameterized by (A, b, 1/σ 2),then 
+
+− log P(A,b,σ 2) 
+
+> a
+
+(t|s) = − 12 log 2πσ2 + 12
+
+ t − As + bσ
+
+2
+
+which is convex in (A, b, 1 
+
+> σ2
+
+). Now, for the proof. 
+
+Proposition 1. If M(Θ) is an unweighted parametric PDG whose parameterizations P are either constant or unconditional and log-concave and β ≥ γα, the map θ 7 → ⟨ ⟨M(θ), α, β⟩⟩γ is convex. Richardson, Samiei, Shakerinava, Viviano, El Kabid, Parviz, Bengio 
+
+Proof. By definition, 
+
+⟨⟨φ ⊙ M(θ)⟩⟩ = inf 
+
+> μ
+
+n
+
+γSDef M(θ)(μ) + OInc M(θ)(μ)
+
+o
+
+.
+
+Only the final term actually depends on θ, though. Let F (μ) capture the first term. For all of our examples, and indeed, if β ≥ γα, it will be convex in μ (Richardson and Halpern, 2021, from the proof of Proposition 3.2). Then we have 
+
+⟨⟨φ ⊙ M⟩⟩ = inf  
+
+> μ
+
+F (μ) + E
+
+> μ
+
+" X 
+
+> Sa
+> →T
+
+βa log μ(T |S)
+
+Pa(T |S)
+
+#! 
+
+= inf  
+
+> μ
+
+F (μ) + E
+
+> μ
+
+" X 
+
+> Sa
+> →T
+
+βa log μ(T |S)
+
+λ(T |S)
+
+#
+
++ E
+
+> μ
+
+" X 
+
+> Sa
+> →T
+
+βa log λ(T |S)
+
+Pa(T |S)
+
+#! 
+
+The second term is then entropy (relative to the base distribution), which is convex in μ. The first term, F (μ), is convex in μ as well, and neither depend on θ. The final term is linear in μ. Since P is log-concave in θ, each 
+
+log λ(t|s) 
+
+> Pa(t|s)
+
+for a ∈ A convex in θ, and so that third term is a conic combination of terms that are all convex, and hence itself convex in θ. Thus, the sum of all three terms in the infimum is jointly convex in θ and in μ. Taking an infimum over μ pointwise, the result is still convex in θ.
+
+Proposition 2. LIR ZX
+
+x
+
+p
+
+q
+
+> (∞)
+
+!
+
+in which Refocus re-samples x and alternates between full control of p and q implements EM, in that θ(t) 
+
+> EM
+
+= θ(2 t)
+
+> LIR
+
+.Proof. Let Mq,θ denote the PDG in the statement with observation X = x, generative arc labeled by pθ , and an inference arc q into Z with β = ∞ (high confidence). By Richardson (2022, Proposition 11) (“negative ELBO equals inconsistency”), 
+
+Mq,θ = −ELBO p,q (x) = − E
+
+> q(z)
+
+h
+
+log p(x,z ;θ)
+
+> q(z)
+
+i
+
+= ID q(z) p(z | x; θ) − log p(x; θ).
+
+Thus, for fixed p(·; θ), minimizing Mq,θ over q is equivalent to minimizing ID q p(z | x; θ).Full control of q (E-step): Fix θ. Since ID(· ∥ · ) ≥ 0 with equality iff its two arguments agree, 
+
+q∗ ∈ arg min  
+
+> q
+
+Mq,θ ⇐⇒ q∗(z) = p(z | x; θ(t)
+
+> LIR
+
+).
+
+Therefore a LIR step that grants full control to q drives q to the exact posterior under the current θ. This is precisely the E-step of EM. Full control of p (M-step): Now fix q (in particular, after the E-step we have q(z) = p(z | x; θ(t)
+
+> LIR
+
+)). Minimizing 
+
+Mq,θ over p (equivalently, maximizing the ELBO over θ) is 
+
+θ(t+2)  
+
+> LIR
+
+∈ arg max  
+
+> θ
+
+E
+
+> q(z)
+
+ log p(x, z ; θ) = arg max  
+
+> θ
+
+E
+
+> z∼p(z|x;θ(t)
+> LIR )
+
+ log p(x, z ; θ),
+
+which is exactly the standard M-step update. Identification with EM iterates: Let θ(0)  
+
+> LIR
+
+= θ(0) 
+
+> EM
+
+. A LIR cycle consists of two refocus operations: (i) full control of q ⇒ q(t+1) = p(z | x; θ(t)
+
+> LIR
+
+) (E-step), (ii) full control of p ⇒ θ(t+2)  
+
+> LIR
+
+∈ arg max θ Eq(t+1) [log p(x, z ; θ(t)
+
+> LIR
+
+)] (M-step). The second update matches the EM M-step with posterior taken at θ(t)
+
+> EM
+
+. Hence, by induction on t, θ(t) 
+
+> EM
+
+= θ(2 t)
+
+> LIR
+
+.The optional Refocus re-sampling of x simply yields the usual (mini-)batched variant without affecting the maximizers of the conditional objectives. This proves that alternating full control between q and p in LIR implements EM as claimed. Local Inconsistency Resolution: The Interplay between Attention and Control in Probabilistic Models 
+
+Proposition 3. LIR (M) with foci alternating between (φG, χ G) and (φD , χ D ) trains a GAN. Proof. Let C ∈ { real , fake } denote the coin (real vs. fake) and let X be the displayed image. In the PDG in the text we have high-confidence arcs enforcing 
+
+C ∼ Bernoulli   12
+
+ , (X | C=real) ∼ pdata , (X | C=fake) ∼ G, 
+
+so the unique μ∗ attaining the infimum in the observational inconsistency is the induced joint μ∗(x, c ) =  
+
+> 12
+
+pdata (x) 1{c=real } + 12 G(x) 1{c=fake }. Write D(c | x) for the discriminator cpd and e(c | x) ≡ 12 for the “equal coin” belief. The inconsistency of the PDG is obtained as follows. 
+
+⟨⟨M⟩⟩ = OInc M(μ⋆)= βD E
+
+> (X,C )∼μ⋆
+
+h
+
+log μ⋆(C | X) − log D(C | X)
+
+i
+
++ βe E
+
+> (X,C )∼μ⋆
+
+h
+
+log μ⋆(C | X) − log e(C | X)
+
+i
+
+= −βD E
+
+> (X,C )∼μ⋆
+
+ log D(C | X) − βe E
+
+> (X,C )∼μ⋆
+
+ log e(C | X) + ( βD + βe) E
+
+> (X,C )∼μ⋆
+
+ log μ⋆(C | X)
+
+= −βD
+
+ 12 E
+
+> x∼pdata
+
+log D(x) + 12 E
+
+> x∼G
+
+log(1 − D(x)) 
+
+
+
+− βe E
+
+> (X,C )∼μ⋆
+
+ log e(C | X) + ( βD + βe) E
+
+> (X,C )∼μ⋆
+
+ log μ⋆(C | X)
+
+= −βD LGAN (G, D ) − βe E
+
+> (X,C )∼μ⋆
+
+ log e(C | X) + ( βD + βe) E
+
+> (X,C )∼μ⋆
+
+ log μ⋆(C | X)
+
+= −βD LGAN (G, D ) − βe log 12 + ( βD + βe) E
+
+> (X,C )∼μ⋆
+
+ log μ⋆(C | X)
+
+= −βD LGAN (G, D ) − βe log 12 + ( βD + βe)
+
+ 12 E
+
+> x∼pdata
+
+log μ⋆(real | x) + 12 E
+
+> x∼G
+
+log μ⋆(fake | x)) 
+
+
+
+= −βD LGAN (G, D ) − βe log 12 + ( βD + βe)
+
+ 12 E
+
+> x∼pdata
+
+log pdata (x) 
+
+> pdata (x)+ G(x)
+
++ 12 E
+
+> x∼G
+
+log G(x) 
+
+> pdata (x)+ G(x)
+
+)
+
+
+
+= −βD LGAN (G, D ) + βe log 2 + ( βD + βe)
+
+ 12 E
+
+> x∼pdata
+
+log pdata (x) 
+
+> mG(x)
+
++ 12 E
+
+> x∼G
+
+log G(x)
+
+> mG(x)
+
+
+
+− log 2 
+
+!
+
+(with mG(x) = 12 pdata (x) + 12 G(x))
+
+= −βD LGAN (G, D ) + ( βD + βe)JS( pdata , G ) − βD log 2 ,
+
+where JS( p, q ) is the Jensen-Shannon divergence between p and q.
+
+Discriminator focus (φD , χ D ). By construction, χD gives control only over D, and φD attends to the D
+
+arc with weight βD = 1 while disbelieving the e arc, i.e. , βe = −1. The inconsistency simplifies to ⟨⟨M⟩⟩ =
+
+−L GAN (G, D ) − log 2. Thus, minimizing inconsistency over D is equivalent to the usual max D LGAN (G, D ) step. 
+
+Generator focus (φG, χ G). By construction, χG gives control only over G, and φG disbelieves the D arc (βD = −1) while attending to the e arc with βe = 1 . The inconsistency simplifies to ⟨⟨M⟩⟩ = LGAN (G, D ) + log 2.Thus minimizing inconsistency over G is equivalent to the usual min G LGAN (G, D ) step. Therefore, alternating LIR steps that refocus between (φD , χ D ) and (φG, χ G) performs exactly the standard min-max optimization for GANs. 
+
+Proposition 4. If Refocus selects a focus non-deterministically from {a X, X a, X }X∈X ,a ∈∂X (see illustration above; details in Appendix B), then the possible runs of LIR (MΦ, Msg + B) are precisely those of BP for different message schedules. Proof. When γ = 1 , and α, β = 1 for all of the input factors, then the optimal distribution μ∗ that realizes the infimum is just the product of factors. It follows that any distribution that has those marginals will minimize the observational inconsistency. Richardson, Samiei, Shakerinava, Viviano, El Kabid, Parviz, Bengio 
+
+Different interleavings of the update equations (6) and (7) for different adjacent pairs (a, X ), which correspond to the different possible message passing schedules, also correspond immediately to different selections from this fixed set of foci in the LIR procedure. 
+
+Proposition 5. LIR( M) in which attention is set to φij = exp ⟨ki, q j ⟩, when controlling x′, leads to inference in the transformer layer, i.e. , x′ 
+
+> j
+
+= P 
+
+> i
+
+αi|j vi.Proof. Recall the parametric PDG in question: 
+
+M(WV , W Q, W K , x, x ′) := 
+
+X1
+
+> ···
+
+Xi··· 
+
+Xn
+
+X′
+
+> 1
+> ···
+
+X′
+
+> j···
+
+X′
+
+> n
+
+Pij 
+
+x x′
+
+,
+
+where Pij (X′ 
+
+> j
+
+| Xi) = N (X′ 
+
+> j
+
+| WV Xi, I ) is a unit normal distribution. For completeness, and to aid the discussion, we will start with an analysis of the more general case where Pij (X′ 
+
+> j
+
+| Xi) = N (X′ 
+
+> j
+
+| WV Xi, Σij ) has an arbitrary covariance. Because of the deterministic arrows x and x′, the infimum defining the inconsistency must be attained at the degenerate distribution μ∗(X, X ′) where all mass is supported on the joint assignment (x, x ′).We can therefore calculate 
+
+DD
+
+M(WQ, W K , W V , x, x ′)
+
+EE
+
+= X
+
+> i,j ∈[n]
+
+φij ID
+
+
+
+δx′ 
+
+> j
+
+(X′ 
+
+> j
+
+) N (X′ 
+
+> j
+
+| WV xi, Σij )
+
+
+
+= X
+
+> i,j ∈[n]
+
+−φij log 
+
+"
+
+(2 π)−d/ 2 det(Σ ij )−1/2 exp 
+
+
+
+− 12 (x′ 
+
+> j
+
+− vi)TΣ−1 
+
+> ij
+
+(x′ 
+
+> j
+
+− vi)
+
+#
+
+(see Appendix C) 
+
+= X
+
+> i,j ∈[n]
+
+φij 
+
+2
+
+h
+
+log((2 π)d det Σ ij ) + ( x′ 
+
+> j
+
+− vi)TΣ−1 
+
+> ij
+
+(x′ 
+
+> j
+
+− vi)
+
+i
+
+,
+
+where we have defined vi := WV xi, as in the main text. What happens when we control x′?The equation above is (strongly) convex in x′, and so gradient descent moves to the unique local minimum. The Local Inconsistency Resolution: The Interplay between Attention and Control in Probabilistic Models 
+
+directional derivative of ⟨⟨M⟩⟩ with respect to x′ in direction u = ( uj )nj=1 is given by 
+
+ddϵ
+
+X
+
+> i,j ∈[n]
+
+φij 
+
+2 (uj ϵ + x′ 
+
+> j
+
+− vi)TΣ−1 
+
+> ij
+
+(uj ϵ + x′ 
+
+> j
+
+− vi) ϵ=0 
+
+= X
+
+> i,j ∈[n]
+
+φij 
+
+2
+
+ ddϵ
+
+h
+
+ϵ2uT 
+
+> j
+
+Σ−1 
+
+> ij
+
+uj
+
+i
+
+> ϵ=0
+
++ ddϵ
+
+h
+
+ϵu T 
+
+> j
+
+Σ−1 
+
+> ij
+
+(x′ 
+
+> j
+
+− vi) + ϵ(x′ 
+
+> j
+
+− vi)TΣ−1 
+
+> ij
+
+uj
+
+i
+
+> ϵ=0
+
++ ddϵ
+
+h
+
+(x′ 
+
+> j
+
+− vi)TΣ−1 
+
+> ij
+
+(x′ 
+
+> j
+
+− vi)
+
+i
+
+= X
+
+> i,j ∈[n]
+
+φij 
+
+2 uT 
+
+> j
+
+(Σ −1 
+
+> ij
+
++ Σ −T 
+
+> ij
+
+)( x′ 
+
+> j
+
+− vi)= X
+
+> i,j ∈[n]
+
+φij uT 
+
+> j
+
+Σ−1 
+
+> ij
+
+(x′ 
+
+> j
+
+− vi) since Σ−1 
+
+> ij
+
+is symmetric 
+
+= X
+
+> j∈[n]
+
+uT
+
+> j
+
+X
+
+> i∈[n]
+
+φij Σ−1 
+
+> ij
+
+(x′ 
+
+> j
+
+− vi).
+
+The unique attractor x′∗ of the ODE defined by these gradients is characterized by having zero directional gradients for all ⃗u, which is the case iff 
+
+∀j. X
+
+> i
+
+φij Σ−1 
+
+> ij
+
+(x′ 
+
+> j
+
+− vi) = 0 
+
+⇐⇒ ∀j. 
+
+ X 
+
+> i∈[n]
+
+φij Σ−1
+
+> ij
+
+
+
+x′ 
+
+> j
+
+= X
+
+> i∈[n]
+
+φij Σ−1 
+
+> ij
+
+vi
+
+⇐⇒ ∀j. x ′ 
+
+> j
+
+=
+
+ X 
+
+> i∈[n]
+
+φij Σ−1
+
+> ij
+
+−1 X
+
+> i∈[n]
+
+φij Σ−1 
+
+> ij
+
+vi. provided the matrix on the left is invertible. In the special case where Σij = σ2 
+
+> ij
+
+I, and let ψij := φij /σ 2 
+
+> ij
+
+, the optimum is 
+
+x′ 
+
+> j
+
+= X
+
+> i∈[n]
+
+ ψij 
+
+Pni′=1 ψi′j
+
+
+
+vi.
+
+Therefore, whenever it is the case that ψij = b exp ⟨ki, q j ⟩ for some constant b, it is also the case that the unique fixed point of LIR when controlling x′ leads to x′ 
+
+> j
+
+= P 
+
+> i
+
+αi|j vi where αi|j = softmax i[⟨ki, q j ⟩]i,j =
+
+ exp ⟨ki, q j ⟩
+
+Pni′=1 exp ⟨ki′ , q j ⟩
+
+
+
+.In particular, this is the case when φij = exp ⟨ki, q j ⟩ and σij = 1 , as assumed in the theorem statement. 
+
+Proposition 6. The inconsistency of the PDG M from (8) with centered surprisal-based attention φ is 
+
+⟨⟨φ ⊙ M⟩⟩ = E 
+
+> τ∼Q
+
+ 1
+
+|τ | log 2 PF (τ )ZR(x)PB (τ | x)
+
+
+
+=: LModTB .
+
+Furthermore, the gradients of LModTB differ only by a factor of two if φ is regarded as fixed and not a function of 
+
+θ. Therefore, LIR on M with attention φ and control of PF (and optionally PB ) amounts to training a GFlowNet with “re-weighted” TB loss. Proof. Recall the PDG in question: 
+
+M(θ) = 
+
+S
+
+S′
+
+P θFPB
+
+τ
+
+i
+
+Q!Unif {0, 1, . . . , n }!
+
+.Richardson, Samiei, Shakerinava, Viviano, El Kabid, Parviz, Bengio 
+
+Let ˆQ(τ, i ) := Q(τ ) Unif (i | τ ) denote the distribution over trajectories and indices obtained by first drawing a trajectory τ ∼ Q and then a uniformly random index i ∈ { 0, . . . , n } along the (random) trajectory τ =(s0, . . . , s n=x, s n+1 =sf ). Because the labels on Q(τ ) and Unif (i | τ ) are high confidence, the infimum in the observational inconsistency is attained by the induced joint 
+
+μ∗(τ, i, S, S ′) = Q(τ ) Unif( i | τ ) δ(S = τ [i]) δ(S′ = τ [i+1]) .
+
+Subclaim. For all s ∈ S \ { s0, s f } we have μ∗(S=s) = μ∗(S′=s); also, μ∗(S=s0) = μ∗(S′=sf ).
+
+Proof. Since the zeroth element τ [0] of a trajectory τ is always s0, the assumption that S = τ [i] = s / ∈ { s0, s f }
+
+necessitates i > 0. Therefore, 
+
+μ∗(S = s) = ˆQ({(τ, i ) : τ [i] = s})= ˆQ({(τ, i − 1) : τ [i] = s}) by uniformity of i, as i > 0= ˆQ({(τ, j ) : τ [j + 1] = s}) by taking j := i − 1= μ∗(S′ = s).
+
+Summing over s and using μ∗(S=sf ) = μ∗(S′=s0) = 0 yields μ∗(S=s0) = μ∗(S′=sf ).Only the two cpds PF (· | · ) and PB (· | · ) contribute non-constant terms (all copy/selection hyperarcs are satisfied by μ∗). Denote 
+
+a(τ ) := log PF (τ ) = 
+
+> n
+
+X
+
+> i=0
+
+log PF (si+1 | si), b(τ ) := log PB (τ ) = 
+
+> n
+
+X
+
+> i=0
+
+log PB (si | si+1 ).
+
+By construction at the sink, 
+
+PB (τ ) = PB (τ | x) R(x)
+
+Z =⇒ b(τ ) = log PB (τ | x) + log R(x) − log Z. 
+
+The observational incompatibility (with centered surprisal attention) is 
+
+OInc M(μ∗) = E 
+
+> (τ,i )∼ˆQ
+
+h = b(τ )−a(τ )
+
+z }| { 
+
+φ(PF ) ·      
+
+> =−log PF(τ[i+1] |τ[i])
+
+z }| {
+
+ID(δS′=τ [i+1] ∥ PF ( · | S = τ [i])) + φ(PB )
+
+| {z }    
+
+> =a(τ)−b(τ)
+
+· ID(δS=τ [i] ∥ PB ( · | S′ = τ [i + 1])) 
+
+| {z }      
+
+> =−log PB(τ[i]|τ[i+1])
+
+i
+
+.
+
+Since the attention φ depends only on τ , we can factor it out of the expectation over i, which is uniform over the 
+
+|τ | transition sin the trajectory, and expectation amounts to their sum divided by |τ |: just sums the local logs back to the whole-trajectory logs: 
+
+OInc M(μ∗) = E 
+
+> τ∼Q
+
+h b(τ ) − a(τ )   −a(τ )
+
+|τ |
+
+ +  a(τ ) − b(τ )   −b(τ )
+
+|τ |
+
+i
+
+.
+
+Expanding, 
+
+OInc M(μ∗) = E 
+
+> τ∼Q
+
+h a(τ )2 + b(τ )2 − 2 a(τ )b(τ )
+
+|τ |
+
+i
+
+= E 
+
+> τ∼Q
+
+h 1
+
+|τ |
+
+ a(τ ) − b(τ )2i
+
+.
+
+Using the sink identity for b(τ ), we obtain 
+
+a(τ ) − b(τ ) = log PF (τ ) ZR(x) PB (τ | x) .
+
+Therefore 
+
+OInc M(μ∗) = E 
+
+> τ∼Q
+
+"
+
+1
+
+|τ | log 2 PF (τ ) ZR(x) PB (τ | x)
+
+#
+
+= LModTB (Q),
+
+which proves that the (centered-surprisal) attention yields inconsistency equal to the modified TB objective. Local Inconsistency Resolution: The Interplay between Attention and Control in Probabilistic Models 
+
+Gradients. Treat φ as a fixed (stop-gradient) attention. If only PF depends on θ,
+
+∇θ OInc M = 2 E 
+
+> τ∼Q
+
+"
+
+log PF (τ ) ZR(x) PB (τ | x) ∇θ log PF (τ )
+
+#
+
+,
+
+which is exactly ∇θ LTB (Q). If, in addition, PB shares the same parameters (or we also place control on PB ), an equal-magnitude term appears with opposite sign in ∇θ log PB (τ | x), yielding the same direction and a proportionality factor (a constant multiple), as claimed. Hence LIR on M with the stated attention and control over PF (and optionally PB ) trains a GFlowNet with the TB loss. 
+
+Proposition 7. Let M be the PDG in (9) together with the cpd b(T=t | U =u) = k · exp( u) for some k > 0.(a) If βp = ∞ and βb < ∞, then the action(s) a ∈ VA that minimize the inconsistency are those that maximize expected utility. Formally, for all γ ≥ 0,
+
+arg min 
+
+> a∈VA
+
+M + A=a γ = arg max 
+
+> a∈VA
+
+Es∼po∼τ |s,a 
+
+u(o).
+
+(b) If βp < ∞ and βb = ∞, then the action(s) a ∈ VA that minimize overall inconsistency are those that can lead to the best possible outcome, i.e. ,
+
+arg min 
+
+> a∈VA
+
+M + A=a γ = arg max 
+
+> a∈VA
+
+max  
+
+> s∈VS
+
+E 
+
+> o∼τ|s,a
+
+[u(o)] .
+
+Proof. Since the choice a is deterministic, the value of A is determined; likewise the value of T is also fixed. Similarly, as u is a deterministic function, the value of U is determined according to u. Thus we need only consider distributions μ(S, O ) in our minimization; the other variables can be found as a function of these. However, we also know that μ(O | S) = τ (O|S, A =a) since it is given with high confidence. Therefore it suffices to restrict our search to distributions over the variable S.To simplify notation, let EU (s, a ) := Eo∼τ (O|s,a )[u(o)] + log k be the expected utility of an action, shifted by the constant log k. Note that 
+
+log 1
+
+b(T=t | U =u(o)) = − log( k · exp( u(o))) = −u(o) − log k, 
+
+which in expectation over τ (O|s, a ), is −EU (s, a ). With this in mind, we calculate: 
+
+Mp,τ,u,b + A=a γ = inf  
+
+> μ(S)
+
+βp E
+
+> s∼μ
+
+h
+
+log μ(s)
+
+p(s) + βb
+
+βp
+
+E 
+
+> o∼τ|a,s
+
+h
+
+log 1
+
+b(T=t | U =u(o)) 
+
+i
+
+= inf  
+
+> μ(S)
+
+βp E
+
+> s∼μ
+
+h
+
+log μ(s)
+
+p(s) + log ◦ exp 
+
+
+
+− βb
+
+βp
+
+EU (s, a )
+
+
+
+= inf  
+
+> μ(S)
+
+βp E
+
+> s∼μ
+
+h
+
+log μ(s)1 · exp( − βb 
+
+> βp
+
+EU (s, a )) 
+
+p(s) · ZZ
+
+i
+
+= inf  
+
+> μ(S)
+
+βp E
+
+> s∼μ
+
+h
+
+log μ(s)1 · Zp(s) · exp( βb 
+
+> βp
+
+EU (s, a )) · 1
+
+Z
+
+i
+
+(19) At this point, we can use the same trick used repeatedly in the proving results of Richardson (2022): take Z to be the normalization constant needed to regard the middle fraction as the inverse of a probability distribution ν.Once we do so, we are left with an infimum over a KL divergence ID(μ ∥ ν) plus the expectation of a constant: 
+
+Mp,τ,u,b + A=a γ = βp log 1
+
+Z = − log X
+
+> s
+
+p(s) exp 
+
+
+
++ βb
+
+βp
+
+EU (s, a )
+
+
+
+.
+
+We now look at the two extreme cases. Richardson, Samiei, Shakerinava, Viviano, El Kabid, Parviz, Bengio 
+
+When βp → ∞ , then the ratio βb 
+
+> βp
+
+becomes small, and we can use the fact that exp (ϵ) ≈ 1 + ϵ for small ϵ to find that the inconsistency of interest is approximately 
+
+≈ − βp log X
+
+> s
+
+p(s)
+
+h
+
+1 + βb
+
+βp
+
+EU (s, a )
+
+i
+
+= −βp log(1 + βb
+
+βp
+
+EU (s, a )) ≈ − βbEU (s, a )
+
+Alternatively, more directly, when βp = ∞, the optimal distribution must be μ = p, and so the inconsistency is immediately − Es∼p[βbEU (s, a )] . Either way, minimizing this quantity amounts to maximizing expected utility, as the two differ by a negative affine transformation. At the other extreme, when βb → ∞ , we can write our expression in terms of LSE {x1, . . . , x n} := log Pni=1 exp (xi)
+
+(LogSumExp) which is a smooth approximation to a max . (In a moment, we will negate its arguments and the final output, using it as an approximation to a min , instead.) Picking back up from (19) and letting t := βb 
+
+> βp
+
+, we find 
+
+Mp,τ,u,b + A=a γ = −βb · −1
+
+t LSE 
+
+> s∈VS
+
+h
+
+− t ·
+
+ 1
+
+t log 1
+
+p(s) − EU (s, a )
+
+i 
+
+.
+
+Using the standard fact 4 that 
+
+min  
+
+> i∈[n]
+
+xi − 1
+
+t log n ≤ −1
+
+t LSE 
+
+> i∈[n]
+
+(−tx i) < min  
+
+> i∈[n]
+
+xi,
+
+we find that, in our case, 
+
+M − 1
+
+t log |VS| ≤ 1
+
+βb
+
+Mp,τ,u,b + A=a γ ≤ M (20) where M := min s∈VS (−EU (s, a ) + 1 
+
+> t
+
+log 1 
+
+> p(s)
+
+). In particular, when βb → ∞ , meaning t → ∞ , the gap between the upper and lower bounds shrinks to zero, and the resulting inconsistency becomes − min s∈VS (−EU (s, a )) = max s∈VS) EU (s, a ), proving the result. 
+
+## E Generative Flow Network Experiments 
+
+E.1 Trajectory-Length Normalization for the Trajectory Balance and Log-Partition Variance Losses 
+
+In Trajectory Balance (TB) and Log-Partition Variance (LPV, also called VarGrad) objectives, longer trajectories accumulate larger log-probability sums, causing per-trajectory squared losses to scale with trajectory length. This can starve gradients on shorter trajectories and bias learning toward long-trajectory corrections. Their losses (reproduced below) were found to be missing a normalization constant ni, denoting the length of the trajectory τi.The standard trajectory balance (TB) condition states that for all complete trajectories τ = ( s0 → s1 → · · · → x),
+
+Z Q 
+
+> t
+
+PF (st+1 | st) = R(x) Q 
+
+> t
+
+PB (st | st+1 ), or equivalently, 
+
+log Z + log PF (τ ) = log R(x) + log PB (τ | x).
+
+which gives the loss 
+
+LTB (Q) = E 
+
+> τ∼Q
+
+
+
+log 2 PF (τ )ZR(x)PB (τ | x)
+
+
+
+.
+
+When trained as a GFlowNet, the forward policy PF and log partition function estimate log Z are parameterized separately, optionally alongside the backward policy PB (which may not be parameterized as it is possible to leave it fixed during training), and R(x) is a reward function providing some scalar reward defining a distribution over the state space X .                
+
+> 4Letting m:= min ixi, observe that, for all t > 0, we have exp (−tm )≤P
+> iexp (−tx i)≤nexp (−tm ). Apply a logarithm and multiply by −1
+> tto get the promised result. Local Inconsistency Resolution: The Interplay between Attention and Control in Probabilistic Models
+
+In contrast, the Log Partition Variance loss avoids explicit estimation of log Z by noting that it is constant with respect to τ . Given the per-trajectory residual, 
+
+∆( τ ) = log PF (τ ) − log R(x) − log PB (τ | x).
+
+∆( τ ) = − log Z when the TB condition holds exactly, so log Z can treated as a constant shift and dropped from the variance: 
+
+LLPV (Q) = Var τ ∼Q
+
+
+
+log PF (τ )
+
+R(x) PB (τ | x)
+
+
+
+Expanding the variance via Var[ X] = E[X2] − (E[X]) 2:
+
+LLPV (Q) = E 
+
+> τ∼Q
+
+"
+
+log PF (τ )
+
+R(x) PB (τ | x)
+
+2#
+
+−
+
+
+
+E 
+
+> τ∼Q
+
+
+
+log PF (τ )
+
+R(x) PB (τ | x)
+
+ 2
+
+.
+
+In practice, all expectations are estimated by the sample mean over a minibatch {τi}mi=1 of trajectories sampled from the forward policy PF . We normalize the per-trajectory squared loss by dividing by per-trajectory length ni
+
+after squaring, preserving the fixed point ( si + log Z = 0 ) and preventing an attenuation of gradients that would arise from normalizing the score before squaring. For TB, the modified loss is simply: 
+
+LModTB := 1
+
+m
+
+> m
+
+X
+
+> i=1
+
+s2
+
+> i
+
+ni
+
+, where si = log PF (τi) ZR(xi) PB (τi | xi) , (21) and for LogPV, the modification is analogous. Let si = log PF (τi)   
+
+> R(xi)PB(τi|xi)
+
+for trajectories τi ∼ Q,
+
+LModLPV = 1
+
+m
+
+> m
+
+X
+
+> i=1
+
+(si − ¯s)2
+
+ni
+
+, where ¯s = 1
+
+m
+
+> n
+
+X
+
+> i=1
+
+si and si = log PF (τi)
+
+R(xi) PB (τi | xi) (22) where Ti = |τi| is the length of trajectory i. This is no longer Var Q[s]; the 1 
+
+> Ti
+
+weighting downweights long trajectories, analogous to SubTB-style per-step normalization (Madan et al., 2023). 
+
+E.2 Experimental Setup E.2.1 Environment 
+
+All losses were tested on four variants of the discrete HyperGrid task: a d-dimensional grid of height H where trajectories can terminate in any state and all trajectories start at 0d. For all experiments, we evaluate on a 4-dimensional HyperGrid with height H = 24 , giving a state space of 24 4 = 331 ,776 terminal states (states are vectors s ∈ { 0, 1, . . . , 23 }4). We define a normalized coordinate ai = |si/(H − 1) − 0.5| for each dimension i.
+
+Original: The original hypergrid environments follows (Bengio et al., 2021): 
+
+R(s) = R0 + R1
+
+Y
+
+> i
+
+1[ai > 0.25] + R2
+
+Y
+
+> i
+
+1[0 .3 < a i < 0.4] 
+
+with R0 = 0 .1, R1 = 0 .5, R2 = 2 .0. Intuitively, modes occupy the 4 corners of each dimension, giving 44 = 256 
+
+mode states. Modes are states satisfying the inner band condition in all dimensions simultaneously (reward 
+
+≥ R0 + R1 + R2 = 2 .6). At H = 24 , the band indices per dimension are {3, 4, 19 , 20 }.
+
+Cosine: A smooth, oscillatory reward with per-dimension factors: 
+
+R(s) = R0 + R1
+
+Y
+
+> i
+
+f (ai), f (a) = (cos(50 a) + 1) · N (0 , 1)(5 a)Richardson, Samiei, Shakerinava, Viviano, El Kabid, Parviz, Bengio 
+
+where N (0 , 1)( ·) is the standard normal PDF. With R0 = 0 .1, R1 = 0 .5, and closeness parameter γ = 0 .8, mode states are those with reward ≥ R0 + ( γ · fmax )4 · R1, where fmax ≈ 0.581 is the discrete per-dimension maximum at H = 24 . The product structure yields 1,280 mode states with a regular pattern across dimensions. 
+
+Bitwise XOR: A tiered compositional reward based on GF(2) parity constraints: 
+
+R(s) = 
+
+> 2
+
+X
+
+> t=0
+
+wt · 1
+
+"
+
+∀ b ∈ [lt, h t],
+
+> 3
+
+M
+
+> i=0
+
+bit b(si) = 0 
+
+#
+
+with tier weights w = (1 , 10 , 100) and bit ranges (lt, h t) ∈ { (0 , 5) , (0 , 7) , (0 , 9) }. Each tier requires even parity (XOR = 0 ) across all 4 dimensions at every bit plane in its range. Rewards are cumulative: tier t is awarded only if all constraints through tier t are satisfied. Modes achieve the highest tier (reward = 111 ). Since values ≤ 23 
+
+have at most 5 nonzero bits, the higher bit-plane constraints are automatically satisfied, and mode membership reduces to s0 ⊕ s1 ⊕ s2 ⊕ s3 = 0 (bitwise). The fourth coordinate is determined ( s3 = s0 ⊕ s1 ⊕ s2) subject to 
+
+s3 < 24 , giving 10 ,752 mode states. 
+
+Multiplicative Coprime: A tiered reward based on prime factorization constraints: 
+
+R(s) = 
+
+> 2
+
+X
+
+> t=0
+
+wt · 1
+
+∀ i, s i = Y
+
+> p∈P
+
+pei,p with ei,p ≤ ct
+
+
+
+with w = (1 , 10 , 100) , prime set P = {2, 3, 5}, and uniform exponent cap ct = 2 for all tiers. Each dimension’s value must factor completely over P with exponents ≤ 2 (zero values are excluded; si = 1 is always valid). The valid values per dimension are {1, 2, 3, 4, 5, 6, 9, 10 , 12 , 15 , 18 , 20 } (12 values), yielding 12 4 = 20 ,736 mode states. 
+
+E.3 Training Hyperparameter Tuning: To fairly compare each loss, we first used the Optuna (Akiba et al., 2019) TPE sampler to tune: 
+
+• Learning rate: [10 −5, 10 −1] (log-scale) 
+
+• Adam β2 ∈ { 0.99 , 0.999 , 0.9999 }
+
+• Gradient clipping norm: [0 .01 , 10 .0] (log-scale) 
+
+• LogZ learning-rate multiplier (TB variants only): [10 , 1000] (log-scale) The LogZ learning-rate multiplier is commonly used to assist in the convergence of TB-based algorithms which cannot converge until the logZ estimate is close to the true partition function, which may be very large for some distributions. To accomplish this, practitioners often train logZ with an independent optimizer and/or learning rate. In our case the multiplier is applied to whatever base learning rate is proposed by Optuna for that run. For all experiments, batch size=1024, we employed a replay buffer with capacity=10,000 and 50% replay fraction, a per-trajectory loss clamp of 100, linear LR schedule down to 1% of the initial learning rate, and the AdamW optimizer with weight decay of 0.01. We ran 50 trials for each of the 16 algorithm-environment pairs, each run for 2,000 iterations with a single seed, optimizing final L1 distance estimated between the true reward distribution and the learned posterior using 10 6 samples from the trained PF .
+
+Model Training: The top thee hyperparameter configurations found were brought forward, and trained across 5 seeds for 4,000 iterations each (240 runs total). The following metrics were collected: 
+
+• L1 distance between the learned terminal-state distribution and the true reward-proportional distribution: P 
+
+> s
+
+|p(s) − p∗(s)|
+
+• Jensen–Shannon divergence (JSD) : 12 KL( p∥m) + 12 KL( p∗∥m), where m = 12 (p + p∗)
+
+• Mode coverage : fraction of reward modes discovered during training Local Inconsistency Resolution: The Interplay between Attention and Control in Probabilistic Models 
+
+E.4 Results 
+
+See Table 3 for the median ± interquartile range metrics for all losses on all environments using the single best hyperparameters identified across 5 seeds. All models (with some single-seed exceptions) cover all environment modes. However, two methods that have 100% mode coverage may have substantially different L1 / JSD distances. L1 & JSD measures are highly correlated ( r > 0.95%) . On the Bitwise XOR environment, the modified losses show clear benefits as measured using the distribution distance measures. ModLPV also shows faster convergence at the beginning of training relative to the LPV variant, as measured by the fraction of iterations required to reach 2× the final loss. Differences appear to be environment dependent, and the advantages of the improved training dynamics of the modified losses may be even more apparent on more sophisticated and challenging reward distributions. Table 3: Final metrics for rank-1 configurations (median ± IQR across 5 seeds). Environment TB ModTB LPV ModLPV 
+
+Final L1 Distance 
+
+Bitwise XOR 1.74 ± 0.28 1.23 ± 0.01 1.49 ± 0.51 1.24 ± 0.00 
+
+Cosine 0.449 ± 0.000 0.448 ± 0.000 0.448 ± 0.000 0.448 ± 0.000 
+
+Multiplicative Coprime 0.137 ± 0.003 0.137 ± 0.003 0.134 ± 0.001 0.138 ± 0.002 
+
+Original 0.438 ± 0.000 0.438 ± 0.000 0.44 ± 1.54 0.439 ± 0.001 
+
+Final JSD 
+
+Bitwise XOR 0.487 ± 0.111 0.289 ± 0.006 0.388 ± 0.182 0.288 ± 0.001 
+
+Cosine 0.050 ± 0.000 0.050 ± 0.000 0.050 ± 0.000 0.050 ± 0.000 
+
+Multiplicative Coprime 0.010 ± 0.001 0.010 ± 0.000 0.008 ± 0.000 0.010 ± 0.001 
+
+Original 0.052 ± 0.000 0.052 ± 0.000 0.052 ± 0.620 0.052 ± 0.000 
+
+Mode Coverage (%) 
+
+Bitwise XOR 100 .00 ± 0.00 99 .27 ± 0.06 100 .00 ± 0.00 99 .45 ± 0.29 
+
+Cosine 100 .00 ± 0.00 100 .00 ± 0.00 100 .00 ± 0.00 100 .00 ± 0.00 
+
+Multiplicative Coprime 100 .00 ± 0.00 100 .00 ± 0.00 100 .00 ± 0.00 100 .00 ± 0.00 
+
+Original 100 .00 ± 0.00 100 .00 ± 0.00 100 .00 ± 96 .09 100 .00 ± 0.00 
+
+Iterations to 2× final loss (fraction, ↓)
+
+Bitwise XOR 0.006 ± 0.003 0.030 ± 0.023 0.004 ± 0.002 0.045 ± 0.009 
+
+Cosine 0.835 ± 0.054 0.857 ± 0.058 0.794 ± 0.011 0.521 ± 0.055 
+
+Multiplicative Coprime 0.199 ± 0.356 0.455 ± 0.099 0.574 ± 0.044 0.248 ± 0.109 
+
+Original 0.838 ± 0.007 0.895 ± 0.013 0.857 ± 0.858 0.586 ± 0.023

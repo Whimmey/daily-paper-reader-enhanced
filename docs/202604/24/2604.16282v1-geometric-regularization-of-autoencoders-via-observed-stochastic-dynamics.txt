@@ -1,0 +1,1678 @@
+Title: Geometric regularization of autoencoders via observed stochastic dynamics
+
+URL Source: https://arxiv.org/pdf/2604.16282v1
+
+Published Time: Mon, 20 Apr 2026 01:14:28 GMT
+
+Number of Pages: 30
+
+Markdown Content:
+# Geometric regularization of autoencoders via observed stochastic dynamics 
+
+Sean Hill ∗ Felix X.-F. Ye †
+
+Abstract 
+
+Stochastic dynamical systems with slow or metastable behavior evolve, on long time scales, on an unknown low-dimensional manifold in high-dimensional ambient space. Building a reduced simulator from short-burst ambient ensembles is a long-standing problem: local-chart methods like ATLAS suffer from exponential landmark scaling and per-step reprojection, while autoen-coder alternatives leave tangent-bundle geometry poorly constrained, and the errors propagate into the learned drift and diffusion. We observe that the ambient covariance Λ already encodes coordinate-invariant tangent-space information, its range spanning the tangent bundle. Using this, we construct a tangent-bundle penalty and an inverse-consistency penalty for a three-stage pipeline (chart learning, latent drift, latent diffusion) that learns a single nonlinear chart and the latent SDE. The penalties induce a function-space metric, the ρ-metric, strictly weaker than the Sobolev H1 norm yet achieving the same chart-quality generalization rate up to logarithmic factors. For the drift, we derive an encoder-pullback target via Itˆ o’s formula on the learned encoder and prove a bias decomposition showing the standard decoder-side formula carries sys-tematic error for any imperfect chart. Under a W 2,∞ chart-convergence assumption, chart-level error propagates controllably to weak convergence of the ambient dynamics and to convergence of radial mean first-passage times. Experiments on four surfaces embedded in up to 201 ambi-ent dimensions reduce radial MFPT error by 50–70% under rotation dynamics and achieve the lowest inter-well MFPT error on most surface–transition pairs under metastable M¨ uller–Brown Langevin dynamics, while reducing end-to-end ambient coefficient errors by up to an order of magnitude relative to an unregularized autoencoder. 
+
+Keywords: autoencoders, manifold learning, stochastic differential equations, geometric regular-ization, Itˆ o calculus, generalization bounds 
+
+MSC codes: 60H10, 58J65, 68T07 
+
+# 1 Introduction 
+
+Many stochastic systems of scientific interest evolve, on long time scales, on an unknown low-dimensional invariant manifold M ⊂ RD [9, 22, 38, 5]. The effective dynamics on M arise, for example, after averaging or homogenization of a multiscale (fast–slow) SDE [30, 38], and the prac-tical goal is to learn a reduced simulator that faithfully reproduces the slow dynamics, including drift, diffusion, and passage-time statistics, directly from data. Because the full system is stiff, long direct simulations are prohibitively expensive. A data-driven alternative is to run short-burst ensembles from strategically chosen initial conditions: each burst is cheap, embarrassingly parallel, and reveals local effective dynamics and local geometry at the initial point [12, 48]. The ATLAS 
+
+> ∗
+
+Department of Mathematics and Statistics, University at Albany, SUNY ( smhill@albany.edu ). 
+
+> †
+
+Department of Mathematics and Statistics, University at Albany, SUNY ( xye2@albany.edu ). 
+
+1
+
+> arXiv:2604.16282v1 [cs.LG] 17 Apr 2026
+
+framework [12, 48] organizes this idea into a complete simulator. A well-distributed network of landmarks {xi}mi=1 is placed on M , and short-burst ensembles at each landmark yield local es-timates of the ambient drift and covariance {b(xi), Λ( xi)}mi=1 with statistical guarantees [12]. AGaussian-kernel smoother then interpolates these estimates into continuous fields, and the simu-lator steps in ambient coordinates using linear tangent-plane models at the landmarks. However, three additional computational bottlenecks arise in the ATLAS simulator: 1. Curse of dimensionality. The number of landmarks m and the number of neighbors used in kernel smoothing both scale exponentially with the manifold dimension d. The root cause is the reliance on linear local models, namely tangent ellipsoids glued together to cover M .2. Re-projection onto M . Because ATLAS simulates in ambient RD, every time step requires re-projection onto M via weighted oblique affine projections at neighboring landmarks; without this, sample paths quickly drift off the manifold due to accumulation of linearization error. 3. Per-step simulation cost. Each step blends D × D covariance matrices from neighboring landmarks at O(mD 2) cost; in our experiments ATLAS is already computationally infeasible at 
+
+D=201 with only m=200 landmarks and d=2. Autoencoders [29, 37, 39, 16, 8, 24, 42] address all three ATLAS bottlenecks: an encoder π : RD →
+
+Rd and decoder ϕ : Rd → RD replace exponentially many linear patches with a single nonlinear learned chart, and simulating intrinsically in d dimensions eliminates re-projection entirely. Several lines of work build on this idea. Autoencoder-based methods have been combined with deterministic latent dynamics [8, 34, 32, 16, 6] and, more recently, with latent SDEs [20, 31], but none use observed dynamics to regularize the chart geometry; the contractive autoencoder [40] and the pullback metric of [3] regularize geometry but without a dynamics-derived tangent target. Outside the autoencoder framework, the equation-free approach [25] learns SDE coefficients in externally supplied reduction coordinates, and diffusion-map methods [10, 15, 14] estimate generator eigenfunctions from dense trajectory data in a spectral regime. Our pipeline instead targets the sparse-landmark setting (N =50) and requires a decoder for ambient-space reconstruction; neither the equation-free nor the spectral setting is directly comparable. When the manifold is known , Riemannian diffusion models [13, 23] and normalizing flows [35] define dynamics intrinsically. No existing method jointly learns a geometrically regularized chart and SDE coefficients from sparse ambient observations. Training with reconstruction loss alone, however, controls only the L2 error of the chart map, leaving the first-order geometry of tangent spaces poorly constrained [16], especially in the sparse-data regime where only tens of observations are available. The resulting geometric errors amplify when the chart is used to simulate dynamics: the Itˆ o correction depends on both the decoder Ja-cobian and Hessian [1, 2], so tangent-bundle and curvature inaccuracies propagate directly into the recovered drift and diffusion, and the chart cannot extrapolate reliably beyond its training set. Ex-isting autoencoder theory [42, 33] achieves a squared generalization error of order m−2/(d+2) log 4 m
+
+from point-cloud data but does not address this geometric gap. Sobolev training yields provably better generalization [46, 47], but requires chart-derivative labels; semi-supervised methods [43] im-prove chart quality when function values are observed, but treating drift and covariance as regression targets in latent coordinates yields chart-dependent quantities. Neither is directly applicable. Our framework addresses this geometric gap by exploiting a key observation: the ambient co-variance Λ already encodes coordinate-invariant geometric information. Its range spans the tangent space [11], and the resulting tangent projector P = Dϕ g −1Dϕ ⊤ is invariant under reparameteriza-tion. Penalizing the discrepancy between P and the data-derived projector regularizes first-order geometry without chart-derivative labels and defines a function-space metric ρ strictly between L2
+
+and the Sobolev H1 norm. For the latent drift, Itˆ o’s formula applied to the learned encoder yields an exact pullback target, avoiding the systematic bias of the decoder-side formula. This paper develops the single-chart theory for this program; extending to a multi-chart atlas is a natural next 2step discussed in Section 6. 
+
+Contributions. 
+
+1. A three-stage pipeline whose geometric losses (tangent-bundle, drift, diffusion) are coordinate-invariant: it extracts geometric penalties from Λ, fits the latent drift via an encoder-pullback target, and learns the diffusion under metric-weighted losses. 2. A generalization guarantee showing that an idealized ρ-ERM achieves the same rate as Sobolev 
+
+H1 training for chart quality, with controlled propagation to SDE coefficients and weak con-vergence ( §4). 
+
+Outline. Section 2 derives geometric conditions and the encoder-pullback drift target from SDE coefficients. Section 3 introduces the ρ-metric and geometric penalties. Section 4 establishes gen-eralization bounds, the decoder-side bias analysis, and error propagation to dynamics. Section 5 reports experiments; Section 6 discusses extensions. 
+
+# 2 Geometry from Stochastic Dynamics 
+
+We work in the single-chart setting throughout: the manifold M is assumed to be covered by one coordinate chart. This restricts the theory to manifolds diffeomorphic to a bounded open subset of Rd, but the penalties and pipeline extend chart-wise to an atlas (Section 6). Let M be a smooth, connected, d-dimensional Riemannian submanifold of RD (d < D ), parameterized by a smooth embedding ϕ : Ω → RD (the decoder ) from a fixed open, bounded domain Ω ⊂ Rd, with encoder 
+
+π = ϕ−1 : M → Ω. We write Dϕ for the Jacobian, g = Dϕ ⊤Dϕ for the induced metric, and 
+
+P = Dϕ g −1Dϕ ⊤ for the orthogonal projector onto Tϕ(z)M .
+
+2.1 Itˆ o transformation rules 
+
+Expressed in Itˆ o form in ambient coordinates, the effective dynamics on M take the form 
+
+dX t = b(Xt) dt + η(Xt) dW t, Xt ∈ M ⊂ RD,
+
+where b is the effective drift, η is the ambient diffusion coefficient, and Λ = ηη ⊤ is the rank-d
+
+covariance. Within a chart (Ω , ϕ ), the local-coordinate SDE takes the form 
+
+dZ t = μ(Zt) dt + σ(Zt) dB t, Zt ∈ Ω ⊂ Rd.
+
+We write Σ = σσ ⊤ for the local covariance and define the Itˆ o correction vector qi(Σ) := ⟨Σ , ∇2ϕi⟩F
+
+for i = 1 , . . . , D .
+
+Lemma 2.1 (Local to ambient) . The ambient drift and covariance are 
+
+b = Dϕ μ + 12 q(Σ) , Λ = Dϕ Σ Dϕ ⊤.
+
+Proof. Apply Itˆ o’s formula to each component Xi = ϕi(Z). The first-order term gives Dϕ i μ, and the second-order quadratic-variation term gives 12 ⟨Σ , ∇2ϕi⟩F . Stacking over i = 1 , . . . , D yields the ambient drift b. The diffusion coefficient transforms by the chain rule as Dϕ σ , so the covariance is Λ = Dϕ Σ Dϕ ⊤.To invert this transformation and recover the latent drift μ from the ambient data ( b, Λ), we need an identity that relates the Itˆ o correction in the two charts. 3Lemma 2.2 (Quadratic covariation under chart change) . With ϕ, π, Λ, Σ as above, assume 
+
+rng(Λ( x)) ⊂ TxM for all x ∈ M . Then ⟨Λ , ∇2π⟩F = −Dπ ⟨Σ , ∇2ϕ⟩F .Proof. Differentiate the identity π ◦ ϕ = id Ω. At first order, Dπ Dϕ = Id. Differentiating once more gives ∂2πi  
+
+> ∂x k∂x l
+> ∂ϕ l
+> ∂z m
+> ∂ϕ k
+> ∂z j
+
++ ∂π i  
+
+> ∂x k
+> ∂2ϕk
+> ∂z j∂z m
+
+= 0. Contracting both sides with a d × d PSD matrix Smj 
+
+and recognizing the Frobenius inner products gives ⟨Dϕ S Dϕ ⊤ , ∇2πi⟩F = − Dπ ⟨S , ∇2ϕ⟩F
+
+
+
+> i
+
+.Stacking over i gives the identity for any PSD S. Tangentiality (rng Λ ⊂ TxM ) ensures Λ = 
+
+Dϕ Σ Dϕ ⊤ with Σ = Dπ Λ Dπ ⊤ ∈ Sd 
+
+> +
+
+(PSD since Σ = σσ ⊤); S = Σ is therefore an admissible choice and recovers the stated identity. 
+
+Lemma 2.3 (Ambient to local) . With ϕ, π, b, Λ, q as above, assume rng(Λ( x)) ⊂ TxM for all 
+
+x ∈ M . Then Z = π(X) solves a local SDE with covariance and drift 
+
+Σ = Dπ Λ Dπ ⊤, μ = Dπ 
+
+h
+
+b − 12 q(Σ) 
+
+i
+
+.
+
+Proof. Apply Itˆ o’s formula to Z = π(X). The drift of Z is μ = Dπ b + 12 ⟨Λ , ∇2π⟩F and the local covariance is Σ = Dπ Λ Dπ ⊤. Applying Lemma 2.2 to the Hessian correction yields μ =
+
+Dπ b + 12 ⟨Λ , ∇2π⟩F = Dπ b − 12 Dπ ⟨Σ , ∇2ϕ⟩F = Dπ b − 12 ⟨Σ , ∇2ϕ⟩F
+
+, as claimed. 
+
+Computing the latent drift target. The local-coordinate coefficients of Lemma 2.3 coincide with the optimal mean-square approximation in the Itˆ o-jet framework [1, 2]. The lemma gives two equivalent representations of the latent drift μ: a decoder-side form μ = Dπ [b− 12 q(Σ)] that requires the decoder Hessian via q(Σ), and an encoder-side form from the intermediate step of the proof that uses only the encoder derivatives: 
+
+μ = Dπ b + 12 ⟨Λ , ∇2π⟩F . (1) For a learned encoder πθ, the Jacobian Dπ θ and Hessian ∇2πθ are available via automatic differ-entiation, so the latent drift target 
+
+μ(zi) = Dπ θ(xi) b(xi) + 12 ⟨Λ( xi) , ∇2πθ(xi)⟩F (2) is computable without touching the decoder. This encoder-pullback drift trains the latent drift network in Stage 2 (Algorithm 1). For an imperfect autoencoder the two formulas diverge: the decoder-side target carries a deterministic bias for any fixed learned chart (Proposition 4.6), making the choice between them consequential for trajectory fidelity. 
+
+2.2 Geometric consistency and coordinate invariance 
+
+The Itˆ o rules above show how to convert between ambient and latent SDE coefficients given a chart. We now turn to the question of what the ambient covariance Λ reveals about the geometry of M
+
+itself. The relation Λ = Dϕ Σ Dϕ ⊤ (Lemma 2.1) implies that the range of Λ must span the tangent space defined by ϕ; we call this the geometric consistency condition ( GC ). Since Σ ∈ Sd 
+
+> ++
+
+and Dϕ has rank d, Λ has rank d with rng(Λ) = rng( Dϕ ) = TxM . Writing Λ = Q diag( λ1, . . . , λ D) Q⊤ with λ1 ≥ · · · ≥ λd > 0 = λd+1 = · · · = λD, the top-d eigenvectors 
+
+Ud := Q1: d ∈ RD×d satisfy U ⊤ 
+
+> d
+
+Ud = Id and P = UdU ⊤ 
+
+> d
+
+is the orthogonal projection onto TxM .Thus the tangent projector P (x) can be recovered from the ambient covariance Λ( x) by spectral truncation, connecting observable dynamics data to the tangent bundle of M . For (GC) to serve as a training penalty, it must not depend on the parameterization of Ω. 4Lemma 2.4 (Coordinate invariance) . Let α : ˜Ω → Ω be a diffeomorphism and ˜ϕ = ϕ ◦ α. (i) The orthogonal projector P = Dϕ g −1Dϕ ⊤ is invariant: ˜P = P . (ii) The Itˆ o drift μ is not a geometric vector, but the difference of any two Itˆ o drifts sharing a common local covariance Σ transforms as a contravariant vector: ˜μ1 − ˜μ2 = Dα −1(μ1 − μ2). In particular, ∥μ1 − μ2∥2˜g = ∥μ1 − μ2∥2
+
+> g
+
+. (iii) For any symmetric (2 ,0) -tensor difference ∆Σ = Σ 1 − Σ2, the metric-weighted norm Tr  (g ∆Σ) 2 is invariant. Proof. (i) The chain rule gives D[ ˜ϕ] = Dϕ Dα , so ˜ g = Dα ⊤g Dα and ˜P = D[ ˜ϕ] ˜ g−1D[ ˜ϕ]⊤ =
+
+Dϕ g −1Dϕ ⊤ = P .
+
+(ii) Under α, the Itˆ o drift acquires a Hessian correction ˜ μ = Dα −1μ + 12 ⟨Σ , ∇2α−1⟩F . Both 
+
+μ1 and μ2 receive the same correction, so ˜μ1 − ˜μ2 = Dα −1(μ1 − μ2). Then ∥˜μ1 − ˜μ2∥2˜g =(μ1−μ2)⊤(Dα )−⊤ Dα ⊤g Dα Dα −1(μ1−μ2) = ∥μ1 − μ2∥2
+
+> g
+
+.
+
+(iii) The covariance difference transforms as g∆Σ = Dα −1∆Σ ( Dα )−⊤ and the metric as ˜ g =
+
+Dα ⊤g Dα . Multiplying: ˜ g g∆Σ = Dα ⊤g ∆Σ ( Dα )−⊤ . Squaring and taking the trace, the similarity factors cancel: Tr  (˜ g g∆Σ) 2 = Tr  Dα ⊤(g ∆Σ) 2(Dα )−⊤  = Tr  (g ∆Σ) 2.Consequently, both (GC) and the tangent-bundle penalty derived from it in Section 3 are chart-invariant, and the metric-weighted losses for drift (Stage 2) and diffusion (Stage 3) in Algorithm 1 are coordinate-invariant. 
+
+# 3 The ρ-Metric and Geometric Penalties 
+
+In this section we introduce the function-space metric that underlies our geometric losses. Sec-tion 3.1 motivates a well-conditioned Jacobian assumption and defines the ρ-metric. Section 3.2 specifies the empirical ρ-loss, details the data requirements, and shows that the full pipeline is efficiently computable from dynamics observations. 
+
+3.1 The ρ-metric on Ed(s)
+
+Our metric will penalize the tangent-projector mismatch ∥Pϕ −Pψ∥F . A natural question is whether this quantity is controlled by the Jacobian error ∥Dϕ − Dψ ∥F . In general the answer is no : when the smallest singular value of Dϕ degenerates, an arbitrarily small Jacobian perturbation can rotate the tangent space by a large angle. This motivates restricting attention to charts whose Jacobians have a uniform lower singular-value bound. Let Rd(s) := {X ∈ RD×d : σmin (X) ≥ s} denote the set of full-rank matrices with controlled smallest singular value. We first record two identities about the orthogonal projection map f (X) = 
+
+X(X⊤X)−1X⊤ that will be used throughout. 
+
+Lemma 3.1 (Frobenius distance of orthogonal projections) . Let P1 and P2 be D × D, rank-d
+
+orthogonal projections. Write Pi = HiH⊤ 
+
+> i
+
+with H⊤ 
+
+> i
+
+Hi = Id, and let Ni be D × (D − d) with orthonormal columns spanning (rng Pi)⊥. Then  
+
+> 12
+
+∥P1 − P2∥2 
+
+> F
+
+= d − ∥ H⊤ 
+
+> 1
+
+H2∥2 
+
+> F
+
+= ∥N ⊤ 
+
+> 1
+
+H2∥2 
+
+> F
+
+= ∥N ⊤ 
+
+> 2
+
+H1∥2 
+
+> F
+
+.
+
+Proof. Expanding gives ∥P1 − P2∥2 
+
+> F
+
+= 2( d − ⟨ P1 , P 2⟩F ) since ∥Pi∥2 
+
+> F
+
+= d. The cyclic property of the trace yields ⟨P1 , P 2⟩F = ∥H⊤ 
+
+> 1
+
+H2∥2 
+
+> F
+
+. For the normal form, use I = HiH⊤ 
+
+> i
+
++ NiN ⊤ 
+
+> i
+
+to decompose 
+
+H2 and note ∥H2∥2 
+
+> F
+
+= d.5The lower singular-value bound is necessary: without it, the projection map is not Lipschitz. Setting ϕ(t) = ϵ t e1 and ψ(t) = ϵ t e2 gives ∥Dϕ − Dψ ∥F = √2 ϵ but ∥Pϕ − Pψ∥F = √2, so the ratio blows up as ϵ → 0. On Rd(s), however, the projection map is Lipschitz: 
+
+Lemma 3.2 (Lipschitz property of the projection map) . Let f (X) = X(X⊤X)−1X⊤ be the or-thogonal projection onto rng X. Then for all X, Y ∈ Rd(s),
+
+∥f (X) − f (Y )∥F ≤√2
+
+s ∥X − Y ∥F .
+
+Proof. Write gY = Y ⊤Y . Since f (X)X = X, we have ( I − f (X)) X = 0, so by Lemma 3.1 applied with H2 = Y g −1/2 
+
+> Y
+
+, 12 ∥f (X) − f (Y )∥2 
+
+> F
+
+= ∥(I − f (X)) Y g −1/2 
+
+> Y
+
+∥2 
+
+> F
+
+= ∥(I − f (X)) ( Y − X) g−1/2 
+
+> Y
+
+∥2 
+
+> F
+
+.Since I − f (X) is a contraction and ∥g−1/2 
+
+> Y
+
+∥2 = σmin (Y )−1 ≤ s−1, the right-hand side is at most 
+
+s−2∥X − Y ∥2 
+
+> F
+
+.With this Lipschitz bound in hand, we define the chart class and the metric. Let Ed(s) := {ϕ ∈
+
+H1(Ω; RD) : Dϕ (z) ∈ Rd(s) a.e. on Ω } denote the set of well-conditioned charts, i.e. those whose Jacobians have σmin ≥ s at almost every point. The requirement is mild: any C1 immersion [28] 
+
+ϕ⋆ : ¯Ω → RD satisfies s0 := min ¯Ω σmin (Dϕ ⋆) > 0 by the extreme value theorem, so ϕ⋆ ∈ Ed(s0)automatically. Every Monge patch ϕ(z) = ( z⊤, f (z)) ⊤ satisfies σmin (Dϕ ) ≥ 1 because Dϕ =[Id; Df ]. A smaller s0 enlarges the Lipschitz constant in Lemma 3.2 and hence the generalization bounds. In practice the assumption is not explicitly enforced during training; we verify it post-hoc in Section 5. To use Ed(s) as a hypothesis class for ERM, we first verify that it is closed under H1
+
+limits. 
+
+Lemma 3.3. Ed(s) is closed in H1.Proof. Let ϕk ∈ Ed(s) with ϕk → ϕ in H1. By definition of the H1 norm, ∥Dϕ k − Dϕ ∥L2 ≤∥ϕk − ϕ∥H1 → 0, so Dϕ k → Dϕ in L2(Ω; RD×d). By the Lp subsequence theorem, there ex-ists a subsequence Dϕ kj → Dϕ pointwise almost everywhere. Weyl’s singular-value perturbation inequality gives |σmin (A) − σmin (B)| ≤ ∥ A − B∥F for any matrices A, B of the same size, so 
+
+σmin is 1-Lipschitz on RD×d. Therefore σmin (Dϕ kj (z)) → σmin (Dϕ (z)) for almost every z ∈ Ω. Since σmin (Dϕ kj (z)) ≥ s for all j, the limit satisfies σmin (Dϕ (z)) ≥ s almost everywhere, hence 
+
+ϕ ∈ Ed(s). With the chart class in place, we combine the pointwise L2 reconstruction error and the tangent-projector discrepancy from Lemma 3.2 into a single metric. 
+
+Lemma 3.4 (The ρ-metric) . For ϕ, ψ ∈ Ed(s), define 
+
+ρ(ϕ, ψ )2 := ∥ϕ − ψ∥2 
+
+> L2
+
++ 12 ∥Pϕ − Pψ∥2 
+
+> F,L 2
+
+,
+
+where Pϕ = f (Dϕ ) is the orthogonal projection onto rng( Dϕ ) as in Lemma 3.2. Then the following hold: (i) ρ is a metric on Ed(s). (ii) ∥ϕ −ψ∥L2 ≤ ρ(ϕ, ψ ) ≤ Cs ∥ϕ− ψ∥H1 with Cs = max(1 , s −1).
+
+(iii) ρ is not equivalent to the H1 norm. Proof. (i) Non-negativity and symmetry are immediate. If ρ(ϕ, ψ ) = 0 then both terms vanish; in particular ∥ϕ − ψ∥L2 = 0, so ϕ = ψ a.e. on Ω and hence Dϕ = Dψ a.e., giving ϕ = ψ in H1 ∩ Ed(s). For the triangle inequality, let ϕ, ψ, χ ∈ Ed(s) and write a1 = ∥ϕ − ψ∥L2 , b1 = 1√2 ∥Pϕ − Pψ∥F,L 2 ,6and define ( a2, b 2), ( a3, b 3) analogously for ( ψ, χ ) and ( ϕ, χ ). The L2 triangle inequality gives 
+
+a3 ≤ a1 + a2 and b3 ≤ b1 + b2, so 
+
+ρ(ϕ, χ ) = 
+
+q
+
+a23 + b23 ≤ p(a1+a2)2 + ( b1+b2)2 ≤ ρ(ϕ, ψ ) + ρ(ψ, χ ),
+
+where the last inequality is the triangle inequality for the Euclidean norm on R2.
+
+(ii) The lower bound ∥·∥ L2 ≤ ρ is immediate from the definition. For the upper bound, Lemma 3.2 gives ∥Pϕ(x) − Pψ(x)∥F ≤ 
+
+> √2
+> s
+
+∥Dϕ (x) − Dψ (x)∥F pointwise a.e. Squaring, integrating over Ω, and combining with the L2 term yields 
+
+ρ(ϕ, ψ )2 ≤ ∥ ϕ − ψ∥2 
+
+> L2
+
++ 1
+
+s2 ∥Dϕ − Dψ ∥2 
+
+> L2
+
+≤ C2 
+
+> s
+
+∥ϕ − ψ∥2 
+
+> H1
+
+.
+
+(iii) Let z = ( z1, . . . , z d) ∈ Ω and define ϕ(z) = Pdj=1 zj ej and ϕk(z) = ϕ(z) − ak cos( kz 1) e1
+
+for 0 < a < 1 − s. Then ∂1ϕk(z) = (1 + a sin( kz 1)) e1 and ∂j ϕk(z) = ej for j = 2 , . . . , d , so 
+
+σmin (Dϕ k) ≥ 1 − a > s and ∥Dϕ k∥F is uniformly bounded. Hence ϕk ∈ Ed(s). Both Pϕk and Pϕ
+
+equal the constant orthogonal projection onto span {e1, . . . , ed}, so ∥Pϕk − Pϕ∥F,L 2 = 0. Moreover 
+
+∥ϕk − ϕ∥L2 → 0 as k → ∞ (the oscillation has amplitude a/k ). Hence ρ(ϕk, ϕ ) → 0. However, 
+
+Dϕ k − Dϕ has first column a sin( kz 1) e1 and all other columns zero, so 
+
+∥Dϕ k − Dϕ ∥2 
+
+> L2(Ω)
+
+= a2
+
+Z
+
+> Ω
+
+sin 2(kz 1) dz = a2
+
+2 |Ω| − a2
+
+2
+
+Z
+
+> Ω
+
+cos(2 kz 1) dz → a2
+
+2 |Ω| > 0,
+
+by the Riemann–Lebesgue lemma. Thus ϕk̸ → ϕ in H1, so ρ is strictly weaker than H1.In summary, ρ sits strictly between L2 and H1 on Ed(s): it controls tangent-space alignment without requiring full derivative matching. This is precisely the gap exploited by the tangent-bundle penalty. 
+
+3.2 Efficient computation from dynamics data 
+
+The pointwise ρ-loss at a latent coordinate z is 
+
+ℓρ(z; θ) := ∥ϕθ(z) − ϕ⋆(z)∥2 + 12 ∥Pϕθ (z) − Pϕ⋆ (z)∥2 
+
+> F
+
+,
+
+where ϕ⋆ is the target chart and ϕθ is the decoder parametrized by θ. For a probability measure 
+
+ν on Ω, the population risk is Rν,ρ (θ) := R 
+
+> Ω
+
+ℓρ(z; θ) dν (z), and the empirical risk minimizer is ˆθS,ρ ∈ arg min θ∈Θ 1
+
+> m
+
+Pmi=1 ℓρ(zi; θ) with zi i.i.d. 
+
+∼ ν. Since ℓρ is coordinate-invariant (Lemma 2.4), Rν,ρ 
+
+is reparametrization-invariant whenever ν is the pullback of a fixed measure on M , in particular for the normalized Riemannian volume dν ⋆ ∝ √det g⋆ dz . For the generalization analysis in Section 4, we take ν to be Lebesgue on [0 , 1] d; the two are equivalent up to bounded constants since g⋆ has bounded singular values on compact Ω. The target chart ϕ⋆ is unknown in practice. The training data {xi, b (xi), Λ( xi)}mi=1 from the ATLAS exploration phase provide two ingredients for realizing the ρ-loss; the drift b(xi) enters in Stage 2 (below). Writing zi = πθ(xi) and ˆPi = UdU ⊤ 
+
+> d
+
+for the rank-d spectral projector of Λ( xi)(Section 2.2): 
+
+• Reconstruction L(i) 
+
+> R
+
+= ∥ϕθ(zi) − xi∥2: a surrogate for the ρ-loss term ∥ϕθ(z) − ϕ⋆(z)∥2, since 
+
+xi = ϕ⋆(z⋆i ) for the true latent z⋆i = π⋆(xi). The two coincide when πθ = π⋆.7Algorithm 1 Three-stage pipeline: geometric chart learning and latent SDE estimation 
+
+Require: Ambient observations {xi}mi=1 ⊂ RD with drift b(xi) and covariance Λ( xi) {e.g. from short-burst ensembles [12, 48] }
+
+Require: Penalty weights λT , λ F ; epochs E
+
+Ensure: Chart ( πθ, ϕ θ); latent SDE coefficients (ˆ μω, ˆσψ) 
+
+> 1:
+
+Stage 1: Chart learning {Geometric autoencoder } 
+
+> 2:
+
+Train ( πθ, ϕ θ) in two phases (warmup E1, fine-tune E2 epochs), both minimizing L = LR +
+
+λT LT + λF LF via (3)  
+
+> 3:
+
+Stage 2: Encoder-pullback drift fitting {Frozen chart } 
+
+> 4:
+
+Encode zi ← πθ(xi); compute encoder-pullback target μ(zi) = Dπ θ(xi) b(xi) +  
+
+> 12
+
+⟨Λ( xi) , ∇2πθ(xi)⟩F via (2)  
+
+> 5:
+
+Train ˆ μω to minimize P
+
+> i
+
+∥ˆμω(zi) − μ(zi)∥2 
+
+> g(zi)
+> 6:
+
+Stage 3: Latent diffusion fitting {Frozen chart } 
+
+> 7:
+
+Compute target Σ( zi) = Dπ θ(xi) Λ( xi) Dπ θ(xi)⊤ 
+
+> 8:
+
+Train ˆ σψ to minimize P 
+
+> i
+
+Tr  (g(zi) [ˆ σψ(zi)ˆ σψ(zi)⊤ − Σ( zi)]) 2
+
+• Tangent-bundle L(i) 
+
+> T
+
+= 12 ∥Pϕθ (zi)− ˆPi∥2 
+
+> F
+
+: replaces the unknown Pϕ⋆ with the data-derived ˆPi.We augment the ρ-loss with an inverse-consistency penalty [17], L(i) 
+
+> F
+
+= ∥Dπ θ(xi) Dϕ θ(zi) − Id∥2 
+
+> F
+
+,which enforces the first-order inverse identity Dπ Dϕ = Id, ensuring that the encoder and decoder are consistent as approximate chart maps. The condition Dπ Dϕ = Id is coordinate-invariant (it holds in all parameterizations or none), though the Frobenius penalty itself is not; LF is a practical regularizer, not part of the ρ-metric or the generalization theory. The full training objective for Stage 1 (chart learning) is 
+
+L(θ) = 1
+
+m
+
+> m
+
+X
+
+> i=1
+
+ L(i) 
+
+> R
+
++ λT L(i) 
+
+> T
+
++ λF L(i)
+
+> F
+
+. (3) Stages 2 and 3 freeze the chart and fit latent SDE coefficients using coordinate-invariant losses (Lemma 2.4 (ii)–(iii)). Stage 2 regresses a drift network ˆ μω(z) onto the encoder-pullback tar-get (2) under ∥·∥ 2
+
+> g
+
+; Stage 3 regresses a diffusion network ˆ σψ(z) onto the pulled-back covariance Σ( zi) := Dπ θ(xi) Λ( xi) Dπ θ(xi)⊤ under Tr  (g · )2. The geometric losses are coordinate-invariant: 
+
+LR is computed in ambient RD; LT uses the ambient projector (Lemma 2.4 (i)); Stage 2 and 3 use metric-weighted norms (Lemma 2.4 (ii)–(iii)). The law of the learned ambient process is therefore in-dependent of the latent parameterization. The auxiliary penalty LF enforces a coordinate-invariant condition ( Dπ Dϕ = Id) but its Frobenius value is chart-dependent. The full pipeline is summarized in Algorithm 1. Na¨ ıvely, the tangent-bundle penalty forms D × D projection matrices ( O(D2d) time, O(D2)memory). The following proposition shows that all stages can be evaluated with O(Dd 2) flops and 
+
+O(Dd ) memory. 
+
+Proposition 3.5 (Computational cost) . Every loss and target in the three-stage pipeline can be evaluated in O(Dd 2) flops per sample, with O(Dd ) for the drift loss, without forming any D × D
+
+matrix. Specifically, with g = Dϕ ⊤Dϕ ∈ Rd×d: (R) reconstruction is O(D); (T) tangent-bundle is 
+
+O(Dd 2); (F) inverse-consistency is O(Dd 2); (Stage 2) the encoder-pullback target is O(Dd 2) via 
+
+O(d2) Hessian–vector products at O(D) each; the drift loss itself is O(Dd ) given the precomputed Jacobian Dϕ ∈ RD×d; (Stage 3) pulled-back covariance target and diffusion loss are each O(Dd 2).
+
+8Proof. Write Ud ∈ RD×d for the top-d eigenvectors of Λ, P = Ud U ⊤ 
+
+> d
+
+, ˆP = Dϕ g −1Dϕ ⊤, and 
+
+C = Dϕ ⊤Ud ∈ Rd×d.
+
+(R) LR = ∥ϕθ(z) − x∥2 is a single D-vector difference and dot product: O(D). 
+
+(T) Since ˆP and P are both orthogonal projections of rank d, idempotency gives ˆP 2 = ˆP ,
+
+P 2 = P , and Tr( ˆP ) = Tr( P ) = d. Expanding: ∥ ˆP − P ∥2 
+
+> F
+
+= Tr( ˆP 2) − 2 Tr( ˆP P ) + Tr( P 2) = 2d − 2 Tr( ˆP P ). Substituting ˆP = Dϕ g −1Dϕ ⊤ and P = Ud U ⊤ 
+
+> d
+
+and applying the cyclic property of the trace: Tr( ˆP P ) = Tr  Dϕ g −1Dϕ ⊤Ud U ⊤
+
+> d
+
+ = Tr  g−1 (Dϕ ⊤Ud)( Dϕ ⊤Ud)⊤ = Tr( g−1CC ⊤), so  
+
+> 12
+
+∥ ˆP − P ∥2 
+
+> F
+
+= d − Tr  g−1C C ⊤. (4) Forming C = Dϕ ⊤Ud costs O(Dd 2); g−1CC ⊤ is d × d, so the trace is O(d3) ⊂ O(Dd 2). When the inverse-consistency penalty drives Dπ Dϕ ≈ Id, we have Dπ ≈ g−1Dϕ ⊤ and the loss simplifies to 
+
+d − Tr( Dπ U d U ⊤ 
+
+> d
+
+Dϕ ), which is the form used in Algorithm 1. 
+
+(F) LF = ∥Dπ Dϕ − Id∥2 
+
+> F
+
+: Dπ ∈ Rd×D times Dϕ ∈ RD×d is a d × d product costing O(Dd 2). 
+
+(Stage 2) Target. The encoder-pullback drift (2) contains the Itˆ o correction ⟨Λ , ∇2πj ⟩F . Since Λ has rank d on the manifold, its spectral decomposition Λ = Pdm=1 λmumu⊤ 
+
+> m
+
+gives ⟨Λ , ∇2πj ⟩F =
+
+Pdm=1 λm u⊤
+
+> m
+
+(∇2πj ) um, where each u⊤
+
+> m
+
+(∇2πj ) um is a single forward-over-reverse Hessian–vector product (HVP), avoiding the full d × D × D encoder Hessian. Over j = 1 , . . . , d encoder outputs this is d2 HVPs at O(D) each, totalling O(Dd 2). Loss. ∥r∥2 
+
+> g
+
+= r⊤g r = ∥Dϕ r ∥2 rewrites the metric-weighted norm as an ambient Euclidean norm. Computing Dϕ r is a matrix–vector product in O(Dd ); the squared norm costs O(D). 
+
+(Stage 3) The pulled-back covariance target Σ( zi) = Dπ Λ Dπ ⊤ is naively O(dD 2) because Λ ∈ RD×D. Since rnk(Λ) = d, write Λ = Ud diag( λ1, . . . , λ d) U ⊤ 
+
+> d
+
+and set B = Dπ U d ∈ Rd×d at cost 
+
+O(Dd 2); then Σ = B diag( λ) B⊤ in O(d3). For the loss, g = Dϕ ⊤Dϕ is precomputed in O(Dd 2); the product g ∆Σ is a d × d matrix multiplication costing O(d3). Squaring ( g ∆Σ) 2 and taking the trace are likewise O(d3) ⊂ O(Dd 2). 
+
+# 4 Generalization Theory 
+
+The previous section constructed a pipeline whose geometric losses ( LR, LT , Stage 2, Stage 3) are coordinate-invariant and depend only on point-cloud positions, local covariance eigenvectors, ambient drift, and the learned chart; no ground-truth Jacobians or curvature labels are required. Yang et al. [46] establish optimal generalization rates for deep networks trained in the full Sobolev 
+
+Hk norm, where the training loss requires labels for all derivatives up to order k. Our ρ-loss is strictly less supervised than H1 training, which would require full Jacobian labels Dϕ ⋆(xi). Anatural question is whether this weaker supervision comes at a statistical cost. Perhaps surprisingly, the answer is that no rate is lost. We show that ρ-ERM achieves the 
+
+same rate (up to logarithmic factors) as full H1 training. The key new ingredient is a bridge lemma (Lemma 4.4) that converts a W 1,∞ approximation guarantee, available from [46], into a 
+
+ρ-approximation guarantee. Once this bridge is in place, the estimation error is controlled by a covering-number argument over the first-order feature class, which reduces to the entropy bounds already established in [46]. This improves on the chart autoencoder rate of Liu et al. [33], which achieves m−2/(d+2) log 4 m from reconstruction loss alone: geometric supervision via the tangent projector replaces the fixed smoothness n = 2 in their bound with the true regularity n of the target chart. Section 4.2 then analyzes the systematic bias that arises when the decoder-side drift formula is used in place of the encoder-pullback target. We begin with three standing assumptions. 9Assumption 4.1 (Target chart regularity) . Let Ω ⊂ Rd be a bounded Lipschitz domain and let 
+
+ϕ⋆ : Ω → RD be the ground-truth chart. Assume ϕ⋆ ∈ Ed(s0) ∩ W n, ∞(Ω; RD) for some s0 > 0 and 
+
+n > 1, and after rescaling, ∥ϕ⋆∥W n, ∞(Ω) ≤ 1.The well-conditioned chart class Ed(s0) from Section 3.1 ensures that σmin (Dϕ ⋆) ≥ s0 a.e. on Ω,so the ρ-metric is well-defined on a neighborhood of ϕ⋆.
+
+Assumption 4.2 (Hypothesis class) . Fix constants B ≥ 1 and s ∈ (0 , s 0]. For each architecture 
+
+(N, L ) (width N , depth L), let H(N, L ) = {ϕθ : Ω → RD : θ ∈ ΘN,L } be a DeNN hypothesis set. The constrained class used for ERM is 
+
+HB,s (N, L ) := 
+
+n
+
+ϕθ ∈ H (N, L ) : ∥ϕθ∥W 1,∞(Ω) ≤ B and ϕθ ∈ Ed(s)
+
+o
+
+.
+
+Since HB,s (N, L ) ⊂ Ed(s), the ρ-metric and the projector Pϕθ are well-defined for every member. 
+
+Assumption 4.3 (W 1,∞ approximation) . Assume the DeNN architecture is chosen as in [46] (width N = O(log L), depth L, parameter count W = O(L(log L)3)). By the W 1,∞ approximation result (Proposition A.2 and Theorem 3.2 of [46]), there exists a constant Capp > 0 depending only on (d, D, n ) and fixed architectural constants such that, for each (N, L ), one can find θ♯ ∈ ΘN,L with 
+
+ϕθ♯ ∈ H B,s (N, L ) and ∥ϕθ♯ − ϕ⋆∥W 1,∞(Ω) ≤ Capp 
+
+  W  
+
+> (log W)2
+
+−2( n−1) /d . Once the right-hand side is at most s0/2, Weyl’s perturbation bound [21] gives ϕθ♯ ∈ Ed(s0/2) , so membership in the constrained class is automatic. 
+
+The singular-value bound defining Ed(s) depends on the choice of coordinates on Ω; the latent domain with its Euclidean structure is fixed as part of the statistical setup. As noted in Section 3, the ρ-loss and Stage 2/3 losses are coordinate-invariant (Lemma 2.4), and under bounded-distortion reparametrisations the hypothesis class is stable: ϕ ∈ Ed(s) ⇒ ϕ ◦ ψ ∈ Ed(as ) when σmin (Dψ ) ≥ a.
+
+4.1 Main generalization results 
+
+The first ingredient is a bridge lemma showing that W 1,∞-closeness to a well-conditioned target implies ρ-closeness. 
+
+Lemma 4.4. Let Ω ⊂ Rd be measurable with 0 < |Ω| < ∞ and let ϕ⋆ : Ω → RD be a C1 chart such that for all x ∈ Ω, the Jacobian J⋆(x) := Dϕ ⋆(x) ∈ RD×d has full rank d and s0 ≤ σmin (J⋆(x)) ≤
+
+σmax (J⋆(x)) ≤ r0 for some constants 0 < s 0 ≤ r0 < ∞. For any C1 map ϕ : Ω → RD with Dϕ (x)
+
+full rank, define Pϕ(x) := Dϕ (x) Dϕ (x)⊤Dϕ (x)−1Dϕ (x)⊤ and ρ(ϕ, ϕ ⋆)2 := ∥ϕ − ϕ⋆∥2 
+
+> L2(Ω)
+
++ 
+
+> 12
+
+∥Pϕ − Pϕ⋆ ∥2
+
+> F,L 2(Ω)
+
+. Assume there exists a neural-network realizable ϕ = ϕN,L satisfying 
+
+∥ϕ − ϕ⋆∥W 1,∞(Ω) ≤ δ, (5) 
+
+and suppose δ ≤ s0/2. Then (i) For all x ∈ Ω, s0 
+
+> 2
+
+≤ σmin (Dϕ (x)) ≤ σmax (Dϕ (x)) ≤ r0 + δ, so 
+
+Dϕ (x) is full rank and Pϕ is well-defined. (ii) There is a constant Cρ(s0, Ω) := |Ω| 1 + 4
+
+> s20
+
+ such that 
+
+ρ(ϕ, ϕ ⋆)2 ≤ Cρ(s0, Ω) ∥ϕ − ϕ⋆∥2  
+
+> W1,∞(Ω)
+
+≤ Cρ(s0, Ω) δ2. (6) 
+
+Consequently, if an approximation theorem yields δ ≲ N −2( n−1) /d L−2( n−1) /d for ϕ⋆ ∈ W n, ∞,then ρ(ϕ, ϕ ⋆)2 ≲ N −4( n−1) /d L−4( n−1) /d . In the DeNN regime where N = O(log L) and the parameter count satisfies W = O(N 2L log L), the above can be rewritten (up to logarithmic factors) as ρ(ϕ, ϕ ⋆)2 ≲
+
+ W  
+
+> (log W)2
+
+− 4( n−1) 
+
+> d
+
+.
+
+10 Proof. Write J(x) := Dϕ (x) and E(x) := J(x) − J⋆(x). 
+
+(i)) For each fixed x ∈ Ω, Weyl’s perturbation bound for singular values gives |σi(J(x)) −
+
+σi(J⋆(x)) | ≤ ∥E(x)∥2, for each singular value index i. Since ∥E(x)∥2 ≤ ∥ E(x)∥F ≤ ∥ E∥F, ∞ ≤ δ
+
+by (5), we obtain σmin (J(x)) ≥ σmin (J⋆(x)) − δ ≥ s0 − δ ≥ s0 
+
+> 2
+
+, and similarly 
+
+σmax (J(x)) ≤ σmax (J⋆(x)) + δ ≤ r0 + δ. This proves (i). 
+
+(ii)) Let f (X) := X(X⊤X)−1X⊤ be the projector map. By the Lipschitz bound for the projector on matrices with σmin (·) ≥ s0/2 (Lemma 3.2), we have ∥f (X)−f (Y )∥F ≤ 
+
+> √2
+> s0/2
+
+∥X−Y ∥F = 2√2 
+
+> s0
+
+∥X−
+
+Y ∥F . Applying this with X = J(x) and Y = J⋆(x) yields, for all x ∈ Ω, ∥Pϕ(x) − Pϕ⋆ (x)∥F =
+
+∥f (J(x)) − f (J⋆(x)) ∥F ≤ 2√2 
+
+> s0
+
+∥J(x) − J⋆(x)∥F ≤ 2√2 
+
+> s0
+
+δ. Therefore ∥Pϕ − Pϕ⋆ ∥2 
+
+> F,L 2(Ω)
+
+=
+
+R
+
+> Ω
+
+∥Pϕ(x) − Pϕ⋆ (x)∥2 
+
+> F
+
+dx ≤ | Ω| · 8
+
+> s20
+
+δ2.Also by (5), ∥ϕ − ϕ⋆∥2 
+
+> L2(Ω)
+
+≤ |Ω| · ∥ ϕ − ϕ⋆∥2 
+
+> L∞(Ω)
+
+≤ |Ω| δ2. Combining the two bounds, 
+
+ρ(ϕ, ϕ ⋆)2 = ∥ϕ − ϕ⋆∥2 
+
+> L2(Ω)
+
++ 12 ∥Pϕ − Pϕ⋆ ∥2 
+
+> F,L 2(Ω)
+
+≤ | Ω|δ2 + 12 |Ω| 8
+
+> s20
+
+δ2 = |Ω|
+
+
+
+1 + 4
+
+> s20
+
+
+
+δ2, which is (6) and completes the proof. With this bridge in hand, we state the main result for an oracle ρ-ERM: ℓρ(z; θ) evaluates ϕθ
+
+against ϕ⋆ at latent points z ∼ ν known to the oracle, a standard device in covering-number oracle inequalities; quasi-uniform ATLAS designs [18] achieve comparable rates. The implemented loss differs in two ways. First, the learned encoder replaces the true latent coordinate. On the well-conditioned class, both the reconstruction and projector terms in ℓρ are Lipschitz in the evaluation point, so the practical ρ-risk exceeds the oracle risk by a term controlled by E∥πθ(ϕ⋆(z)) − z∥2;when Dπ Dϕ ≈ Id (enforced by LF ), this gap is small because the encoder is an approximate local inverse. Second, if ˆPi is formed from an empirical covariance ˆΛi, the Davis–Kahan sin Θ theorem yields ∥ ˆPi − Pϕ⋆ (zi)∥F ≤ C∥ˆΛi − Λi∥op /(λd − λd+1 ), where λd−λd+1 is the eigengap separating tangent from normal eigenvalues; thus the projector error vanishes when the covariance estimator is accurate and the eigengap stays bounded away from zero. 
+
+Theorem 4.5 (Generalization in ρ has the same order as H1). Under Assumptions 4.1–4.3, let 
+
+ˆθ be the ρ-ERM over HB,s 0/2(N, L ) with {zi}mi=1 drawn i.i.d. from a probability measure ν on Ω.Assume N, L are large enough that Capp N −2( n−1) /d L−2( n−1) /d ≤ s0/2. Then there exists a constant 
+
+C > 0 depending only on (d, D, n, B, s 0) such that 
+
+E Rν,ρ (ˆθ) ≤ C
+
+"
+
+N − 4( n−1)  
+
+> d
+
+L− 4( n−1)  
+
+> d
+
++ N 2L2 log 2 L log 2 Nm log m
+
+#
+
+, (7) 
+
+where the expectation is over (zi)mi=1 
+
+> i.i.d.
+
+∼ ν.In particular, in the DeNN regime N = O(log L) and parameter count W = O(N 2L log L), the bound (7) can be rewritten (up to logarithmic factors) as 
+
+E Rν,ρ (ˆθ) ≤ C
+
+" W  
+
+> (log W)2
+
+− 4( n−1) 
+
+> d
+
++ W 2
+
+m log m
+
+#
+
+, (8) 
+
+and optimizing over W yields the same sample-only rate (up to logs) as H1-Sobolev training: 
+
+E Rν,ρ (ˆθ) ≲ m− 2( n−1) 2( n−1)+ d .
+
+The ρ-metric discards tangential stretching information and is therefore strictly weaker than 
+
+H1 (Lemma 3.4 (iii)). That it achieves the same rate reflects two complementary facts. On the 
+
+approximation side, the well-conditioning assumption σmin (Dϕ ) ≥ s makes the map Dϕ 7 → Pϕ
+
+11 Lipschitz (Lemma 3.2), so any W 1,∞ approximant at scale δ automatically gives ρ-error at scale δ2
+
+with no loss in exponent. On the estimation side, the ρ-loss is a Lipschitz function of the same first-order features ( ϕ, Dϕ ) that determine the H1 covering number, so the entropy bound is inherited unchanged. In short, ρ uses less supervision than H1 because the covariance data supplies the tangent-space information that would otherwise require Jacobian labels, yet on the well-conditioned class both exponents remain first-order. 
+
+Proof. Let ˆθ be the ρ-ERM and write R⋆ν,ρ := inf {Rν,ρ (θ) : ϕθ ∈ H B,s 0/2(N, L )}. Let Lρ := 
+
+{ℓρ(·; θ) : ϕθ ∈ H B,s 0/2(N, L )}. Since the squared loss is uniformly bounded, 0 ≤ ℓρ ≤ B2 
+
+> ρ
+
+by eq. (11) below, we may apply a fast-rate covering-number oracle inequality for ERM with bounded square loss [18, 4, Theorem 11.3]. Concretely, there exist constants C, c 0 > 0 such that 
+
+E Rν,ρ (ˆθ) ≤ R⋆ν,ρ + C 1
+
+m
+
+
+
+log N  c0/m, Lρ, m  + 1 
+
+
+
+. (9) Since R⋆ν,ρ ≤ Rν,ρ (¯θ) for any fixed comparator ¯θ in the class, it remains to (i) choose ¯θ to control the approximation error and (ii) bound log N (·, Lρ, m ). By Assumption 4.3, there exists θ♯ such that ϕθ♯ ∈ H B,s 0/2(N, L ) and ∥ϕθ♯ − ϕ⋆∥W 1,∞(Ω) ≤
+
+Capp N − 2( n−1)  
+
+> d
+
+L− 2( n−1)  
+
+> d
+
+. Denote this bound by δ; by hypothesis δ ≤ s0/2. The proof of Lemma 4.4 gives the pointwise bound ℓρ(z; θ♯) ≤ (1 + 4 /s 20) δ2; integrating against the probability measure ν
+
+yields 
+
+Rν,ρ (θ♯) ≤ (1 + 4 /s 20) δ2 ≤ C N − 4( n−1)  
+
+> d
+
+L− 4( n−1)  
+
+> d
+
+.
+
+Let ¯θ := θ♯. Then 
+
+Rν,ρ (¯θ) ≤ C N − 4( n−1)  
+
+> d
+
+L− 4( n−1)  
+
+> d
+
+. (10) First note ℓρ(z; θ) is uniformly bounded: since ∥ϕθ∥L∞ ≤ B and ∥ϕ⋆∥L∞ ≤ 1, we have ∥ϕθ −
+
+ϕ⋆∥ ≤ B+1, and since Pϕθ , P ϕ⋆ are orthogonal projections, ∥Pϕθ − Pϕ⋆ ∥F ≤ 2√d, hence 0 ≤ ℓρ(z; θ) ≤ B2 
+
+> ρ
+
+for all z ∈ Ω, θ, (11) for a constant Bρ = Bρ(d, B ). Next, by the Lipschitz bound for the projector map on the set {J : σmin (J) ≥ s0/2}, ∥Pϕθ (z) −
+
+Pϕθ′ (z)∥F ≤ Cs0 ∥Dϕ θ(z) − Dϕ θ′ (z)∥F for a.e. z. Using the elementary inequality ∥a∥2 − ∥ b∥2 ≤
+
+(∥a∥ + ∥b∥) ∥a − b∥ and the uniform bounds in W 1,∞, there exists C = C(d, D, B, s 0) such that for a.e. z and all θ, θ ′,
+
+|ℓρ(z; θ) − ℓρ(z; θ′)| ≤ C
+
+
+
+∥ϕθ(z) − ϕθ′ (z)∥ + ∥Dϕ θ(z) − Dϕ θ′ (z)∥F
+
+
+
+. (12) Define the first-order feature map class F := 
+
+n
+
+z 7 → (ϕθ(z), ∂ 1ϕθ(z), . . . , ∂ dϕθ(z)) : ϕθ ∈HB,s 0/2(N, L )
+
+o
+
+. Then (12) implies the uniform covering numbers satisfy N  ε, Lρ, m  ≤N  c ε, F, m  for some constant c = c(d, D, B, s 0) > 0, where N (·, ·, m ) denotes the uniform covering number on m sample points. Bounding N (ε, F, m ) is exactly the “first-derivative” ( k=1) instance of the Sobolev-loss gen-eralization machinery in [46, Theorem 3.2]. That result bounds the covering number of the full DeNN derivative class; since HB,s 0/2(N, L ) is a subclass, the same entropy bound applies a fortiori .Moreover, [46, Remark 3.1] explains that the same entropy bound holds for general i.i.d. sampling measures. Specializing their result to the first-order feature class F yields, for ε of order 1 /m ,log N (ε, Lρ, m ) ≤ C N 2L2 log 2 L log 2 N · log m, (13) 12 where C = C(d, D, B, s 0). Inserting (13) into (9) gives 
+
+E Rν,ρ (ˆθ) ≤ R⋆ν,ρ + C N 2L2 log 2 L log 2 Nm log m. (14) Since R⋆ν,ρ ≤ Rν,ρ (¯θ), combining (10) with (14) yields (7). In the DeNN regime N = O(log L)and W = O(N 2L log L), (8) follows up to logarithmic factors. Balancing the two terms in (8) gives the sample-only rate m− 2( n−1) 2( n−1)+ d (up to logs), matching the Sobolev H1 training rate. 
+
+4.2 Bias analysis of decoder-side drift fitting 
+
+Theorem 4.5 guarantees that the oracle ρ-ERM chart converges at the optimal rate. The next question is how to extract latent SDE coefficients from this chart. The latent drift admits two equivalent representations as derived in Section 2.1: the encoder-pullback form (1) using ( Dπ, ∇2π), and the decoder form of Lemma 2.3 using the metric pseudo-inverse g−1Dϕ ⊤ and the decoder Hessian. For an ideal autoencoder ( π = ϕ−1) these coincide; for a learned autoencoder they diverge, and the decoder-side target carries a systematic bias. 
+
+Proposition 4.6 (Decoder-side bias decomposition) . Let (ϕθ, π θ) be a C2 encoder–decoder pair with Dϕ θ of full column rank. Write ˆΣ = g−1Dϕ ⊤ 
+
+> θ
+
+Λ Dϕ θ g−1 for the decoder-side latent covariance, 
+
+q( ˆΣ) for the corresponding Itˆ o correction, μdec := g−1Dϕ ⊤ 
+
+> θ
+
+[b − 12 q( ˆΣ)] for the decoder-side drift target, and μenc for the encoder-pullback target (2) . Then 
+
+μdec − μenc = ( g−1Dϕ ⊤ − Dπ )( b − 12 q)
+
+| {z }
+
+> (I)
+
+− 12 ⟨ ˆΣ , D 2(π◦ϕ)⟩F
+
+| {z }
+
+> (II)
+
+− 12 ⟨Λ − Dϕ ˆΣDϕ ⊤ , ∇2π⟩F
+
+| {z }
+
+> (III)
+
+, (15) 
+
+where (I) is the pseudo-inverse ̸ = encoder gap, (II) the cycle-Hessian bias, and (III) the covariance mismatch. Proof. Write ϕ, π, g, ˆΣ, q for ϕθ, π θ, g θ, ˆΣθ, q ( ˆΣ), suppressing θ. Subtracting μenc from μdec and splitting the b-dependent and Itˆ o-correction terms gives 
+
+μdec − μenc = ( g−1Dϕ ⊤ − Dπ ) b − 12
+
+g−1Dϕ ⊤q + ⟨Λ , ∇2π⟩F
+
+.
+
+For the bracket, write g−1Dϕ ⊤q = Dπ q + ( g−1Dϕ ⊤−Dπ ) q and evaluate Dπ q via the second-derivative chain rule applied to h := π ◦ ϕ:
+
+D2hjab = ( ∇2πj )kl (Dϕ )ka (Dϕ )lb + ( Dπ )jk (∇2ϕk)ab .
+
+Contracting with ˆΣab and stacking over j:
+
+⟨ ˆΣ , D 2(π ◦ ϕ)⟩F = ⟨Dϕ ˆΣ Dϕ ⊤ , ∇2π⟩F + Dπ q. 
+
+Substituting back: g−1Dϕ ⊤q + ⟨Λ , ∇2π⟩F = (g−1Dϕ ⊤−Dπ ) q + ⟨ ˆΣ , D 2(π ◦ ϕ)⟩F + ⟨Λ −
+
+Dϕ ˆΣ Dϕ ⊤ , ∇2π⟩F . Collecting the ( g−1Dϕ ⊤−Dπ ) terms yields the three-term decomposition. 
+
+Interpretation. All three terms are biases in the decoder-side formula for a fixed learned chart. Terms (I) and (III) are first-order: LF reduces Term (I) by enforcing Dπ ≈ g−1Dϕ ⊤ on rng( Dϕ ). By the Itˆ o decomposition, b − 12 q(Σ) = Dϕ μ is exactly tangential; when (GC) also holds, ˆΣ ≈ Σso q( ˆΣ) ≈ q(Σ) and b − 12 q( ˆΣ) is approximately tangential, making LF effective on the relevant subspace. The diagnostic E = ∥(I − Pθ)( b − 12 q)∥2 in Section 5 measures this normal-space leakage, 13 while (GC) reduces Term (III) by aligning rng(Λ) with rng( Dϕ ). Term (II), the cycle-Hessian bias 
+
+governed by D2(π◦ϕ), is genuinely second-order: it requires π◦ϕ to be locally affine, which the first-order penalties T and F do not enforce. Empirically, ∥D2(π ◦ ϕ)∥F ≈ 0.9–1 .3 across trained T+F models, so this term need not be small. Directly penalizing ∥D2(π ◦ ϕ)∥2 
+
+> F
+
+during training degrades reconstruction and tangent alignment, because the penalty competes with the chart-fitting objective when the autoencoder is far from an exact inverse. By contrast, the encoder-pullback target (2) is exact by Itˆ o’s formula applied to the learned encoder, bypasses the decoder-side decomposition and the amplification of Term (II), and in Section 5 consistently improves trajectory error across all N ×D configurations. 
+
+4.3 From coefficient convergence to weak convergence 
+
+The convergence chain has three links, each proved conditionally on the preceding one. 1. Chart-level generalization (Theorem 4.5): the ρ-ERM controls reconstruction and tangent-bundle error. 2. Coefficient propagation (Theorems 4.9 and 4.10 below): assuming ϕn → ϕ in W 2,∞ with 
+
+σmin (Dϕ n) ≥ s > 0, the induced local coefficients (Σ ∗
+
+> n
+
+, μ ∗
+
+> n
+
+) converge uniformly on compacta, and the reconstructed ambient coefficients recover ( b, Λ). 3. Weak convergence (Theorem 4.12 below): given uniform coefficient convergence, Stroock– Varadhan yields weak convergence of the learned dynamics. The gap in this chain is between links (1) and (2): the ρ-metric is weaker than H1 and does not control second derivatives, so W 2,∞ convergence of the training sequence is assumed as a sufficient condition, not derived from the training objective. Uniform Hessian boundedness is automatic for networks with bounded depth and weight norms (the hypothesis class of Assumption 4.3), but convergence of Hessians requires additional structure not imposed by the current penalties. We first state a technical lemma on Frobenius inner products used in both directions. 
+
+Lemma 4.7. Let K ⊂ Rd be compact, ϕ ∈ C2(K; RD), and ϕn ∈ C2(K; RD) with 
+
+sup n sup K ∥∇ 2ϕin∥F ≤ CK for each i. Let A ∈ C1(Rd, S d
+
+> ++
+
+) and An : Rd → Sd 
+
+> ++
+
+satisfy (a) An → A uniformly on K and (b) ⟨A , ∇2ϕin⟩F → ⟨A , ∇2ϕi⟩F uniformly on K. Then 
+
+⟨An , ∇2ϕin⟩F → ⟨ A , ∇2ϕi⟩F uniformly on K.Proof. By bilinearity and an add-zero trick, ⟨An , ∇2ϕin⟩F − ⟨ A , ∇2ϕi⟩F = ⟨An − A , ∇2ϕin⟩F +
+
+⟨A , ∇2ϕin − ∇ 2ϕi⟩F . The second term vanishes uniformly by (b). By Cauchy–Schwarz the first is bounded by CK sup K ∥An − A∥F → 0 by (a). 
+
+Ambient-to-local convergence. The next lemma controls the local covariance in terms of the decoder and ambient covariance. 
+
+Lemma 4.8. Let K ⊂ Ω be compact. Let Σ, ˆΣ denote local-coordinate d × d covariance fields, and let Λ, ˆΛ denote the corresponding ambient D × D covariance fields related via Σ = (Dϕ )†Λ(( Dϕ )†)⊤ and ˆΣ = ( D ˆϕ)† ˆΛ(( D ˆϕ)†)⊤. Suppose ϕ, ˆϕ satisfy σmin (Dϕ ), σ min (D ˆϕ) ≥ s > 0 and 
+
+σmax (Dϕ ), σ max (D ˆϕ) ≤ R on K, with ∥Σ∥F , ∥ ˆΣ∥F ≤ ˜c0. Then ∥Σ − ˆΣ∥F ≤ C0∥Dϕ − D ˆϕ∥F +
+
+C1∥Λ − ˆΛ∥F , where C0 = 2 ˜c0 
+
+> √2
+> s
+
+[s−2 + √2 R2s−4] and C1 = d/s 2.Proof. Using Σ = ( Dϕ )†Λ(( Dϕ )†)⊤, expand Σ − ˆΣ into a Λ-difference term and a pseudo-inverse-difference term. The pseudo-inverse is locally Lipschitz on well-conditioned matrices: ∥(Dϕ )† −
+
+(D ˆϕ)†∥F ≤ [s−2 + √2R2s−4]∥Dϕ − D ˆϕ∥F , and ∥(Dϕ )†∥ ≤ √d/s . Substituting yields the stated constants. 14 For the drift, μ − ˆμ = Dϕ †b − D ˆϕ†ˆb + 12 (D ˆϕ† ˆq − Dϕ †q) gives, by the same well-conditioning, 
+
+∥μ − ˆμ∥ ≤ ˜C0∥Dϕ − D ˆϕ∥F + ˜C1∥b − ˆb∥2 + ˜C2∥ˆq − q∥2. (16) 
+
+Theorem 4.9. Let K ⊂ Ω be compact, ϕ ∈ C3(Ω; RD) with σmin (Dϕ ) ≥ s > 0 on K, b ∈
+
+C1(Ω; RD), Λ ∈ C1(Ω; SD
+
+> ++
+
+). Denote by (μ, Σ) the local coefficients induced by the chart ϕ and the ambient data (b, Λ) via μ = ( Dϕ )†(b− 12 q) and Σ = ( Dϕ )†Λ(( Dϕ )†)⊤, and analogously (ˆ μn, ˆΣn) from 
+
+( ˆϕn, ˆbn, ˆΛn). Let ˆϕn satisfy σmin (D ˆϕn) ≥ s > 0 on K with sup n sup K ∥∇ 2 ˆϕin∥F ≤ CK , and assume 
+
+ˆϕn → ϕ in W 1,∞(K), ˆbn → b, ˆΛn → Λ uniformly on K, and for all bounded A ∈ C1 
+
+> b
+
+(Ω , S d
+
+> ++
+
+),
+
+⟨A , ∇2 ˆϕin⟩F → ⟨ A , ∇2ϕi⟩F uniformly on K. Then ˆμn → μ and ˆΣn → Σ uniformly on K.Proof. By Lemma 4.8, D ˆϕn → Dϕ and ˆΛn → Λ in L∞(K) imply ˆΣn → Σ. For the drift, Lemma 4.7 applied with An = ˆΣn, A = Σ and the uniform Hessian bound gives ˆ qn → q uniformly. Inserting into (16) together with the W 1,∞ and b-convergence assumptions yields ˆ μn → μ.
+
+Local-to-ambient convergence. The reverse direction closes the loop: once Stage 2/3 surrogates fit the converging targets, the reconstructed ambient coefficients recover ( b, Λ). 
+
+Theorem 4.10. Let K ⊂ Ω be compact, ϕ ∈ C3(Ω , RD) with Dϕ of rank d, μ ∈ C1(Ω , Rd),
+
+Σ ∈ C1(Ω , S d
+
+> ++
+
+), and define b = Dϕ μ + 12 q and Λ = Dϕ ΣDϕ ⊤. Suppose (ϕn, μ n, Σn) satisfy, uniformly on K: ϕn → ϕ, Dϕ n → Dϕ , μn → μ, Σn → Σ, and for all bounded A ∈ C1 
+
+> b
+
+(Ω , S d
+
+> ++
+
+),
+
+⟨A , ∇2ϕin⟩F → ⟨ A , ∇2ϕi⟩F . Assume sup n sup K ∥∇ 2ϕin∥F < ∞ and that μn, Σn are uniformly bounded on K. Setting bn = Dϕ nμn + 12 qn and Λn = Dϕ nΣnDϕ ⊤ 
+
+> n
+
+, we have bn → b and Λn → Λ
+
+uniformly on K.Proof. Write Dϕ nμn − Dϕμ = ( Dϕ n − Dϕ )μn + Dϕ (μn − μ); both terms vanish uniformly by hypothesis. Lemma 4.7 with An = Σ n gives qn → q, hence bn → b. For the covariance, the identity Λn − Λ = Dϕ n[(Σ n − Σ) Dϕ ⊤ 
+
+> n
+
++ Σ( Dϕ n − Dϕ )⊤] + ( Dϕ n − Dϕ )Σ Dϕ ⊤ with uniform bounds on 
+
+Dϕ n, Σ yields Λ n → Λ. The following proposition bridges the two theorems from a single joint hypothesis. 
+
+Proposition 4.11. Fix a compact K ⊂ Ω. Suppose ϕn ∈ C2, ϕ ∈ C3, and μn, μ, Σn, Σ are C1
+
+with ∥ϕn − ϕ∥W 2,∞(K) + ∥μn − μ∥L∞(K) + ∥Σn − Σ∥L∞(K) → 0 and inf n inf K σmin (Dϕ n) ≥ s > 0.Then the hypotheses of both Theorems 4.9 and 4.10 hold on K. In particular, bn → b and Λn → Λ
+
+uniformly on K.Proof. W 2,∞(K) convergence gives ∇2ϕin → ∇ 2ϕi uniformly, implying uniform Hessian bound-edness and Cauchy–Schwarz: |⟨ A , ∇2ϕin − ∇ 2ϕi⟩F | ≤ ∥ A∥F, ∞∥∇ 2ϕin − ∇ 2ϕi∥F, ∞ → 0. Uniform convergence on compact K gives uniform boundedness of μn, Σn. Direct comparison with the hypotheses of the two theorems completes the argument. Given link (2) above, the following theorem completes the convergence chain. 
+
+Theorem 4.12 (Weak convergence) . Let Z(n) be processes solving the martingale problems for 
+
+(μn, Σn) on Ω, and set X(n) := ϕn(Z(n)). Let Z solve the martingale problem for (μ, Σ) , and set 
+
+X := ϕ(Z). Assume there exists a compact set K ⊂ Ω such that 
+
+P Z(n) 
+
+> t
+
+∈ K for all t ∈ [0 , T ] = 1 , P Zt ∈ K for all t ∈ [0 , T ] = 1 
+
+for every n. Assume further that (μ, Σ) are continuous on K with Σ uniformly positive definite, and that μn → μ, Σn → Σ, and ϕn → ϕ uniformly on K. Finally, assume that for each starting point 
+
+15 z ∈ K, the martingale problem for (μn, Σn) admits a solution Pzn, and the target martingale problem for (μ, Σ) admits a unique solution Pz . Fix a common initial point z0 ∈ K and set Z(n)0 = Z0 = z0.Then 
+
+L(Z(n)) ⇒ L (Z) on C([0 , T ]; Rd), L(X(n)) ⇒ L (X) on C([0 , T ]; RD).
+
+Proof. Since Z(n) and Z remain in K almost surely up to time T , we may extend ( μn, Σn) and ( μ, Σ) from K to bounded continuous coefficients on Rd (preserving positive semidefiniteness) without changing the laws of the processes on [0 , T ]; see Appendix A.1 for details. The uniform convergence on K ensured by the coefficient-level convergence assumptions transfers to these extensions, so the Stroock–Varadhan theorem [44] yields Pzn ⇒ Pz on C([0 , T ]; Rd). For the ambient processes, uniform convergence ϕn → ϕ on K implies sup 
+
+> t≤T
+
+∥ϕn(Z(n) 
+
+> t
+
+) − ϕ(Z(n) 
+
+> t
+
+)∥2 ≤ sup 
+
+> x∈K
+
+∥ϕn(x) − ϕ(x)∥2 −→ 0deterministically. Applying the continuous mapping theorem to the fixed continuous map γ 7 → ϕ◦γ
+
+and combining with the display above gives ϕn(Z(n)) ⇒ ϕ(Z) on C([0 , T ]; RD). 
+
+Corollary 4.13 (MFPT convergence) . Under the hypotheses of Theorem 4.12, let τ (n) 
+
+> r
+
+= inf {t ≥
+
+0 : ∥X(n) 
+
+> t
+
+− X0∥2 ≥ r} ∧ T and τr the corresponding hitting time for X, both capped at T . Assume the limiting process crosses the sphere {∥ x − X0∥ = r} transversally almost surely: writing τ + 
+
+> r
+
+=inf {t : ∥Xt − X0∥ > r } ∧ T ,
+
+P τr < T and τr = τ +
+
+> r
+
+ = 1 .
+
+Then τ (n) 
+
+> r
+
+⇒ τr in distribution and E[τ (n) 
+
+> r
+
+] → E[τr].Proof. The hitting-time functional γ 7 → inf {t : ∥γ(t) − γ(0) ∥ ≥ r} ∧ T is continuous at every path that crosses the sphere immediately (i.e. τr = τ + 
+
+> r
+
+< T ); see [45, Thm. 13.6.1]. By the transversality assumption the limit X lies a.s. in the continuity set, so the continuous mapping theorem gives 
+
+τ (n) 
+
+> r
+
+⇒ τr. Since τ (n) 
+
+> r
+
+∈ [0 , T ], the family is uniformly bounded and hence uniformly integrable; convergence of means follows. 
+
+# 5 Experiments 
+
+The convergence chain of Sections 3–4 has three links: (i) ρ-metric chart quality → (ii) coefficient convergence → (iii) weak/MFPT convergence. This paper controls link (i) via Theorem 4.5; link (ii) is established in Theorems 4.9 and 4.10 under a W 2,∞ chart-convergence assumption (Proposi-tion 4.11); link (iii) is Theorem 4.12 and Corollary 4.13. We validate each link experimentally. The ablation study in Section 5.2 measures chart quality via reconstruction error, tangent-space error, and tangent-space fidelity E, as well as end-to-end coefficient accuracy via Eb and EΛ. Section 5.3 tests the full chain from chart to dynamics via MFPT under both smooth and metastable regimes. Post-training diagnostics verify the well-conditioning assumption σmin (Dϕ ) ≥ s of Assumption 4.1. 
+
+5.1 Setup 
+
+Surfaces and embedding. We evaluate on four Monge-patch surfaces ϕ(u, v ) = ( u, v, f (u, v )) ⊤
+
+with ( u, v ) ∈ [−1, 1] 2: paraboloid ( f = u2 + v2, positive Gaussian curvature), hyperbolic paraboloid (f = u2 − v2, negative curvature), quartic dome ( f = ( u2+v2) − (u4+v4)/2, sign-changing curva-ture), sinusoidal ( f = sin( u + v), intrinsically flat). Each surface is embedded in RD by appending 16 KF Fourier coordinate pairs, giving D = 3 + 2 KF ; the Monge-patch bound σmin (Dϕ ) ≥ 1 is preserved. We test D ∈ { 11 , 201 }.
+
+Two dynamics. We consider two latent SDEs with complementary challenges. 
+
+(i) Overdamped Langevin (MB). The M¨ uller–Brown potential [36] is rescaled to ( u, v ) ∈ [−1, 1] 2
+
+via x = 2 .25 u−0.25 and y = 2 .25 v +1 .0, divided by V0=200, giving drift μ = −∇ VMB and isotropic diffusion σ = √2kB T I 2 with kB T =0 .10. The rescaled potential has three metastable wells and two saddle-point transition channels; this tests whether the learned SDE captures inter-well transition rates. 
+
+(ii) Rotation drift with state-dependent diffusion (Rot). The drift and diffusion are μ(u, v ) = (−v, u )⊤ and 
+
+σ(u, v ) = 
+
+1 + u2/4 u + v
+
+0 1 + v2/4
+
+
+
+.
+
+This exercises all three pipeline stages with anisotropic, position-dependent noise. Full SDE pa-rameters and MB coefficients are in Appendix B.1. 
+
+Training and penalties. All experiments use 10 random seeds and follow Algorithm 1. Rotation uses N =50 training points, the sparse-data regime where geometric penalties matter most; MB uses N =200, enough to populate the three metastable wells. The ablation study in Section 5.2 compares six conditions: baseline (reconstruction loss only), T (tangent-bundle penalty LT from Section 2.2, λT =1), F (inverse-consistency penalty LF =∥Dπ Dϕ −Id∥2 
+
+> F
+
+, λF =1), C (contractive penalty [40], LC =∥Dπ ∥2 
+
+> F
+
+, λC =0 .01), T+F (both LT and LF ), and ATLAS [48] (the local-chart baseline of Section 1, using Gaussian-kernel blending of drift and diffusion at N landmarks with oracle coefficients). Architecture details are in Appendix B.3. 
+
+Oracle coefficients. All methods receive exact ambient drift b(xi) and covariance Λ( xi) computed from the known SDE, isolating the effect of chart-quality regularization from coefficient-estimation noise. In practice, ( b, Λ) would be estimated from short-burst trajectory data [12, 48]; quantifying the resulting perturbation to the pipeline losses is an open problem. 
+
+Landmarks and baselines. Landmarks are placed via a greedy δ-net in the induced Riemannian metric: candidates are accepted greedily so that consecutive landmarks are separated by at least δ,with δ chosen by binary search to yield approximately N points. This quasi-uniform design follows the ATLAS construction [12] and provides good geometric coverage at a given landmark budget. ATLAS is included in the coefficient ablation but excluded from MFPT tables because its ambient-space simulation becomes infeasible at D=201 and its local-chart interpolation degrades under sparse landmarks. 
+
+Statistical tests. Unless otherwise noted, significance is assessed by one-sided paired Wilcoxon signed-rank tests for directional AE-vs-baseline comparisons. Table 2 (rotation MFPT) uses paired 
+
+t-tests with common Brownian noise and reports means. No multiple-comparison correction is applied; marginal p-values near 0 .05 in Table 3 should be interpreted as directional evidence. 
+
+Metrics. We evaluate at five levels: (i) chart quality : reconstruction error ∥x − ϕ(π(x)) ∥2
+
+and tangent-space error ∥Pθ − P ∥2 
+
+> F
+
+on 500 held-out test points, reported as per-seed medians; (ii) tangent-space fidelity : E := ∥(I − Pθ)( b − 12 q)∥2, the normal-space residual of the Itˆ o-corrected drift; (iii) end-to-end coefficient quality : Eb := ∥Dϕ ˆμ + 12 q(ˆ σˆσ⊤) − b∥2 (ambient drift error) and 
+
+EΛ := ∥Dϕ ˆσˆσ⊤Dϕ ⊤ − Λ∥2 
+
+> F
+
+(ambient covariance error), reported as per-seed medians over 200 held-out evaluation points; (iv) trajectory quality : we use two MFPT observables. Under rotation drift, 
+
+radial MFPT at radius r measures the mean first-passage time to ambient distance r from the start, averaged over 500 trajectories with T =2 and ∆ t=0 .01; under the transversality condition of Corol-lary 4.13, convergence of means follows from weak convergence. Under MB Langevin, we report 
+
+per-pair inter-well MFPT for the W0 →W1 and W0 →W2 transitions, using 2000 trajectories with 17 T =50 and ∆ t=0 .005. The learned and ground-truth processes are driven by the same Brownian increments (common random numbers) so that the reported difference isolates model error from Monte Carlo variance. By the Kramers rate [27, 19] k ∼ exp( −∆V /k B T ), inter-well MFPT is ex-ponentially sensitive to drift errors in the barrier region, making it a stringent empirical stress test beyond the fixed-horizon guarantee of Theorem 4.12. Both MFPT metrics are reported as relative error vs. ground-truth simulation on the true manifold; further algorithmic details (core-set well assignment, dwell confirmation, censoring) are in Appendix B.4. (v) Extrapolation : reconstruction error at increasing distance δ beyond the [ −1, 1] 2 training domain, evaluated on 10 seeds at D=11. 
+
+5.2 Chart and coefficient ablation 
+
+Table 1 reports chart quality, measured by reconstruction error, tangent error, and E on the paraboloid at D=11 and D=201 under both dynamics with 10 seeds each; full results on all four surfaces are in Appendix B.5. Table 1: Ablation study on the paraboloid, 10 seeds, medians reported. Bold = best per column. 
+
+> ∗∗
+
+p< 0.01 vs. baseline, paired Wilcoxon test. E: tangent-space fidelity; Eb, EΛ: true end-to-end ambient drift and covariance errors from the full pipeline. F and C coincide at MB D=201: without tangent alignment, both collapse across all 10 seeds to a degenerate chart with near-zero decoder-Jacobian singular values, underscoring the need for the tangent-bundle penalty.                                                                                                                                                 
+
+> Rotation drift (N=50)
+> D=11 D=201 Rec. Tang. EEbEΛRec. Tang. EEbEΛ
+> ATLAS .008 .185 .104 .10 2.95 .001 .139 .140 .14 3.15 baseline .001 .029 .536 3.67 4.54 <.001 .093 1.67 7.54 5.79
+> T∗∗ <.001 .002 .032 3.51 1.48 <.001 .004 .320 9.35 2.34
+> F.017 .490 5.60 5.46 22 .7.006 2.00 11 .711 .753 .5C.001 .055 .736 2.62 6.27 .006 1.64 10 .212 .248 .6
+> T+F ∗∗ .001 .005 .063 .41 1.19 .001 .035 .540 1.86 3.83
+> MB Langevin (N=200)
+> D=11 D=201 Rec. Tang. EEbEΛRec. Tang. EEbEΛ
+> ATLAS .001 .012 .773 .465 <.001 <.001 .014 .779 .511 <.001 baseline <.001 .003 .006 .029 .001 <.001 .007 .014 .040 <.001
+> T∗∗ <.001 <.001 <.001 .017 <.001 <.001 <.001 <.001 .024 <.001
+> F<.001 .015 .039 .088 .006 .002 2.00 11 .310 .8.426 C.002 .430 1.64 3.95 .062 .002 2.00 11 .310 .8.426
+> T+F ∗∗ <.001 <.001 <.001 .011 <.001 <.001 <.001 <.001 .022 <.001
+
+The tangent-bundle penalty T directly minimizes the projector term of the ρ-metric (Sec-tion 2.2). At D=11, T alone reduces tangent error 15 × (from .029 to .002) and E by 17 ×. Under MB Langevin ( N =200), T and T+F both achieve E < 10 −3, while baseline sits at .006 and AT-LAS at .77, two to three orders of magnitude worse. Adding F yields the best reconstruction, extrapolation (Figure 1), and end-to-end drift accuracy Eb (0 .41 vs T’s 3 .51 at D=11), because the encoder-pullback target requires the inverse consistency that F enforces. F alone and C penalize Dπ without a dynamics-informed tangent target, so they do not reduce the projector term that drives the ρ-metric. Under MB at D=201, both collapse to a degenerate AE with E > 10 and tangent error saturating at 2 .0, indicating that the learned tangent space is es-18 sentially unrelated to the true one. ATLAS [48] interpolates oracle coefficients via Gaussian kernels and achieves the lowest Eb under rotation (0 .10–0 .14), confirming that its coefficient approximation is locally accurate. However, its tangent-space fidelity is limited by kernel smoothing: E=0 .15 un-der rotation (vs 0 .053 for T) and E=0 .77 under MB (vs < 10 −3 for T+F). The three computational bottlenecks from Section 1 persist: exponential landmark scaling, per-step re-projection onto M ,and O(mD 2) simulation cost, making ATLAS infeasible at D=201. The columns Eb and EΛ report the true ambient drift and covariance errors of the full three-stage pipeline. Under rotation, T+F reduces Eb by 9 × at D=11 and 4 × at D=201 relative to baseline. T alone achieves good EΛ but worse Eb than baseline, because the encoder-pullback drift target assumes Dπ Dϕ ≈ Id; without F enforcing this, the targets are biased and the drift network learns biased coefficients. This validates the complementary roles of T and F: T aligns the tangent space, F ensures the encoder–decoder consistency that the pullback formula requires. Under MB, all AE conditions achieve very small Eb and EΛ, with T+F yielding the best drift accuracy ( Eb=.011 at 
+
+D=11). Post-training diagnostics confirm that σmin (Dϕ θ) ≥ s > 0 holds across all T+F models, validating the hypothesis of Assumption 4.1. Figure 1 shows that T+F consistently extrapolates best, with error growing 2–3 × slower than baseline at δ=0 .3. F alone produces the worst extrapolation: without tangent alignment, the decoder diverges off-manifold. 0.0 0.1 0.2 0.3          
+
+> Distance
+> 0
+> 1
+> 2
+> Reconstruction error  Paraboloid
+> 0.0 0.1 0.2 0.3
+> Distance
+> 0.0
+> 0.5
+> 1.0
+> 1.5
+> Hyp. paraboloid
+> 0.0 0.1 0.2 0.3
+> Distance
+> 0.0
+> 0.1
+> 0.2
+> 0.3
+> Quartic dome
+> 0.0 0.1 0.2 0.3
+> Distance
+> 0.0
+> 0.1
+> 0.2
+> 0.3
+> Sinusoidal
+> Baseline
+> T
+> F
+> T+F
+
+Figure 1: Reconstruction error vs extrapolation distance δ beyond the [ −1, 1] 2 training domain (D=11, 10 seeds, mean ± std). T+F extrapolates best on all four surfaces. 
+
+5.3 From coefficients to dynamics 
+
+We now test whether improved chart and coefficient quality translates to better dynamics. The ablation above shows that F alone and C fail to learn a meaningful tangent space, and ATLAS cannot simulate at D=201, so the dynamics comparison focuses on baseline, T, and T+F. 
+
+Rotation drift Table 2 reports radial MFPT relative error at r=2 across all four surfaces. T+F reduces error by 50–70% relative to baseline and is significant ( p< 0.05) on all surfaces at both dimensions, with T alone showing intermediate gains at D=201. Radial MFPT is a smooth func-tional with no barrier sensitivity, so the Eb improvement from the ablation translates directly to dynamics, consistent with Corollary 4.13. 
+
+Metastable dynamics Inter-well MFPT goes beyond the fixed-horizon weak convergence of Theorem 4.12: the Kramers rate [27, 19] k ∼ exp( −∆V /k B T ) makes it exponentially sensitive to drift errors in the barrier region. We simulate 2000 trajectories starting near well W0 with paired 19 Table 2: Radial MFPT relative error (%) at r=2 under rotation drift ( N =50, δ-net landmarks, 10 seeds, mean). ∗∗ p< 0.01, ∗p< 0.05 vs. baseline, paired t-test with common noise.                                
+
+> D=11 D=201 Surface base TT+F base TT+F
+> Paraboloid 39 .837 .616 .0∗38 .338 .919 .2∗∗
+> Hyp. parab. 49 .932 .2∗18 .7∗∗ 51 .932 .3∗20 .6∗∗
+> Quartic dome 25 .727 .111 .0∗∗ 29 .314 .8∗∗ 12 .1∗∗
+> Sinusoidal 16 .916 .16.0∗∗ 25 .919 .3∗∗ 7.7∗∗
+
+Brownian noise to isolate model error from Monte Carlo variance and report per-pair MFPT for the W0 →W1 and W0 →W2 transitions; see the Appendix B.4 for details. Table 3 shows that T+F achieves the lowest MFPT error on most surface–transition pairs, though several p-values are near 0 .05 and no multiple-comparison correction is applied, so these results should be interpreted as directional evidence rather than definitive. On the paraboloid, W0 →W1 error drops from 5 .1% to 2 .2% at D=11 ( p< 0.05) and W0 →W2 from 4 .3% to 1 .7% at 
+
+D=201 ( p< 0.05). On the hyperbolic paraboloid at D=201, T+F reduces W0 →W1 from 6 .6% to 4.1% ( p< 0.05) and T alone reaches 2 .9% on W0 →W2. Quartic dome and sinusoidal results are directionally consistent, with T+F achieving the lowest error on most transitions and all conditions in the 1–5% range. Preliminary oracle-drift experiments (replacing the learned Stage 2 with exact latent drift) suggest that, at D=201, the remaining error is limited by drift learning near the saddle rather than by autoencoder quality. Table 3: Per-pair MFPT error (%) under MB Langevin ( N =200, δ-net landmarks, 10 seeds, me-dian). Only W0 →W1 and W0 →W2 reported, since all trajectories start at W0. Bold = lowest error per row. ∗p< 0.05 vs. baseline, one-sided paired Wilcoxon with common noise.                                                             
+
+> D=11 D=201 Surface Pair base TT+F base TT+F Paraboloid W0 →W1 5.14.4∗2.2∗4.14.93.2
+> W0 →W2 2.71.32.24.32.61.7∗
+> Hyp. parab. W0 →W1 5.34.84.36.64.84.1∗
+> W0 →W2 3.32.12.76.82.94.0∗
+> Quartic dome W0 →W1 4.34.53.75.54.94.3
+> W0 →W2 2.12.31.4∗4.44.32.9
+> Sinusoidal W0 →W1 2.54.32.12.82.92.3
+> W0 →W2 3.11.81.2∗2.52.11.2∗
+
+# 6 Discussion and Future Work 
+
+We have developed a geometric regularization framework for autoencoders trained on data from non-singular diffusions on Riemannian submanifolds. The ρ-metric controls first-order geometry through the tangent-bundle penalty, achieves the same generalization rate as Sobolev H1 training for chart quality in an oracle ρ-ERM (Theorem 4.5), and under stronger W 2,∞ regularity, chart-level errors propagate controllably to the ambient SDE coefficients as shown in Section 4.3. The 20 encoder-pullback drift target (2) provides exact latent drift via Itˆ o’s formula applied to the learned encoder, avoiding the systematic bias of the decoder-side formula (Proposition 4.6). The two penalties T and F serve complementary roles. T is chart-invariant by construction, built from Λ (Lemma 2.4), and controls tangent-space orientation. F enforces the coordinate-invariant condition Dπ Dϕ = Id; the Frobenius penalty ∥Dπ Dϕ − Id∥2 
+
+> F
+
+itself is not invariant under reparametrization, but this is moot in practice because the latent coordinates are learned jointly and only one chart is ever trained. Together, T+F produces charts with well-aligned tangent bundles and accurate encoder–decoder inverses, which determine the quality of the induced latent SDE. To assess the downstream effect on dynamics, we use MFPT, which depends only on the law of the learned process and avoids the coupling dependence of pathwise metrics. Under rotation drift, T+F translates directly to better dynamics on all four surfaces. Under metastable Langevin dynamics, T+F achieves the lowest MFPT error on most surface–transition pairs. T+F also extrapolates 2–3 × better than baseline beyond the training domain (Figure 1), a prerequisite for multi-chart extensions. 
+
+Future work. The single-chart theory extends to a finite atlas via chart-wise penalties weighted by a partition of unity, requiring control of transition-map Lipschitz constants. The encoder Hessian gap not targeted by T+F could be addressed by second-order drift objectives such as penalizing pullback-drift roughness [7] or operator-aligned regression preserving dominant timescales [26]. Finally, replacing oracle ( b, Λ) with estimates bootstrapped from short trajectory bursts [12, 48] and quantifying the resulting perturbation to the ρ-loss is an important open problem. 
+
+# A Deferred proofs 
+
+A.1 Error propagation: additional details 
+
+The coefficient-propagation theorems and bridging proposition are stated and proved in the main text (Section 4.3). We record here only the discussion of the W 2,∞ assumption and the pathwise 
+
+Lp error bound that complements the weak-convergence result. 
+
+Discussion of the W 2,∞ assumption. The bridging proposition requires ϕn → ϕ in W 2,∞.Theorem 4.5 controls the ρ-risk (reconstruction + tangent-bundle error), which lies strictly between 
+
+L2 and H1; it does not imply W 1,∞ or W 2,∞ convergence. The additional second-order control is needed because the Stage 2 drift target involves ⟨Σ, ∇2ϕ⟩, so uniform convergence of the decoder Hessian is required to pass to the limit. Three remarks are in order. 1. Uniform Hessian boundedness. For feed-forward networks with bounded weights and bounded activation derivatives (true of tanh, sigmoid, and softplus), all second derivatives of ϕθ are automatically bounded by a constant depending only on the weight norms and depth. Thus the uniform Hessian bound sup n sup K ∥∇ 2 ˆϕin∥F ≤ CK holds whenever the depth and weight-norm bounds are uniform in n (as is the case for the hypothesis class of Assumption 4.2). 2. W 2,∞ convergence. Uniform Hessian boundedness does not imply that Hessians converge . In general, the ρ-loss minimizers ϕn need not converge in W 2,∞ even if they converge in W 1,∞. We therefore present W 2,∞ convergence as a sufficient condition for the propagation chain, not as a consequence of the training objective. 3. Modular design. The convergence pipeline is deliberately modular: Theorem 4.5 controls chart quality (link (i)), the bridging proposition controls coefficient propagation under W 2,∞ (link (ii)), and Stroock–Varadhan gives weak convergence (link (iii)). Closing the gap between links (i) 21 and (ii)—showing that ρ-minimizers enjoy W 2,∞ convergence, or finding a weaker sufficient condition—is an open problem noted in Section 4.3. 
+
+Weak convergence via Stroock–Varadhan. 
+
+The classical Stroock–Varadhan theorem [44] provides weak convergence of solutions to the martingale problem under uniform convergence of coefficients. 
+
+Theorem A.1 (Stroock–Varadhan) . Let Λ : RD → SD 
+
+> +
+
+and b : RD → RD be locally bounded measurable functions which are continuous in x, and assume that for each x ∈ RD the martingale problem for (b, Λ) starting from x has exactly one solution Px. Suppose that for each n ≥ 1,
+
+Λn : RD → SD 
+
+> +
+
+and bn : RD → RD are measurable functions satisfying, for all R > 0:
+
+sup 
+
+> n≥1
+
+sup 
+
+> ∥x∥≤ R
+
+∥bn(x)∥2 + ∥Λn(x)∥F
+
+ < ∞
+
+and 
+
+lim  
+
+> n→∞
+
+sup 
+
+> ∥x∥≤ R
+
+ ∥Λn(x) − Λ( x)∥F + ∥bn(x) − b(x)∥2
+
+ = 0 .
+
+Let Pxn be a solution to the martingale problem for (bn, Λn) starting from x. Then Pxn → Px weakly as measures on path space. 
+
+Coefficient extension. To apply Theorem A.1, it suffices to extend ( μn, Σn) and ( μ, Σ) from K to bounded continuous coefficients on Rd; Stroock–Varadhan requires only continuity and local bound-edness. A bounded linear extension operator E : C(K) → Cb(Rd) extends each field, and composing the matrix extensions with the nearest-point projection onto Sd 
+
+> +
+
+preserves positive semidefiniteness and compact-uniform convergence. Since the processes remain in K a.s., their laws are unchanged. The proof of the weak convergence theorem appears in Section 4.3. The pathwise error bound below complements the weak convergence result; its proof uses standard BDG and Gronwall tools. 
+
+Theorem A.2 (Lp pathwise error bound) . Let Xt and ˆXt be strong solutions of dX = μ(X) dt +
+
+σ(X) dW and d ˆX = ˆ μ( ˆX) dt + ˆ σ( ˆX) dW driven by the same Brownian motion W , with X0 = ˆX0
+
+and σ = Σ 1/2, ˆσ = ˆΣ1/2, both principal square roots. Assume there exists a compact set K ⊂ Rd
+
+such that 
+
+P Xs, ˆXs ∈ K for all s ∈ [0 , T ] = 1 .
+
+Suppose 
+
+∥ˆμ − μ∥L∞(K) ≤ ϵμ, ∥ ˆΣ − Σ∥L∞(K) ≤ ϵΣ.
+
+Assume μ, ˆμ are Cμ-Lipschitz and σ, ˆσ are Cσ-Lipschitz on K. Assume moreover that there exists 
+
+λ0 > 0 such that 
+
+λmin (Σ( x)) , λ min ( ˆΣ( x)) ≥ λ0 for all x ∈ K .
+
+Then for any p ≥ 2 and 0 ≤ t ≤ T , there exists C2 = C2(p, d, T, C μ, C σ) such that 
+
+E(∆ ∗ 
+
+> t
+
+)p ≤ C2
+
+
+
+ϵpμ + 12pλp/ 20
+
+ϵp
+
+> Σ
+
+
+
+, (17) 
+
+where ∆∗ 
+
+> t
+
+= sup s≤t∥Xs − ˆXs∥.Proof. Write ∆ s = Xs − ˆXs. The BDG inequality [41] and H¨ older’s inequality give, for C =
+
+C(p, d, T ), 
+
+E(∆ ∗ 
+
+> t
+
+)p ≤ C
+
+Z t
+
+> 0
+
+E
+
+h
+
+∥ˆμ( ˆXs) − μ(Xs)∥p + ∥ˆσ( ˆXs) − σ(Xs)∥pF
+
+i
+
+ds. (18) 22 The drift and diffusion coefficient errors decompose via triangle inequality into approximation error plus Lipschitz feedback: 
+
+∥ˆμ(ˆ x) − μ(x)∥ ≤ ϵμ + Cμ∥ˆx − x∥, ∥ˆσ(ˆ x) − σ(x)∥F ≤ ϵΣ
+
+> 2√λ0
+
++ Cσ∥ˆx − x∥,
+
+where Cμ, C σ are Lipschitz constants on K and the diffusion bound uses the perturbation inequality for positive-definite square roots with eigenvalues ≥ λ0. Substituting into (18) and applying ( a +
+
+b)p ≤ 2p−1(ap + bp) yields 
+
+E(∆ ∗ 
+
+> t
+
+)p ≤ C′
+
+Z t
+
+> 0
+
+E(∆ ∗ 
+
+> s
+
+)p ds + C′′ T
+
+
+
+ϵpμ + ϵp
+
+> Σ
+
+2pλp/ 20
+
+
+
+.
+
+Gronwall’s lemma [41, Lemma 11.11] gives (17). 
+
+Practical limitations of the pathwise bound. Theorem A.2 is mathematically correct but provides an upper bound that is not tight in practice. We conducted a controlled diagnostic ex-periment to test whether improving the coefficient errors ϵμ, ϵ Σ translates to pathwise trajectory improvement; the results reveal three structural reasons why the bound is loose in the learned-chart setting. 
+
+(i) Gronwall amplification. The constant C2 in (17) arises from Gronwall’s lemma and grows as 
+
+eC′T , where C′ depends on the Lipschitz constants Cμ, C σ of both the true and learned coefficients. In the end-to-end pipeline, the learned coefficients are obtained by inverting the ambient SDE through the learned chart via the Jacobian, Hessian, and metric inverse, each of which has its own Lipschitz constant. For a neural network with Tanh activations on a compact domain, these constants are moderate but their product enters the exponential, making C2 substantially larger than 1 even at T = 1. As a result, a 30–60% reduction in ϵμ can be multiplied by a Gronwall factor large enough that the bound does not meaningfully tighten. 
+
+(ii) Chart reconstruction error dominates. The bound (17) assumes that the two processes 
+
+X, ˆX evolve in the same coordinate system and differ only in their coefficients. In the learned-chart pipeline, however, the ground-truth process is simulated in the true local coordinates ( u, v ), while the learned process evolves in the latent coordinates z and is mapped to ambient space via the learned decoder ϕθ. Even if the latent-space coefficients were exact, the trajectory error would include a chart reconstruction component : at each time step the decoded position ϕθ(πθ(x)) deviates from the true position x by the autoencoder’s reconstruction error. This reconstruction error accumulates over T / ∆t Euler steps and, in our experiments, accounts for the majority of the observed trajectory error. 
+
+(iii) Magnitude mismatch. The coefficient errors ϵμ, ϵ Σ enter the bound at the same power p,but in practice the two terms contribute very differently: the absolute magnitudes can differ by an order of magnitude, so the bound treats them symmetrically up to the factor λ−p/ 20 , and even a large relative improvement in the smaller term has negligible effect on the bound’s value. The pathwise bound establishes the consistency of the learned dynamics: if ϵμ, ϵ Σ → 0, then ∆∗ 
+
+> t
+
+→ 0. However, the multiplicative constants and the chart-reconstruction floor prevent it from being an actionable predictor of trajectory quality at finite sample size. The distributional conver-gence of the weak convergence theorem (Theorem 4.12), which avoids these pathwise difficulties, provides a more practically relevant guarantee. 23 B Additional experiments 
+
+B.1 M¨ uller–Brown potential 
+
+The standard M¨ uller–Brown potential [36] is 
+
+VMB (x, y ) = 
+
+> 4
+
+X
+
+> i=1
+
+Ai exp ai(x − x0 
+
+> i
+
+)2 + bi(x − x0 
+
+> i
+
+)( y − y0 
+
+> i
+
+) + ci(y − y0 
+
+> i
+
+)2,
+
+with the coefficients in Table 4. We rescale to ( u, v ) ∈ [−1, 1] 2 via the affine map 
+
+x = 2 .25 u − 0.25 , y = 2 .25 v + 1 .0,
+
+and divide by V0 = 200 to obtain the rescaled potential ˜V (u, v ) = VMB (x(u), y (v)) /V 0. The overdamped Langevin SDE on the Monge-patch surface is 
+
+d
+
+uv
+
+
+
+= −∇ ˜V dt + p2kB T I 2 dW t, kB T = 0 .10 .
+
+Table 4: M¨ uller–Brown potential coefficients.                               
+
+> iAiaibicix0
+> iy0
+> i
+> 1−200 −10−10 102−100 −10−10 00.53−170 −6.511 −6.5−0.51.5415 0.70.60.7−11
+
+B.2 Landmark sampling 
+
+Training landmarks are sampled via greedy δ-net subsampling in local coordinates, following the ATLAS construction [12]. A large uniform candidate pool is generated in the training domain ([ −1, 1] 2 for rotation, [ −0.55 , 0.55] 2 for MB), and each point is accepted if a local metric approxi-mation p∆u⊤g(¯ u) ∆ u, where g is the induced metric evaluated at the midpoint ¯ u, to all previously accepted points exceeds δ. The separation δ is chosen by binary search to yield approximately N
+
+landmarks. The candidate pool size is max(10 000 , 100 N ). 
+
+B.3 Architecture and training 
+
+The encoder πθ : RD → Rd and decoder ϕθ : Rd → RD are feedforward networks with two hidden layers and tanh activations; width is 64 at D=11 and 256 at D=201. The Stage 2 drift network ˆμω : Rd → Rd has hidden layers [64 , 64] under rotation and [256 , 256 , 256] under MB Langevin. The Stage 3 diffusion network ˆ σψ : Rd → Rd×d has hidden layers [64 , 64] in all conditions. All hidden layers use tanh activations. Hyperparameters differ by dynamics. Under rotation drift : Stage 1 trains for 500 epochs (Adam, lr = 0 .005, batch size 20); Stages 2 and 3 each train for 300 epochs (Adam, lr = 0 .001) with the AE frozen. Under MB Langevin : Stage 1 trains for 4000 epochs (Adam, lr = 0 .005, batch size 20); Stages 2 and 3 each train for 3000 epochs (Adam, lr = 0 .001) with the AE frozen. 24 B.4 MFPT computation 
+
+We describe the trajectory simulation and MFPT extraction procedure in detail, as these method-ological choices affect the reported results. 
+
+Ground-truth simulation. The reference SDE is integrated in the true local coordinates ( u, v )using Euler–Maruyama with step size ∆ t = 0 .005 (MB) or ∆ t = 0 .01 (rotation), driven by i.i.d. Gaussian increments ∆ Wk ∼ N (0 , I d). 
+
+Learned simulation. The learned latent SDE (ˆ μω, ˆσψ) is integrated from encoded initial condi-tions z0 = πθ(x0) using the same Brownian increments ∆Wk as the ground truth via common random numbers. This paired-noise design reduces Monte Carlo variance in the MFPT error esti-mate, so that the reported difference isolates model error from sampling noise. The learned latent trajectory is decoded to ambient coordinates via ϕθ, and the first two components ( u, v ) are used for well assignment. 
+
+MB initial conditions. All 2000 trajectories start near well W0: x0 ∼ N (zW0 , 0.01 I2) clipped to [ −0.55 , 0.55] 2, where zW0 ≈ (−0.137 , 0.196) in rescaled MB coordinates. The three well centers in rescaled ( u, v ) are W0 = ( −0.137 , 0.196), W1 = (0 .388 , −0.432), W2 = (0 .089 , −0.237). 
+
+Core-set well assignment (MB). Each time step is assigned to well i ∈ { 0, 1, 2} if the decoded (u, v ) lies within Euclidean radius rcore = 0 .08 of the i-th well center. Steps outside all cores are labeled −1 for unassigned. The dwell confirmation ( ndwell = 10 consecutive steps in a core) is applied during passage extraction, not during per-step assignment. 
+
+Pairwise MFPT extraction. For each trajectory, we scan the well-assignment sequence and record confirmed passages: a passage from well i to well j begins when the trajectory is in core i
+
+and ends at the first confirmed arrival in core j, i.e. ndwell consecutive steps in j. The passage time is backdated to the start of the dwell window. Multiple passages per trajectory are collected since the scan resumes from the arrival time. The pairwise MFPT τij is the mean over all recorded i → j
+
+passages across 2000 trajectories. 
+
+Error metric. Since all trajectories start near W0, only the first-passage transitions W0 →W1 and W0 →W2 have model-independent initial conditions. Follow-on transitions (e.g. W1 →W0) start from wherever the learned dynamics places the trajectory after the first arrival, introducing a model-dependent selection bias that contaminates the comparison: the entrance distribution in well j differs between GT and learned dynamics, so subsequent MFPTs out of j are not directly comparable. We therefore report the per-pair relative error MFPT (i→j)err = |ˆτij − τij |
+
+τij 
+
+,
+
+separately for W0 →W1 and W0 →W2 in Section 5.3. Pairs with non-finite values, indicating no observed transitions, are excluded and flagged. 
+
+Censoring. Trajectories whose decoded ( u, v ) ever leaves [ −1, 1] 2 or contains non-finite values are censored: their well assignments are set to −1 for all time steps, excluding them from all MFPT metrics. The censoring is applied identically to GT and learned trajectories as a matched treatment. The exit fraction is reported per condition. 
+
+Radial MFPT (rotation drift). Under rotation dynamics, we instead measure the mean time for a trajectory to first reach ambient distance r from its own starting point. The same paired-noise and censoring procedures apply. 
+
+B.5 Full ablation across surfaces 
+
+Tables 5 and 6 extend the ablation in Section 5.2 (paraboloid only) to all four surfaces (10 seeds, medians), including end-to-end coefficient errors Eb and EΛ.25 Table 5: Full ablation under rotation drift ( N =50, 10 seeds, medians). Bold = best per column.                                                                                                                                                                                                                                                                 
+
+> D=11 D=201 Surface Cond. Tang. EEΣEbEΛTang. EEΣEbEΛ
+> Paraboloid ATLAS .19 .10 .85 .10 2.95 .14 .14 1.07 .14 3.15 baseline .029 .54 .63 3.67 4.54 .093 1.67 3.01 7.54 5.79 T.002 .03 .04 3.51 1.48 .004 .32 .15 9.35 2.34
+> F.49 5.60 20 .45.46 22 .72.00 11 .753 .511 .753 .5C.055 .74 1.53 2.62 6.27 1.64 10 .241 .812 .248 .6T+F .005 .06 .13 .41 1.19 .035 .54 1.02 1.86 3.83 Hyp. parab. ATLAS .16 .11 .82 .11 2.65 .13 .14 .93 .14 2.49 baseline .018 .39 .54 4.82 3.27 .086 1.85 2.20 10 .96.70 T.059 8.27 1.07 48 .19.14 .158 5.65 3.66 31 .518 .5F.34 1.98 19 .72.10 22 .71.99 5.05 53 .15.07 53 .1C.039 .57 .83 2.81 4.47 1.34 4.21 47 .65.05 49 .2T+F .149 1.29 3.08 5.89 7.65 .023 .27 .69 .96 2.15
+> Quartic dome ATLAS .075 .30 .31 .30 .54 .060 .38 .44 .38 .71
+> baseline .077 1.07 .66 2.08 1.06 .162 2.16 2.08 3.72 3.12 T.010 .18 .14 2.17 .77 .024 1.37 .49 2.39 .79 F.37 2.64 6.24 2.88 6.43 2.00 5.37 20 .85.41 20 .8C.152 1.61 1.96 2.80 3.74 1.91 4.97 19 .95.41 19 .9T+F .009 .17 .12 .45 .42 .036 .71 .52 1.22 1.19 Sinusoidal ATLAS .092 .08 .23 .08 .45 .071 .11 .28 .11 .48 baseline .038 .32 .47 1.29 .61 .144 1.57 2.19 3.19 2.28 T.002 .01 .04 1.25 .15 .006 .17 .11 2.10 .20
+> F.20 .93 3.21 .95 3.40 2.00 5.17 32 .05.23 32 .0C.093 .49 1.33 .67 1.59 1.16 3.04 14 .34.99 16 .3T+F .001 .02 .02 .07 .22 .023 .34 .51 .67 .69
+
+# References 
+
+[1] John Armstrong and Damiano Brigo. Intrinsic stochastic differential equations as jets. Pro-ceedings of the Royal Society A , 474(2210):20170559, 2018. [2] John Armstrong, Damiano Brigo, and Emilio Ferrucci. Projections of SDEs onto submanifolds. 
+
+Information Geometry , 7(Suppl 1):397–427, 2024. [3] Georgios Arvanitidis, Lars Kai Hansen, and Søren Hauberg. Latent space oddity: on the curvature of deep generative models. In International Conference on Learning Representations (ICLR) , 2018. [4] Peter L. Bartlett, Olivier Bousquet, and Shahar Mendelson. Local Rademacher complexities. 
+
+The Annals of Statistics , 33(4):1497–1537, 2005. [5] Nils Berglund and Barbara Gentz. Noise-Induced Phenomena in Slow-Fast Dynamical Systems: A Sample-Paths Approach . Probability and its Applications. Springer, 2006. [6] Tom Bertalan, Felix Dietrich, Igor Mezi´ c, and Ioannis G. Kevrekidis. On learning Hamiltonian systems from data. Chaos , 29(12):121107, 2019. [7] Andreas Bittracher, P´ eter Koltai, Stefan Klus, Ralf Banisch, Michael Dellnitz, and Christof Sch¨ utte. Transition manifolds of complex metastable systems: Theory and data-driven com-putation of effective dynamics. J. Nonlinear Sci. , 28(2):471–512, 2018. 26 Table 6: Full ablation under MB Langevin ( N =200, 10 seeds, medians). Bold = best per column.                                                                                                                                                                                                                                                                 
+
+> D=11 D=201 Surface Cond. Tang. EEΣEbEΛTang. EEΣEbEΛ
+> Paraboloid ATLAS .001 .43 < . 001 .43 < . 001 .001 .43 < . 001 .43 < . 001 baseline .002 .006 < . 001 .03 < . 001 .003 .007 < . 001 .04 < . 001 T< . 001 < . 001 < . 001 .02 < . 001 < . 001 < . 001 < . 001 .02 < . 001 F.01 .04 .003 .08 .004 2.00 11 .3.42 11 .3.42 C.44 1.59 .18 5.98 .18 2.00 11 .3.42 11 .3.42 T+F < . 001 < . 001 < . 001 .01 < . 001 < . 001 < . 001 < . 001 .01 < . 001 Hyp. parab. ATLAS .001 .38 < . 001 .38 < . 001 .001 .33 < . 001 .33 < . 001 baseline .001 .003 < . 001 .03 < . 001 .007 .02 < . 001 .09 .002 T< . 001 < . 001 < . 001 .01 < . 001 < . 001 < . 001 < . 001 .02 < . 001 F.01 .03 .003 .07 .003 2.00 12 .0.42 12 .0.42 C.44 1.22 .18 5.52 .19 1.99 11 .9.42 12 .0.42 T+F < . 001 < . 001 < . 001 .01 < . 001 < . 001 < . 001 < . 001 .01 < . 001 Quartic dome ATLAS .001 .36 < . 001 .36 < . 001 .001 .32 < . 001 .32 < . 001 baseline .002 .003 < . 001 .03 < . 001 .004 .008 < . 001 .04 < . 001 T< . 001 < . 001 < . 001 .02 < . 001 < . 001 < . 001 < . 001 .03 < . 001 F.01 .03 .002 .05 .002 2.00 11 .0.37 11 .0.37 C.39 1.40 .13 5.11 .13 2.00 11 .0.37 11 .0.37 T+F < . 001 < . 001 < . 001 .01 < . 001 < . 001 < . 001 < . 001 .01 < . 001 Sinusoidal ATLAS .001 .38 < . 001 .38 < . 001 .001 .34 < . 001 .34 < . 001 baseline .001 .002 < . 001 .03 < . 001 .004 .008 .001 .06 .001 T< . 001 < . 001 < . 001 .02 < . 001 < . 001 < . 001 < . 001 .02 < . 001 F.01 .02 .003 .05 .003 2.00 13 .3.68 13 .3.68 C.05 .10 .02 4.07 .03 2.00 13 .8.68 13 .9.68 T+F < . 001 < . 001 < . 001 .02 < . 001 < . 001 .001 < . 001 .02 < . 001
+
+[8] Kathleen Champion, Bethany Lusch, J Nathan Kutz, and Steven L Brunton. Data-driven discovery of coordinates and governing equations. Proceedings of the National Academy of Sciences , 116(45):22445–22451, 2019. [9] G.S. Chirikjian. Stochastic Models, Information Theory, and Lie Groups, Volume 1: Classi-cal Results and Geometric Methods . Applied and Numerical Harmonic Analysis. Birkh¨ auser Boston, 2009. [10] Ronald R. Coifman, Ioannis G. Kevrekidis, St´ ephane Lafon, Mauro Maggioni, and Boaz Nadler. Diffusion maps, reduction coordinates, and low dimensional representation of stochas-tic systems. Multiscale Modeling & Simulation , 7(2):842–864, 2008. [11] Ronald R. Coifman and St´ ephane Lafon. Diffusion maps. Applied and Computational Har-monic Analysis , 21(1):5–30, 2006. [12] Miles Crosskey and Mauro Maggioni. ATLAS: a geometric approach to learning high-dimensional stochastic systems near manifolds. Multiscale Model. Simul. , 15(1):110–156, 2017. [13] Valentin De Bortoli, Emile Mathieu, Michael Hutchinson, James Thornton, Yee Whye Teh, and Arnaud Doucet. Riemannian score-based generative modelling. In Advances in Neural Information Processing Systems , volume 35, pages 2406–2422, 2022. [14] Felix Dietrich, Alexei Makeev, George Kevrekidis, Nikolaos Evangelou, Tom Bertalan, Sebas-tian Reich, and Ioannis G. Kevrekidis. Learning effective stochastic differential equations from 27 microscopic simulations: Linking stochastic numerics to deep learning. Chaos , 33(2):023121, 2023. [15] Nikolaos Evangelou, Felix Dietrich, Eliodoro Chiavazzo, Daniel Lehmberg, Marina Meila, and Ioannis G. Kevrekidis. Double diffusion maps and their latent harmonics for scientific compu-tations in latent space. Journal of Computational Physics , 485:112072, 2023. [16] Daniel Floryan and Michael D Graham. Data-driven discovery of intrinsic dynamics. Nature Machine Intelligence , 4(12):1113–1120, 2022. [17] Hastings Greer, Roland Kwitt, Fran¸ cois-Xavier Vialard, and Marc Niethammer. ICON: Learn-ing regular maps through inverse consistency. In Proc. IEEE/CVF Intl. Conf. Computer Vision (ICCV) , pages 3396–3405, 2021. [18] L´ aszl´ o Gy¨ orfi, Michael Kohler, Adam Krzy˙ zak, and Harro Walk. A Distribution-Free Theory of Nonparametric Regression . Springer Series in Statistics. Springer, 2002. [19] Peter H¨ anggi, Peter Talkner, and Michal Borkovec. Reaction-rate theory: fifty years after Kramers. Rev. Mod. Phys. , 62(2):251–341, 1990. [20] Ali Hasan, Jo˜ ao M. Pereira, Sina Farsiu, and Vahid Tarokh. Identifying latent stochastic differential equations. IEEE Transactions on Signal Processing , 70:89–104, 2022. [21] Roger A. Horn and Charles R. Johnson. Matrix Analysis . Cambridge University Press, 2 edition, 2013. [22] Elton P. Hsu. Stochastic Analysis on Manifolds , volume 38 of Graduate Studies in Mathematics .American Mathematical Society, Providence, RI, 2002. [23] Chin-Wei Huang, Milad Aghajohari, Avishek Joey Bose, Prakash Panangaden, and Aaron Courville. Riemannian diffusion models. In Advances in Neural Information Processing Sys-tems , volume 35, 2022. [24] George A Kevrekidis, Mauro Maggioni, Soledad Villar, and Yannis G Kevrekidis. Thinner latent spaces: Detecting dimension and imposing invariance through autoencoder gradient constraints. arXiv preprint arXiv:2408.16138 , 2024. [25] Ioannis G. Kevrekidis, C. William Gear, James M. Hyman, Panagiotis G. Kevrekidis, Olof Runborg, and Constantinos Theodoropoulos. Equation-free, coarse-grained multiscale compu-tation: Enabling microscopic simulators to perform system-level analysis. Communications in Mathematical Sciences , 1(4):715–762, 2003. [26] Stefan Klus, Feliks N¨ uske, P´ eter Koltai, Hao Wu, Ioannis Kevrekidis, Christof Sch¨ utte, and Frank No´ e. Data-driven model reduction and transfer operator approximation. J. Nonlinear Sci. , 28:985–1010, 2018. [27] H. A. Kramers. Brownian motion in a field of force and the diffusion model of chemical reactions. Physica , 7(4):284–304, 1940. [28] John M. Lee. Introduction to Smooth Manifolds , volume 218 of Graduate Texts in Mathematics .Springer, 2nd edition, 2012. 28 [29] Kookjin Lee and Kevin T Carlberg. Model reduction of dynamical systems on nonlinear man-ifolds using deep convolutional autoencoders. Journal of Computational Physics , 404:108973, 2020. [30] Ben Leimkuhler and Charles Matthews. Molecular Dynamics: With Deterministic and Stochastic Numerical Methods , volume 39 of Interdisciplinary Applied Mathematics . Springer, 2015. [31] Xuechen Li, Ting-Kam Leonard Wong, Ricky T. Q. Chen, and David Duvenaud. Scalable gra-dients for stochastic differential equations. In Proceedings of the 23rd International Conference on Artificial Intelligence and Statistics (AISTATS) , volume 108 of PMLR , pages 3870–3882, 2020. [32] Alec J. Linot and Michael D. Graham. Deep learning to discover and predict dynamics on an inertial manifold. Physical Review E , 101(6):062209, 2020. [33] Hao Liu, Alex Havrilla, Rongjie Lai, and Wenjing Liao. Deep nonparametric estimation of intrinsic data structures by chart autoencoders: Generalization error and robustness. Applied and Computational Harmonic Analysis , 68:101602, 2024. [34] Bethany Lusch, J. Nathan Kutz, and Steven L. Brunton. Deep learning for universal linear embeddings of nonlinear dynamics. Nature Communications , 9(1):4950, 2018. [35] Emile Mathieu and Maximilian Nickel. Riemannian continuous normalizing flows. In Advances in Neural Information Processing Systems , volume 33, pages 2503–2515, 2020. [36] K. M¨ uller and L. D. Brown. Location of saddle points and minimum energy paths by a constrained simplex optimization procedure. Theoret. Chim. Acta , 53:75–93, 1979. [37] Samuel E Otto and Clarence W Rowley. Linearly recurrent autoencoder networks for learning dynamics. SIAM Journal on Applied Dynamical Systems , 18(1):558–593, 2019. [38] Grigorios A. Pavliotis and Andrew M. Stuart. Multiscale Methods: Averaging and Homoge-nization , volume 53 of Texts in Applied Mathematics . Springer, 2008. [39] Erez Peterfreund, Ofir Lindenbaum, Felix Dietrich, Tom Bertalan, Matan Gavish, Ioannis G Kevrekidis, and Ronald R Coifman. Local conformal autoencoder for standardized data coor-dinates. Proceedings of the National Academy of Sciences , 117(49):30918–30927, 2020. [40] Salah Rifai, Pascal Vincent, Xavier Muller, Xavier Glorot, and Yoshua Bengio. Contractive auto-encoders: explicit invariance during feature extraction. In Proceedings of the 28th In-ternational Conference on Machine Learning (ICML) , ICML’11, page 833–840, Madison, WI, USA, 2011. Omnipress. [41] L. C. G. Rogers and David Williams. Diffusions, Markov Processes and Martingales: Volume 2, Itˆ o Calculus . Cambridge Mathematical Library. Cambridge University Press, 2 edition, 2000. [42] Stefan Schonsheck, Jie Chen, and Rongjie Lai. Chart auto-encoders for manifold structured data, 2019. [43] Stefan C. Schonsheck, Scott Mahan, Timo Klock, Alexander Cloninger, and Rongjie Lai. Semi-supervised manifold learning with complexity decoupled chart autoencoders, 2022. 29 [44] Daniel W. Stroock and S. R. Srinivasa Varadhan. Multidimensional Diffusion Processes , vol-ume 233 of Grundlehren der mathematischen Wissenschaften . Springer-Verlag, Berlin, 1979. [45] Ward Whitt. Stochastic-Process Limits: An Introduction to Stochastic-Process Limits and Their Application to Queues . Springer, New York, 2002. [46] Yahong Yang and Juncai He. Deeper or wider: A perspective from optimal generalization error with sobolev loss. In Proceedings of the 41st International Conference on Machine Learning (ICML) , volume 235 of PMLR , pages 56109–56138, 2024. [47] Yahong Yang and Juncai He. Deep neural networks with general activations: Super-convergence in sobolev norms, 2025. [48] Felix X.-F. Ye, Sichen Yang, and Mauro Maggioni. Nonlinear model reduction for slow–fast stochastic systems near unknown invariant manifolds. Journal of Nonlinear Science , 34(1):22, 2024. 30

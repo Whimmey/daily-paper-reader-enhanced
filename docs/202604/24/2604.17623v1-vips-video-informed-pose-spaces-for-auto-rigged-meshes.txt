@@ -1,0 +1,534 @@
+Title: ViPS: Video-informed Pose Spaces for Auto-Rigged Meshes
+
+URL Source: https://arxiv.org/pdf/2604.17623v1
+
+Published Time: Tue, 21 Apr 2026 02:10:29 GMT
+
+Number of Pages: 27
+
+Markdown Content:
+# ViPS: Video-informed Pose Spaces for Auto-Rigged Meshes 
+
+Honglin Chen 1,2∗ , Karran Pandey 3 , Rundi Wu 4,1 , Matheus Gadelha 2 ,Yannick Hold-Geoffroy 2 , Ayush Tewari 5 , Niloy J. Mitra 2,6 , Changxi Zheng 1 , and Paul Guerrero 2
+
+> 1
+
+Columbia University 2Adobe Research 3University of Toronto 
+
+> 4
+
+Google DeepMind 5University of Cambridge 6University College London Project Page: https://honglin-c.github.io/vips/ 
+
+Abstract. Kinematic rigs provide a structured interface for articulating 3D meshes but lack an inherent representation of the plausible manifold of joint configurations for a given asset. Without a pose space, stochastic sampling or manual manipulation of raw rig parameters often results in semantic and/or geometric violations, such as anatomical hyperex-tension and non-physical self-intersections. We propose Video-informed Pose Spaces (ViPS), a feedforward framework that discovers the latent distribution of valid articulations for (auto-)rigged meshes by distilling motion priors from a pretrained video diffusion model. Unlike existing methods that rely on scarce, artist-authored 4D datasets, ViPS trans-fers generative video model priors into a universal distribution over the given rig parameterization. Differentiable geometric validators applied to the skinned mesh enforce asset-specific integrity without requiring manual regularizers. Our feedforward model reveals a smooth, compact, and controllable pose space that supports diverse sampling, manifold projection for inverse kinematics, and temporally coherent trajectories for keyframing. Furthermore, these distilled 3D pose samples serve as precise semantic proxies to guide video diffusion, effectively closing the loop between generative 2D priors and structured 3D kinematic control. Our evaluations show that ViPS—trained solely on video priors—matches the performance of state-of-the-art models trained on synthetic artist-created 4D data in both plausibility and diversity. Most importantly, as a universal model, ViPS exhibits robust zero-shot generalization to out-of-distribution species and unseen skeletal topologies. 
+
+Keywords: plausible pose space · video priors · distribution of poses 
+
+## 1 Introduction 
+
+Kinematic rigs, such as shape skeletons, turn a 3D shape into an editable asset by exposing a set of controls joints. While this yields a low-dimensional parameteri-zation of motion, it does not immediately enable finding plausible poses in that  
+
+> ⋆
+
+This project was done during Honglin’s internship at Adobe Research. 
+
+> arXiv:2604.17623v1 [cs.CV] 19 Apr 2026
+
+2 Honglin Chen et al. plausible pose space pose samples 3D model + autorig 
+
+> (a) semantic edit (b) pose space walk
+> (c) 3D pose-guided video generation
+> video prior
+
+Fig. 1: Overview. We introduce ViPS, a universal feed-forward model that lifts static, auto-rigged meshes into a plausible and editable pose manifold. ViPS leverages the rich priors of foundational video models to automatically reveal a pose space that enables (a) manifold-constrained editing; (b) smooth pose-space interpolation, and (c) pose-guided video synthesis by using 3D proxies as structural guidance. The pose space is queryable using a single 3D mesh and its autorig (using RigAnything [18]) to generate a manifold of plausible poses, while invalid configurations—such as unnatural bone twisting—naturally fall outside this manifold (indicated with red dots). 
+
+space. Naively exploring the parameters of such a (skeleton) rig readily produces implausible states such as hyperextension, unnatural twisting, or semantically implausible poses. In practice, artists manually author pose spaces by restricting and correlating rig parameters, ensuring edits result in plausible, artifact-free deformations. Although a powerful tool in the hands of skilled artists, a rig alone, without suitable bounds and/or parameter coupling, does not specify where in this control space an asset can plausibly go. Unfortunately, a plausible pose space 
+
+(in short, pose space ) – the distribution of joint configurations that are valid and semantically consistent for any specific shape – is not straightforward to define. We ask: given an auto-rigged 3D mesh, can we automatically discover its (plausible) pose space? 
+
+A key challenge to answering this question is supervision. Learning mesh-specific pose distributions ideally requires a large repository of 3D/4D articulated data in the form of rigged meshes animations or pose sets, spanning the range of plausible configurations per asset. Such data is scarce, expensive to curate at scale, and typically category-specific, limiting its applicability across the long tail distribution of shapes. Meanwhile, modern video diffusion models [1, 31, 45, 48, 52] are purportedly trained on vast video corpora to encode strong, scalable priors over plausible motion and pose. Yet these priors are not grounded in a particular skeleton/rig and offer no precise, low-dimensional control interface. Thus, existing options provide either controls without plausibility (rigging) or plausibility without control (video priors). We propose Video-informed Pose Spaces (ViPS), which distills video diffusion priors into a mesh-conditioned pose space that can be sampled using a universal feed-forward network, which, in turn, unlocks different ways to semantically and precisely drive mesh deformation as well as video generation. Given a mesh and its (auto–)rig [18, 50] as condition, ViPS models a generative distribution over rig parameters (i.e., our pose space) using a diffusion model in rig space. Crucially, we do not require any articulated 3D/4D repositories as supervision to train ViPS. Instead, we directly leverage a video diffusion model (TurboDiffusion Wan 2.2 [43] in our tests) as a prior over plausible pose evolution, which we distill into the rig-parameter distribution. To robustly transform a video signal into rig-ViPS: Video-informed Pose Spaces 3
+
+parameter space, we optimize rig parameters to match 4D motion guidance of the video based on ActionMesh [39], coupled with geometric priors applied directly to the posed, skinned mesh, encouraging samples that are both semantically plausible and geometrically valid for a given shape. This video-informed data is then used to train our generative pose space model. The resulting pose space is not only generative but also readily navigable and, surprisingly, empirically smooth. This low-dimensional distribution in rig space enables (i) sampling a variety of valid, plausible poses; (ii) projection of arbitrary or user-edited joint configurations back onto the manifold of plausible poses for handle-driven deformation (and inverse kinematics (IK)) as well as DDIM inversion with image diffusion; and thanks to the smoothness of our pose space, (iii) traversal that traces coherent pose trajectories for animation and keyframing. These generated poses and trajectories can be directly used to animate meshes or rendered as animated shape proxies that provide stable, semantically aligned 3D guidance for image or video diffusion models. In effect, ViPS closes the loop: video priors are distilled into any asset’s pose space, and this discovered pose space then serves as an easy-to-control, precise 3D handle for steering video generation (see Figure 1). We evaluate ViPS across an extensive suite of diverse deformable assets, span-ning a wide array of biological species and skeletal topologies. Our experiments demonstrate that by distilling video-informed priors, our model matches the performance of state-of-the-art architectures [6] trained on synthetic 4D data (e.g., Objaverse-XL, TrueBones) in terms of both pose plausibility and distributional diversity. Critically, as a universal generative model, ViPS exhibits zero-shot generalization to unseen species, successfully discovering valid pose spaces for assets entirely absent from the training distribution. We quantitatively validate these findings through metrics for pose validity, manifold coverage, and temporal smoothness, while showcasing superior controllability in downstream tasks. In summary, our main contributions are: (i) formulating pose space discovery as learning a universal mesh-conditioned generative distribution over rig parameters, capturing both validity and plausibility; (ii) distilling video-to-pose space through a video diffusion model to supervise and transfer motion priors into rig space 
+
+without curated 3D/4D motion/pose data; (iii) introducing a high-quality 4D motion dataset with correspondence, containing 127k poses spanning 100+ species and 200+ unique individuals built from generative video priors with VLM guidance and 4D reconstruction; (iv) unlocking projection, sampling, and pose-walk operators that make the learned pose space practical for IK, constrained editing, and animation; and (v) demonstrating that the discovered pose space yields semantically aligned, easy-to-control 3D guidance (animated shape proxies) that can precisely steer video diffusion generation. 
+
+## 2 Related Work 
+
+Encoding animations. A central question in character animation is how to parameterize motion . One naive approach is to encode deformation directly 4 Honglin Chen et al. 
+
+as mesh sequences [13], which is expressive but high-dimensional and costly to store, edit, and generalize. Instead, artists rely on low-dimensional rig-based 
+
+parameterizations, including linear blend skinning (LBS) [14] and dual quaternion skinning [10], often augmented with energy-based regularizers that preserve local rigidity or volume under articulation [11, 17]. Alternative formulations such as cage-based deformation and differential coordinates [42, 55] similarly provide structured controls through geometric constraints. More recently, PhysRig [57] proposes a differentiable physics-based alternative to LBS, modeling soft-body volumes to capture complex dynamics like tissue jiggling. In the context of humans, Pose-NDF [44] models the manifold of plausible human poses as a zero-level set of a Neural Distance Field (NDF) in a joint configuration space. While effective, such implicit manifolds are often category-specific (i.e., humans) and lack the direct interpretability of a rig-based latent distribution. While these encodings can produce visually convincing motion when carefully authored, they typically require manual rigging and, crucially, do not by themselves specify what values are valid —i.e., they expose degrees of freedom but not the bounded, coupled, semantically plausible pose space . The resultant movements remain semantic-agnostic, failing to capture the manifold of natural poses for any arbitrary shape inherent to its specific biological or mechanical structure. 
+
+Learning rigs from artist data. Learning-based auto-rigging turns static meshes into controllable assets by inferring rigs and deformation models from curated, artist-authored data. RigNet [50] pioneered supervised rig prediction using collec-tions of rigged models with skeletons and skin weights, and subsequent systems infer skeletons, part structures, and deformation weights more broadly, including in weaker supervision regimes [4,36,47]; see also articulated-object (e.g., furniture) variants [16, 19]. These methods effectively recover an efficient parameterization 
+
+(rig + weights) and thus a low-dimensional control interface , but they typically stop short of learning the distribution over controls: joint limits, parameter cou-plings, and the likelihood of poses implied by real motion. Concurrent to ours, RigMo [56] jointly learns rig structure and motion dynamics directly from raw mesh sequences via a dual-path VAE. However, RigMo remains dependent on available 4D mesh sequences for training. Instead, we shift the supervision from 3D/4D artist data to the scalable prior of video diffusion models, enabling the discovery of pose spaces for assets where no ground-truth motion sequences exist. 
+
+Reconstructing 4D from video data. A separate line of work, inspired by recent breakthroughs in computer vision and tracking, obtains 4D (space–time) content from video by reconstructing renderable dynamic representations, most com-monly via per-sequence optimization or amortized prediction. Optimization-based methods fit time-varying meshes or auto-rigs (e.g., Puppeteer [40]), dynamic NeRFs, or dynamic point-based renderers (e.g., Gaussian splats), producing high-fidelity reconstructions but requiring expensive test-time optimization, careful temporal regularization, and often canonical-template assumptions to stabilize correspondences [34,35]. Likewise, 4D Gaussian splatting systems improve render-ing efficiency, yet still commonly rely on multi-stage per-video optimization and ViPS: Video-informed Pose Spaces 5Video Generation 3D Recon.  Skeleton Optim.            
+
+> InternVL
+> … a full-bodied grizzly bear …
+> Flux 2
+> InternVL
+> … walking steadily … … looking around … …stretching … …running … … scratches its back …
+> … polar bear standing upright …
+> ... ... ...
+> Wan 2.2
+> Act.Mesh
+> SAM 3D
+> RigAnything
+> A
+> MαM₁ M₃ M₂
+> SP₁ ’P₂ ’P₃ ’
+
+Fig. 2: The ViPS data pipeline . Given a species like ‘ bear ’, we first generate a clean single-object image of diverse species representatives using an image generator with prompts generated by a carefully instructed VLM. We then expand these images into many videos of diverse motions using a VLM-prompted video generator. We use a VLM to choose a frame α as rest pose, reconstruct a textured mesh from the frame using SAM3D [3] and obtain meshes with shared topology for all other frames with the recent ActionMesh [39]. We generate a skeleton for frame α using RigAnything [18] and find skeleton poses for the other frames by optimizing the skeleton to match their 3D reconstructions. Using a video prior enables a more scalable pipeline to generate diverse motions and objects without relying on artist-created 3D/4D animation datasets. 
+
+regularization to maintain stable motion, visibility, and appearance [20, 22, 49]. More recently, generative feed-forward approaches amortize inference into a single forward pass [2, 9, 38, 51, 54], but their outputs are typically implicit fields or point-based primitives rather than a semantic, low-dimensional control space. We utilize ActionMesh [39], a feed-forward model that produces a displacement field to enable converting videos to animated meshes with tracked vertices. Utilizing this information, we develop the missing layer: instead of reconstructing 4D appearance, we distill video priors into plausible pose space to learn a structured latent distribution to sample from, enabling meaningful pose space navigation. 
+
+Generative motion models beyond reconstruction. Skeletal-free methods generate motion directly as point clouds [27], shape-handles [58], or deforming meshes [29, 53, 60]. These representations offer flexibility across character topologies, but they forgo the key benefits of skeletons: rigs provide a compact, semantically meaningful interface that is easy to manipulate with standard rig-based animation tools, and integrates naturally with animation workflows and inverse-kinematics pipelines. A separate class of models focuses on the generative capabilities of pose spaces. DPoser-X [21] leverages diffusion to model whole-body human priors, enabling robust pose completion from partial observations (e.g., inferring upper-body poses from legs); for quadrupeds, QuadForecaster [30] utilizes cascaded diffusion for movement forecasting in animal communication analysis. While these models excel at individual categories, Dimo [28] generalizes this by distilling video priors into 3D motion for arbitrary objects. At the other end, methods that explicitly support arbitrary skeletons often require topology-specific training —either separate model instances or skeleton-specific adaptations—which scales poorly and limits cross-skeleton generalization [15, 59]. AnyTop [6] is the closest skeletal-based baseline: it introduces a single diffusion model conditioned on skeletal topology and joint names, designed to generalize across diverse topologies; making it a strong baseline for multi-class motion generation, though it relies on curated 4D training data and does not explicitly discover a rig-parameter pose space from raw rigs. Additionally, both text labels and motion statistics for each 6 Honglin Chen et al. 
+
+joint need to be given as input (the mean and variance over joint motions are required for normalization), limiting its applicability to unseen species/shapes. 
+
+## 3 Method 
+
+Given a textured mesh M (with NV vertices) rigged with skeleton S = ( P, E, W ),where P ∈ RNP ×3 are skeleton node positions, E ∈ NNE ×2 are skeleton edges, and W ∈ RNP ×NV are skinning weights, our goal is to model the conditional distribution of plausible skeleton node positions p(P ′|M, S ), corresponding to the distribution of plausible poses P ′, with a feed-forward network fθ . Datasets with artist-rigged and artist-animated meshes are scarce, while video priors can create much more plentiful and varied examples of plausible object poses; so we instead use a video prior to obtain training data for fθ . We first describe how to obtain rigged meshes with multiple plausible poses from a video prior, and then how we use this data to model the conditional distribution of plausible rig parameters with the feed-forward network fθ .
+
+3.1 Rigged Mesh Poses from a Video Prior 
+
+Our dataset consists of tuples (M, S, P ′), where P ′ describes a plausible deformed 
+
+pose of the rigged mesh (M, S ) that is different from the rest pose P ∈ S. To obtain this dataset, we carefully prompt the video prior to generate videos of single objects performing various motions. Each frame of these videos corresponds to a plausible pose of the object. We then reconstruct an animated sequence of 3D meshes for each frame that are roughly aligned in a common world space. We use the first frame in each video as mesh M and extract a skeleton S from its 3D reconstruction using an existing method [18]. Finally, we optimize the pose parameters of S to match each of the other frames, giving us plausible pose parameters P ′ and thus a dataset tuple (M, S, P ′) for each frame. The data generation pipeline is shown in Figure 2, each step is described in detail below. 
+
+Video Generation. To create videos of single objects performing various motions, the main difficulties are to (i) obtain videos of single objects that have favorable conditions for 3D reconstruction, such as avoiding additional background or scene elements, good lighting, having the full object in frame, etc.; and (ii) obtain videos of these objects performing a diverse set of plausible motions. To address the first issue, we split video generation into two steps: text-to-image generation with Flux 2 [12], followed by expanding this first frame into a video using Wan2.2 [45] (accelerated with TurboDiffusion [43]). We found that creating the first frame with an image prior yields higher-quality videos and better prompt adherence for the first frame. We take advantage of this prompt adherence by automatically instructing the VLM InternVL [46] to generate prompts that result in favorable conditions for 3D reconstruction. To address the second issue, we give InternVL the first frame and instruct it to generate detailed structured prompts for the video generator that describe diverse motion for the animal/object shown in the ViPS: Video-informed Pose Spaces 7
+
+first frame. See the supplement for the exact instructions we give to InternVL in these two steps. We generate multiple videos for a given first-frame image, each with different motion descriptions generated by InternVL. 
+
+4D Reconstruction. Given a video, we reconstruct a textured 3D mesh that is then deformed/tracked over the frames. This is a 4D reconstruction task and we use the recently proposed Actionmesh [39] to obtain a sequence of meshes with shared mesh topology. However, as these meshes are untextured by default, we initialize Actionmesh with a SAM3D [3] reconstruction of a single frame. This gives us higher-quality textured meshes (M1, M 2, . . . ) with shared mesh topology across frames. The choice of frame α for the initial mesh Mα is important, as different frames may produce different mesh topologies. For example, using a frame that shows a bird with closed wings results in a mesh topology that does not support opening the wings, as the underside of the wings is not represented in the mesh. Similarly, choosing a frame with large occluded parts can result in poor mesh quality. We instruct InternVL to choose a frame where the object is clearly visible and has minimal self-occlusions or motion blur. 
+
+Skeleton Optimization. To construct our dataset tuples (M, S, P ′), we start by defining the initial mesh as a rest pose and set M := Mα. We obtain the skeleton 
+
+S by running the RigAnything [18] skeleton extractor on M . For deformed poses 
+
+P ′, we need to share the same mesh and skeleton topology as the rest pose (M, S ),and thus cannot simply extract skeletons for each mesh Mi. Instead, we obtain P ′
+
+by optimizing the skeleton parameters of S, so that the skeleton-deformed mesh 
+
+M ′ matches the reconstructed mesh Mi as closely as possible, by minimizing the following energy: 
+
+Lrecon := dvert (Mi, M ′) with M ′ := h(M, S, P ′), (1) where h(M, S, P ′) denotes a deformation of mesh M through the skeleton S with node positions P ′ using linear blend skinning [14,23] and dvert is the mean square distance between corresponding vertices of two meshes. Recall that all meshes Mi
+
+share topology, therefore corresponding vertices are known. We include a skeleton regularization to encourage edge lengths in the skeleton to remain constant: 
+
+Ledge := 1
+
+NE
+
+X
+
+> NE
+
+∥PEi, 0 − PEi, 1 ∥ − ∥ P ′ 
+
+> Ei, 0
+
+− P ′ 
+
+> Ei, 1
+
+∥ , (2) where (Ei, 0, E i, 1) is the pair of node indices for skeleton edge i. The full opti-mization of the deformed pose P ′ is then defined as: 
+
+arg min  
+
+> P′
+
+Lrecon + λLedge , (3) where we set the regularization weight λ = 20 in our experiments. 8 Honglin Chen et al.        
+
+> Fig. 3: The architecture of our universal pose denoiser fθ. Given a mesh M
+> and its skeleton Sin rest pose, we sample plausible poses using multiple iterations of the denoising process illustrated here. The rest pose is concatenated as reference to the noisy pose, and to capture skeleton node semantics, we compute per-node semantic features from the textured mesh. This information is aggregated into a set of per-node tokens and used to estimate a denoised pose with a transformer. Skeleton edges are used to guide attention using a specialized Skeletal Attention block [6].
+
+3.2 Learning a Pose Space 
+
+We train a diffusion model [7] to represent the conditional distribution p(P ′|M, S )
+
+using the dataset tuples (M, S, P ′). The feed-forward network fθ acts as the denoiser, taking as input a noisy version P t of the node positions P ′, with noise level t ∈ [0 , T ], and predicting the denoised node positions. It is trained with a standard MSE loss: 
+
+Ldiff := w(t) fθ (P t; E, P, F, t ) − P ′ 22 , (4) where w(t) is a weighting schedule for time steps t. To make the denoiser aware of the skeleton topology and the rest pose, we additionally provide the skeleton edges E ∈ S and the rest pose P ∈ S as input. Further, for the mesh M , we provide semantics in the form of per-node semantic features F as defined later. Once trained, we sample poses P 0 ∼ p(P ′|M, S ) with the denoiser fθ using a stochastic denoising strategy [7]: 
+
+P T ∼ N (0, I)
+
+P t−1 ∼ N  atP t + bt(fθ (P t; E, P, F, t ) − P T ), σ 2 
+
+> t
+
+I , (5) where at, bt, and the variance σ2 
+
+> t
+
+are chosen according to a denoising schedule, and N is the normal distribution. 
+
+Semantic Node Features. In addition to the skeleton, our denoiser requires information about the mesh M to accurately model the distribution of plausible poses. A dog and a cat, for example, may have similar skeletons, but different pose distributions. We provide information about the mesh as a set of per-node semantic features F ∈ RNP ×NF , with feature dimension NF . Each feature ViPS: Video-informed Pose Spaces 9
+
+Fi ∈ R1×NF describes the semantics of the part in mesh M that is controlled by skeleton node i. Specifically, we first use Diff3f [5] to obtain semantic features 
+
+F V ∈ RNV ×NF for each mesh vertex, where NV is the number of vertices in 
+
+M . By default, Diff3f computes these features as a combination DINO-based features [32] and features from the intermediate layers of a 2D diffusion model. Both are obtained from multi-view renders of the mesh with generated texture. As our meshes M are already textured, we use the DINO-based features of Diff3f from our texture and the diffusion features of the generated texture, where the former offers the semantics provided by DINO and the latter contains spatial information provided by the diffusion features. Finally, we use the skinning weights W of the skeleton S to aggregate the per-vertex features F V into per-node features F :
+
+Fi := 
+
+P 
+
+> j=1 ...N V
+
+Wi,j F Vj
+
+P 
+
+> j=1 ...N V
+
+Wi,j 
+
+. (6) 
+
+Denoiser Architecture. Since the number of nodes in a skeleton is variable, we use a diffusion transformer (DiT) that is capable of processing a variable number of tokens as backbone of the denoiser fθ . An overview of the architecture is shown in Figure 3. We base our architecture on AnyTop [6] that we modify to (i) model a distribution of poses rather than a distribution of pose sequences by removing the time dimension and the temporal attention; (ii) use our semantic node features 
+
+F instead of a T5-encoded [37] text label for each node, allowing us to apply the method to unlabelled skeletons; and (iii) use a different normalization for node positions P ′ that removes the requirement to provide a ground truth example motion for each input skeleton. Specifically, we work with node positions P ′ that are normalized as (P ′ − P )/σ P , that is, we use the offset of nodes from their rest pose, normalized by the dataset-wide average offset of any node from its rest pose σP . First, we encode all inputs (P t, P, F, t ) except the skeleton edges E into a token sequence xin  
+
+> 1
+
+, . . . , x in  
+
+> NP
+
+that can be processed by the DiT, with one token per node. Each input is encoded by a separate linear layer, and aggregated into tokens: 
+
+xin  
+
+> i
+
+:=  ex(P t) | eP (P ) + eF (F ) + et(t), (7) where | denotes concatenation and e∗ denote the encoders. These tokens are then processed by the DiT: 
+
+xout  
+
+> 1
+
+. . . x out  
+
+> NP
+
+:= DiT (xin  
+
+> 1
+
+, . . . , x in  
+
+> NP
+
+; E), (8) where the skeleton edges E are used in a special Skeletal Attention mechanism that makes the attention computation for pairs of nodes dependent on their topological relationships. See AnyTop [6] for more details. The output tokens 
+
+xout  
+
+> i
+
+are then decoded by a small feed-forward network dx :
+
+fθ (P t; E, P, F, t ) := dx(xout  
+
+> 1
+
+. . . x out  
+
+> NP
+
+). (9) 
+
+3.3 Constrained Sampling of the Pose Space 
+
+Inverting/reconstructing a given pose. We approximately reproduce a given pose 
+
+P ′ by inverting the pose into a noise sample P T using DDIM inversion [41]. 10 Honglin Chen et al. 
+
+Starting the inference process described in Equation (5) from this noise sample approximates the pose P ′.
+
+Sampling with sparse constraints. We can generate a pose that follows our learned prior while also approximately following simple constraints using a guided sampling strategy [33], similar to classifier-free guidance [8]. Constraint violation is modeled with an energy function E, and in each inference step, the denoising trajectory is nudged to minimize the energy term by changing the inference procedure in Equation (5): 
+
+P t−1 ∼ N 
+
+
+
+atP t + bt(fθ ( bP t; E, P, F, t ) − P T ), σ 2 
+
+> t
+
+I
+
+
+
+, with (10) 
+
+bP t := P t − ∇ P t E  fθ (P t; E, P, F, t ) .
+
+## 4 Results 
+
+We evaluate ViPS by comparing randomly sampled poses to baselines, and demonstrate semantic pose editing as application. Videos, a larger set of results, and additional applications such as keyframe-controlled video generation and latent space interpolation are available in the supplemental webpage. 
+
+4.1 Pose Sampling and Interpolation 
+
+Our goal is to learn a pose distribution that is diverse and plausible, and can be applied to unseen skeletons, and even unseen species of animals without the need to re-train or fine-tune our model, and without the need for artist-created data. To evaluate how well our method achieved this goal, we compare samples and interpolations from our pose space to several baselines. 
+
+Dataset. We evaluate on two human/animal data sets: A cross-species dataset focuses on species diversity, and a single-species dataset that focuses on diversity of individuals in a single species. Training and evaluation data will be released on publication. 
+
+For the cross-species training set, we select 100 random species that include mammals, birds, fish, humans, and fantasy creatures, and generate 2 images for each, corresponding to two individuals from the species with distinct appearance (for example a Puppy and a Labrador dog). Using 20 different motion prompts per individual, we generate 20 diverse videos, with 81 frames per video sub-sampled to 31 frames. We reconstruct with our pipeline to obtain 20 different rigged meshes with 31 poses each, for a total of 3.8k rigged meshes and 115 k poses in the training set after filtering. For the cross-species test set, we generate 6 unseen individuals, 2 from unseen species and 4 from species shared with the training set ( test cs ). We include one rigged mesh per individual. For each of these, our method and each baseline generate 200 poses to be used in the evaluation. For the single-species training set, we select Dog as single species and generate 20 images, corresponding to 20 individuals. Otherwise, the generation ViPS: Video-informed Pose Spaces 11 AnyTop-motion Input AnyTop-pose ViPS (ours) Puppeteer 
+
+> Cross-species data Single-species data
+> (unseen species) (unseen individual) (unseen individual) (unseen individual)
+
+Fig. 4: Qualitative Comparison. We compare random poses samples generated with ViPS to all baselines on three individuals of the cross-species dataset and one individual of the single species dataset. Strongly implausible poses are marked in red. Our data generation allows generalization to a large range of species, such as the alien, and gives pose plausibility and diversity on par with the much more expensive Puppeteer. 
+
+procedure matches the cross-species dataset, resulting in 400 rigged meshes and 12 .2k poses after filtering. For the test set, we generate 2 unseen individuals (test ss ). For each of these, our method and each baseline generate 200 poses to be used in the evaluation. Please see the supplement for additional details. 
+
+Baselines. As the first feed-forward framework for universal pose generation 
+
+trained exclusively on unlabeled video data , ViPS lacks a direct end-to-end baseline. Consequently, we evaluate our components against state-of-the-art methods in related sub-tasks. We identify AnyTop [6] as the most pertinent baseline due to its shared objective of cross-species learning and its related motion space. For a rigorous comparison, we evaluate two variants: (i) AnyTop-motion ,where we extract individual poses by randomly sampling 200 frames from 20 generated motion sequences; and (ii) AnyTop-pose , an architectural variant we modify to learn a static distribution of poses rather than sequences. Notably, unlike ours, AnyTop variants are trained on artist-authored datasets and require 
+
+privileged information —specifically semantic node labels and per-joint motion statistics—not typically available for unseen species. We additionally provide 12 Honglin Chen et al.                               
+
+> Table 1: Quantitative Comparison on Pose Plausibility and Diversity. We evaluate ViPS against state-of-the-art baselines on cross-species ( test cs ) and single-species ( test ss ) benchmarks. ViPS significantly outperforms AnyTop variants in both
+> Plausibility and Diversity , as measured by a user-study-based ranking (LSR) and distribution similiarity (FSD) to the expensive offline method Puppeteer, despite those baselines having access to supervised artist-data. Notably, our universal feed-forward model maintains superior performance even in zero-shot cross-species scenarios, matching the plausibility of optimization-based reconstruction (Puppeteer) while providing a controllable generative manifold. Here we report the runtime for 10 sampled poses.
+> test cs test ss
+> LSR ↑FSD ↓LSR ↑FSD ↓Time AnyTop-motion -0.21 1.49 -2.78 2.28 2.5 sec AnyTop-pose -1.65 1.04 0.01 1.02 4 sec
+> ViPS (ours) -0.04 0.31 0.65 0.87 4 sec Puppeteer 1.90 N/A2.12 N/A30 min
+
+these baselines with a “best-effort” approximation for out-of-distribution assets: using joint indices as labels, the rest pose as the mean, and VLM-derived statistics from the closest available species. Despite this additional structural guidance, our results demonstrate superior adaptability. We also compare to Puppeteer [40] as an upper bound and a reference for pose quality. Puppeteer is an optimization-based method, that requires 30 minutes on average to generate a pose sequence. We randomly sample poses from 200 frames from 20 generated sequences per individual. Further comparisons of our generated data to Puppeteer [40] are provided in the supplement. 
+
+Metrics. We measure two main properties of generated poses: diversity and 
+
+plausibility . Note that we have no clear ground truth distribution to compare to, since our data pipeline is part of the contribution we aim to evaluate. Instead, we use the much more expensive Puppeteer as neutral ground truth. We compute the Fréchet Skeleton Distance [24,25] (FSD), defined as the Fréchet Distance between generated samples and Puppeteer samples, using concatenated normalized joint positions as feature vectors. This metric measures both diversity and plausibility 
+
+– a lower value means better alignment with the Puppeteer distribution. For 
+
+plausibility , we additionally perform a user study where users are tasked with comparing the plausibility of pose sets generated by our method to baselines in two-alternative forced choice comparisons. We had 24 participants answering a total of 360 pairwise comparisons. To get a per-method score, we show the Luce Spectral Ranking [26] (LSR) computed from these comparisons. See the supplemental for more details on both metrics. 
+
+Discussion. We compare random samples from our pose space versus baselines on seen and unseen species qualitatively in Figure 4 and quantitatively in Table 1. ViPS: Video-informed Pose Spaces 13 Edit Handles Original Pose Edited Pose Edit Handles Original Pose Edited Pose Edit Handles Original Pose Edited Pose 
+
+Fig. 5: Manifold-Constrained Semantic Editing. ViPS enables precise Inverse Kinematics (IK) by projecting user-driven joint handles (orange →green) into the discovered plausible pose space . By leveraging our video-informed priors , our model ensures that sparse edits result in anatomically valid and structurally consistent poses across a wide range of species and skeletal topologies, effectively avoiding the geometric artifacts common in unconstrained rig manipulation. 
+
+A much larger set of samples is provided in the supplementary webpage. We can see that our samples remain plausible and exhibit a more diverse set of poses than the AnyTop baselines that require artist-created data for training. We reach similar plausibility and diversity as the optimization-based Puppeteer, while only requiring a fraction of Puppeteer’s generation time. In contrast, baselines either collapse to conservative joint configurations or exhibit artifacts (implausible poses) on unseen skeletons. In the supplemental we also compare our generated training data to Puppeteer. 
+
+4.2 Pose Editing 
+
+We use the guidance mechanism, described in Section 3, as a form of semantically meaningful, automatic inverse kinematics. Users specify sparse joint constraints via drags (for e.g., by moving a paw forward or raising the head), and guidance projects these edits back onto the learned manifold. The model therefore corrects the edit into a plausible pose while maintaining asset-specific validity. 
+
+Constrained edits. Figure 5 shows examples of single -handle edits. Each example includes the original pose, the edited pose, and the user-specified edit. In practice, the guidance behaves like automatic IK: it satisfies the handle motion but also redistributes motion across the chain in a semantically plausible way (e.g., shoulder and torso adjust when a paw is moved). Further, it imposes additional semantic constraints such as limiting extreme edits to a meaningful extent (e.g, head cannot be dragged too far below the feet). We can further demonstrate smooth transitions between edits using our pose-space traversal between the edited poses. This produces coherent transitions between edits, and is shown to be more plausible than joint -space linear interpolation in our supplementary material. 14 Honglin Chen et al. 
+
+4.3 Controllable Video Generation 
+
+Our pose space provides a simple interface for generating keyframes that can steer a video diffusion model. We select keyframes along a pose-space traversal (or between edits), render the corresponding mesh+skeleton proxy, and supply these as conditioning frames, see Figure 1. This enables controllable, semantically aligned video generation: the video model is free to synthesize appearance and texture, while the pose sequence provides precise 3D control. We provide further examples of controllable video generation in our supplementary material. 
+
+## 5 Conclusion 
+
+We have presented ViPS, a feed-forward framework that breathes life into raw character rigs by distilling video diffusion priors into a universal, semantically-aware pose manifold. By shifting the paradigm from scarce, artist-authored 4D motions to generative distillation, we bypass specialized datasets and move toward a truly species-agnostic foundation for animation. Whether applied to humans, quadrupeds, or mythical creatures, our approach infers the non-linear dynamics of plausible articulation directly from 2D data, enabling a single model to encode the diverse biomechanics of any asset. This bridge between unstructured generative priors and structured kinematic control redefines the 3D character as a steerable, differentiable proxy for the next generation of video synthesis. 
+
+Structural and Parameterization Constraints. While ViPS effectively discovers the latent manifold of an existing rig, it remains inherently rig-dependent , inheriting structural flaws like suboptimal bone placement or skinning weights from the input autorig. A future direction is the joint feed-forward extraction of rig topology and pose space, similar to RigMo [56], or employing redundant representations where the network simultaneously predicts the deformed mesh, Gaussian splats, and skeletal parameters for cross-modal consistency. Additionally, performance on non-biological entities or complex insects remains sensitive to the underlying auto-rigs and video priors. 
+
+Prior Biases and Initial States. Our reliance on video diffusion models introduces a data-bias bottleneck; for highly specialized or rare motions (e.g., specific flight patterns of swifts ), the generative prior may lack sufficient fidelity. We also acknowledge the start pose problem Mα, where the quality of the learned space is sensitive to the alignment of the initial rest pose relative to the video sequence. Future work could address this by leveraging text-driven motion priors to anchor the pose space, allowing users to drive ‘walks’ or specific gaits through natural language prompts rather than just latent interpolation. 
+
+Scaling Beyond Kinematics. Currently, ViPS models the static manifold of plausible articulations. An immediate evolution is the transition from a pose space to a dynamic motion space , explicitly modeling rig-parameter trajectories to capture gait families and long-horizon style modulation. Furthermore, we aim to ViPS: Video-informed Pose Spaces 15 
+
+extend the framework to handle complex deformation regimes—including elastic soft bodies (rubber/cloth), topology-changing phenomena (fracture/fluids), and secondary dynamics (jiggle/inertia). 
+
+## 6 Acknowledgements 
+
+This work was supported in part by a Roblox Graduate Fellowship to Honglin Chen. We thank Inbar Gat and Sigal Raab for helpful discussions on AnyTop, Remy Sabathier for his help on ActionMesh code, and Zifan Shi for insightful discussions on RigAnything. Their support was invaluable to the development and success of ViPS. 
+
+## References 
+
+1. Adobe: Adobe firefly. Software (2026), https://firefly.adobe.com , accessed: 2026-01-18 2. Cao, W., Luo, C., Zhang, B., Nießner, M., Tang, J.: Motion2vecsets: 4d latent vector set diffusion for non-rigid shape reconstruction and tracking. In: Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition (2024), 
+
+https://vveicao.github.io/projects/Motion2VecSets/ 
+
+3. Chen, X., Chu, F.J., Gleize, P., Liang, K.J., Sax, A., Tang, H., Wang, W., Guo, M., Hardin, T., Li, X., et al.: Sam 3d: 3dfy anything in images. arXiv preprint arXiv:2511.16624 (2025) 4. Deng, Y., Zhang, Y., Geng, C., Wu, S., Wu, J.: Anymate: A dataset and baselines for learning 3d object rigging. In: SIGGRAPH (2025) 5. Dutt, N.S., Muralikrishnan, S., Mitra, N.J.: Diffusion 3d features (diff3f): Decorating untextured shapes with distilled semantic features. In: Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition (CVPR). pp. 4494–4504 (June 2024) 6. Gat, I., Raab, S., Tevet, G., Reshef, Y., Bermano, A.H., Cohen-Or, D.: Anytop: Character animation diffusion with any topology. SIGGRAPH (2025) 7. Ho, J., Jain, A., Abbeel, P.: Denoising diffusion probabilistic models. Advances in neural information processing systems 33 , 6840–6851 (2020) 8. Ho, J., Salimans, T.: Classifier-free diffusion guidance. In: NeurIPS Workshop on Deep Generative Models and Downstream Applications (2021) 9. Jiang, Z., Zheng, C., Laina, I., Larlus, D., Vedaldi, A.: Geo4d: Leveraging video generators for geometric 4d scene reconstruction (2025), https://arxiv.org/abs/ 2504.07961 
+
+10. Kavan, L., Collins, S., Žára, J., O’Sullivan, C.: Geometric skinning with approximate dual quaternion blending. SIGGRAPH pp. 105:1–105:10 (2008). https://doi.org/ 10.1145/1399504.1360717 
+
+11. Kilian, M., Mitra, N.J., Pottmann, H.: Geometric modeling in shape space. ACM Transactions on Graphics (SIGGRAPH) 26 (3), #64, 1–8 (2007) 12. Labs, B.F.: FLUX.2: Frontier Visual Intelligence. https://bfl.ai/blog/flux-2 
+
+(2025) 13. Lengyel, J.E.: Compression of time-dependent geometry. In: Proceedings of the 1999 symposium on Interactive 3D graphics. pp. 89–95 (1999) 16 Honglin Chen et al. 14. Lewis, J.P., Cordner, M., Fong, N.: Pose space deformation: a unified approach to shape interpolation and skeleton-driven deformation. In: Proceedings of the 27th Annual Conference on Computer Graphics and Interactive Techniques (2000) 15. Li, P., Aberman, K., Zhang, Z., Hanocka, R., Sorkine-Hornung, O.: Ganimator: Neural motion synthesis from a single sequence. ACM Transactions on Graphics (TOG) 41 (4), 138 (2022) 16. Li, R., Yao, Y., Zheng, C., Rupprecht, C., Lasenby, J., Wu, S., Vedaldi, A.: Par-ticulate: Feed-forward 3d object articulation. arXiv preprint arXiv:2512.11798 (2025) 17. Lipman, Y., Cohen-Or, D., Gal, R., Levin, D.: Volume and shape preservation via moving frame manipulation. ACM Trans. Graph. 26 (1), 5–es (Jan 2007) 18. Liu, I., Xu, Z., Yifan, W., Tan, H., Xu, Z., Wang, X., Su, H., Shi, Z.: Riganything: Template-free autoregressive rigging for diverse 3d assets. ACM TOG 44 (4), 1–12 (2025) 19. Liu, J., Iliash, D., Chang, A.X., Savva, M., Mahdavi-Amiri, A.: SINGAPO: Sin-gle image controlled generation of articulated parts in object. arXiv preprint arXiv:2410.16499 (2024) 20. Liu, J., Kong, L., Zhou, M., Chen, J., Xu, D.: Mono4dgs-hdr: High dynamic range 4d gaussian splatting from alternating-exposure monocular videos. In: ICLR (2025), 
+
+https://arxiv.org/abs/2510.18489 
+
+21. Lu, J., Lin, J., Dou, H., Zeng, A., Deng, Y., Liu, X., Cai, Z., Yang, L., Zhang, Y., Wang, H., Liu, Z.: Dposer-x: Diffusion model as robust 3d whole-body human pose prior. In: ICCV (2025) 22. Luo, Z., Ran, H., Lu, L.: Instant4d: 4d gaussian splatting in minutes. Advances in neural information processing systems (2025) 23. Magnenat-Thalmann, N., Laperrière, R., Thalmann, D.: Joint-dependent local deformations for hand animation and object grasping. In: Proceedings on Graphics interface’88. pp. 26–33 (1989) 24. Maiorca, A., Bohy, H., Yoon, Y., Dutoit, T.: Objective evaluation metric for motion generative models: Validating fréchet motion distance on foot skating and over-smoothing artifacts. In: Proceedings of the 16th ACM SIGGRAPH Conference on Motion, Interaction and Games (2023) 25. Maiorca, A., Yoon, Y., Dutoit, T.: Evaluating the quality of a synthesized motion with the fréchet motion distance. In: ACM SIGGRAPH 2022 Posters (2022) 26. Maystre, L., Grossglauser, M.: Fast and accurate inference of plackett–luce models. Advances in neural information processing systems 28 (2015) 27. Mo, C., Hu, K., Long, C., Yuan, D., Wang, Z.: Motion keyframe interpolation for any human skeleton via temporally consistent point cloud sampling and reconstruction. In: Proc. ECCV. p. 159–175 (2024) 28. Mou, L., Lei, J., Wang, C., Liu, L., Daniilidis, K.: Dimo: Diverse 3d motion generation for arbitrary objects. In: Proceedings of the IEEE/CVF International Conference on Computer Vision (2025) 29. Muralikrishnan, S., Dutt, N.S., Mitra, N.J.: Smf: Template-free and rig-free anima-tion transfer using kinetic codes (2025), https://arxiv.org/abs/2504.04831 
+
+30. Noronha, I., Chowdhury, A., Bharti, S., Kaur, U.: Quadforecaster: Diffusion-based quadruped pose prediction for animal communication analysis. In: NeurIPS work-shop: AI for non-human animal communication (2025) 31. OpenAI: Sora 2. Software (2026), https://openai.com/index/sora-2/ , accessed: 2026-01-18 ViPS: Video-informed Pose Spaces 17 32. Oquab, M., Darcet, T., Moutakanni, T., Vo, H., Szafraniec, M., Khalidov, V., Fernandez, P., Haziza, D., Massa, F., El-Nouby, A., et al.: Dinov2: Learning robust visual features without supervision. Transactions on Machine Learning Research Journal pp. 1–31 (2024) 33. Pandey, K., Hold-Geoffroy, Y., Gadelha, M., Mitra, N.J., Singh, K., Guerrero, P.: Motion modes: What could happen next? In: Proceedings of the Computer Vision and Pattern Recognition Conference. pp. 2030–2039 (2025) 34. Park, K., Sinha, U., Hedman, P., Barron, J.T., Bouaziz, S., Goldman, D.B., Martin-Brualla, R., Seitz, S.M.: Hypernerf: a higher-dimensional representation for topo-logically varying neural radiance fields. ACM Trans. Graph. 40 (6) (Dec 2021) 35. Pumarola, A., Corona, E., Pons-Moll, G., Moreno-Noguer, F.: D-nerf: Neural radiance fields for dynamic scenes. In: CVPR (2020) 36. Qiu, X., Yang, J., Wang, Y., Chen, Z., Wang, Y., Wang, T.H., Xian, Z., Gan, C.: Articulate anymesh: Open-vocabulary 3d articulated objects modeling. arXiv preprint arXiv:2502.02590 (2025) 37. Raffel, C., Shazeer, N., Roberts, A., Lee, K., Narang, S., Matena, M., Zhou, Y., Li, W., Liu, P.J.: Exploring the limits of transfer learning with a unified text-to-text transformer. Journal of machine learning research 21 (140), 1–67 (2020) 38. Ren, J., Xie, K., Mirzaei, A., Liang, H., Zeng, X., Kreis, K., Liu, Z., Torralba, A., Fidler, S., Kim, S.W., Ling, H.: L4gm: Large 4d gaussian reconstruction model. Adv. Neural Inform. Process. Syst. (2024), https://arxiv.org/abs/2406.10324 
+
+39. Sabathier, R., Novotny, D., Mitra, N.J., Monnier, T.: Actionmesh: Animated 3d mesh generation with temporal 3d diffusion. In: CVPR (2026) 40. Song, C., Li, X., Yang, F., Xu, Z., Wei, J., Liu, F., Feng, J., Lin, G., Zhang, J.: Puppeteer: Rig and animate your 3d models. In: Adv. Neural Inform. Process. Syst. (2025) 41. Song, J., Meng, C., Ermon, S.: Denoising diffusion implicit models. In: International Conference on Learning Representations (ICLR) (2021) 42. Sumner, R.W., Popović, J.: Deformation transfer for triangle meshes. ACM Trans-actions on graphics (TOG) 23 (3), 399–405 (2004) 43. THU-ML: TurboDiffusion: 100–200 × acceleration for video diffusion models. https: //github.com/thu-ml/TurboDiffusion (2025), gitHub repository, accessed 2026-01-18 44. Tiwari, G., Antic, D., Lenssen, J.E., Sarafianos, N., Tung, T., Pons-Moll, G.: Pose-ndf: Modeling human pose manifolds with neural distance fields. In: ECCV (2022) 45. Wan, T., Wang, A., Ai, B., Wen, B., Mao, C., Xie, C.W., Chen, D., Yu, F., Zhao, H., Yang, J., Zeng, J., Wang, J., Zhang, J., Zhou, J., Wang, J., Chen, J., Zhu, K., Zhao, K., Yan, K., Huang, L., Feng, M., Zhang, N., Li, P., Wu, P., Chu, R., Feng, R., Zhang, S., Sun, S., Fang, T., Wang, T., Gui, T., Weng, T., Shen, T., Lin, W., Wang, W., Wang, W., Zhou, W., Wang, W., Shen, W., Yu, W., Shi, X., Huang, X., Xu, X., Kou, Y., Lv, Y., Li, Y., Liu, Y., Wang, Y., Zhang, Y., Huang, Y., Li, Y., Wu, Y., Liu, Y., Pan, Y., Zheng, Y., Hong, Y., Shi, Y., Feng, Y., Jiang, Z., Han, Z., Wu, Z.F., Liu, Z.: Wan: Open and advanced large-scale video generative models. arXiv preprint arXiv:2503.20314 (2025) 46. Wang, W., Gao, Z., Gu, L., Pu, H., Cui, L., Wei, X., Liu, Z., Jing, L., Ye, S., Shao, J., et al.: Internvl3.5: Advancing open-source multimodal models in versatility, reasoning, and efficiency. arXiv preprint arXiv:2508.18265 (2025) 47. Weng, Y., Wen, B., Tremblay, J., Blukis, V., Fox, D., Guibas, L., Birchfield, S.: Neural implicit representation for building digital twins of unknown articulated objects. In: CVPR (2024) 18 Honglin Chen et al. 48. Wiedemer, T., Li, Y., Vicol, P., Gu, S.S., Matarese, N., Swersky, K., Kim, B., Jaini, P., Geirhos, R.: Video models are zero-shot learners and reasoners. arXiv preprint arXiv:2509.20328 (2025) 49. Wu, D., Liu, F., Hung, Y.H., Qian, Y., Zhan, X., Duan, Y.: 4d-fly: Fast 4d recon-struction from a single monocular video. In: Proc. CVPR. pp. 16663–16673 (06 2025). https://doi.org/10.1109/CVPR52734.2025.01553 
+
+50. Xu, Z., Zhou, Y., Kalogerakis, E., Landreth, C., Singh, K.: Rignet: neural rigging for articulated characters. ACM TOG 39 (4), 58–1 (2020) 51. Xu, Z., Li, Z., Dong, Z., Zhou, X., Newcombe, R., Lv, Z.: 4dgt: Learning a 4d gaussian transformer using real-world monocular videos. In: Adv. Neural Inform. Process. Syst. (2025) 52. Yang, Z., Teng, J., Zheng, W., Ding, M., Huang, S., Xu, J., Yang, Y., Hong, W., Zhang, X., Feng, G., et al.: Cogvideox: Text-to-video diffusion models with an expert transformer. arXiv preprint arXiv:2408.06072 (2024) 53. Ye, Z., Liu, J.W., Jia, J., Sun, S., Shou, M.Z.: Skinned motion retargeting with dense geometric interaction perception. Advances in Neural Information Processing Systems (2024) 54. Yenphraphai, J., Mirzaei, A., Chen, J., Zou, J., Tulyakov, S., Yeh, R.A., Wonka, P., Wang, C.: Shapegen4d: Towards high quality 4d shape generation from videos. arXiv preprint (2025) 55. Yu, Y., Zhou, K., Xu, D., Shi, X., Bao, H., Guo, B., Shum, H.Y.: Mesh editing with poisson-based gradient field manipulation. In: ACM TOG. pp. 644–651 (2004) 56. Zhang, H., Luo, J., Wan, B., Zhao, Y., Li, Z., Vasilkovsky, M., Wang, C., Wang, J., Ahuja, N., Zhou, B.: Rigmo: Unifying rig and motion learning for generative animation. arXiv preprint arXiv:2601.06378 (2026) 57. Zhang, H., Xu, H., Feng, C., Jampani, V., Ahuja, N.: Physrig: Differentiable physics-based skinning and rigging framework for realistic articulated object modeling. In: ICCV (2025) 58. Zhang, J., Huang, S., Tu, Z., Chen, X., Zhan, X., Yu, G., Shan, Y.: Tapmo: Shape-aware motion generation of skeleton-free characters. In: The Twelfth International Conference on Learning Representations (ICLR) (2024) 59. Zhang, J., Weng, J., Kang, D., Zhao, F., Huang, S., Zhe, X., Bao, L., Shan, Y., Wang, J., Tu, Z.: Skinned motion retargeting with residual perception of motion semantics & geometry. In: Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition. pp. 13864–13872 (2023) 60. Zhang, M., Cai, Z., Pan, L., Hong, F., Guo, X., Yang, L., Liu, Z.: Motiondif-fuse: Text-driven human motion generation with diffusion model. arXiv preprint arXiv:2208.15001 (2022) ViPS: Video-informed Pose Spaces for Auto-Rigged Meshes Supplementary Material 
+
+Honglin Chen 1,2⋆ , Karran Pandey 3 , Rundi Wu 4,1 , Matheus Gadelha 2 ,Yannick Hold-Geoffroy 2 , Ayush Tewari 5 , Niloy J. Mitra 2,6 , Changxi Zheng 1 , and Paul Guerrero 2    
+
+> 1Columbia University 2Adobe Research 3University of Toronto
+> 4Google DeepMind 5University of Cambridge 6University College London
+
+## A Overview 
+
+In this supplementary material, we evaluate our feed-forward model separately from the data pipeline in Section B, and the data pipeline separately from the feed-forward model in Section C. Additionally, we evaluate different choices in our method with an ablation in Section D. In Sections E and F we provide additional details about the dataset we generated with out pipeline, and about the data pipeline itself, respectively, and Section G provides additional detail about the user study. The included supplementary website provides additional examples of applying ViPS to create keyframes for video generation, and shows several examples of walks through the pose space. Additionally, examples of videos and images from the data generation pipeline are provided, as well as additional qualitative comparisons. 
+
+## B Model comparison 
+
+To evaluate our feed-forward model independently of the data, we compare it to a version of AnyTop-pose that we re-trained on our data and call AnyTop-pose-retrained . Unlike AnyTop, our feed-forward model does not require node statistics or node labels as input, due to our use of per-node semantic features that are automatically computed from the rigged input mesh (see Section 3.2). During the training of AnyTop-pose-retrained , as meaningful node labels (e.g., “head”, “neck”, “hips”) are not available in our data, we use all zeros as node embeddings and the ground truth node statistics from the training data. As node statistics and node labels are not available at inference time in practice, we use the same “best-effort” approximation as in Table 1 for AnyTop-pose-retrained, using all zeros as node embeddings, the rest pose as mean, and VLM-derived statistics from the closest available species. We also include an additional variant of the baseline that we provide with ground truth node statistics as input, and that we             
+
+> ⋆This project was done during Honglin’s internship at Adobe Research. 2H. Chen et al.
+> Table B.1: Comparison of Feed-Forward Models on Pose Plausibility and Diversity. We compare our feed-forward model to two version of AnyTop trained on the same data as our model. One version uses the same best-effort approximation of the input we use in Table 1, the other (oracle) uses inputs derived from the ground truth, and is thus not usable in practice, but uses the same type of input as in the original AnyTop paper [6]. We measure distribution similarity (FSD) to the ground truth distribution, and overfitting using a nearest-neighbor-based metric ( ONN ). ViPS performs significantly better then the best-effort version of AnyTop-pose and even slightly outperforms the oracle version, without requiring ground truth data as input. FSD ↓ONN (no overfitting if ≤1)
+> AnyTop-pose 2.00 0.09
+> AnyTop-pose (oracle) 0.43 0.22 ViPS (ours) 0.31 0.29
+
+call AnyTop-pose-retrained (oracle) to emphasize that this ground truth input data is not available for inference in practice. Similar to our approach, we directly use the output of AnyTop, without additional regularization through inverse kinematics. Unlike in the Table 1 comparison, we do have ground truth in this comparison, therefore we compute the Frechet Skeleton Distance (FSD) relative to the ground truth. Additionally, we compute an overfitting measure based on the nearest-neighbor (NN) distances to the dataset samples that we denote as 
+
+ONN . Specifically, we use 200 generated poses from each method and from the ground truth, and compute the ratio of the average ground truth intra-set NN distances (from each ground truth pose to the closest other ground truth pose) to the average inter-set NN distances (from each generated pose to the closest ground truth pose). Intuitively, inter-set distances that are smaller than ground truth intra-set distances indicate overfitting, as generated samples tend to be closer to the ground truth samples than other ground truth samples. Values > 1
+
+indicate overfitting, while values ≤ 1 indicate no overfitting, with very small values indicating misalignment between the distributions. A quantitative comparison is shown in Table B.1 and a qualitative comparison in Figure B.1. We see that our model improves upon the best-effort version of AnyTop-pose-retrained and even slightly outperforms the oracle version, even though it does not require ground truth node labels or node statistics as input. We additionally visualize a 2D embedding of pose distributions of our method compared to baselines and the ground truth for several individuals in Figure B.2. We use the concatenated node positions as feature vectors and show the first two principal components of the distributions as x- and y axes. The plots confirm that our generated pose distributions better match the ground truth than the baselines. ViPS: Video-informed Pose Spaces – Supplementary Material 3AnyTop-pose-retrained Input AnyTop-pose-retrained (oracle) ViPS (ours) 
+
+> Cross-species data
+> (unseen species) (unseen individual) (unseen individual) (unseen species)
+
+Fig. B.1: Model comparison. We evaluate our feed-forward model independently of the data pipeline by comparing poses generated by our method to poses generated by two variants of AnyTop-pose that both have been re-trained on the same data as our model. The oracle variant receives ground truth node statistics and node labels as input that would not be available at inference time in practice and the other variant receives a “best-effort” approximation from data that could realistically be available at inference time. Even though our model does not require node statistics or node labels as input, it performs slightly better than the oracle variant, and significantly outperforms the best-effort variant. 
+
+## C Data comparison 
+
+We compare our data pipeline to Puppeteer independently of the feed-forward model, we compare poses of our generated data and data generated by Puppeteer. Unlike Puppeteer, we do not attempt to explicitly track object points across the video when optimizing our poses to match the video frames, as this has proven to be brittle in earlier experiments. Instead, we rely on the 4D reconstructions from ActionMesh [39], which have proven to be significantly more robust. Several examples are compared in Figure C.1. Our 4D-reconstruction-based approach tends to reconstruct poses more accurately than Puppeteer’s tracking-based approach. 4 H. Chen et al. −2 0 2                                    
+
+> −2
+> 0
+> 2
+> PC 2
+> −1.6 −0.8 0.0 0.8
+> −0.8
+> 0.0
+> 0.8
+> 1.6
+> PC 2
+> −2.5 0.0 2.5
+> −2.5
+> 0.0
+> 2.5
+> −0.4 0.0 0.4
+> −0.4
+> 0.0
+> 0.4
+> −1.5 0.0 1.5 3.0
+> −1.5
+> 0.0
+> 1.5
+> 3.0
+> −0.5 0.0 0.5 1.0
+> 0.0
+> 0.5
+> 1.0
+> −3 036
+> PC 1
+> −3
+> 0
+> 3
+> PC 2
+> −0.6 0.0 0.6 1.2
+> PC 1
+> −0.6
+> 0.0
+> 0.6
+> 1.2
+> PC 2
+> −2 02
+> PC 1
+> −2
+> 0
+> 2
+> 4
+> −0.5 0.0 0.5
+> PC 1
+> 0.0
+> 0.5
+> 1.0
+> −0.8 0.0 0.8 1.6
+> PC 1
+> −0.8
+> 0.0
+> 0.8
+> 1.6
+> −0.3 0.0 0.3 0.6
+> PC 1
+> −0.6
+> −0.3
+> 0.0
+> 0.3
+> Alien (unseen individual) Batman (unseen species) Camel (unseen individual) Eagle (unseen individual) Giraffe (unseen individual) Mink (unseen species)
+> GT Ours AnyTop-pose-retrained AnyTop-pose-retrained (oracle)
+
+Fig. B.2: Sample distributions. We visualize pose distributions using the two first principal components of the concatenated skeleton node positions. We compare our poses (blue) and the two baselines (yellow and red) to the ground truth distribution (green) for several different individuals. Our distribution follows the ground truth distribution more closely than both of the baselines. 
+
+## D Ablation 
+
+In this ablation, we examine the effect of three choices in our data pipeline and feed-forward model. First, we show the effect of using different rigs generated by RigAnything for the same individual. Figure D.1 (top) shows several examples. We can see that the exact rig topology does not strongly affect the rig plausibility or diversity, as rigs typically have sufficient degrees of freedom to accurately capture the pose distribution of a given individual, and our feed-forward model has been trained with a diverse enough set of rigs to generalize to diverse rig topologies. Second, we show the effect of choosing different frames α for the rigged mesh Mα
+
+in Figure D.1 (middle). This choice is important if the 3D shape reconstructed for different frames of the video have different topologies, such as the example we can see here of a duck with open and closed wings. Choosing a frame α with closed wings results in a mesh Mα that does not support opening the wings. Finally, we compare our data pipeline to a version where we apply SAM3D [3] in each frame to get per-frame mesh reconstructions instead of using Actionmesh [39], and use the chamfer distance between surface samples in adjacent frames to establish correspondence. Figure D.1 (bottom) shows examples where we can clearly see that a lack of reliable correspondence between 3D surface points makes pose optimization more difficult and less reliable, resulting in lower-quality poses. Specifically the legs of the horse are hard to track for a 2D tracker, due to their thin structure and frequent occlusions. 
+
+## E Data Details 
+
+The full set of species we used in our cross-species training set is listed here: 
+
+– Bipeds : 11 species (Cassowary, Chicken, Chimpanzee, Crane, Flamingo, Gorilla, Kangaroo, Ostrich, Penguin, Raptor, Trex) ViPS: Video-informed Pose Spaces – Supplementary Material 5ViPS data (ours) Puppeteer video frame video frame video frame video frame pose pose pose pose 
+
+Fig. C.1: Data comparison. We compare our generated data to Puppeteer inde-pendently of the feed-forward model. Both our pipeline and Puppeteer reconstruct poses from video frames. In these examples, we fit poses to frames of a video that was generated from scratch using our data pipeline, while Puppeteer requires a video that was generated using a render of the rest pose mesh Mα as initial frame. For each generated pose (rendered from two different views), we also show the video frame that the pose was reconstructed from. We can see that Puppeteer often does not accurately reconstruct the poses of limbs (highlighted in red), and we found that this is usually due to tracking errors between frames. Our 4D reconstruction does not require explicit tracking or inter-frame correspondences, resulting in more pose reconstructions that more accurately follow the video frames. 
+
+– Fantasy : 10 species (Dragon, Fairy, Goblin, Griffin, Mermaid, Pegasus, Phoenix, Unicorn, Werewolf, Zombie) 
+
+– Fish : 7 species (Dolphin, Eel, Generic Fish, Sea Lion, Shark, Stingray, Whale) 
+
+– Flying : 9 species (Bat, Bird, Eagle, Goose, Owl, Parrot, Pigeon, Pteranodon, Seagull) 
+
+– Humans : 12 “species” (Alien, Angel, Astronaut, Baby, Child, Demon, Elder, Giant, Generic Human, Robot, Superhero, Wizard) 
+
+– Quadrupeds : 52 species (Anteater, Armadillo, Badger, Beaver, Bison, Camel, Capybara, Cat, Cheetah, Chinchilla, Cow, Crocodile, Deer, Dog, Donkey, Elephant, Fox, Frog, Gazelle, Giraffe, Goat, Hedgehog, Hippopotamus, Horse, Hyena, Koala, Komodo dragon, Leopard, Lion, Lizard, Llama, Lynx, Meerkat, Monkey, Moose, Mouse, Okapi, Otter, Pangolin, Pig, Porcupine, Raccoon, Rhinoceros, Sheep, Skunk, Squirrel, Tiger, Turtle, Wild boar, Wolf, Wombat, Zebra) for a total of 101 species. As described in Section 4.1, for each species, we generate two images with Flux, corresponding to two different individuals of the species, and 20 videos for each individual, corresponding to 20 different motions that we sample poses from. Examples of prompts, generated images, generated videos, and reconstructed poses from our data pipeline are provided in the included webpage. The cross-species test set includes one new individual each from two unseen species (Mink, Batman) and one new individual each from four seen species (Alien, Camel, Eagle, Giraffe). 6 H. Chen et al. Input Different Rigs Choice of Frame α SAM3D vs. ActionMesh ViPS poses Input ViPS poses Input ViPS poses Input ViPS poses Pose Recon. With  α=0           
+
+> Video Frames Video Frames Video Frames Video Frames frame 0 frame 13 frame 10 frame 21 frame 20 frame 60 frame 40 frame 80 frame 20 frame 60 frame 40 frame 80 frame 0 frame 13 frame 10 frame 21 Pose Recon. With  α=13
+> α=0 α=13
+> Pose Recon SAM3D Pose Recon. ActionMesh
+
+Fig. D.1: Ablations of three choices. On top, we show samples from our feed-forward model using the same input mesh with different skeletons , which has a limited effect on the generated poses. In the middle, we show the effect of using different frames α for the initial mesh Mα, which can have a large effect on the quality of the reconstructed poses if there are significant topology changes of the 3D shape in different frames. At the bottom, we compare using Actionmesh [39] for 4D reconstruction to per-frame SAM3D [3] reconstruction. We can see that the unreliable 3D surface correspondences between per-frame SAM3D reconstructions significantly lower pose quality (reconstruction errors are marked with red arrows). 
+
+## F Addtional Data Pipeline Details 
+
+F.1 Image Prompt Generation with InternVL 
+
+We instruct InternVL [46] to create a diverse set of individuals for a given species with the following instruction: 
+
+You are a prompt engineer for a text - to - image model . Goal : Write ONE high - quality prompt per image for the given object / species name ( about 30 -50 words ) , with a strong emphasis on FULL - BODY / FULL -OBJECT visibility . Hard requirements ( MUST follow ) : 1) EXACT SUBJECT : Use the provided object / species name as the subject ; do NOT change it to a different species / object . 2) FULL - BODY / FULL - OBJECT ( CRITICAL ) : The ENTIRE subject must be visible from end to end ( e . g . , head - to - toe / nose - to - tail / top - to - bottom ) . Absolutely NO cropping , NO cut - off limbs / ears / tail , NO partial framing . Keep the subject centered with generous margins . 3) WIDE SHOT ( CRITICAL ) : Use a wide shot with the camera pulled back enough to guarantee the whole subject fits comfortably in frame , with extra space around it . 4) BACKGROUND : Solid pure white studio background . NO ground plane , NO visible floor line , NO horizon . 5) LIGHTING : Even , soft , shadowless studio lighting . Avoid harsh cast shadows ; keep reflections minimal . 6) NO NEW ELEMENTS : Do NOT introduce any other objects , humans , animals , props , text , logos , watermarks , scenery , or clutter . ViPS: Video-informed Pose Spaces – Supplementary Material 7
+
+7) Use side or front three - quarter viewpoint ; AVOID direct front or rear views . Diversity requirements ( across prompts for the same subject ) : - Vary viewpoint ( side / front three - quarter ) , slight tilt angle ( especially for animals ) , and pose / orientation while ALWAYS keeping full - body / full -object visibility . No front or rear views . - Vary plausible appearance details while staying true to the subject : - Animals : coat color / pattern , age ( adult / juvenile ) , body build , ear / tail position , head direction . - Rigid objects : material ( metal / plastic / wood / glass ) , color , finish ( matte / gloss ) , wear level ( new / used ) . - Articulated objects : configuration ( folded / unfolded ) , steering angle , arm joint angles , etc . - Keep the style consistent : photorealistic / realistic 3 D render with physically based materials and high detail . Output format : - Output ONLY the final prompt line . - No quotes , no numbering , no bullet points , no extra commentary . Subject name : <... > Category : <... > Object type :: <... > Generate <N > diverse prompts for this subject . Return each prompt on its own line . 
+
+F.2 Motion Prompt Generation with InternVL 
+
+To generate motion prompts, i.e. prompts for generating a video that starts with a previously generated image, we use the following instruction for InternVL [46]: 
+
+You are a prompt engineer . You will be given : - an object appearance description ( EXACT ; do not change it ) , - a target motion ( EXACT ; must be used ) , - a camera constraint ( EXACT ; must be used ) . Write a single high - quality video generation prompt . Hard requirements ( MUST follow ) : 1. ** Use the Provided Motion EXACTLY :** The prompt MUST describe the target motion faithfully . Do NOT replace it with a different motion . Do NOT add extra actions beyond what is stated . 2. ** Keep Appearance CONSISTENT :** Use the provided appearance description as - is . Do NOT invent new colors , accessories , markings , clothing , species , or extra objects . 3. ** NO NEW ELEMENTS ( VERY STRICT ) :** Do NOT introduce any new objects , humans , animals , props , accessories , text , logos , extra scenery items , or additional entities not explicitly present in the provided appearance description . If something is not mentioned in the appearance , it must not appear in the prompt . 4. ** Background & Lighting :** Keep the background simple and stable , consistent with the provided appearance . No new items in the scene . 5. ** Camera Behavior :** STRICTLY STATIC FULL BODY SHOT . Tripod - locked . The entire object visible at all times . ** Single shot , no transitions , no cuts .** NO camera movement . Avoid words like " pan " , " zoom " , " track " , "dolly " , " close - up " , " follow " , " cut " , " scene change " , " transition " , "montage ". 6. ** Natural Physics :** Motion should have realistic weight and timing appropriate to the object . 7. ** Style Default :** If no style is specified , default to " Photorealistic , 4k , high fidelity ." 8. ** Length :** 60 -90 words . 8 H. Chen et al. 
+
+Output ONLY the final prompt . No quotes . No bullet points . No extra commentary . Object ( appearance , keep exact ) : < appearance_text > Target Motion ( must use exact ) : < motion_text > Camera Constraint ( must use exact ) : Static Full Body Shot ( Tripod View ) . The entire object must be visible . NO CAMERA MOVEMENT . NO NEW ELEMENTS : Do not introduce any new objects , humans , or animals not present in the provided appearance description . 
+
+To obtain the object appearance, to be used as appearance_text , we ask In-ternVL to describe the object in the image: 
+
+Describe the object ’ s appearance and the background in 10 -20 words . Be concrete : species / type , main colors , textures / materials , distinctive features , and the background setting . Do NOT describe motion . Do NOT introduce ANY new objects / humans / animals that are not visible . 
+
+And to obtain a description of an object motion, to be used in the motion_text ,we use the following instruction: 
+
+List <N > motion names for a < species_name > using Title Case labels like game animation clips ( examples : Walk ; Run ; Attack ; Get Up ; Bark ; Jump ; Lower Head ; Scratch ; Howl ; Die ) . Each item must be a SHORT label (2 -4 words max , no punctuation , and the whole list should be pose - diverse : each label should correspond to a clearly different full - body pose . Emphasize species - specific , full - body motions with clear pose changes . Avoid trivial micro - actions ( chewing , blinking , swallowing , ear flicks , lip licking , open / close beak ) , tail - only loops ( tail wagging / swishing / flicking ) , and static / near - static actions ( standing still , idling with no clear pose change ) . Include a mix of idles / loops and one - off actions ( e . g . , Idle variants , Walk / Run loops , Jump , Fall , Get Up , attacks / defense ) . Separate them with semicolons . Do not include camera directions . Use only English . Output ONLY the <N > motion names . No quotes . No bullet points . No extra commentary . 
+
+F.3 Pose Filtering and Rig Filtering 
+
+In rare cases, the 4D reconstruction with ActionMesh [39] in our data generation pipeline can produce nearly static 4D reconstructions when it fails to recover meaningful motion. To handle these cases, we introduce a filter that measures the root-mean-square (RMS) joint displacement of each frame relative to the first frame, normalized by the mesh bounding-box diagonal. We mark a clip as static and exclude it if at least 90% of frames have displacement smaller than a threshold (we pick 0.0015). We filter out 0.71% of the clips in the dataset. Additionally, RigAnything [18] may occasionally produce rigs with artifacts, resulting in suboptimal degrees of freedom for capturing deformed poses during reconstruction or feed-forward prediction. To mitigate this issue, we filter gener-ated rigs using mesh-containment and topology constraints. Specifically, for each bone, we sample points along the parent-child segment and mark the bone as invalid if either the fraction of its length lying outside the mesh is at least 50% or its maximum distance from the mesh surface exceeds a threshold (we choose 0.1). A rig is accepted only if it contains no invalid bones and its parent graph ViPS: Video-informed Pose Spaces – Supplementary Material 9   
+
+> Fig. G.1: User study screenshot. We compare pose distributions for a given in-dividual with two-alternative forced choice tests such as the comparison shown here. We show 15 poses of each method in grids on the left and right side, with the input individual in its rest pose in the center.
+
+is acyclic. For each mesh, we evaluate up to 10 random seeds and keep the first rig that satisfies these criteria; if none do, we retain the best-scoring candidate among all attempts for robustness. 
+
+## G Additional User Study Details 
+
+In the user study, we compare poses distributions with two-alternative forced choice tests, comparing two sets of randomly sampled poses for the same individual. We display 15 poses for each of the two methods in 3 × 5 grids on the left and right-hand side of the comparison, and the rigged input mesh is shown in the center. An example of a comparison is shown in Figure G.1. Particpants were university student and vision/graphics researchers.
