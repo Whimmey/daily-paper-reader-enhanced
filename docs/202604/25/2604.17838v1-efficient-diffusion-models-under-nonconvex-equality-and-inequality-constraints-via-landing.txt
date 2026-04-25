@@ -1,0 +1,6893 @@
+Title: Efficient Diffusion Models under Nonconvex Equality and Inequality constraints via Landing
+
+URL Source: https://arxiv.org/pdf/2604.17838v1
+
+Published Time: Tue, 21 Apr 2026 02:14:43 GMT
+
+Number of Pages: 50
+
+Markdown Content:
+# Efficient Diffusion Models under Nonconvex Equality and Inequality constraints via Landing 
+
+Kijung Jeon 1 Michael Muehlebach 2 Molei Tao 1
+
+## Abstract 
+
+Generative modeling within constrained sets is es-sential for scientific and engineering applications involving physical, geometric, or safety require-ments (e.g., molecular generation, robotics). We present a unified framework for constrained diffu-sion models on generic nonconvex feasible sets Σ
+
+that simultaneously enforces equality and inequal-ity constraints throughout the diffusion process. Our framework incorporates both overdamped and underdamped dynamics for forward and back-ward sampling. A key algorithmic innovation is a computationally efficient landing mechanism that replaces costly and often ill-defined projec-tions onto Σ, ensuring feasibility without iterative Newton solves or projection failures. By leverag-ing underdamped dynamics, we accelerate mixing toward the prior distribution, effectively alleviat-ing the high simulation costs typically associated with constrained diffusion. Empirically, this ap-proach reduces function evaluations and memory usage during both training and inference while preserving sample quality. On benchmarks featur-ing equality and mixed constraints, our method achieves comparable sample quality to state-of-the-art baselines while significantly reducing com-putational cost, providing a practical and scalable solution for diffusion on nonconvex feasible sets. 
+
+## 1. Introduction 
+
+Generative modeling is a fundamental machine learning task. In recent years, denoising diffusion models (Ho et al., 2020; Song et al., 2021) have become the state-of-the-art in image, audio, and video generation, matching and surpassing earlier approaches such as GAN (Goodfellow et al., 2014; Dhariwal & Nichol, 2021). Key advantages include ease of training, high-fidelity sampling, and their flexibility in conditional generation.   
+
+> 1Georgia Institute of Technology 2MPI-IS. Correspondence to: Molei Tao <mtao@gatech.edu >.
+> Preprint. April 21, 2026.
+
+The majority of these impressive results have been achieved for data in an unconstrained space, particularly Rd. While this suffices for digital content creation, there are many emerging applications in science and engineering, where the generation of high-fidelity samples that adhere to con-straints is crucial. Examples include molecular generation (Jing et al., 2022; Watson et al., 2023; Wu et al., 2022), where atoms must satisfy distance or chirality constraints and respect physical laws, robotics (Chi et al., 2023; R ¨omer et al., 2025; Ma et al., 2025), where trajectories are subject to dynamics, actuation limits, safety margins, and collision-avoidance, and shape optimization for engineering design (Wagenaar et al., 2024; Kyaw et al., 2025; Regenwetter et al., 2022), where specifications, symmetries, and manufacturing impose constraints. In these settings, a valid sample needs to remain inside a non-trivial feasible set Σ ⊂ Rd, as constraint violations would render the generation physically meaningless or unsafe. Un-fortunately, enforcing constraints in diffusion models is challenging: (i) Projection-based methods demand repeated Newton-iterations, which scales poorly with dimension and may fail when Σ is nonconvex and projections are unde-fined (Christopher et al., 2024b); (ii) Reparametrization encodes the constraints implicitly, which requires domain knowledge, may alter the conditioning of the score match-ing, and the fidelity of the sampling. Reparametrizations might be hard to find in applications with complex mixed equality-inequality constraints (Lou & Ermon, 2023); (iii) Penalty and barrier methods (Nocedal & Wright, 2009; Fish-man et al., 2023a) incorporate constraints through additional terms in the objective function, which may introduce bias (barrier functions), lead to constraint violations (penalty), and result in additional hyperparameters that are difficult to tune. Consequently, constrained diffusion is computationally de-manding as both training and inference rely on the simu-lation of diffusion processes. For example, this poses a significant bottleneck for applications including robotics - where trajectories have to be generated in real time on resource-constrained hardware. This article addresses the need for computationally-efficient constrained diffusion. Our contributions are threefold: 1
+
+> arXiv:2604.17838v1 [cs.LG] 20 Apr 2026 Efficient Diffusion Models under Nonconvex Constraints via Landing
+
+• (Landing based diffusion process) We extend the recently developed constrained optimization technique of landing (Muehlebach & Jordan, 2022; Ablin & Peyr ´e, 2022; Schechtman et al., 2023; Muehlebach & Jordan, 2025) to generative modeling, enabling inexpensive first-order updates that steer every step of the diffusion process toward Σ without requiring exact projections or Newton iterations. Landing incurs a negligible computational overhead and provably maintains feasibility along the path. • (Unified framework for constraints) Our method works for general nonconvex feasible sets as we develop an SDE-based framework that unifies both equality and inequality constraints. • (Fast constrained diffusion via underdamped dynam-ics) The framework encompasses constrained versions of both underdamped and overdamped Langevin dynam-ics. The fast mixing of the underdamped version is lever-aged to substantially reduce the length of forward trajec-tory N to reach the prior distribution, thereby cutting the dominant sampling (up to 47 ×) and training cost (up to 
+
+5×) in constrained diffusion models. 
+
+## 2. Related Works 
+
+Recent works have extended score-based diffusion mod-els from Euclidean spaces to non-Euclidean domains. Our setup considers a domain specified by equality and inequal-ity constraints, and closely related is a rich collection of successful generative models for manifold data (Mathieu & Nickel, 2020; Rozen et al., 2021; De Bortoli et al., 2022; Huang et al., 2022; Chen & Lipman, 2024; Zhu et al., 2025). However, while many manifolds considered (such as Sd
+
+and SO (n)) can also be specified using equality constraints, the geometry of the constrained set can easily become too complicated to handle when there are a large number of con-straints, or when the constraints introduce manifolds with boundaries or even lower dimensional structures. Approaches directly targeting constrained generation also exist, particularly when data lie in a bounded subset Σ ⊂ Rd.Several strategies have been explored. For example, classi-cal reflected Brownian motion (Williams, 1987; Pilipenko, 2014) was recently leveraged to create constrained diffusion models (Fishman et al., 2023a; Lou & Ermon, 2023; Fish-man et al., 2023b), and the recent development of mirror Langevin dynamics and algorithms (the version of (Zhang et al., 2020; Li et al., 2022)) was also employed for con-strained generation (Liu et al., 2023). However, the for-mer approach is difficult to be made simulation-free and/or tractable in the conditional score, which is essential for effi-ciency, while the latter only works for convex constraints. Even more recently, Riemannian Denoising Diffusion Prob-abilistic Models (RDDPM) (Liu et al., 2025b) extends score-based models to general manifolds via per-step Newton’s projections, ensuring feasibility but incurring sizable com-putational cost and occasional projection failures on non-convex sets. In parallel, Riemannian Flow Matching (RFM) (Chen & Lipman, 2024) learns manifold flows without pro-jections for simple manifolds, yet typically needs a long integration horizon or still projections on nontrivial geome-tries. In the light of these advances, we construct an efficient dif-fusion process that remains on feasible sets described by equality and inequality constraints. The key is to incorporate landing, a technique developed in constrained optimization (Muehlebach & Jordan, 2022; Ablin & Peyr ´e, 2022; Schecht-man et al., 2023; Muehlebach & Jordan, 2025), which han-dles non-convex constraints and guarantees feasibility (with-out requiring projections, retractions, or evaluations of the exponential map that tend to be expensive). 
+
+## 3. Preliminaries & Notations 
+
+Constrained set and geometry. We implement the diffu-sion model on a constrained set 
+
+Σ := x ∈ Rd | h(x) = 0 , g (x) ≤ 0
+
+defined by smooth equality constraints h : Rd → Rm and inequality constraints g : Rd → Rl. For theoretical analysis, we assume that Σ is a stratified manifold and constraints 
+
+h, g satisfy the relaxed Constant Rank Constraint Quali-fication (rCRCQ) (Minchenko & Stakhovski, 2011) on a neighborhood of Σ.Specifically, for each x ∈ Rd with the index set of ac-tive inequalities Ix := {j ∈ [l] | gj (x) ≥ 0}, we say that rCRCQ holds if, for every index set J ⊂ Ix, the set 
+
+{∇ hi(y)}mi=1 ∪ {∇ gj (y)}j∈J has the same rank for any 
+
+y in the neighborhood of x (see Remark 3 for further dis-cussion on rCRCQ). We note that the rCRCQ implies that the stacked Jacobian 
+
+∇J(x) ∈ R(m+|Ix|)×d (with J(x) := [ h(x), g Ix (x) + ϵ]T )has a constant rank in the neighborhood of x, where the boundary repulsion rate ϵ > 0 is a hyperparameter to be introduced later. Due to this result, the tangent space of Σ
+
+is characterized by the kernel of the Jacobian, given by 
+
+TxΣ := p ∈ Rd | ∇ J(x)p = 0 .
+
+Accordingly, the orthogonal projector Π( x) := I −∇J(x)T G(x)†∇J(x) onto TxΣ is well-defined, where 
+
+G(x)† is the Moore-Penrose pseudo-inverse of G(x) := 
+
+∇J(x)∇J(x)T .For the reference measure on Σ, we use the induced surface (Hausdorff) measure on Σ, denoted as dσ Σ.2Efficient Diffusion Models under Nonconvex Constraints via Landing 
+
+In the underdamped setting, the natural phase space is the cotangent bundle given by 
+
+T ∗Σ := (x, p ) ∈ Rd × Rd | x ∈ Σ, ∇J(x)p = 0 
+
+In this manifold, the natural reference measure is the Liou-ville measure dσ T ∗Σ(x, p ) = dσ Σ(x) ⊗ dp (x) where dp (x)
+
+is Lebesgue measure on T ∗ 
+
+> x
+
+Σ := p ∈ Rd | ∇ J(x)p = 0 .For the detailed background and notations, see subsec-tion B.1 for the overdamped, subsection B.2 for the un-derdamped, and the table of key notations (Table 5). 
+
+Time grid and schedule. In our paper, we use continuous time t ∈ [0 , T ] and a uniform grid tk := k∆t for k ∈{0, ..., N } with T = N ∆t for the implementation of the diffusion model with step size ∆t > 0.Also, the noise magnitudes used in implemented diffusion models are specified by a scheduler σ : [0 , T ] → R+ and, in our case, we use the linear scheduler given by σ(t) := 
+
+σmin + tT (σmax − σmin ) with σk := σ(tk).
+
+## 4. Main results 
+
+4.1. Constrained Langevin Dynamics via Landing 
+
+Classical constrained samplers take an unconstrained (in 
+
+Rd) or tangential step (in TxΣ) and then project back to 
+
+Σ. This can be problematic for several reasons: (i) on nonconvex manifolds, nearest-point projection can be multi-valued or not globally defined; (ii) per-step projection solves are costly and may fail (e.g. Newton’s method failure); and (iii) behavior near ∂Σ is delicate since the active set Ix
+
+changes frequently. 
+
+From projections to landing mechanisms. We therefore seek a projection-free scheme that remains well-posed even when local projections are unreliable. Our approach builds robustness directly into the SDE via a landing term that enforces exponential decay of constraint violation J:
+
+dJ (Xt) = −ασ (t)2J(Xt)dt (Target landing property) so discretization-induced infeasibility self-corrects without explicit projection. The landing modifies only the normal component of the drift, while leaving the tangential drift and diffusion unchanged, so trajectories evolve intrinsically on Σ
+
+(or T ∗Σ in the underdamped case). Formally, any diffusion process Xt with this property enjoys the guarantees stated in Lemma 1. For detailed proofs of the mathematical claims below, see Appendix B. 
+
+Lemma 1 (Exponential decay of constraint functions) .
+
+Under the target property dJ (Xt) = −ασ (t)2J(Xt)dt ,the diffusion process Xt satisfies the following constraint satisfaction property almost surely: 
+
+hi(Xt) = hi(X0)e−αS (t), t ≥ 0
+
+and 
+
+(
+
+gj (Xt) = −ϵ + ( gj (X0) + ϵ)e−αS (t), t ≤ τj,ϵ 
+
+gj (Xt) ≤ 0, t ≥ τj,ϵ ,
+
+where S(t) := R t 
+
+> 0
+
+σ(s)2ds and τj,ϵ are defined to be 
+
+τj,ϵ := inf 
+
+
+
+t ≥ 0 | S(t) ≥ 1
+
+α ln 
+
+ gj (X0) + ϵϵ
+
+ 
+
+for all j ∈ IX0 .
+
+Constrained Overdamped Langevin dynamics via Land-ing (OLLA). Following the framework proposed in Jeon et al. (2025), we first derive such landing-based constrained Langevin dynamics for the overdamped case. By viewing constrained Langevin dynamics in Lagrangian form (Rous-set et al., 2010), we pick a Lagrangian process dλ t so that it can impose the target property dJ (Xt) = −ασ (t)2J(Xt)dt 
+
+and have a closed-form SDE as follows: 
+
+Proposition 1 (Construction, stationarity and backward process of OLLA) . Consider the following Lagrangian form constrained overdamped Langevin dynamics of 
+
+Xt ∼ qt:
+
+dX t = − 12 σ(t)2∇f (Xt)dt +σ(t)◦dW t +∇J(Xt)T dλ t
+
+(1) 
+
+where dλ t is the adapted process such that dJ (Xt) = 
+
+−ασ (t)2J(Xt). The explicit solution of dλ t provides the closed form SDE of (1) as follows: 
+
+dX t = − σ(t)2
+
+2 Π( Xt)∇f (Xt) dt + σ(t)Π( Xt) dW t
+
++
+
+h
+
+− ασ (t)2∇J(Xt)T G†(Xt)J(Xt)
+
+| {z }
+
+> Landing term
+
++ σ(t)2
+
+2 H(Xt)
+
+i
+
+dt. 
+
+Furthermore, the backward process ←
+
+Xt of OLLA is: 
+
+d←
+
+Xt = 12 σ(T − t)2Π( ←
+
+Xt)
+
+h
+
+∇f (←
+
+Xt)+2 ∇ ln qT −t(←
+
+Xt)
+
+i
+
+dt 
+
++ 12 σ(T − t)2H(←
+
+Xt)dt + σ(T − t)Π( ←
+
+Xt) ◦ d ¯Wt
+
+− ασ (T − t)2∇J(←
+
+Xt)T G†(←
+
+Xt)J(←
+
+Xt)
+
+| {z }
+
+> Landing term
+
+dt. 
+
+3Efficient Diffusion Models under Nonconvex Constraints via Landing 
+
+where H is the mean curvature correction term defined as 
+
+H(x) := −∇ J(x)T G†(x)
+
+
+
+Tr  ∇2J1(x)Π( x)
+
+...
+
+Tr  ∇2Jm+|Ix|(x)Π( x) .
+
+By assuming σ(t) constant and X0 ∈ Σ, OLLA has the stationary distribution qΣ ∝ exp( −f (x)) with respect to 
+
+dσ Σ.
+
+Constrained Underdamped Langevin Dynamics via Landing (ULLA). In the underdamped case, we are required to satisfy both the target property dJ (Xt) =
+
+−ασ (t)2J(Xt)dt and also the momentum tangency con-straint ∇J(Xt)Pt = 0 so that (Xt, P t) ∈ T ∗Σ for t ≥
+
+0. Therefore, we control the two Lagrangian processes 
+
+dλ t, dμ t to impose such constraints, and the resulting solu-tion of Lagrangian processes produces the following closed SDE for ULLA: 
+
+Proposition 2 (Construction, stationarity, and backward process of ULLA) . Consider the following Lagrangian form constrained underdamped Langevin of (Xt, P t) ∼
+
+qt:
+
+
+
+dX t = σ(t)2Ptdt + ∇J(Xt)T dλ t,dP t = −σ(t)2∇f (Xt)dt − σ(t)2γP tdt +∇J(Xt)Tdμ t
+
++ σ(t)p2γ ◦ dW t,
+
+(2) 
+
+where dλ t, dμ t are the adapted processes such that 
+
+dJ (Xt) = −ασ (t)2J(Xt) (position constraint) and 
+
+∇J(Xt)Pt = 0 (momentum tangency constraint), re-spectively. Assuming ∇J(X0)P0 = 0, the explicit solution of 
+
+dλ t, dμ t provides the closed form SDE of (2) as follows: 
+
+
+
+dX t =σ(t)2Ptdt − ασ (t)2∇J(Xt)T G†(Xt)J(Xt)dt, dP t =Π( Xt) −σ(t)2∇f (Xt) − σ(t)2γP t
+
+ dt 
+
+− σ(t)2∇J(Xt)T G†(Xt)H1(Xt, P t)dt 
+
++ ασ (t)2∇J(Xt)T G†(Xt)H2(Xt, P t)dt 
+
++ σ(t)p2γΠ( Xt)dW t,
+
+where H1 ∈ Rm+|Ix|, H2 ∈ R(m+|Ix|)×(m+|Ix|) are the curvature correction terms defined as 
+
+[H1(x, p )] i := pT ∇2Ji(x)p
+
+[H2(x, p )] i := pT ∇2Ji(x)( ∇J(x)T G†(x)J(x)) 
+
+with [H1(x, p )] i, [H2(x, p )] i being the ith entry and col-umn of H1(x, p ), H2(x, p ) respectively. Furthermore, the backward process ←
+
+Xt of ULLA is given as: 
+
+
+
+d←
+
+Xt = −σ(T − t)2←
+
+P tdt 
+
+− ασ (T − t)2∇J(←
+
+Xt)T G†(←
+
+Xt)J(←
+
+Xt)dt, d←
+
+P t = σ(T − t)2Π( ←
+
+Xt)
+
+
+
+∇f (←
+
+Xt) + γ←
+
+P t
+
+
+
+dt 
+
++ 2 γσ (T − t)2Π( ←
+
+Xt)∇p ln qT −t(←
+
+Xt, ←
+
+P t)dt 
+
++ σ(T − t)2∇J(←
+
+Xt)T G†(←
+
+Xt)H1(←
+
+Xt, ←
+
+P t)dt 
+
++ ασ (T − t)2∇J(←
+
+Xt)T G†(←
+
+Xt)H2(←
+
+Xt, ←
+
+P t)dt 
+
++ σ(T − t)p2γΠ( ←
+
+Xt)d ¯Wt.
+
+By assuming σ(t) constant and X0 ∈ Σ, ∇J(X0)P0 =0, ULLA has the stationary distribution qT ∗Σ ∝
+
+exp( −f (x) − 12 ∥p∥2) with respect to dσ T ∗Σ.
+
+4.2. Transition Kernels for Forward / Backward Process 
+
+In this section, we outline the discretization of the OLLA and ULLA processes. For the notations, we let xk for k ∈{1, ..., N } to be the position vector at k-th discrete step of the diffusion process, and set qk, p k, p θk to be the marginal probability densities for forward and backward processes, and the parametrized backward process of xk. Also, we set pN , ρ (·| x) to be the prior of position and momentum where the momentum prior is given by Π( x)ζ ∼ ρ(·| x) with 
+
+ζ ∼ N (0 , I d). For detailed derivations of the discretization schemes below, we refer to subsection B.4. 
+
+Discretization of OLLA. For OLLA, the discretization is straightforward. We employ a standard Euler-Maruyama scheme to integrate the corresponding SDE as follows: 
+
+
+
+xk+1 =xk − σ2
+
+> k
+
+∆t
+
+2 Π( xk)∇f (xk) + σk
+
+√∆tΠ( xk)ζk
+
+− ασ 4
+
+> k
+
+∆t
+
+2 (∇JT G†J)( xk) + κOk
+
+xk =xk+1 + σ2
+
+> k+1
+
+∆t
+
+2 Π( xk+1 ) [ ∇f + sk+1 ] ( xk+1 )+ σk+1 
+
+√∆tΠ( xk+1 )ζk+1 
+
+− ασ 2
+
+> k+1
+
+∆t(∇JT G†J)( xk+1 ) + κOk+1 
+
+where κOk := σ2 
+
+> k
+> 2
+
+H(xk)∆ t is the mean curvature term and 
+
+sk(xk) := 2 ∇ ln qk(xk), which can be learned by a neural network sθk+1 .
+
+Discretization of ULLA. For ULLA, we adopt a spe-cialized scheme to achieve 2× memory efficiency , which becomes critical for storing long forward trajectories during training. The method is based on the 1st order non-symmetric OBA 4Efficient Diffusion Models under Nonconvex Constraints via Landing 
+
+splitting integrator. To eliminate the need to explicitly store the momentum trajectory, we first use an approximated 
+
+˜B step, which relies on the before-O step momentum on correction terms H1, H2, rather than after, and secondly, we leverage the recursive nature of the update rule to express the momentum at step k as a function of positions at previous steps, using an approximated momentum vector ˜pk.This collapses the dynamics into the 2nd order Markov chain solely depending on position variables xk as follows: 
+
+
+
+xk+1 = xk + σ2
+
+> k
+
+∆tΠ( xk) ak ˜pfwd  
+
+> k
+
+− σ2
+
+> k
+
+∆t∇f (xk)
+
++ σ2
+
+> k
+
+∆t
+
+q
+
+1 − a2
+
+> k
+
+Π( xk)ζk
+
+− ασ 2
+
+> k
+
+∆t(∇JT G†J)( xk) + κUk, fwd 
+
+xk = xk+1 − σ2
+
+> k+1
+
+∆tΠ( xk+1 )ak+1 ˜pbwd 
+
+> k+1
+
+− σ4
+
+> k+1
+
+∆t2Π( xk+1 ) [ ∇f + sk+1 ] ( xk+1 , ˜pbwd 
+
+> k+1
+
+)+ σ2
+
+> k+1
+
+∆t
+
+q
+
+1 − a2
+
+> k+1
+
+Π( xk+1 )ζ′
+
+> k+1
+
+− ασ 2
+
+> k+1
+
+∆t(∇JT G†J)( xk+1 ) + κUk+1 ,bwd 
+
+where ak = e−γσ 2  
+
+> k∆t
+
+∈ [0 , 1] is a decaying factor induced by friction γ and the approximated momentum are defined by ˜pfwd  
+
+> k
+
+:= Π( xk)  (xk − xk−1)/(σ2
+
+> k−1
+
+∆t) and ˜pbwd  
+
+> k+1
+
+:= Π( xk+1 )  (xk+2 − xk+1 )/(σ2
+
+> k+2
+
+∆t). Also, the curvature correction terms are provided as: 
+
+
+
+κUk, fwd := −σ4
+
+> k
+
+∆t2∇J(xk)T G†(xk)
+
+· H1(xk, ˜pfwd  
+
+> k
+
+) − H 2(xk, ˜pfwd  
+
+> k
+
+)
+
+κUk+1 ,bwd := −σ4
+
+> k+1
+
+∆t2∇J(xk+1 )T G†(xk+1 )
+
+· H1(xk+1 , ˜pbwd 
+
+> k+1
+
+) + αH2(xk+1 , ˜pbwd 
+
+> k+1
+
+)
+
+Similarly, we define approximated score sθk+1 and train a neural network to approximate this: 
+
+sk+1 (xk+1 , ˜pbwd 
+
+> k+1
+
+) := 2 γ  ∇p ln qk+1 (xk+1 , ˜pbwd 
+
+> k+1
+
+) + ˜ pbwd 
+
+> k+1
+
+
+
+Remark 1 (Discretization by Newton solver) . Projection-based variants of proposed methods, denoted OLLA-P and ULLA-P, can be obtained by dropping all normal landing and correction terms, and instead solving a Lagrangian mul-tiplier system at each step so that h(xk) = 0 . For the detailed derivation, we refer to subsection B.4. 
+
+Remark 2 (Error decomposition and benefits of ULLA) .
+
+Informally, sample generation error via backward process decomposes into mixing Emix , discretization Edisc , and score estimation Escore terms: 
+
+W2(q0, p θ
+
+> 0
+
+) ≤ E mix + Edisc + Escore .
+
+In this point of view, ULLA significantly reduces Emix via ballistic dynamics, accelerating convergence and enabling smaller trajectory lengths N compared to OLLA. Addition-ally, the momentum variable mitigates score singularities near t = 0 , yielding a potentially smoother training objec-tive for Escore . We refer to Remark 4 for a detailed discus-sion. 
+
+4.3. Conditional Wasserstein Path Matching (CWPM) 
+
+Since the proposed OLLA and ULLA do not use per-step projections, intermediate samples xk may exhibit minor constraint violations and lie off Σ. This renders previously proposed training loss, such as DT-ELBO (Liu et al., 2025b) or score matching (De Bortoli et al., 2022; Huang et al., 2022), theoretically unstable, as they rely on the assumption that xk ∈ Σ, which can lead to singularity issues. This problem is particularly acute when measuring the NLL loss, where small violations can introduce substantial bias and undermine its reliability as a sample quality metric. To resolve these theoretical issues, we propose the CWPM framework as below, which is based on the Wasserstein dis-tance rather than KL-divergence, eliminating such theoreti-cal singularities. The derivation involves the relationship be-tween Gelbrich distance and 2-Wasserstein distance (Borelle et al., 2023; Gelbrich, 1990), and refer to Appendix D for detailed proofs and assumptions. 
+
+Theorem 1 (CWPM variational bound – overdamped, informal) . Let T θk+1 = pθ (xk|xk+1 ) be the backward transition kernel of the discretized OLLA and define the circuitous density at step k as 
+
+σk := qkT θk T θk−1, ..., T θ 
+
+> 1
+
+, σ0 := q0.
+
+Assuming existence of Λk+1 > 0 such that 
+
+W2(σk, σ k+1 ) ≤ Λk+1 W2(qk, q k+1 T θk+1 ) + O(√∆t)
+
+for k ∈ { 0, ..., N − 1}, which holds under minor regu-larity assumptions on the score and constraint functions (Lemma D.1), we have W2(q0, p θ
+
+> 0
+
+) ≲ Lo(θ) + Co, where 
+
+Lo(θ) := E
+
+ 
+
+> N−1
+
+X
+
+> k=0
+
+∥Π( xk+1 )( xk − μok+1 (xk+1 )) ∥2
+
+| {z } 
+
+> := ℓot(θ)
+
+
+
+and μok+1 (xk+1 ) is the tangential part mean of the parametrized backward process of OLLA defined by 
+
+μok+1 (xk+1 ) := xk+1 + σ2
+
+> k+1
+
+∆t
+
+2 Π( xk+1 )∇f (xk+1 )+ σ2
+
+> k+1
+
+∆t
+
+2 Π( xk+1 )sk+1  
+
+> θ
+
+(xk+1 )
+
+with Co being a constant independent of θ.
+
+Similarly, the following results hold for the underdamped: 5Efficient Diffusion Models under Nonconvex Constraints via Landing 
+
+Theorem 2 (CWPM variational bound – underdamped, informal) . Let yk = ( xk, x k+1 ) ∈ R2d where xk ∼
+
+qk, x k+1 ∼ qk+1 . Define ¯qk to be the law of yk and set ¯T θk+1 = pθ (yk|yk+1 ) to be the associated backward transition kernel to yk. We set the circuitous density at step k as 
+
+¯σk := ¯ qk ¯T θk ¯T θk−1, ..., ¯T θ 
+
+> 1
+
+, ¯σ0 := ¯ q0.
+
+Assuming existence of ¯Λk+1 > 0 such that 
+
+W2(¯ σk, ¯σk+1 ) ≤ ¯Λk+1 W2(¯ qk, ¯qk+1 ¯T θk+1 ) + O(∆ t),
+
+for k ∈ { 0, ..., N − 1}, which holds under minor regu-larity assumptions on the score and constraint functions (Lemma D.2), we have W2(q0, p θ
+
+> 0
+
+) ≲ Lu(θ) + Cu,
+
+Lu(θ) := E
+
+ 
+
+> N−1
+
+X
+
+> k=0
+
+∥Π( xk+1 ) xk − μuk+1 (xk+1 , x k+2 )∥2
+
+| {z } 
+
+> := ℓut(θ)
+
+
+
+where μuk+1 (xk+1 ) is the tangential part mean of the parametrized backward process of ULLA defined by 
+
+μuk+1 := xk+1 − ak+1 σ2
+
+> k+1
+
+∆tΠ( xk+1 )˜ pbwd 
+
+> k+1
+
+− σ4
+
+> k+1
+
+∆t2Π( xk+1 ) ∇f (xk+1 ) + sk+1  
+
+> θ
+
+(xk+1 , ˜pbwd 
+
+> k+1
+
+)
+
+with Cu being a constant independent of θ.
+
+Choice of Training Loss. We remark that other works on diffusion models (Ho et al., 2020; Wang et al., 2024; Karras et al., 2022) demonstrated that choosing the train-ing loss weight λ(k) proportional to the inverse of the variance up to a proportionality constant of 1/2 (in our case, λ(k) = 1 /  2σ2
+
+> k+1
+
+∆t for overdamped and λ(k) = 1/  2σ4
+
+> k+1
+
+∆t2(1 − a2
+
+> k+1
+
+) for underdamped) is helpful for training the score network. Notably, the resulting training losses 
+
+
+
+Lover CWPM (θ) = Ex0: N
+
+"N −1X
+
+> k=0
+
+ℓot (θ)2σ2
+
+> k+1
+
+∆t
+
+#
+
+Lunder CWPM (θ) = Ex0: N ,p N |xN
+
+"N −1X
+
+> k=0
+
+ℓut (θ)2σ4
+
+> k+1
+
+∆t2(1 − a2
+
+> k+1
+
+)
+
+#
+
+lead to exactly the same training loss provided in DT-ELBO ((Liu et al., 2025b), or Lemma C.1 and Lemma C.2) without the requirement xk ∈ Σ. Summarizing the proposed frame-works, we leave the complete algorithms to Algorithm 1 (OLLA) and Algorithm 2 (ULLA) for detailed implementa-tion. 
+
+## 5. Experiments 
+
+We evaluate on benchmarks largely following RDDPM (Liu et al., 2025b)—Earth/climate datasets, mesh data, the 25 50 75 100 125 150 175 200  
+
+> N
+> 0.10
+> 0.11
+> 0.12
+> 0.13
+> 0.14
+> 0.15
+> 0.16
+> Mean JSD distance
+> Nvs JSD on S2 Flood
+> OLLA
+> RDDPM (OLLA-P)
+> ULLA
+> ULLA-P
+
+Figure 1. Mean JSD on S2 flood versus trajectory length N under the fixed T . Cross mark (×) indicates the smallest N values after which projection failures no longer occur during the forward process. 
+
+SO (10) manifold, and Alanine dipeptide—and add a 7-Degree of Freedom (DOF) robot arm trajectory task. We compare against state-of-the-art (SOTA) constrained genera-tive model algorithms such as RFM (Chen & Lipman, 2024) and RDDPM, as well as Euclidean forward with backward variants baselines to highlight the importance of handling intrinsic geometry and learning the score function on Σ. We leave experimental setup, baseline descriptions, and hyper-parameters in Appendix E. Also, following the practical landing-based sampling scheme demonstrated in Zhang et al. (2022); Jeon et al. (2025), where landing-based constrained sampling performs robustly even without explicit correction terms, we set the correction terms κ = 0 to circumvent the high computational cost of Hessian-related calculations. 
+
+5.1. Equality-only Scenario Tasks Earth and climate science datasets. This benchmark lives on the 2-sphere S2, where nearest-point projection is globally available, so landing-based dynamics are not strictly required. Nevertheless, we use this dataset to (i) assess the intrinsic benefits of underdamped dynamics and (ii) quantify the sampling quality–computational cost trade-off under landing. From Figure 1, due to faster mixing of the underdamped dynamics, underdamped algorithms (ULLA, ULLA-P) markedly reduce the needed forward length N : ULLA-P is stable without projection failure even at N = 40 , whereas RDDPM (OLLA-P) requires at least N ≈ 150 to avoid failures. Thus, smaller N yields large training-time sav-ings while preserving comparable sample quality. Although exact projections are available here, Table 1 indicate that ULLA incurs comparable sampling quality under negligible constraint violations; visual comparisons of ULLA (subsec-tion E.3) show similarly generated distribution to projection-based methods, supporting the practical value of landing. 
+
+3D Mesh data on learned manifold. Unlike the 2-sphere, meshes lie on manifolds where nearest-point projection is not globally defined and, in our benchmark, must be 6Efficient Diffusion Models under Nonconvex Constraints via Landing 
+
+Table 1. Generative performance comparison on Earth & Climate, and Mesh datasets. We report the Jensen-Shannon Distance (JSD) calculated using 2D spherical histograms (θ, ϕ ) for Earth & Climate data and face histograms for Mesh data. The average |h|
+
+measures the equality constraint violation of generated samples. Results represent the mean ± standard error over five independent runs. For the trajectory length N , A/B denotes the values used for Earth/Climate (A) and Mesh datasets (B), respectively. Bold and underline indicate the best and second-best performing methods. 
+
+Earth & Climate (JSD) Mesh Data (JSD) Avg. |h|
+
+Method N Volcano Earthquake Flood Fire Bunny-50 Bunny-100 Cow-50 Cow-100 (Earth / Mesh) 
+
+Riemannian-based 
+
+RFM 1000 0.116 ±.002 0.089 ±.001 0.108 ±.002 0.058 ±.001 0.035 ±.001 0.047 ±.001 0.043 ±.002 0.050 ±.002 5.2e-8/1.5e-4
+
+RDDPM 400 0.123 ±.004 0.093 ±.002 0.106 ±.002 0.051 ±.001 0.032 ±.001 0.034 ±.000 0.046 ±.001 0.034 ±.001 1.7e-8/1.6e-5
+
+Euclidean fwd. + bwd. variant 
+
+Euclidean 50 /30 0.158 ±.005 0.163 ±.004 0.135 ±.016 0.140 ±.001 0.040 ±.001 0.047 ±.001 0.048 ±.001 0.063 ±.001 4.1e-2/4.2e-2
+
+Projected 50 /30 0.156 ±.005 0.152 ±.003 0.133 ±.012 0.133 ±.001 0.049 ±.000 0.051 ±.001 0.057 ±.001 0.068 ±.001 2.1e-8/6.4e-8
+
+Lagrangian 50 /30 0.156 ±.004 0.152 ±.003 0.137 ±.011 0.133 ±.001 0.047 ±.001 0.050 ±.001 0.056 ±.001 0.067 ±.001 8.5e-10 /1.1e-4
+
+Guided 50 /30 0.160 ±.006 0.174 ±.003 0.146 ±.021 0.158 ±.002 0.068 ±.005 0.050 ±.002 0.051 ±.001 0.065 ±.001 2.1e-2/8.2e-1
+
+Ours 
+
+OLLA 100 0.128 ±.005 0.096 ±.002 0.103 ±.002 0.060 ±.001 0.030 ±.000 0.032 ±.001 0.047 ±.001 0.035 ±.001 3.9e-9/3.4e-6
+
+ULLA-P 100 /50 0.122 ±.007 0.092 ±.001 0.103 ±.002 0.053 ±.001 0.040 ±.001 0.038 ±.001 0.040 ±.001 0.035 ±.001 8.4e-9/4.2e-5
+
+ULLA 50 /30 0.125 ±.005 0.099 ±.002 0.110 ±.001 0.069 ±.002 0.029 ±.001 0.033 ±.001 0.044 ±.001 0.036 ±.001 2.1e-9/1.5e-7
+
+Table 2. Comparison of computational efficiency (Wall-clock time). Total training time and simulation times (Sim.) are reported in seconds, where Sim. denotes the time spent on forward tra-jectory simulation during training. Our landing-based methods (OLLA, ULLA) exhibit significantly lower simulation cost than Riemannian baselines. 
+
+Method Earth (s) Mesh (s) 
+
+(Traj. length N ) (Train / Sim.) (Train / Sim.) 
+
+Riemannian-based 
+
+RFM ( 1000 ) 4019 (0) 145424 (112244) 
+
+RDDPM ( 400 ) 12388 (3302) 1916 (126) 
+
+Ours 
+
+OLLA ( 100 ) 1686 (749) 642 (4 .0) 
+
+ULLA-P ( 100 /50 ) 1631 (1154) 387 (10 .5) 
+
+ULLA ( 50 /30 ) 1021 (530 ) 360 (2.0)
+
+approximated by a Newton solver because the constraint 
+
+h(x) = 0 is represented by a learned neural network -making projection-based sampling computationally expen-sive. In this regime, landing becomes particularly effec-tive: as shown in Table 1, ULLA and ULLA-P show com-parable JSD of RDDPM and RFM with far fewer steps 
+
+(N = 30 , 50) , yielding 5× faster training and up to 47 ×
+
+faster sampling than RDDPM. The gains stem from the combinations of the following facts: (i) the underdamped dynamics permits much smaller N , and (ii) landing (partic-ularly without curvature corrections) requires only a single constraint-gradient evaluation per step, avoiding iterative projections. These improvements indicate that, for complex learned manifolds where projection is expensive, ULLA provides a scalable and efficient alternative. 
+
+High-dimensional special orthogonal group: SO(10). 
+
+This experiment evaluates scalability on the high-dimensional Lie group SO (10) ⊂ R100 , defined by 55 
+
+equality constraints (XT X = I); det (X) = 1 condition is checked based on rejection. The synthetic distribution is multimodal with m modes, and sampling quality is assessed by power-trace statistics. As shown in Figure 2a and subsec-tion E.3, landing-based methods (ULLA/ULLA-P/OLLA) remain efficient on this complex manifold, producing high-quality samples with a forward trajectory length of N = 50 ,whereas RDDPM requires at least N ≈ 150 to avoid projec-tion failures. 
+
+5.2. Mixed Scenario Tasks. 0.2 0.0 0.2 0.4 0.6 0.8 1.0 
+
+> 0.6
+> 0.4
+> 0.2
+> 0.0
+> 0.2
+> 0.4
+> 0.6
+> Y position
+> Top-Down Trajectory View
+> X position
+> True Tr ajectories Gener ated Tr ajectories Obst acles
+
+Figure 3. Generated Robot arm trajectories (red) by ULLA. 
+
+Alanine dipeptide and 7-DOF robot arm. 
+
+We further evaluate our landing algorithms under complicated mixed con-straints setup. The provided feasible set 
+
+Σ are defined by complex equality and inequality constraints. In these set-tings, exact projections are often numerically unstable or computationally pro-hibitive. As summarized in Table 3, standard baselines encounter significant difficulties: the Projected Euclidean variant failed in the high-dimensional 7-DOF robot arm 7Efficient Diffusion Models under Nonconvex Constraints via Landing 2 4 6 8        
+
+> 0.0
+> 0.2
+> 0.4
+> 0.6
+> 0.8
+> 1.0
+> 1.2
+> Tr( S1)
+> Generated
+> True
+> 505
+> 0.0
+> 0.1
+> 0.2
+> 0.3
+> 0.4
+> 0.5
+> Tr( S2)
+> 505
+> 0.00
+> 0.05
+> 0.10
+> 0.15
+> 0.20
+> 0.25
+> 0.30
+> Tr( S4)
+> 2.5 0.0 2.5 5.0 7.5
+> 0.00
+> 0.05
+> 0.10
+> 0.15
+> 0.20
+> 0.25
+> 0.30
+> 0.35
+> Tr( S5)
+
+(a) Power-trace statistics on SO (10) 120 140 160 180      
+
+> 0.000
+> 0.005
+> 0.010
+> 0.015
+> 0.020
+> 0.025
+> 0.030
+> 0.035
+> 0.040
+> distribution
+> 0.0 0.2 0.4 0.6
+> 0
+> 1
+> 2
+> 3
+> 4
+> 5
+> 6
+> 7
+> 8
+> RMSD to Center ( 150°)
+> Generated
+> True
+
+(b) ψ angle and RMSD on Dipeptide exp. 
+
+Figure 2. Generative performance on complex geometric tasks. (a) Histograms of the generated power-trace statistics Tr  Sk  for 
+
+k ∈ { 1, 2, 4, 5} on SO (10) (m = 5 ), where ULLA (green) accurately recovers the ground-truth (red) distributions. (b) Joint distribution of ψ angle and Root Mean Square Deviation (RMSD) for the Alanine Dipeptide task; the blue shaded area represents the feasible region defined by inequality constraints ψ ∈ [130 ◦, 170 ◦].
+
+Table 3. Unified generative performance on mixed constraint tasks. We report JSD (lower is better) with standard errors. Left: Scalability on 7-DOF robot arm ( N = 100 ) across dimensions d. Middle: Alanine Dipeptide conformation ( N = 100 ). Right: Average constraint violations for Robot (Rob) and Alanine (Ala). NaN indicates method failure (divergence or projection failure). 
+
+7-DOF Robot Arm (JSD) Alanine (JSD) Violations (Avg.) 
+
+Method d = 140 d = 280 d = 420 d = 560 ψ Angle RMSD Rob-|h| Rob-|g+| Ala-|h| Ala-|g+|
+
+Euclidean fwd. + bwd. variant 
+
+Euclidean 0.498 ±.028 0.656 ±.034 0.647 ±.022 0.750 ±.025 0.150 ±.003 0.057 ±.001 8.3e-1 5.3e-3 5.7e-2 2.4e-3
+
+Lagrangian 0.769 ±.043 0.816 ±.005 0.831 ±.001 0.831 ±.002 NaN 4.9e-2 1.6e-3 NaN Projected NaN 0.145 ±.002 0.073 ±.005 NaN 5.4e-8 3.3e-3
+
+Guided 0.499 ±.028 0.655 ±.041 0.665 ±.013 0.740 ±.033 0.152 ±.003 0.057 ±.002 8.0e-1 4.9e-3 5.7e-2 2.4e-3
+
+Ours 
+
+ULLA 0.275 ±.011 0.295 ±.006 0.366 ±.005 0.391 ±.012 0.031 ±.002 0.035 ±.002 1.8e-5 1.5e-9 1.4e-7 6.0e-11 
+
+Table 4. Ablation study on hyperparameters α and ϵ. The results suggest that moderate values best balance distribution matching and constraint satisfaction while avoiding discretization errors or numerical instability. 
+
+Parameter Value JSD Metric 
+
+Landing Rate α 
+
+> (Metric: E[|h|])
+
+1.0 0.134 ±.004 5.5e-3
+
+10.0 0.053 ±.004 1.0e-3
+
+50.0 0.033 ±.002 7.2e-5
+
+100.0 0.051 ±.003 3.7e-5
+
+Repulsion Rate ϵ 
+
+> (Metric: E[g+])
+
+0.01 0.048 ±.002 5.5e-7
+
+0.05 0.033 ±.002 8.0e-8
+
+0.1 0.052 ±.007 5.3e-4
+
+0.5 0.081 ±.009 2.0e-1
+
+task due to severe projection failures, while the Lagrangian 
+
+Euclidean variant failed to converge to a high-quality dis-tribution in the Dipeptide task. For similar issues, OLLA, OLLA-P, ULLA-P failed in this setup. In contrast, our proposed ULLA method demonstrates supe-rior performance compared to the valid Euclidean forward-backward variants. ULLA not only achieves significantly lower JSDs, consistently outperforming Euclidean base-lines even as the dimension scales, but also maintains ex-tremely low constraint violations (e.g., avg. |h| ≈ 10 −5 and 
+
+|g+| ≈ 10 −9), effectively respecting the complex geometry without the need for expensive multiple projection steps. 
+
+Effect of landing rate α and repulsion rate ϵ. We ana-lyze how the landing rate α and boundary repulsion rate ϵ
+
+impact generation quality (JSD) and constraint satisfaction on the Alanine Dipeptide task with ULLA (fixing ϵ = 0 .05 
+
+for α ablation and α = 50 for ϵ ablation). As shown in Table 4, increasing α significantly reduces equality viola-tions and improves JSD by strengthening the drift toward Σ.However, excessively large α may introduce large discretiza-tion error, which can degrade sample quality (see Table 8 for full ablation). Similarly, Figure 8 indicates that ϵ re-quires a balanced choice: while too small ϵ causes boundary “stickiness,” overly large ϵ aggressively pushes trajectories 
+
+## 6. Conclusion 
+
+We introduce a landing-based overdamped and under-damped Langevin process that avoids costly projections on general constrained sets, establishing a unified constrained diffusion model framework. By leveraging the fast mixing property of underdamped Langevin dynamics, we shorten the forward trajectory, which significantly reduces func-tion evaluations and memory usage. This approach achieves strong generative performance while drastically cutting com-putational costs for both training and sampling. 8Efficient Diffusion Models under Nonconvex Constraints via Landing 
+
+## References 
+
+Ablin, P. and Peyr ´e, G. Fast and accurate optimization on the orthogonal manifold without retraction. International Conference on Artificial Intelligence and Statistics , 2022. Abraham, M. J., Murtola, T., Schulz, R., P ´all, S., Smith, J. C., Hess, B., and Lindahl, E. Gromacs: High perfor-mance molecular simulations through multi-level paral-lelism from laptops to supercomputers. SoftwareX , 1: 19–25, 2015. Borelle, M., Alamo, T., Stoica, C., Bertrand, S., and Ca-macho, E. F. Minimal gelbrich distance to uncorrelation. 
+
+IEEE Control Systems Letters , 8:61–66, 2023. Brakenridge, G. R. Global active archive of large flood events, 2017. URL http://floodobservatory. colorado.edu/Archives/index.html .Chen, R. T. and Lipman, Y. Flow matching on general geometries. In International Conference on Learning Representations , 2024. Chen, R. T., Rubanova, Y., Bettencourt, J., and Duvenaud, D. K. Neural ordinary differential equations. Advances in neural information processing systems , 31, 2018. Chen, S., Chewi, S., Li, J., Li, Y., Salim, A., and Zhang, A. R. Sampling is as easy as learning the score: theory for diffusion models with minimal data assumptions. arXiv preprint arXiv:2209.11215 , 2022. Cheng, X., Chatterji, N. S., Bartlett, P. L., and Jordan, M. I. Underdamped Langevin MCMC: A non-asymptotic anal-ysis. In Conference on Learning Theory , pp. 300–323, 2018. Chi, C., Xu, Z., Feng, S., Cousineau, E., Du, Y., Burchfiel, B., Tedrake, R., and Song, S. Diffusion policy: Visuomo-tor policy learning via action diffusion. Robotics: Science and Systems , 2023. Chirikjian, G. S. Stochastic Models, Information Theory, and Lie Groups, Volume 1: Classical Results and Geo-metric Methods . Springer Science & Business Media, 2009. Christopher, J. K., Baek, S., and Fioretto, N. Constrained synthesis with projected diffusion models. Advances in Neural Information Processing Systems , 37:89307– 89333, 2024a. Christopher, J. K., Baek, S., and Floretto, F. Constrained synthesis with projected diffusion models. Advances in Neural Information Processing Systems , 2024b. Crane, K., Pinkall, U., and Schr ¨oder, P. Robust fairing via conformal curvature flow. ACM Transactions on Graph-ics , 32(4):1–10, 2013. De Bortoli, V., Mathieu, E., Hutchinson, M., Thornton, J., Teh, Y. W., and Doucet, A. Riemannian score-based generative modelling. Advances in Neural Information Processing Systems , 35:2406–2422, 2022. Dhariwal, P. and Nichol, A. Diffusion models beat GANs on image synthesis. Advances in Neural Information Processing Systems , 34:8780–8794, 2021. Dockhorn, T., Vahdat, A., and Kreis, K. Score-based genera-tive modeling with critically-damped Langevin diffusion. In International Conference on Learning Representations ,2022. Fiorin, G., Klein, M. L., and H ´enin, J. Using collective vari-ables to drive molecular dynamics simulations. Molecular Physics , 111(22-23):3345–3362, 2013. Fishman, N., Klarner, L., Bortoli, V. D., Mathieu, E., and Hutchinson, M. Diffusion models for constrained do-mains. Transactions on Machine Learning Research ,2023a. Fishman, N., Klarner, L., Mathieu, E., Hutchinson, M., and De Bortoli, V. Metropolis sampling for constrained diffu-sion models. Advances in Neural Information Processing Systems , 36:62296–62331, 2023b. Gelbrich, M. On a formula for the L2-Wasserstein met-ric between measures on Euclidean and Hilbert spaces. 
+
+Mathematische Nachrichten , 147(1):185–203, 1990. Goodfellow, I. J., Pouget-Abadie, J., Mirza, M., Xu, B., Warde-Farley, D., Ozair, S., Courville, A., and Ben-gio, Y. Generative adversarial networks. arxiv preprint arXiv:1406.2661 , 2014. Gropp, A., Yariv, L., Haim, N., Atzmon, M., and Lipman, Y. Implicit geometric regularization for learning shapes. 
+
+arXiv preprint arXiv:2002.10099 , 2020. Ho, J., Jain, A., and Abbeel, P. Denoising diffusion proba-bilistic models. Advances in Neural Information Process-ing Systems , 33:6840–6851, 2020. Huang, C.-W., Aghajohari, M., Bose, J., Panangaden, P., and Courville, A. C. Riemannian diffusion models. Ad-vances in Neural Information Processing Systems , 35: 2750–2761, 2022. Janin, R. Directional derivative of the marginal function in nonlinear programming. In Sensitivity, Stability and Parametric Analysis , pp. 110–126. Springer, 2009. Jeon, K., Muehlebach, M., and Tao, M. Fast non-log-concave sampling under nonconvex equality and inequal-ity constraints with landing. In Advances in Neural Infor-mation Processing Systems (NeurIPS) , 2025. 9Efficient Diffusion Models under Nonconvex Constraints via Landing 
+
+Jing, B., Corso, G., Chang, J., Barzilay, R., and Jaakkola, T. Torsional diffusion for molecular conformer genera-tion. Advances in Neural Information Processing Systems ,2022. Karras, T., Aittala, M., Aila, T., and Laine, S. Elucidating the design space of diffusion-based generative models. 
+
+Advances in Neural Information Processing Systems , 35: 26565–26577, 2022. Kyaw, A. H., Jeon, S. H., Smith, M., and Gershenfeld, N. Making physical objects with generative ai and robotic as-sembly: Considering fabrication constraints, sustainabil-ity, time, functionality and accessibility. arxiv preprint arXiv:2504.19131v2 , 2025. Leli `evre, T., Pigeon, T., Stoltz, G., and Zhang, W. Analyzing multimodal probability measures with autoencoders. The Journal of Physical Chemistry B , 128(11):2607–2631, 2024. Li, R., Tao, M., Vempala, S. S., , and Wibisono, A. The mirror Langevin algorithm converges with vanishing bias. 
+
+International Conference on Algorithmic Learning The-ory , 2022. Liang, J., Christopher, J. K., Koenig, S., and Fioretto, F. Si-multaneous multi-robot motion planning with projected diffusion models. arXiv preprint arXiv:2502.03607 ,2025. Liu, G.-H., Chen, T., Theodorou, E. A., and Tao, M. Mir-ror diffusion models for constrained and watermarked generation. Advances in Neural Information Processing Systems , 2023. Liu, Z., Zhang, W., and Li, T. Improving the euclidean diffusion generation of manifold data by mitigating score function singularity. arXiv preprint arXiv:2505.09922 ,2025a. Liu, Z., Zhang, W., Sch ¨utte, C., and Li, T. Riemannian denoising diffusion probabilistic models. arXiv preprint arXiv:2505.04338 , 2025b. Lou, A. and Ermon, S. Reflected diffusion models. Interna-tional Conference on Machine Learning , 2023. Ma, H., Bodmer, S., Carron, A., Zeilinger, M., and Muehlebach, M. Constraint-aware diffusion guidance for robotics: Real-time obstacle avoidance for autonomous racing. Conference on Robot Learning , 2025. Ma, Y.-A., Chatterji, N. S., Cheng, X., Flammarion, N., Bartlett, P. L., and Jordan, M. I. Is there an analog of Nesterov acceleration for gradient-based MCMC? arXiv preprint, arXiv:1902.00996 , 2021. Mathieu, E. and Nickel, M. Riemannian continuous normal-izing flows. Advances in Neural Information Processing Systems , 2020. Minchenko, L. and Stakhovski, S. On relaxed constant rank regularity condition in mathematical programming. 
+
+Optimization , 60(4):429–440, 2011. Muehlebach, M. and Jordan, M. I. On constraints in first-order optimization: A view from non-smooth dynamical systems. Journal of Machine Learning Research , 23(256): 1–47, 2022. Muehlebach, M. and Jordan, M. I. Accelerated first-order optimization under nonlinear constraints. Mathematical Programming , 2025. NASA Earth Observing System Data and In-formation System (EOSDIS). Active fire data, 2020. URL https://earthdata. nasa.gov/earth-observation-data/ near-real-time/firms/active-fire-data .Data from the Land, Atmosphere Near real-time Capability for EOS (LANCE) system. National Geophysical Data Center / World Data Service (NGDC/WDS). NCEI/WDS Global Significant Earth-quake Database. URL https://www.ngdc.noaa. gov/hazard/earthqk.shtml .National Geophysical Data Center / World Data Ser-vice (NGDC/WDS). NCEI/WDS Global Significant Volcanic Eruptions Database, 2020. URL https: //data.nodc.noaa.gov/cgi-bin/iso?id= gov.noaa.ngdc.mgg.hazards:G10147 .Nocedal, J. and Wright, S. J. Numerical Optimization . 2009. Paszke, A., Gross, S., Massa, F., Lerer, A., Bradbury, J., Chanan, G., Killeen, T., Lin, Z., Gimelshein, N., Antiga, L., et al. Pytorch: An imperative style, high-performance deep learning library. Advances in neural information processing systems , 32, 2019. Pilipenko, A. An introduction to stochastic differential equations with reflection . Universit ¨atsverlag Potsdam, 2014. Regenwetter, L., Nobari, A. H., and Ahmed, F. Deep gen-erative models in engineering design: A review. arxiv preprint arXiv:2110.10863 , 2022. Rockafellar, R. T. and Wets, R. J. Variational analysis .Springer, 1998. Rousset, M., Stoltz, G., and Lelievre, T. Free energy com-putations: a mathematical perspective . World Scientific, 2010. 10 Efficient Diffusion Models under Nonconvex Constraints via Landing 
+
+Rozen, N., Grover, A., Nickel, M., and Lipman, Y. Moser flow: Divergence-based generative modeling on mani-folds. Advances in Neural Information Processing Sys-tems , 34:17669–17680, 2021. R ¨omer, R., von Rohr, A., and Schoellig, A. P. Diffusion pre-dictive control with constraints. Conference on Learning for Dynamics and Control , 2025. Schechtman, S., Tiapkin, D., Muehlebach, M., and Moulines, E. Orthogonal directions constrained gradient method: from non-linear equality constraints to Stiefel manifold. Conference on Learning Theory , 2023. Solodov, M. V. et al. Constraint qualifications. Wiley Ency-clopedia of Operations Research and Management Sci-ence. Wiley, New York , 2010. Song, Y., Sohl-Dickstein, J., Kingma, D. P., Kumar, A., Er-mon, S., and Poole, B. Score-based generative modeling through stochastic differential equations. International Conference on Learning Representations , 2021. Stewart, G. W. On the continuity of the generalized in-verse. SIAM Journal on Applied Mathematics , 17(1): 33–45, 1969. Strasman, S., Surendran, S., Boyer, C., Corff, S. L., Lemaire, V., and Ocello, A. Wasserstein convergence of critically damped langevin diffusions. arXiv preprint arXiv:2511.02419 , 2025. Turk, G. and Levoy, M. Zippered polygon meshes from range images. In Annual conference on Computer Graph-ics and Interactive Techniques , pp. 311–318, 1994. W ¨achter, A. and Biegler, L. T. On the implementation of an interior-point filter line-search algorithm for large-scale nonlinear programming. Mathematical programming ,106(1):25–57, 2006. Wagenaar, T., Mancini, S., and Mateo-Gab ´ın, A. Generative aerodynamic design with diffusion probabilistic models. 
+
+arxiv preprint arXiv:2409.13328 , 2024. Wang, Y., He, Y., and Tao, M. Evaluating the design space of diffusion-based generative models. Advances in Neural Information Processing Systems , 37:19307–19352, 2024. Watanabe, S. and Ikeda, N. Stochastic differential equations and diffusion processes . Elsevier, 2011. Watson, J. L., Juergens, D., Bennett, N. R., Yim, B. L. T. J., Eisenach, H. E., Ahern, W., Borst, A. J., Ragotte, R. J., Milles, L. F., Wicky, B. I. M., Hanikel, N., Pellock, S. J., Courbet, A., Sheffler, W., Wang, J., Venkatesh, P., Sappington, I., Torres, S. V., Lauko, A., Bortoli, V. D., Mathieu, E., Ovchinnikov, S., Barzilay, R., Jaakkola, T. S., DiMaio, F., Baek, M., and Baker, D. De novo design of protein structure and function with RFdiffusion. 
+
+Nature , 620:1089–1100, 2023. Williams, R. J. Reflected Brownian motion with skew sym-metric data in a polyhedral domain. Probability Theory and Related Fields , 75(4):459–485, 1987. Wu, K. E., Yang, K. K., van den Berg, R., Zou, J. Y., Lu, A. X., and Amini, A. P. Protein structure generation via folding diffusion. arxiv preprint arXiv:2209.15611 , 2022. Zhang, K. S., Peyr ´e, G., Fadili, J., and Pereyra, M. Wasser-stein control of mirror Langevin Monte Carlo. Conference on Learning Theory , 2020. Zhang, R., Liu, Q., and Tong, X. Sampling in constrained do-mains with orthogonal-space variational gradient descent. 
+
+Advances in Neural Information Processing Systems , 35: 37108–37120, 2022. Zhu, Y., Chen, T., Kong, L., Theodorou, E. A., and Tao, M. Trivialized momentum facilitates diffusion generative modeling on Lie groups. International Conference on Learning Representations , 2025. 11 Efficient Diffusion Models under Nonconvex Constraints via Landing 
+
+TABLE OF CONTENTS 
+
+1 Introduction 12 Related Works 23 Preliminaries & Notations 24 Main results 3
+
+4.1 Constrained Langevin Dynamics via Landing . . . . . . . . . . . . . . . . . . . . . . . . . . . 34.2 Transition Kernels for Forward / Backward Process . . . . . . . . . . . . . . . . . . . . . . . . 44.3 Conditional Wasserstein Path Matching (CWPM) . . . . . . . . . . . . . . . . . . . . . . . . . 5
+
+5 Experiments 6
+
+5.1 Equality-only Scenario Tasks . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 65.2 Mixed Scenario Tasks. . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 7
+
+6 Conclusion 8A Table of Key Notation, Additional Remarks, and Algorithms 13 B Constrained Langevin Dynamics 18 
+
+B.1 Construction of OLLA . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 18 B.2 Construction of ULLA . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 22 B.3 Properties and Backward processes of Constrained Langevin Dynamics with Landing . . . . . . 26 B.4 Discretization of Constrained Langevin Dynamics . . . . . . . . . . . . . . . . . . . . . . . . . 29 
+
+C DT-ELBO on Riemannian manifold 33 D Conditional Wasserstein Path Matching (CWPM) 36 E Experiment settings and Supplementary Results 43 
+
+E.1 Description of baseline algorithms . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 43 E.2 Experiment settings and descriptions . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 44 E.3 Generated samples from tasks. . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 48 E.4 Supplementary results - Effect of hyperparameters α and ϵ. . . . . . . . . . . . . . . . . . . . . 50 12 Efficient Diffusion Models under Nonconvex Constraints via Landing 
+
+## A. Table of Key Notation, Additional Remarks, and Algorithms 
+
+Table 5. Table of Key Notations 
+
+Symbol Definition Descriptions 
+
+h h(x) = [ h1(x), . . . , h m(x)] T Equality constraints 
+
+g g(x) = [ g1(x), . . . , g l(x)] T Inequality constraints 
+
+Σ {x ∈ Rd | h(x) = 0 , g (x) ≤ 0} Constraint manifold 
+
+Ix {i ∈ [l] | gi(x) ≥ 0} = i1, .., i |Ix| Active index set of inequalities 
+
+gIx gIx (x) = [ gi1 (x), ...g i|Ix | (x)] T Active inequality constraints 
+
+J(x) h(x)T , g i1 (x) + ϵ, ..., g i|Ix | (x) + ϵ T Constraint-correction vector 
+
+Π( x) I − ∇ J(x)T G(x)†∇J(x) Orthogonal projector onto TxΣ
+
+TxΣ {p ∈ Rd | ∇ h(x)v = 0 , ∇gIx (x)v = 0 } Tangent space of Σ at xT ∗Σ (x, p ) ∈ R2d | x ∈ Σ, p ∈ TxΣ ≃ T Σ Cotangent bundle of Σ
+
+∇Σf Π( x)∇f (x) Intrinsic gradient on Σ
+
+div ΣX Tr (Π( x)∇X(x)) Intrinsic divergence on Σ
+
+dσ Σ Surface (Hausdorff) measure of Σ Natural measure on Σ
+
+dσ T ∗Σ Liouville measure of T ∗Σ Natural measure on T ∗Σ
+
+G(x) ∇J(x)∇J(x)T Gram matrix 
+
+ϵ Boundary repulsion rate Controls effect of repulsion. 
+
+α Landing rate Controls constraint decay 
+
+γ Friction coefficient Used in ULLA, ULLA-P 
+
+ρΣ Target (stationary) density on Σ Proportional to exp( −f )dσ Σ
+
+KL Σ(ρ∥π) R 
+
+> Σ
+
+ρ ln ρπ dσ Σ KL-divergence on Σ
+
+T, N Continuous and discrete terminal time Relationship: T = N ∆tσ(t), σ k σmin + tT (σmax − σmin ), σk = σ(k∆t) Noise schedule function 
+
+qt, p θt Continuous time marginal densities at t Forward qt, Backward pθt
+
+qk, p θk Discrete time marginal densities at k Forward qk, Backward pθk
+
+pN , ρ (·| x) Prior distribution of x and p (pN varies) ρ(·| x) ∼ Π( x)ζ, ζ ∼ N (0 , I )˜pfwd  
+
+> k
+
+Π( xk)
+
+ xk −xk−1
+
+> σ2
+> k−1∆t
+
+
+
+Forward approximated momentum 
+
+˜pbwd  
+
+> k
+
+Π( xk+1 )
+
+ xk+2 −xk+1 
+
+> σ2
+> k+2 ∆t
+
+
+
+Backward approximated momentum 13 Efficient Diffusion Models under Nonconvex Constraints via Landing 
+
+Remark 3 (Comments on relaxed Constant Rank Constraint Qualification (rCRCQ)) . In this remark, we further clarify the definition of the relaxed Constant Rank Constraint Qualification (rCRCQ) and its relationship with other constraint qualifications. We first recall the definitions of the Linear Independence Constraint Qualification (LICQ), Constant Rank Constraint Qualification (CRCQ) (Janin, 2009), and its relaxed version (rCRCQ) (Minchenko & Stakhovski, 2011). 
+
+Definition A.1 (LICQ, CRCQ, and rCRCQ; (Solodov et al., 2010)) . Let Σ := x ∈ Rd | h(x) = 0 , g (x) ≤ 0 be the feasible set, and denote Ix = {i ∈ [l] | gi(x) ≥ 0} to be the active index set of inequalities. • LICQ (Rockafellar & Wets, 1998): LICQ holds at x ∈ Σ if the set {∇ hi(x)}mi=1 ∪ {∇ gj (x)}j∈Ix is linearly independent. • CRCQ (Janin, 2009): CRCQ holds at x ∈ Σ if there exists a neighborhood U ⊂ Rd of x such that for any subsets of indices I ⊂ [m] and J ⊂ Ix, the family of gradients {∇ hi(y)}i∈I ∪ {∇ gj (y)}j∈J has a constant rank for all y ∈ U .• rCRCQ (Minchenko & Stakhovski, 2011): rCRCQ holds at x ∈ Σ if there exists a neighborhood U ⊂ Rd of x such that for any subset of active inequalities J ⊂ Ix, the family of gradients {∇ hi(y)}mi=1 ∪ {∇ gj (y)}j∈J has a constant rank for all y ∈ U .The core reason for assuming rCRCQ lies in the stability of the SDE coefficients. It is a fundamental result in matrix analysis (Stewart, 1969) that the Moore-Penrose pseudo-inverse A(x)† is continuous at a point x0 if and only if the rank of A(x) is constant in a neighborhood of x0. By assuming rCRCQ, we guarantee that the Jacobian ∇J(x) maintains locally constant rank (even as the active set changes across strata), which ensures that the pseudo-inverse G(x)† and the resulting projection operator Π( x) are continuous and well-defined. Therefore, this guarantees the drift vector and diffusion matrix of the OLLA and ULLA dynamics to be well defined. 
+
+Hierarchy of Constraint Qualifications. We remark that, from the variational analysis and optimization literature (e.g., (Solodov et al., 2010)), rCRCQ is a strictly weaker condition than CRCQ, and CRCQ is strictly weaker than LICQ, therefore, their logical implication is as follows: LICQ =⇒ CRCQ =⇒ rCRCQ .
+
+In particular, rCRCQ can relax the gradient degeneracy problem appearing in LICQ. To illustrate a case where LICQ fails due to gradient degeneracy while rCRCQ holds, consider a feasible set Σ ⊂ R3
+
+representing the z-axis. It is defined by two equality constraints and one redundant inequality constraint with a nonlinear term: 
+
+h1(x) = x1 = 0 , h2(x) = x2 = 0 ,g(x) = x1 + x2 + x21 ≤ 0.
+
+On the manifold Σ (where x1 = x2 = 0 ), the inequality is active since g(0) = 0 .• LICQ fails: The gradients at the origin x = 0 are ∇h1 = (1 , 0, 0) T , ∇h2 = (0 , 1, 0) T , and ∇g = (1 , 1, 0) T . We observe that ∇g = ∇h1 + ∇h2, meaning the gradients are linearly dependent. Thus, the Gram matrix is singular, and LICQ is violated. • rCRCQ holds: Now consider the Jacobian matrix of the active constraints for an arbitrary point x ∈ R3:
+
+J(x) = 
+
+
+
+∇h1(x)T
+
+∇h2(x)T
+
+∇g(x)T
+
+ =
+
+
+
+1 0 00 1 01 + 2 x1 1 0
+
+ .
+
+Regardless of the location x, the rank of J(x) is constant and equal to two in the entire neighborhood, satisfying rCRCQ and ensuring that the projection operator Π( x) via the pseudo-inverse G(x)† remains well-defined and continuous. 14 Efficient Diffusion Models under Nonconvex Constraints via Landing 
+
+Extended Usage in Our Framework. While the standard definition of rCRCQ is checking the condition at a point “ x ∈ Σ”, we appropriately extend this usage in our diffusion model context. In particular, since our landing-based discretized sampling algorithms (OLLA, ULLA) involves noise that may push particles slightly off the manifold, we implicitly assume that this constant rank property extends to an sufficiently large neighborhood of Σ which contains all discretized samples {Xk}Nk=0 , or to the entire ambient space Rd. This ensures that the projection operator Π( x) and the drift terms are well-defined not just on Σ, but in the surrounding ambient space Rd where the landing mechanism operates. 
+
+Remark 4 (Error decomposition and probable benefit of ULLA) . Recent theoretical progress on diffusion models (e.g., (Chen et al., 2022; Strasman et al., 2025)) suggests that the total generation error can be naturally decomposed into three distinct components. In the 2-Wasserstein distance, this can be viewed as: 
+
+W2(q0, p θ
+
+> 0
+
+) ≤ E mix 
+
+|{z} 
+
+> Mixing
+
++ Edisc 
+
+|{z} 
+
+> Discretization
+
++ Escore 
+
+| {z } 
+
+> Score estimation
+
+1. Discretization error ( Edisc ) & Mixing error ( Emix ): Regarding discretization, our ULLA implementation employs a memory-efficient first-order splitting scheme; thus, both ULLA and the baseline OLLA share the same convergence order with respect to the step size. However, ULLA gains a significant advantage in the mixing error due to the ballistic behavior of underdamped dynamics, which theoretically accelerates convergence to O(√d/ϵ ) compared to the diffusive 
+
+O(d/ϵ 2) of overdamped dynamics (Cheng et al., 2018; Ma et al., 2021). This allows for a significantly smaller trajectory length N to reach the stationary prior, thereby reducing the computational cost for training and storage. 2. Score estimation error ( Escore ): Employing a constrained forward process with the proposed landing mechanism allows the model to faithfully capture the intrinsic geometry of Σ. Crucially, because the landing mechanism analytically handles the ill-conditioned normal component, the score network sθt is only required to learn the smoother tangential component Π( x)s (Liu et al., 2025a). Adopting underdamped dynamics introduces a trade-off: learning on the extended phase space potentially increases regression complexity compared to position-only models. However, since empirical data distributions are usually supported on some data manifold Σdata ⊂ Σ, standard overdamped models suffer from score singularities where ∥strue  
+
+> t
+
+∥2 ∝ O (1 /t ) near t = 0 (Liu et al., 2025a). In contrast, as highlighted in Dockhorn et al. (2022), underdamped dynamics yield a smoother training objective that bypasses this singularity problem due to the existence of momentum variable. Figure 4 provides empirical evidence of this effect on the volcano experiment. The underdamped model exhibits Jacobian norms that are several orders of magnitude smaller across all times and, in particular, does not show the sharp blow-up near t ≈ 0 that appears in the overdamped case. This suggests that ULLA provides a numerically better-conditioned score regression problem, which can potentially reduce Escore in practice. 0.00 0.25 0.50 0.75 1.00 1.25 1.50 1.75   
+
+> t
+> 10 0
+> 10 1
+> 10 2
+> 10 3
+> 10 4
+> 10 5
+> 10 6
+> st F
+> Comparison of stF
+> ULLA-P
+> RDDPM (OLLA-P)
+
+Figure 4. Comparison of the Frobenius norm of the score Jacobian ∥∇ sθt ∥F over time on the volcano experiment. The overdamped RDDPM (OLLA-P) baseline (red) exhibits very large Jacobian norms and a pronounced singular behavior as t → 0, while the underdamped ULLA-P sampler (blue) remains several orders of magnitude smaller and shows no blow-up near t ≈ 0. Jacobian is taken over to position 
+
+x for the overdamped and to momentum p for the underdamped. 
+
+15 Efficient Diffusion Models under Nonconvex Constraints via Landing 
+
+Algorithm 1 Full Diffusion Pipeline for OLLA / OLLA-P (=RDDPM (Liu et al., 2025b)) 
+
+1: Input: Data distribution qdata , initial score network sθk(x), number of steps N , terminal step N , landing rate α, boundary repulsion rate ϵ, constraints h, g .
+
+2: Options: mode ∈ { OLLA , OLLA-P }, use curvature ∈ { True , False }
+
+3: Output: Trained score network sθk(x), generated sample x0
+
+Part 1: Forward Process (Noising) ▷ Run Forward Process per lf iterations 
+
+4: Sample x0 ∼ qdata = q0
+
+5: for k ∈ { 0, . . . , N − 1} do 
+
+6: Compute ∇f (xk), J(xk), ∇J(xk), G(xk)†, Π( xk)
+
+7: ¯μok(xk) ← xk − 12 σ2
+
+> k
+
+∆tΠ( xk)∇f (xk) ▷ Prior drift term 
+
+8: if mode = OLLA-P then ▷ Projection-based noising 
+
+9: xk+1 ← Proj Σ(¯ μok(xk) + σk
+
+√∆tΠ( xk)ζk), ζk ∼ N (0 , I d)
+
+10: else ▷ Landing-based noising (OLLA) 
+
+11: H(xk) ← 0
+
+12: if use curvature then 
+
+13: Tr ← [Tr  Π∇2J1
+
+ , . . . , Tr 
+
+
+
+Π∇2Jm+|Ixk |
+
+
+
+]T
+
+14: H(xk) ← ∇ J(xk)T G(xk)†Tr 
+
+15: end if 
+
+16: Lk(xk) ← − ασ 2
+
+> k
+
+∆t∇J(xk)T G(xk)−1J(xk) ▷ Landing term 
+
+17: κOk (xk) ← 12 σ2
+
+> k
+
+∆tH(xk) ▷ Curvature term 
+
+18: xk+1 ← ¯μOk (xk) + Lk(xk) + κOk (xk) + σk
+
+√∆tΠ( xk)ζk, ζk ∼ N (0 , I d)
+
+19: end if 
+
+20: end for 
+
+21: xN ← Proj Σ(xN ) ▷ Terminal projection by Newton’s method 
+
+22: Store trajectory {xk}Nk=0 
+
+Part 2: Score Network Training 
+
+23: Lover CWPM (θ) ← PN −1 
+
+> k=0
+> ∥Π( xk+1 )( xk−μok+1 (xk+1 )) ∥2
+> 2σ2
+> k+1 ∆t
+
+24: Update network parameters: θ ← θ − η∇θ Lover CWPM (θ) ▷ η is the learning rate 
+
+Part 3: Backward Process (Sampling) 
+
+25: Sample xN ∼ pN (prior) 
+
+26: for k ∈ { N, . . . , 1} do 
+
+27: Compute ∇f (xk), J (xk), ∇J(xk), G(xk)†, Π( xk)
+
+28: μok(xk) ← xk + 12 σ2
+
+> k
+
+∆tΠ( xk)[ ∇f (xk) + sθk(xk)] 
+
+29: if mode = OLLA-P then ▷ Projection-based variant 
+
+30: xk−1 ← Proj Σ
+
+
+
+μok(xk) + σk
+
+√∆tΠ( xk)ζk
+
+
+
+31: else ▷ Landing-based variant (OLLA) 
+
+32: H(xk) ← 0
+
+33: if use curvature then 
+
+34: Tr ← [Tr  Π∇2J1
+
+ , . . . , Tr 
+
+
+
+Π∇2Jm+|Ixk |
+
+
+
+]T
+
+35: H(xk) ← ∇ J(xk)T G(xk)†Tr 
+
+36: end if 
+
+37: Lk(xk) ← − ασ 2
+
+> k
+
+∆t∇J(xk)T G(xk)†J(xk)
+
+38: κok(xk) ← 12 σ2
+
+> k
+
+∆tH(xk)
+
+39: xk−1 ← μok(xk) + Lk(xk) + κok(xk) + σk
+
+√∆tΠ( xk)ζk
+
+40: end if 
+
+41: end for 
+
+42: x0 ← Proj Σ(x0) ▷ Terminal projection by Newton’s method 
+
+43: return x0
+
+16 Efficient Diffusion Models under Nonconvex Constraints via Landing 
+
+Algorithm 2 Full Diffusion Pipeline for ULLA / ULLA-P 
+
+1: Input: Data distribution qdata , initial score network sθk(x, p ), number of steps N , terminal time T , landing rate α, boundary repulsion rate ϵ, friction γ, constraints h, g .
+
+2: Options: mode ∈ { ULLA , ULLA-P }, use curvature ∈ { True , False }
+
+3: Output: Trained score network sθk(x, p ), generated sample x0
+
+Part 1: Forward Process (Noising) ▷ Run Forward Process per lf iterations 
+
+4: Sample x0 ∼ qdata , p0 ∼ N (0 , I d) and set ˜p0 ← Π( x0)p0
+
+5: x−1 ← x0 − σ2
+
+> −1
+
+∆t˜p0 ▷ Create pseudo-point for first momentum 
+
+6: for k ∈ { 0, . . . , N − 1} do 
+
+7: Compute ∇f (xk), J (xk), ∇J(xk), G (xk)†, Π( xk)
+
+8: ˜pfwd  
+
+> k
+
+← Π( xk)
+
+ xk −xk−1
+
+> σ2
+> k−1∆t
+
+
+
+▷ Approximate momentum from positions 
+
+9: ak ← e−γσ 2 
+
+> k∆t
+
+10: ¯μuk (xk, ˜pfwd  
+
+> k
+
+) ← xk + σ2
+
+> k
+
+∆tΠ( xk)[ ak ˜pfwd  
+
+> k
+
+− σ2
+
+> k
+
+∆t∇f (xk)] ▷ Prior drift term 
+
+11: if mode = ULLA-P then ▷ Projection-based noising 
+
+12: xk+1 ← Proj Σ(¯ μuk (xk, ˜pfwd  
+
+> k
+
+) + σ2
+
+> k
+
+∆t
+
+q
+
+1 − a2
+
+> k
+
+Π( xk)ζk), ζk ∼ N (0 , I d)
+
+13: else ▷ Landing-based noising (ULLA) 
+
+14: H1(xk, ˜pfwd  
+
+> k
+
+), H2(xk, ˜pfwd  
+
+> k
+
+) ← 0, 0
+
+15: if use curvature then 
+
+16: Compute H1, H2 using xk, ˜pfwd 
+
+> k
+
+17: end if 
+
+18: Lk(xk) ← − ασ 2
+
+> k
+
+∆t∇J(xk)T G(xk)†J(xk) ▷ Landing term 
+
+19: κUk, fwd (xk, ˜pfwd  
+
+> k
+
+) ← − σ4
+
+> k
+
+∆t2∇J(xk)T G†(xk)[ H1 − αH2] ▷ Curvature term 
+
+20: xk+1 ← ¯μuk (xk, ˜pfwd  
+
+> k
+
+) + Lk(xk) + κUk, fwd (xk, ˜pfwd  
+
+> k
+
+) + σ2
+
+> k
+
+∆t
+
+q
+
+1 − a2
+
+> k
+
+Π( xk)ζk
+
+21: end if 
+
+22: end for 
+
+23: xN ← Proj Σ(xN ) ▷ Terminal projection by Newton’s method 
+
+24: Store trajectory {xk}Nk=0 
+
+Part 2: Score Network Training 
+
+25: Lunder CWPM (θ) ← PN −1 
+
+> k=0
+> ∥Π( xk+1 )( xk−μuk+1 (xk+1 ,x k+2 )) ∥2
+> 2σ4
+> k+1 ∆t2(1 −a2
+> k+1 )
+
+26: Update network parameters: θ ← θ − η∇θ Lunder CWPM (θ) ▷ η is the learning rate 
+
+Part 3: Backward Process (Sampling) 
+
+27: Sample xN ∼ pN (prior), pN ∼ N (0 , I d). Set ˜pN ← Π( xN )pN .
+
+28: xN +1 ← xN + σ2 
+
+> N
+
+∆t˜pN CommentCreate pseudo-point for terminal momentum 
+
+29: for k ∈ { N, . . . , 1} do 
+
+30: Compute J(xk), ∇J(xk), G (xk)†, Π( xk)
+
+31: ˜pk ← Π( xk)
+
+ xk+1 −xk
+
+> σ2
+> k+1 ∆t
+
+
+
+32: ak ← e−γσ 2 
+
+> k∆t
+
+33: μuk (xk, ˜pbwd  
+
+> k
+
+) ← xk − σ2
+
+> k
+
+∆tΠ( xk)[ ak ˜pbwd  
+
+> k
+
++ σ2
+
+> k
+
+∆t(∇f (xk) + sθk(xk, ˜pbwd  
+
+> k
+
+))] 
+
+34: if mode = ULLA-P then ▷ Projection-based variant 
+
+35: xk−1 ← Proj Σ
+
+
+
+μuk (xk, ˜pbwd  
+
+> k
+
+) + σk
+
+q
+
+∆t(1 − a2
+
+> k
+
+)Π( xk)ζk
+
+
+
+36: else ▷ Landing-based variant (ULLA) 
+
+37: H1(xk, ˜pbwd  
+
+> k
+
+), H2(xk, ˜pbwd  
+
+> k
+
+) ← 0, 0
+
+38: if use curvature then 
+
+39: Compute H1, H2 using xk, ˜pbwd 
+
+> k
+
+40: end if 
+
+41: Lk(xk) ← − ασ 2
+
+> k
+
+∆t∇J(xk)T G(xk)†J(xk)
+
+42: κUk (xk, ˜pbwd  
+
+> k
+
+) ← − σ4
+
+> k
+
+∆t2∇J(xk)T G†(xk)[ H1 + αH2]
+
+43: xk−1 ← μuk (xk, ˜pbwd  
+
+> k
+
+) + Lk(xk) + κUk (xk, ˜pbwd  
+
+> k
+
+) + σk
+
+q
+
+∆t(1 − a2
+
+> k
+
+)Π( xk)ζk
+
+44: end if 
+
+45: end for 
+
+46: x0 ← Proj Σ(x0) ▷ Terminal projection by Newton’s method 
+
+47: return x0
+
+17 Efficient Diffusion Models under Nonconvex Constraints via Landing 
+
+## B. Constrained Langevin Dynamics 
+
+In this section, we review the constrained Langevin dynamics and introduce their landing versions. 
+
+B.1. Construction of OLLA Notations and Background for overdamped setup. We consider the constrained set 
+
+Σ := x ∈ Rd | h(x) = 0 , g (x) ≤ 0 ,
+
+assumed to be a stratified manifold Rd with rCRCQ satisfied. We define the stacked active constraint map and its Jacobian as 
+
+J(x) := [ h(x), g Ix (x) + ϵ] ∈ Rm+|Ix|, ∇J(x) ∈ R(m+|Ix|)×d
+
+where Ix denotes the set of active inequality constraints, i.e., Ix := {i ∈ [l] | gi(x) ≥ 0}. Denote the Gram ma-trix G(x) := ∇J(x)∇J(x)T ∈ R(m+|Ix|)×(m+|Ix|). The orthogonal projector onto the tangent space of TxΣ := p ∈ Rd | ∇ J(x)p = 0 is given by Π( x) = I − ∇ J(x)T G(x)†∇J(x). On this manifold Σ, all intrinsic differential operators are defined via the projector Π. For a smooth scalar function ϕ and smooth vector field X on Σ, we have 
+
+∇Σϕ := Π ∇ϕ, div Σ(X) = Tr (Π ∇X)
+
+and the Laplace-Betrami operator is ∆Σϕ := div Σ(∇Σϕ), where ∆ denotes ambient Euclidean gradient or Jacobian. For comprehensive backgrounds on constrained overdamped Langevin dynamics, see Chapter 3.2 in Rousset et al. (2010). 
+
+Proposition B.1 (Construction of OLLA) . Consider the following Lagrangian-form constrained overdamped Langevin dynamics: 
+
+dX t = − 12 σ(t)2∇f (Xt)dt + σ(t) ◦ dW t + ∇J(Xt)T dλ t (3) 
+
+where dλ t is the adapted process such that dJ (Xt) = −ασ (t)2J(Xt). The explicit minimum norm solution of dλ t is given by 
+
+dλ t = G†(Xt)
+
+
+
+−ασ (t)2J(Xt)dt + 12 σ(t)2∇J(Xt)∇f (Xt)dt − σ(t)∇J(Xt) ◦ dW t
+
+
+
+,
+
+with G(Xt) := ∇J(Xt)∇J(Xt)T defined as the Gram matrix. Therefore, the closed form SDE of (3) is as follows: 
+
+dX t = −
+
+ σ(t)2
+
+2 Π( Xt)∇f (Xt) + ασ (t)2∇J(Xt)T G†(Xt)J(Xt)
+
+
+
+dt + σ(t)2
+
+2 H(Xt)dt 
+
++ σ(t)Π( Xt)dW t,
+
+where H is the mean curvature correction term defined as 
+
+H(x) := −∇ J(x)T G†(x) Tr  ∇2J1(x)Π( x) , ..., Tr  ∇2Jm+|Ix|(x)Π( x) T .
+
+Proof. From the Stratonovich chain rule, it holds that 
+
+−ασ (t)2J(Xt)dt = ∇J(Xt) ◦ dX t = − 12 σ(t)2∇J(Xt)∇f (Xt)dt + σ(t)∇J(Xt) ◦ dW t + G(Xt)dλ t
+
+Among the many solutions dλ t satisfying the above equation, we choose the (unique) minimum norm solution of dλ t
+
+process: 
+
+dλ t = G†(Xt)
+
+
+
+−ασ (t)2J(Xt)dt + 12 σ(t)2∇J(Xt)∇f (Xt)dt − σ(t)∇J(Xt) ◦ dW t
+
+
+
+.
+
+We remark that ∇J(Xt)T dλ t is unique regardless of the choice of solution dλ t. Substituting back to the SDE (3) gives the following Stratonovich version of the unique closed-form SDE: 
+
+dX t = −
+
+ 12 σ(t)2Π( Xt)∇f (Xt) + ασ (t)2∇J(Xt)T G†(Xt)J(Xt)
+
+
+
+dt + σ(t)Π( Xt) ◦ dW t.
+
+18 Efficient Diffusion Models under Nonconvex Constraints via Landing 
+
+To recover the It ˆo version of the closed-form SDE, we observe that the It ˆo-Stratonovich correction term coincides with the mean curvature term of a stratum ΣIx := x ∈ Rd | J(x) = 0 and its representation is given by 
+
+12 ∇ (σ(t)Π) ( σ(t)Π) = σ(t)2
+
+2 ∇(Π)Π = σ(t)2
+
+2
+
+> d
+
+X
+
+> k=1
+
+∇(Π k)Π k.
+
+From the same tensor-calculus technique of Equation 3.46 in Rousset et al. (2010), we observe that (∇Π)Π is given by 
+
+∇Π( x)Π( x)= −∇ J(x)T G†(x) Tr  ∇2J1(x)Π( x) , ..., Tr  ∇2Jm+|Ix|(x)Π( x) T .
+
+Therefore, this gives the following Itˆ o version of the closed-form SDE: 
+
+dX t = −
+
+ σ(t)2
+
+2 Π( Xt)∇f (Xt) + ασ (t)2∇J(Xt)T G†(Xt)J(Xt)
+
+
+
+dt + σ(t)2
+
+2 H(Xt)dt 
+
++ σ(t)Π( Xt)dW t.
+
+Theorem B.1 (Fokker-Planck equation (Chirikjian, 2009; Huang et al., 2022) and the generator (Watanabe & Ikeda, 2011) on Riemannian manifold) . Let Zt ∈ Σ be a stochastic process following the SDE: 
+
+dZ t = V0dt +
+
+> d
+
+X
+
+> k=1
+
+Vk ◦ dB kt ,
+
+where V0, V k are smooth vector fields on Σ for each k ∈ [d] and Bkt are kth components of Brownian motion Bt. Then, the law ρt of the stochastic process Zt satisfies the following Fokker-Planck equation: 
+
+∂tρt = −div Σ(ρtV0) + 12
+
+> d
+
+X
+
+> k=1
+
+div Σ(div Σ(ρtVk)Vk).
+
+Also, the generator of L of the corresponding SDE is provided as 
+
+Lϕ = V0ϕ + 12
+
+> d
+
+X
+
+> k=1
+
+Vk(Vkϕ)
+
+for any smooth function ϕ on Σ.
+
+Lemma B.1 (Boundary condition of OLLA) . Assuming X0 ∈ Σ, OLLA (3) satisfies the following boundary condition on 
+
+∂Σ and property for t ≥ 0:
+
+(1) ⟨Jt(x), n (x)⟩ = 0 a.e. on ∂Σ, (2) Xt ∈ Σ a.s 
+
+where Jt(x) is the probability current density defined by ∂tρt = −div Σ(Jt) and n(x) is the outward unit normal vector on ∂Σ.Proof. First, we show that P(gk(Xt) ≤ 0) = 1 for t ≥ 0 and k ∈ [l]. To show this, we define a convex smooth violation penalty function Ψkδ (x) : Rd → R as follows: 
+
+Ψkδ (x) := ϕδ (gk(x)) , ϕδ (r) := 
+
+ 
+
+> r2
+> 2δ
+
+, 0 ≤ r ≤ δr − δ/ 2, r ≥ δ
+
+0 r < 0.
+
+Then, ϕδ is convex, C1, and satisfies 
+
+ϕδ ↓ (r)+, ϕ′ 
+
+> δ
+
+(r) → 1{r> 0}, as δ ↓ 0
+
+19 Efficient Diffusion Models under Nonconvex Constraints via Landing 
+
+with (r)+ := max {r, 0}. Now, we observe that, on {gk ≥ 0}, the Stratonovich chain rule (as in Lemma B.4) gives 
+
+dg k(Xt) = −ασ (t)2 (gk(Xt) + ϵ) dt. 
+
+Therefore, applying Itˆ o’s lemma on ϕδ (gi(Xt)) gives 
+
+dϕ δ (gk(Xt)) = ϕ′ 
+
+> δ
+
+(gk(Xt)) dg k(Xt) + 12 ϕ′′  
+
+> δ
+
+(gk(Xt)) d⟨gk(Xt), g k(Xt)⟩t
+
+| {z }
+
+> Quadratic variation =0
+
+= −ασ (t)2(gk(Xt) + ϵ)ϕ′ 
+
+> δ
+
+(gk(Xt)) dt. 
+
+For the case {gk < 0}, it trivially holds that ϕδ (gk(Xt)) = 0 with ϕ′ 
+
+> δ
+
+(gk(Xt)) = 0 . Therefore, the above observations lead to the following relation for t ≥ 0:
+
+ddt E[Ψ kδ (Xt)] = ddt E[ϕδ (gk(Xt))] = −ασ (t)2E [( gk(Xt) + ϵ)ϕ′ 
+
+> δ
+
+(gk(Xt))] .
+
+At this moment, we note that the non-decreasing property of ϕ′ 
+
+> δ
+
+(r) implies, for ∀r ≥ 0,
+
+ϕδ (r) = 
+
+Z r
+
+> 0
+
+ϕ′ 
+
+> δ
+
+(s)ds ≤
+
+Z r
+
+> 0
+
+ϕ′ 
+
+> δ
+
+(r)ds ≤ (r + ϵ)ϕ′ 
+
+> δ
+
+(r) ⇒ Ψkδ (x) ≤ (gk(x) + ϵ)ϕ′ 
+
+> δ
+
+(gk(x)) 
+
+where the inequality ϕδ (r) ≤ (r + ϵ)ϕ′ 
+
+> δ
+
+(r) also holds trivially for r < 0. Hence, we finally have 
+
+ddt E[Ψ kδ (Xt)] = −ασ (t)2E [( gk(Xt) + ϵ)ϕ′ 
+
+> δ
+
+(gk(Xt))] ≤ − ασ (t)2E[Ψ δ (Xt)] 
+
+and the Gr¨ onwall inequality gives 
+
+0 ≤ E[Ψ kδ (Xt)] ≤ e−α R t 
+
+> 0σ(s)2ds
+
+E[Ψ kδ (X0)] = 0 (∵ X0 ∈ Σ) 
+
+which leads to (gk(Xt)) + = 0 ⇒ gk(Xt) ≤ 0 for k ∈ [l] by letting δ ↓ 0 and applying the monotone convergence theorem. This proves P(g(Xt) ≤ 0) = 1 for t ≥ 0 and Xt ∈ Σ a.s. Next, we prove ⟨Jt(x), n (x)⟩ = 0 for x ∈ ∂Σ. We first observe that Theorem B.1 gives the following Fokker-Planck equation for g(x) > 0:
+
+∂tρt = −div Σ
+
+
+
+ρt
+
+
+
+− σ2
+
+2 ∇Σf − ασ 2∇JT G†J
+
+ 
+
++ σ2
+
+2
+
+> d
+
+X
+
+> k=1
+
+div Σ(div Σ(ρtfk)fk)= −div Σ
+
+
+
+ρt
+
+
+
+− σ2
+
+2 ∇Σf − ασ 2∇JT G†J
+
+
+
+− σ2
+
+2 ∇Σρt
+
+
+
+,
+
+where fk := Π ek and ek being the k-th standard basis of Rd. Also, we remark that the last equality holds using the property: 
+
+> d
+
+X
+
+> k=1
+
+div Σ(ρtfk)fk =
+
+> d
+
+X
+
+> k=1
+
+⟨∇ Σρt, f k⟩fk + ρtdX
+
+> k=1
+
+div Σ(fk)fk
+
+| {z }
+
+> =0
+
+= ∇Σρt.
+
+Therefore, the probability current density Jt is given as follows 
+
+Jt = −ρt
+
+ σ2
+
+2 ∇Σf + ασ 2∇JT G†J
+
+
+
+− σ2
+
+2 ∇Σρt,
+
+and we have 
+
+0 = ddt 
+
+Z
+
+> Σ
+
+ρt(x)dσ Σ = −
+
+Z
+
+> Σ
+
+div Σ(Jt(x)) dσ Σ = −
+
+Z
+
+> ∂Σ
+
+⟨Jt(x), n (x)⟩dσ ∂Σ
+
+=
+
+Z
+
+> ∂Σ
+
+αρ tσ2 ⟨∇ JT G†J, n ⟩
+
+| {z }
+
+> >0
+
+dσ ∂Σ ≥ 0.
+
+This implies ρt = 0 a.e on ∂Σ and the following boundary condition holds almost everywhere on ∂Σ
+
+⟨Jt, n ⟩ = ⟨ρt
+
+
+
+− σ2
+
+2 ∇Σf − ασ 2∇JT G†J
+
+
+
+− σ2
+
+2 ∇Σρt, n ⟩ = −ασ 2ρt⟨∇ JT G†J, n ⟩ = 0 .
+
+20 Efficient Diffusion Models under Nonconvex Constraints via Landing 
+
+Lemma B.2 (Huang et al. (2022)) . Let {fk}dk=1 be a set of vectors defined by fk = Π( x)ek, where Π( x) is the orthogonal projector onto TxΣ and ek is the kth standard basis vector of Rd. Then, it holds that 
+
+> d
+
+X
+
+> k=1
+
+(div Σfk)fk = 0 .
+
+Proof. Let r be the rank of the ∇J(x) and {n1(x), . . . , n r (x)} be an orthonormal basis of Im (∇J(x)T ). Since Π( x) is the orthogonal projector onto the tangent space, it can be written using the projector onto the normal space as: 
+
+Π( x) = I −
+
+> r
+
+X
+
+> l=1
+
+nl(x)nl(x)T .
+
+Note that by definition, nl(x) ∈ Im (∇J(x)T ) implies nl(x)T Π( x) = 0 for all l ∈ [r].Next, we define a vector field F (x) by F (x) = Π( x)div Σ(Π( x)) where (div ΣΠ( x)) k := div Σ(fk(x)) for the vector field 
+
+fk(x) = Π( x)T ek = Π( x)ek. With this definition, we have div ΣΠ = − Prl=1 div Σ(nlnTl ) and observe that for any component index k ∈ [d],
+
+(div Σ(nlnTl )) k = Tr  Π∇(nlnTl ek) =
+
+> d
+
+X
+
+> i,j =1
+
+Πij ∂i(nlj nlk ) = 
+
+> d
+
+X
+
+> i,j =1
+
+[Π ij (∂inlj )nlk + Π ij nlj (∂inlk )] = ( div Σnl)nlk +
+
+> d
+
+X
+
+> i=1
+
+(nTl Π) i
+
+| {z }
+
+> =0
+
+∂inlk = ( div Σnl)nlk ,
+
+where we used the property that nl is orthogonal to the tangent space ( nTl Π = 0 ). From this fact, we have the following result: 
+
+div ΣΠ = −
+
+> r
+
+X
+
+> l=1
+
+div Σ(nlnTl ) = −
+
+> r
+
+X
+
+> l=1
+
+(div Σnl)nl ⇒ F = Π div Σ(Π) = −
+
+> r
+
+X
+
+> l=1
+
+(div Σnl) Π nl
+
+|{z} 
+
+> =0
+
+= 0 .
+
+Finally, the definition of F gives Pdk=1 (div Σfk)fk = F , which is zero by the argument above. 
+
+Theorem B.2 (Stationarity of OLLA) . Assume σ(t) is constant for ∀t ≥ 0 and X0 ∈ Σ. Then, OLLA (3) has the following stationary distribution ρΣ with respect to measure dσ Σ:
+
+ρΣ(x) = 1
+
+ZΣ
+
+e−f (x), x ∈ Σ
+
+where dσ Σ is the surface (or Hausdorff) measure on Σ and ZΣ := R 
+
+> Σ
+
+e−f (x)dσ Σ is the normalization constant. Proof. To prove stationarity, we observe that 
+
+Z
+
+> Σ
+
+Lϕρ tdσ Σ = ddt 
+
+Z
+
+> Σ
+
+ϕρ tdσ Σ =
+
+Z
+
+> Σ
+
+ϕ∂ tρtdσ Σ = −
+
+Z
+
+> Σ
+
+ϕdiv Σ(Jt)dσ Σ =
+
+Z
+
+> Σ
+
+⟨Jt, ∇Σϕ⟩dσ Σ
+
+where the last equality comes from the boundary condition in Lemma B.1. Since Jt is given by 
+
+Jt = − σ2
+
+2 (ρt∇Σf + ∇Σρt) = − σ2
+
+2 e−f ∇Σ(ρe f ),
+
+on the interior of Σ, we conclude that 
+
+Z
+
+> Σ
+
+Lϕρ Σdσ Σ =
+
+Z
+
+> Σ
+
+⟨Jt, ∇Σϕ⟩dσ Σ = − σ2
+
+2
+
+Z
+
+> Σ
+
+⟨e−f 0, ∇Σϕ⟩dσ Σ = 0 ,
+
+where Jt = 0 due to the fact that ρΣ ∝ e−f . This proves that ρΣ is the stationary distribution of the OLLA. 21 Efficient Diffusion Models under Nonconvex Constraints via Landing 
+
+B.2. Construction of ULLA Notations and Background for underdamped setup. In the constrained underdamped Langevin case, assuming 
+
+X0 ∈ Σ, the natural space of (Xt, P t) is the cotangent bundle T ∗Σ := (x, p ) ∈ Rd × Rd | x ∈ Σ, ⟨∇ J(x), p ⟩ = 0 ,where Σ := x ∈ Rd | h(x) = 0 , g (x) ≤ 0 is a stratified manifold. Because there is no boundary for the cotangent space 
+
+T ∗ 
+
+> x
+
+Σ := p ∈ Rd | ⟨∇ J(x), p ⟩ = 0 , the boundary of T ∗Σ is given as ∂T ∗Σ = ∂Σ × T ∗ 
+
+> x
+
+Σ. In this cotangent bundle T ∗Σ,the canonical reference measure is the Liouville (symplectic) measure σT ∗Σ defined as dσ T ∗Σ(x, p ) := dσ Σ(x) ⊗ dp (x)
+
+with dσ Σ the surface measure on Σ and dp (x) the Lebesgue measure on the cotangent space T ∗ 
+
+> x
+
+Σ induced by the inner product ⟨u, v ⟩ = uT v.For the notations, we write ∇Σ and div Σ for the intrinsic gradient and divergence in x, and ∇T ∗ 
+
+> xΣ
+
+, div T ∗  
+
+> xΣ
+
+for the intrinsic gradient and divergence in p. Under these notations, for a smooth function ϕ and smooth vector field X on Σ, we have 
+
+∇Σϕ = Π ∇xϕ, div Σ(X) = Tr (Π ∇xX)
+
+Similarly, for a smooth function ψ and smooth vector Y on T ∗ 
+
+> x
+
+Σ, we have 
+
+∇T ∗ 
+
+> xΣ
+
+ψ = Π ∇pψ, div T ∗ 
+
+> xΣ
+
+(Y ) = Tr (Π ∇pY ) ,
+
+where ∇x and ∇p represent ambient Euclidean partial gradient or Jacobian operators with respect to x or p. Also, the global gradient with respect to σT ∗Σ is given by ∇T ∗Σϕ = [ ∇Σϕ, ∇T ∗ 
+
+> xΣ
+
+ϕ]T for any smooth function ϕ on T ∗Σ and the global divergence with respect to σT ∗Σ can be represented by div T ∗Σ([ V x, V p]T ) = div Σ(V x) + div T ∗ 
+
+> xΣ
+
+(V p) for any smooth tangent field [V x, V p]T ∈ T ∗Σ. For comprehensive backgrounds on constrained underdamped Langevin dynamics, see Chapter 3.3 in Rousset et al. (2010). 
+
+Proposition B.2 (Construction of ULLA) . Consider the following Lagrangian-form constrained underdamped Langevin dynamics: (dX t = σ(t)2Ptdt + ∇J(Xt)T dλ t
+
+dP t = −σ(t)2∇f (Xt)dt − σ(t)2γP tdt + σ(t)p2γ ◦ dW t + ∇J(Xt)T dμ t, (4) 
+
+where dλ t, dμ t are the adapted processes such that dJ (Xt) = −ασ (t)2J(Xt) (position constraint) and ∇J(Xt)Pt = 0 
+
+(momentum tangency constraint), respectively. Assuming ∇J(X0)P0 = 0 , the explicit minimum norm solution of dλ t, dμ t are given by 
+
+
+
+dλ t = − ασ (t)2G†(Xt)J(Xt)dt dμ t =G†(Xt)∇J(Xt)
+
+h
+
+σ(t)2∇f (Xt) + σ(t)2γP tdt + σ(t)p2γ ◦ dW t
+
+i
+
++
+
+G†(Xt) −σ(t)2H1(Xt, P t) + ασ (t)2H2(Xt, P t) dt, 
+
+where G(x) := ∇J(x)∇J(x)T is the Gram matrix and Π( x) = I − ∇ J(x)T G†(x)∇J(x) is the tangential projection map. Therefore, the closed form SDE of (4) is given as follows: 
+
+
+
+dX t =σ(t)2Ptdt − ασ (t)2∇J(Xt)G†(Xt)J(Xt)dt dP t =Π( Xt)
+
+h
+
+−σ(t)2∇f (Xt) − σ(t)2γP tdt + σ(t)p2γ ◦ dW t
+
+i
+
+− σ(t)2∇J(Xt)T G†(Xt) [ H1(Xt, P t) − αH2(Xt, P t)] dt 
+
+where H1 ∈ Rm+|Ix|, H2 ∈ R(m+|Ix|)×(m+|Ix|) are the curvature correction terms defined as 
+
+[H1(x, p )] i := pT ∇2Ji(x)p, 
+
+[H2(x, p )] i := pT ∇2Ji(x)( ∇J(x)T G†(x)J(x)) 
+
+with [H1(x, p )] i, [H2(x, p )] i being the ith entry and column of H1(x, p ), H2(x, p ) respectively. 
+
+22 Efficient Diffusion Models under Nonconvex Constraints via Landing 
+
+Proof. From the Stratonovich chain rule, we observe that 
+
+−ασ (t)2J(Xt)dt = dJ (Xt) = ∇J(Xt) ◦ dX t = σ(t)2 ∇J(Xt)Pt
+
+| {z }
+
+> =0
+
+dt + G(Xt)dλ t.
+
+Because the initial condition gives ∇J(X0)P0 = 0 and dμ t imposes d(∇J(Xt)Pt) = 0 , the first term becomes zero and the minimum norm solution of dλ t simplifies to 
+
+dλ t = −ασ (t)2G†(Xt)J(Xt)dt. 
+
+To find the explicit minimum norm solution for the process dμ t, we consider the momentum tangency constraint 
+
+∇J(Xt)T Pt = 0 . Using the Stratonovich chain rule again, we have 
+
+0 = d(∇J(Xt)Pt) = P Tt ∇2J(Xt)dX t + ∇J(Xt)dP t.
+
+By substituting dX t and dP t, the previous equation simplifies to 
+
+0 = P Tt ∇2J(Xt) σ(t)2Ptdt + ∇J(Xt)T dλ t
+
+
+
++ ∇J(Xt)
+
+h
+
+−σ(t)2∇f (Xt) − σ(t)2γP tdt + σ(t)p2γ ◦ dW t + ∇J(Xt)T dμ t
+
+i
+
+= σ2H1 − ασ 2H2 − σ2∇J∇f − σ2γ∇JP t
+
+ dt + σ∇Jp2γ ◦ dW t + Gdμ t.
+
+This gives the following minimum norm solution of dμ t:
+
+dμ t = G† σ2∇J∇f + σ2γ∇JP t − σ2H1 + ασ 2H2
+
+ dt − σG †∇Jp2γ ◦ dW t.
+
+Therefore, we recover the following dX t, dP t by plugging the adapted process dλ t, dμ t into the previous equations: 
+
+
+
+dX t =σ(t)2Ptdt − ασ (t)2∇J(Xt)G†(Xt)J(Xt)dt dP t =Π( Xt)
+
+h
+
+−σ(t)2∇f (Xt)dt − σ(t)2γP tdt + σ(t)p2γ ◦ dW t
+
+i
+
+− σ(t)2∇J(Xt)T G†(Xt) [ H1(Xt, P t) − αH2(Xt, P t)] dt. 
+
+We note that this is the unique closed form SDE because ∇J(Xt)T dλ t and ∇J(Xt)T dμ t are unique among many solutions 
+
+dλ t, dμ t satisfying the properties. Finally, we observe that the It ˆo-Stratonovich correction term 12 (∇B)B = 0 where B = [0 , σ √2γΠ] T ∈ R2d×d is the diffusion matrix. This is because the position entries of B are zero and the momentum entries of B depend only on position. Therefore, we have the same formula on the Itˆ o version of the above Stratonovich SDE. 
+
+Lemma B.3 (Boundary condition of ULLA) . Assuming X0 ∈ Σ and ∇J(X0)P0 = 0 , ULLA (4) satisfies the following boundary condition on ∂Σ and property for t ≥ 0:
+
+(1) ⟨Jt(x, p ), n (x)⟩ = 0 a.e on ∂T ∗Σ, (2) ( Xt, P t) ∈ T ∗Σ,
+
+where Jt(x) is the probability current density defined by ∂tρt = −div Σ(Jt) and n(x) is the outward unit normal vector on ∂T ∗Σ.Proof. First, we prove P(gk(Xt) > 0) = 0 for t ≥ 0, k ∈ [l]. In particular, this implies (Xt, P t) ∈ T ∗Σ a.s. for all t ≥ 0.To show this, we observe that Lemma B.4 gives 
+
+dg k(Xt) = −ασ (t)2(gk(Xt) + ϵ)dt 
+
+for {gk ≥ 0}. Thus, the same proof introduced in Lemma B.1 gives P(g(Xt) ≤ 0) = 1 for t ≥ 0 and, therefore, we have 
+
+(Xt, P t) ∈ T ∗Σ a.s for t ≥ 0.23 Efficient Diffusion Models under Nonconvex Constraints via Landing 
+
+Next, we show the boundary condition of this SDE. To demonstrate this, we first formulate the SDE of ULLA in the following form: 
+
+dZ t = V0dt +
+
+> 2d
+
+X
+
+> k=1
+
+Vk ◦ dB kt
+
+with Zt := [ Xt, P t]T ∈ R2d, V0(x, p ) := σ2p − ασ 2∇JG †J, −σ2Π∇f − σ2γΠp + κT ∈ R2d, and Vk(x, p ) := [0 , Be k] ∈ R2d, where κ := −σ2∇JT G† [H1 − αH2] is the curvature correction related term and B := σΠ√2γ. Now, we use the Fokker-Planck equation on the interior of T ∗Σ (Theorem B.1) applied with div T ∗Σ, and this gives the following equation: 
+
+∂tρt = −div T ∗Σ(ρtV0) + 12
+
+> 2d
+
+X
+
+> k=1
+
+div T ∗Σ (div T ∗Σ(ρtVk)Vk) ,
+
+where 
+
+−div T ∗Σ(ρtV0) = −div Σ(ρt
+
+ σ2p − ασ 2∇JG †J) − div T ∗ 
+
+> xΣ
+
+ ρt
+
+ −σ2Π∇f − σ2γΠp + κ 
+
+and 
+
+12
+
+> 2d
+
+X
+
+> k=1
+
+div T ∗Σ (div T ∗Σ(ρtVk)Vk)= 12
+
+> d
+
+X
+
+> k=1
+
+div T ∗ 
+
+> xΣ
+
+ ⟨Be k, ∇T ∗ 
+
+> xΣ
+
+ρt⟩Be k
+
+ = 12 div T ∗ 
+
+> xΣ
+
+ (BB T )∇T ∗ 
+
+> xΣ
+
+ρt
+
+ .
+
+Therefore, we recover the following equation: 
+
+∂tρt = −div Σ(ρt
+
+ σ2p − ασ 2∇JG †J| {z } 
+
+> := Jxt(x,p )
+
+)
+
+− div T ∗ 
+
+> xΣ
+
+ρt
+
+ −σ2Π∇f − σ2γΠp + κ − σ2γΠΠ T ∇T ∗ 
+
+> xΣ
+
+ρt
+
+| {z } 
+
+> := Jpt(x,p )
+
+
+
+= −div T ∗Σ
+
+ [Jxt , J pt ]T  = −div T ∗Σ(Jt)
+
+Finally, we observe that, on the boundary ∂T ∗Σ = ∂Σ × T ∗ 
+
+> x
+
+Σ, the outward normal is given by n = [ nx, 0] T ∈ R2d with nx
+
+being the outward unit normal vector on ∂Σ. Therefore, we have 
+
+0 = ddt 
+
+Z 
+
+> T∗Σ
+
+ρt(x, p )dσ T ∗Σ = −
+
+Z 
+
+> T∗Σ
+
+div T ∗Σ(Jt(x, p )) dσ T ∗Σ = −
+
+Z 
+
+> ∂T ∗Σ
+
+⟨Jt(x, p ), n ⟩dσ ∂T ∗Σ
+
+= −
+
+Z 
+
+> ∂T ∗Σ
+
+⟨Jxt (x, p ), n x⟩dσ ∂T ∗Σ = −
+
+Z 
+
+> ∂T ∗Σ
+
+⟨ρt
+
+ σ2p − ασ 2∇JG †J , n x⟩dσ ∂T ∗Σ
+
+= ασ 2
+
+Z 
+
+> ∂T ∗Σ
+
+ρt ⟨∇ JG †J, n x⟩
+
+| {z }
+
+> >0
+
+dσ ∂T ∗Σ
+
+and it implies ρt(x, p ) = 0 a.e. on ∂T ∗Σ. Lastly, we conclude the proof by observing that the following holds a.e on ∂T ∗Σ:
+
+⟨Jt, n ⟩ = ⟨Jxt , n x⟩ = ⟨ρt
+
+ σ2p − ασ 2∇JG †J , n x⟩ = −ασ 2ρt⟨∇ JT G†J, n x⟩ = 0 .
+
+Theorem B.3 (Stationarity of ULLA) . Assume σ(t) is constant for ∀t ≥ 0, X0 ∈ Σ, and the tangency constraint 
+
+∇J(X0)P0 = 0 holds. Then, the ULLA (4) has the following stationary distribution ρT ∗Σ with respect to the measure 
+
+dσ T ∗Σ:
+
+ρT ∗Σ(x, p ) = 1
+
+ZT ∗Σ
+
+exp 
+
+
+
+−f (x) − 12 ∥p∥22
+
+
+
+, (x, p ) ∈ T ∗Σ
+
+where dσ T ∗Σ is the Liouville measure on T ∗Σ and ZT ∗Σ := R  
+
+> T∗Σ
+
+e(−f (x)− 12 ∥p∥22)dσ T ∗Σ is the normalization constant. 
+
+24 Efficient Diffusion Models under Nonconvex Constraints via Landing 
+
+Proof. First, from Lemma B.3, we know that the SDE of ULLA can be rewritten as follows on the interior of T ∗Σ :
+
+dZ t = V0dt +
+
+> 2d
+
+X
+
+> k=1
+
+Vk ◦ dB kt
+
+with Zt := [ Xt, P t]T ∈ R2d, V0(x, p ) := σ2p, −σ2Π∇f − σ2γΠp + κT ∈ R2d, and Vk(x, p ) := [0 , Be k] ∈ R2d,where κ := −σ2∇JT G†H1 is the curvature correction related term and B := σΠ√2γ. Therefore, Theorem B.1 gives the following generator L for any smooth function ϕ on T ∗Σ:
+
+Lϕ = V0ϕ + 12
+
+> 2d
+
+X
+
+> k=1
+
+Vk(Vkϕ).
+
+Because we have 
+
+V0ϕ = ⟨∇ Σϕ, σ 2p⟩ + ⟨∇ T ∗ 
+
+> xΣ
+
+ϕ, −σ2Π∇f − σ2γΠp + κ⟩
+
+and 
+
+12
+
+> 2d
+
+X
+
+> k=1
+
+Vk(Vkϕ) = 12
+
+> d
+
+X
+
+> k=1
+
+⟨Be k, ∇p (⟨Be k, ∇pϕ⟩)⟩ = 12
+
+> d
+
+X
+
+> k=1
+
+⟨∇ 2
+
+> p
+
+ϕBe k, Be k⟩ = σ2γTr  Π∇2
+
+> p
+
+ϕ
+
+on the interior of T ∗Σ, we can simplify Lϕ as follows: 
+
+Lϕ = σ2
+
+⟨∇ Σϕ, p ⟩ − ⟨ Π∇f, ∇T ∗ 
+
+> xΣ
+
+ϕ⟩ + ⟨κ, ∇T ∗ 
+
+> xΣ
+
+ϕ⟩
+
+| {z } 
+
+> LHϕ
+
++ γ  ∆T ∗ 
+
+> xΣ
+
+ϕ − ⟨∇ T ∗ 
+
+> xΣ
+
+ϕ, p ⟩| {z },LOU ϕ
+
+
+
+where we used Πp = p (tangency constraint) and ∆T ∗ 
+
+> xΣ
+
+ϕ = div T ∗ 
+
+> xΣ
+
+(Π ∇pϕ) = Tr  Π∇2
+
+> p
+
+ϕ. Next, we note the following identity: 
+
+div T ∗ 
+
+> xΣ
+
+
+
+e−∥ p∥2/2∇T ∗ 
+
+> xΣ
+
+ϕ
+
+
+
+= e−∥ p∥2/2  ∆T ∗ 
+
+> xΣ
+
+ϕ − ⟨∇ T ∗ 
+
+> xΣ
+
+ϕ, p ⟩ .
+
+Under this identity, we observe that 
+
+Z 
+
+> T∗Σ
+
+LOU ϕρ T ∗Σdσ T ∗Σ = γ
+
+Z 
+
+> T∗Σ
+
+ ∆T ∗ 
+
+> xΣ
+
+ϕ − ⟨∇ T ∗ 
+
+> xΣ
+
+ϕ, p ⟩ e−H dσ T ∗Σ = 0 
+
+where H := f (x) + 12 ∥p∥2 and the last equality holds because T ∗ 
+
+> x
+
+Σ does not have boundary and dσ T ∗Σ(x, p ) := 
+
+dσ Σ(x) ⊗ dp (x) holds. Lastly, we define XH := p − α∇JG †J, −Π∇f + κT ∈ R2d so that XH = [ p, −Π∇f + κ]T
+
+and LH ϕ = ⟨XH , ∇T ∗Σϕ⟩ at the interior of T ∗Σ. Then, we have 
+
+⟨XH , ∇T ∗ΣH⟩ = ⟨p, ∇Σf ⟩ + ( −Π∇f + κ) Π p = ⟨(∇Σf − Π∇f ) , Πp⟩
+
+| {z }
+
+> =0
+
++ ⟨κ, Πp⟩
+
+| {z }
+
+> =0
+
+= 0 ,
+
+where the last equality holds due to tangency constraint of p. In addition to this, the following identity holds on the interior of T ∗Σ due to Liouville’s theorem, which is the preservation property of Liouville measure on T ∗Σ under the constrained Hamiltonian field (see Chapter 1.2.2 and Proposition 3.46 in Rousset et al. (2010)): 
+
+div T ∗ΣXH = div Σ(p) + div T ∗  
+
+> xΣ
+
+(−Π∇f + κ) = 0 .
+
+Hence, using these properties and ρT ∗Σ ∝ e−H , we have 
+
+Z 
+
+> T∗Σ
+
+LOU ϕρ T ∗Σdσ T ∗Σ =
+
+Z 
+
+> T∗Σ
+
+⟨XH , ∇T ∗Σϕ⟩ρT ∗Σdσ T ∗Σ(1) 
+
+= −
+
+Z
+
+ϕdiv T ∗Σ (ρT ∗ΣXH ) dσ T ∗Σ
+
+= −
+
+Z 
+
+> T∗Σ
+
+ϕ
+
+⟨XH , ∇T ∗ΣρT ∗Σ⟩ + div T ∗Σ(XH )
+
+| {z }
+
+> =0
+
+ρT ∗Σ
+
+ dσ T ∗Σ(2) 
+
+=
+
+Z 
+
+> T∗Σ
+
+ϕρ T ∗Σ⟨XH , ∇T ∗ΣH⟩dσ T ∗Σ = 0 ,
+
+25 Efficient Diffusion Models under Nonconvex Constraints via Landing 
+
+where (1) comes from the boundary condition in Lemma B.3 and (2) comes from the fact that −∇ T ∗ΣH = ∇T ∗Σ ln ρT ∗Σ =
+
+∇T ∗ΣρT ∗Σ/ρ T ∗Σ.By combining the observations above, we have 
+
+Z 
+
+> T∗Σ
+
+Lϕρ T ∗Σdσ T ∗Σ =
+
+Z 
+
+> T∗Σ
+
+LOU ϕρ T ∗Σdσ T ∗Σ +
+
+Z 
+
+> T∗Σ
+
+LH ϕρ T ∗Σdσ T ∗Σ = 0 ,
+
+which proves the theorem. 
+
+B.3. Properties and Backward processes of Constrained Langevin Dynamics with Landing Exponential decaying properties of constrained Langevin dynamics with landing Due to our previous construction, the landing term −α∇J(Xt)G†(Xt)J(Xt) appears on both constrained overdamped or underdamped Langevin dynamics so that the processes always satisfy dJ (Xt) = −ασ (t)2J(Xt) deterministically ∀t ≥ 0. Therefore, even if Xt /∈ Σ, the process can approach Σ exponentially fast as illustrated in the following Lemma B.4. 
+
+Lemma B.4 (Exponential decay of constraint functions) . Let J(x) be the constraint function vector defined as 
+
+J(x) = h1(x), ..., h m(x), g i1 (x) + ϵ, ..., g i|Ix | (x) + ϵT ∈ Rm+|Ix| (5) 
+
+where h : Rd → Rm, g : Rd → Rl are equality and inequality constraint functions respectively, and Ix := 
+
+{i ∈ [l] : g(x) ≥ 0} is the active index set of inequality constraints. Under this setup, the constrained Langevin dynamics (3 or 4) satisfy the following constraint satisfaction property almost surely: 
+
+hi(Xt) = hi(X0)e−αS (t), t ≥ 0
+
+and (
+
+gj (Xt) = −ϵ + ( gj (X0) + ϵ)e−αS (t), t ≤ τj,ϵ 
+
+gj (Xt) ≤ 0, t ≥ τj,ϵ ,
+
+where S(t) := R t 
+
+> 0
+
+σ(s)2ds and τj,ϵ is defined to be 
+
+τj,ϵ := inf 
+
+
+
+t ≥ 0 | S(t) ≥ 1
+
+α ln 
+
+ gj (X0) + ϵϵ
+
+ 
+
+, ∀j ∈ Ix0 .
+
+Proof. From the Stratonovich chain rule, it holds almost surely that 
+
+dJ (Xt) = ∇J(Xt) ◦ dX t = −ασ (t)2J(Xt)dt. 
+
+For each equality constraint hi, the component is active for ∀t ≥ 0. Therefore, we have: 
+
+dh i(Xt) = −ασ (t)2hi(Xt)dt 
+
+and solving this ODE yields: 
+
+hi(Xt) = hi(X0)e−αS (t), t ≥ 0.
+
+For the inequality constraints, we fix j ∈ IX0 := {j ∈ [l] | g(X0) ≥ 0}. While the j-th inequality is active, we have 
+
+Jm+j = gj + ϵ in the constraint vector, and the same chain rule gives 
+
+d(gj (Xt) + ϵ) = −ασ (t)2 (gj (Xt) + ϵ) dt. 
+
+Hence, before time t ≤ τj,ϵ := inf 
+
+n
+
+t ≥ 0 | S(t) ≥ 1 
+
+> α
+
+ln 
+
+ gj (X0)+ ϵϵ
+
+o 
+
+, we have 
+
+gj (Xt) = −ϵ + ( gj (X0) + ϵ) e−αs (t).
+
+After t ≥ τj,ϵ , the particle Xt is instantaneously repelled into the interior of Σ whenever it hits the boundary ∂Σ. Therefore, 
+
+gj (Xt) ≤ 0 holds for t ≥ τj,ϵ .26 Efficient Diffusion Models under Nonconvex Constraints via Landing 
+
+Backward process on manifold Now, we discuss how to construct the backward process of the proposed constrained Langevin dynamics. Define M ⊂ RD to be a smooth, compact, embedded Riemannian manifold endowed with an induced metric, and we restrict the choice of M to be either M = Σ ( D = d) or M = T ∗Σ ( D = 2 d). For x ∈ M , let Π be the tangential projection map on M. We consider the stochastic process Xt ∼ qt driven by the following Stratonovich SDE on 
+
+M with X0 ∼ q0 = qdata :
+
+dX t = Π( Xt)b(Xt, t )dt + κ(t)Π( Xt) ◦ dW t, t ∈ [0 , T ] (6) where b(y, t ) : M × R → RD , κ(t) : R → RD×D are the drift vector and diagonal diffusion matrix for the corresponding SDE. In practice, κ(t) : R → RD×D is chosen to satisfy XT ∼ qT ≈ pprior with pprior being the easy-to-sample prior distribution on M and T the terminal time for sampling. Then, Lemma B.5 shows that the stochastic process ←
+
+Xt ∼ pt
+
+driven by the following Stratonovich SDE becomes the backward process of Xt:
+
+d←
+
+Xt = Π( ←
+
+Xt)
+
+
+
+−b(←
+
+Xt, T − t) + κ(T − t)2∇ ln qT −t(←
+
+Xt)
+
+
+
+dt + κ(T − t)Π( ←
+
+Xt) ◦ d ¯Wt, t ∈ [0 , T ]. (7) It is assumed that the forward process (6) and the backward process (7) have the same boundary conditions, so that qt = pT −t
+
+holds for t ∈ [0 , T ].
+
+Lemma B.5 (Backward process verification) . Let Xt, ←
+
+Xt ∈ M be the stochastic process driven by the forward process 
+
+(6) and the backward process (7) , respectively. If qT = p0 and the boundary conditions of qt and pT −t appearing in the Fokker-Planck equation are the same, then the following relation holds: 
+
+qt(x) = pT −t(x), x ∈ M , t ∈ [0 , T ],
+
+where qt, p t are the probability densities of each Xt and ←
+
+Xt.Proof. Let ∇M := Π ∇ and div M be the intrinsic gradient and divergence on M, and let ∆M := div M(∇M·) be the intrinsic Laplacian operator on M. From Theorem B.1 with V0(y, t ) = Π( y)b(y, t ), V k(y, t ) = κ(t)Π( x)ek, and ek being 
+
+kth standard basis of Rd, the Fokker-Planck equation of (6) is given by 
+
+∂tqt = −div M(qtV0) + 12
+
+> D
+
+X
+
+> k=1
+
+div M(div M(qtVk)Vk) = −div M(qtΠb) + 12 κ(t)2∆Mqt,
+
+where we used the property PDk=1 div M(div M(qtΠek)(Π ek)) = ∆ Mpt.Now observe that the process ←
+
+Xt driven by (7) has the following drift and diffusion term: 
+
+˜V0(y, t ) = Π( y) −b(y, T − t) + κ(T − t)2∇M ln qT −t(x) , ˜Vk(y, t ) = g(T − t)Π( y)ek.
+
+Therefore, Theorem B.1 again implies the following Fokker-Planck equation: 
+
+∂tpT −t = −∂sps |s=T −t = div M(pT −t ˜V0) − 12
+
+> d
+
+X
+
+> k=1
+
+div M(div M(pT −t ˜Vk) ˜Vk)= −div M(pT −tΠb) + κ(t)2div M(qT −t∇M ln pT −t) − 12 κ(t)2∆MpT −t
+
+= −div M(pT −tΠb) + 12 κ(t)2∆MpT −t.
+
+In the case of manifold with boundary, it is assumed that the boundary condition on the Fokker-Planck equation of qt and 
+
+pT −t are the same and qT = p0. This implies that ←
+
+Xt achieves the desired property as stated in the theorem. 
+
+Backward process of Constrained Langevin with landing From Proposition B.1, we note that the forward process 
+
+Xt ∼ qt of OLLA is given as follows in the interior of Σ:
+
+dX t = − 12 σ(t)2Π( Xt)∇f (Xt)dt + σ(t)Π( Xt) ◦ dW t.
+
+27 Efficient Diffusion Models under Nonconvex Constraints via Landing 
+
+Therefore, applying Lemma B.5 on the interior of Σ, the backward process of the OLLA is given as: 
+
+d←
+
+Xt = 12 σ(T − t)2Π( ←
+
+Xt)
+
+
+
+∇f (←
+
+Xt) + 2 ∇ ln qT −t(←
+
+Xt)
+
+
+
+dt + σ(t)Π( ←
+
+Xt) ◦ d ¯Wt.
+
+Now, we note that the similar construction and proof provided in Proposition B.1 and Lemma B.1 can demonstrate that adding the landing term −ασ 2∇JG †J to the previous SDE enforces it to have the same boundary condition ( ⟨Jt, n ⟩ = 0 
+
+a.e on ∂Σ) imposed on the forward process. Therefore, the backward process ←
+
+Xt is given as: 
+
+d←
+
+Xt = 12 σ(T− t)2Π( ←
+
+Xt)
+
+
+
+∇f (←
+
+Xt)+ 2 ∇ ln qT −t(←
+
+Xt)
+
+
+
+dt − ασ (T− t)2∇J(←
+
+Xt)T G†(←
+
+Xt)J(←
+
+Xt)dt 
+
++ σ(t)2
+
+2 H(←
+
+Xt)dt + σ(t)Π( ←
+
+Xt) ◦ d ¯Wt, (Stratonovich-sense) which is equal to the following Itˆ o version SDE involving the Itˆ o-Stratonovich correction term H:
+
+d←
+
+Xt = 12 σ(T − t)2Π( ←
+
+Xt)
+
+
+
+∇f (←
+
+Xt) + 2 ∇ ln qT −t(←
+
+Xt)
+
+
+
+dt + 12 σ(T − t)2H(←
+
+Xt)dt 
+
+−ασ (T − t)2∇J(←
+
+Xt)T G†(←
+
+Xt)J(←
+
+Xt)
+
+| {z }
+
+> Landing term
+
+dt + σ(T − t)Π( ←
+
+Xt) ◦ d ¯Wt. (Itˆ o-sense) Similarly, from Proposition B.2, the forward process [Xt, P t]T ∼ ←
+
+P t of ULLA is given as below in the interior of Σ:
+
+
+
+dX t =σ(t)2Ptdt dP t =Π( Xt)
+
+h
+
+σ(t)2 [−∇ f (Xt) − γP t] dt + σ(t)p2γ ◦ dW t
+
+i
+
+− σ(t)2∇J(Xt)T G†(Xt)H1(Xt, P t)dt. 
+
+Therefore, Lemma B.5 again implies that the following stochastic process [←
+
+Xt, ←
+
+P t]T ∼ pt becomes the backward process of 
+
+Xt on the interior of Σ:
+
+
+
+d←
+
+Xt = − σ(T − t)2←
+
+P tdt d←
+
+P t =Π( ←
+
+Xt)
+
+
+
+σ(T− t)2
+
+
+
+∇f (←
+
+Xt)dt + γ←
+
+P tdt + 2 γ∇p ln qT −t(←
+
+Xt, ←
+
+P t)
+
+
+
+dt +σ(T− t)p2γ ◦ d ¯Wt
+
+
+
++ σ(T − t)2∇J(←
+
+Xt)T G†(←
+
+Xt)H1(←
+
+Xt, ←
+
+P t)dt. 
+
+Also, the similar construction and proof in Proposition B.2 and Lemma B.3 show that adding both the landing term 
+
+−ασ 2∇JG †J and the corresponding landing correction term +ασ 2∇JG †H2 to the previous SDE imposes the same boundary condition as in the forward process. Hence, the backward process [←
+
+Xt, ←
+
+P t]T is provided as: 
+
+
+
+d←
+
+Xt = − σ(T− t)2←
+
+P tdt −ασ (T − t)2∇J(←
+
+Xt)G†(←
+
+Xt)J(←
+
+Xt)dt 
+
+| {z }
+
+> Landing term
+
+d←
+
+P t =Π( ←
+
+Xt)
+
+
+
+σ(T− t)2
+
+
+
+∇f (←
+
+Xt)dt + γ←
+
+P tdt + 2 γ∇p ln qT −t(←
+
+Xt, ←
+
+P t)
+
+
+
+dt +σ(T − t)p2γ ◦ d ¯Wt
+
+
+
++ σ(T − t)2∇J(←
+
+Xt)T G†(←
+
+Xt)
+
+H1(←
+
+Xt, ←
+
+P t) + αH2(←
+
+Xt, ←
+
+P t)
+
+| {z }
+
+> Landing correction term
+
+ dt. 
+
+Because the It ˆo-Stratonovich correction term vanishes in the underdamped case Proposition B.2, the It ˆo version SDE can be recovered from the Stratonovich version SDE by chaining ◦ to · in the Brownian motion term d ¯Wt.28 Efficient Diffusion Models under Nonconvex Constraints via Landing 
+
+B.4. Discretization of Constrained Langevin Dynamics 
+
+In the discretization setup, we use a uniform grid tk = k∆t for k = 0 , .., N with terminal time T = N ∆t. The forward trajectory uses state notations Xk := Xtk (or [Xk, P k]T := [ Xtk , P tk ]T ) and updates in ascending index as 
+
+Xk ← Xk+1 + . . . . The backward trajectory is written in descending index, using states X′ 
+
+> k
+
+:= ←
+
+XT −tk (or [X′
+
+> k
+
+, P ′
+
+> k
+
+]T := [←
+
+XT −tk , ←
+
+P T −tk ]T ) and updating as X′ 
+
+> k
+
+← X′ 
+
+> k+1
+
++ . . . for k ∈ { N − 1, ... 0}. We define the noise schedule in continuous time and evaluate the schedule on the discrete grid. This yields 
+
+σ(t) := σmin + tT (σmax − σmin ) , σk := σ(tk) = σmin + kN (σmax − σmin ) .
+
+We also denote qk, p k to be the probability densities of Xk (or [Xk, P k]T ) and X′ 
+
+> k
+
+(or [X′
+
+> k
+
+, P ′
+
+> k
+
+]T ) so that qk = qtk and 
+
+pk = pT −tk .
+
+Discretization of OLLA For the discretization of OLLA, we use straightforward Euler-Maruyama (EM) discretization. 
+
+Discretization of Forward OLLA Recall that the Itˆ o version of the forward process SDE is provided as follows: 
+
+dX t = σ(t)2
+
+2
+
+−Π( Xt)∇f (Xt) − ασ (t)2∇J(Xt)T G†(Xt)J(Xt) dt + σ(t)2
+
+2 H(Xt)dt 
+
++ σ(t)Π( Xt)dW t.
+
+Therefore, the EM discretization of the forward process SDE becomes: 
+
+Xk+1 =Xk + σ2
+
+> k
+
+2
+
+−Π( Xk)∇f (Xk) − ασ 2
+
+> k
+
+∇J(Xk)T G†(Xk)J(Xk) ∆t
+
++ σ2
+
+> k
+
+2 H(Xk)∆ t + σk
+
+√∆tΠ( Xk)ζk, (Forward-OLLA) where ζk ∼ N (0 , I ) is the standard Gaussian noise. 
+
+Discretization of Backward OLLA Similarly, we note that following the backward SDE 
+
+d←
+
+Xt = 12 σ(T − t)2Π( ←
+
+Xt)
+
+
+
+∇f (←
+
+Xt) + 2 ∇ ln qT −t(←
+
+Xt)
+
+
+
+∆t + 12 σ(T − t)2H(←
+
+Xt)dt 
+
+− ασ (T − t)2∇J(←
+
+Xt)T G†(←
+
+Xt)J(←
+
+Xt)dt + σ(T − t)Π( ←
+
+Xt) ◦ d ¯Wt
+
+can be discretized as follows: 
+
+> ←
+
+Xtk+1 =←
+
+Xtk + 12 σ(T− tk)2Π( ←
+
+Xtk )
+
+
+
+∇f (←
+
+Xtk ) + 2 ∇ ln qT −tk ( ←
+
+Xtk )
+
+
+
+∆t + 12 σ(T− tk)2H(←
+
+Xtk )∆ t
+
+− ασ (T − tk)2∇J(←
+
+Xtk )T G†(←
+
+Xtk )J(←
+
+Xtk )∆ t + σ(tk)√∆tΠ( ←
+
+Xtk )¯ζk.
+
+In our notation, this is equivalent to 
+
+X′ 
+
+> k
+
+=X′ 
+
+> k+1
+
++ 12 σ2
+
+> k+1
+
+Π( X′
+
+> k+1
+
+) ∇f (X′
+
+> k+1
+
+) + 2 ∇ ln qk+1 (X′
+
+> k+1
+
+) ∆t + 12 σ2
+
+> k+1
+
+H(X′
+
+> k+1
+
+)∆ t
+
+− ασ 2
+
+> k+1
+
+∇J(X′
+
+> k+1
+
+)T G†(X′
+
+> k+1
+
+)J(X′
+
+> k+1
+
+)∆ t + σk+1 
+
+√∆tΠ( X′
+
+> k+1
+
+)ζ′ 
+
+> k+1
+
+(Backward-OLLA) by changing k ← N − (k + 1) .
+
+Discretized algorithm of constrained overdamped via Lagrangian multiplier When we are available to use Newton’s method, we replace the explicit normal drifts H, −α∇JT G†J terms by a position projection via Lagrangian multipliers λ at each step so that J(x) = 0 is satisfied. Under this way, we recover the following discretization of constrained overdamped Langevin dynamics using Lagrangian multiplier: 
+
+Xk+1 =Xk − σ2
+
+> k
+
+2 Π( Xk)∇f (Xk)∆ t + σk
+
+√∆tΠ( Xk)ζk + ∇J(Xk)T λk (Forward-OLLA-P) 29 Efficient Diffusion Models under Nonconvex Constraints via Landing 
+
+with λk such that J(Xk+1 ) = 0 . Similarly, the backward process can be obtained in a similar way as follows: 
+
+X′ 
+
+> k
+
+=X′ 
+
+> k+1
+
++ 12 σ2
+
+> k+1
+
+Π( X′
+
+> k+1
+
+) ∇f (X′
+
+> k+1
+
+) + 2 ∇ ln qk+1 (X′
+
+> k+1
+
+) ∆t + σk+1 
+
+√∆tΠ( X′
+
+> k+1
+
+)ζ′
+
+> k+1
+
++ ∇J(X′
+
+> k+1
+
+)T λk+1 (Backward-OLLA-P) with λk+1 such that J(X′
+
+> k
+
+) = 0 .
+
+Discretization of ULLA For the discretization of ULLA, we use a 1st order O ˜BA splitting scheme which uses an approximated B process to compute the curvature correction term at Pk with O(∆ t) error. When discretizing, we use a collapsing technique to remove the momentum update rule. Because this collapsing technique requires saving only the position variables Xk, it is beneficial for saving memory, especially when saving forward trajectories is necessary. 
+
+Discretization of Forward ULLA From the previous subsection, we recall the following It ˆo version of the forward process SDE: 
+
+dX t =σ(t)2Ptdt − ασ (t)∇J(Xt)G†(Xt)J(Xt)dt dP t =Π( Xt)
+
+h
+
+σ(t)2 [−∇ f (Xt) − γP t] dt + σ(t)p2γdW t
+
+i
+
+− σ(t)2∇J(Xt)T G†(Xt) [ H1(Xt, P t) − αH2(Xt, P t)] dt. 
+
+Under O ˜BA scheme, this can be split into three parts O, ˜B, A as follows: 
+
+O:
+
+(
+
+dX t =0 
+
+dP t = − σ(t)2Π( Xt)γP tdt + σ(t)Π( Xt)p2γdW t
+
++˜B :
+
+dX t =0 
+
+dP t = − σ(t)2  Π( Xt)∇f (Xt)dt + ∇J(Xt)T G†(Xt) [ H1(Xt, P t) − αH2(Xt, P t)] dt  +
+
+A :
+
+dX t =σ(t)2Ptdt − ασ (t)2∇J(Xt)G†(Xt)J(Xt)dt dP t =0 .
+
+First, we integrate O step from t = tk to t = tk+1 with Xt and σ(t) frozen at t = tk. Then, it gives 
+
+
+
+XOk+1 =Xk
+
+P Ok+1 =(1 − Π( Xk)) Pk + akΠ( Xk)Pk +
+
+q
+
+1 − a2
+
+> k
+
+Π( Xk)ζk = akΠ( Xk)Pk +
+
+q
+
+1 − a2
+
+> k
+
+Π( Xk)ζk
+
+where ak := e−γσ 2  
+
+> k∆t
+
+and we used the assumption that Pk ∈ TXk Σ, while will be guaranteed on the collapsing technique. Next, we integrate ˜B step with same integration domain with Xt, σ (t) frozen at t = tk. Then, we have: 
+
+(XO ˜Bk+1 =XOk+1 + 0 = Xk
+
+P O ˜Bk+1 =P Ok+1 − σ2
+
+> k
+
+Π( Xk)∇f (Xk)∆ t − σ2
+
+> k
+
+∇J(Xk)T G†(Xk) [ H1(Xk, P k) − αH2(Xk, P k)] ∆ t. 
+
+Similarly, integrating A step with frozen Xt, σ (t) gives : 
+
+(Xk+1 =XO ˜Bk+1 + σ2
+
+> k
+
+P O ˜Bk ∆t − ασ 2
+
+> k
+
+∇J(Xk)T G(Xk)†J(Xk)∆ tPk+1 =P O ˜Bk+1 + 0 = P O ˜Bk+1 ,
+
+which is equivalent to 
+
+Pk+1 =Π( Xk)
+
+
+
+akPk − σ2
+
+> k
+
+∇f (Xk)∆ t +
+
+q
+
+1 − a2
+
+> k
+
+ζk
+
+
+
+− σ2
+
+> k
+
+∇J(Xk)T G†(Xk) [ H1(Xk, P k) − αH2(Xk, P k)] ∆ tXk+1 =Xk + σ2
+
+> k
+
+Pk+1 ∆t − ασ 2
+
+> k
+
+∇J(Xk)T G(Xk)†J(Xk)∆ t. 
+
+We note that this can be collapsed into one update rule with respect to X state as follows: 
+
+Xk+1 = Xk + σ2
+
+> k
+
+∆tΠ( Xk)
+
+
+
+akPk − σ2
+
+> k
+
+∇f (Xk)∆ t +
+
+q
+
+1 − a2
+
+> k
+
+ζk
+
+
+
+− ασ 2
+
+> k
+
+∇J(Xk)T G(Xk)†J(Xk)∆ t − σ4
+
+> k
+
+∆t2∇J(Xk)T G(Xk)† [H1(Xk, P k) − αH2(Xk, P k)] .
+
+30 Efficient Diffusion Models under Nonconvex Constraints via Landing 
+
+Also, we observe that Pk can be recovered as Pk = Π( Xk−1)
+
+ Xk −Xk−1
+
+> σ2
+> k−1∆t
+
+
+
+from the previous recursion which again can be approximated by Pk ≈ ˜Pk := Π( Xk)
+
+ Xk −Xk−1
+
+> σ2
+> k−1∆t
+
+
+
+with error O(∆ t), guaranteeing the 1st order numerical error and 
+
+Pk ∈ TXk Σ assumption on O step. Therefore, the final update rule for the forward process of ULLA becomes: 
+
+Xk+1 = Xk + σ2
+
+> k
+
+∆tΠ( Xk)
+
+
+
+ak ˜Pk − σ2
+
+> k
+
+∇f (Xk)∆ t +
+
+q
+
+1 − a2
+
+> k
+
+ζk
+
+
+
+(Forward-ULLA) 
+
+− ασ 2
+
+> k
+
+∇J(Xk)T G(Xk)†J(Xk)∆ t − σ4
+
+> k
+
+∆t2∇J(Xk)T G†(Xk)
+
+h
+
+H1(Xk, ˜Pk) − αH2(Xk, ˜Pk)
+
+i
+
+with ˜Pk := Π( Xk)
+
+ Xk −Xk−1
+
+> σ2
+> k−1∆t
+
+
+
+for k ∈ { 1, ..., N − 1} and ˜P0 = Π( X0)ζ ∈ T Σ 
+
+> X0
+
+where ζ ∼ N (0 , I ).
+
+Discretization of Backward ULLA For the discretization of backward process SDE, we recall the following backward process SDE of ULLA: 
+
+
+
+d←
+
+Xt = − σ(T − t)2←
+
+P tdt − ασ (T − t)2∇J(←
+
+Xt)G†(←
+
+Xt)J(←
+
+Xt)dt d←
+
+P t =Π( ←
+
+Xt)
+
+
+
+σ(T− t)2
+
+
+
+∇f (←
+
+Xt)dt + γ←
+
+P tdt + 2 γ∇p ln qT −t(←
+
+Xt, ←
+
+P t)
+
+
+
+dt + σ(T− t)p2γd ¯Wt
+
+
+
++ σ(T − t)2∇J(←
+
+Xt)T G†(←
+
+Xt)
+
+
+
+H1(←
+
+Xt, ←
+
+P t) + αH2(←
+
+Xt, ←
+
+P t)
+
+
+
+dt. 
+
+For the backward process of the O ˜BA scheme, the 2σ(T − t)2Π( ←
+
+Xt)γ←
+
+P t is added to ˜B step to guarantee the stable non-exploding OU process at O step. We remark that the similar trick to handle O step was previously used in Dockhorn et al. (2022). Under this technique, each O, ˜B, A steps can be given as follows: 
+
+O:
+
+(
+
+d←
+
+Xt =0 
+
+d←
+
+P t = − σ(T − t)2Π( ←
+
+Xt)γ←
+
+P tdt + σ(T − t)Π( ←
+
+Xt)p2γd ¯Wt
+
++˜B :
+
+
+
+d←
+
+Xt =0 
+
+d←
+
+P t =σ(T − t)2Π( ←
+
+Xt)
+
+
+
+∇f (←
+
+Xt) + 2 γ∇p ln qT −t(←
+
+Xt, ←
+
+P t) + 2 γ←
+
+P t
+
+
+
+dt 
+
++ ∇J(←
+
+Xt)T G†(←
+
+Xt)
+
+
+
+H1(←
+
+Xt, ←
+
+P t) + αH2(←
+
+Xt, ←
+
+P t)
+
+
+
+dt 
+
++
+
+A :
+
+
+
+d←
+
+Xt =σ(T − t)2
+
+
+
+−←
+
+P tdt − α∇J(←
+
+Xt)G†(←
+
+Xt)J(←
+
+Xt)dt 
+
+
+
+d←
+
+P t =0 .
+
+Integrating O step from t = tk to t = tk+1 with ←
+
+Xt and σ(T − t) frozen at t = tk. Then, it gives 
+
+
+
+> ←
+
+X 
+
+> Otk+1
+
+=←
+
+Xtk
+
+> ←
+
+P 
+
+> Otk+1
+
+=aN −kΠ( ←
+
+Xtk )←
+
+P tk +
+
+q
+
+1 − a2 
+
+> N−k
+
+Π( ←
+
+Xtk )¯ζk,
+
+where aN −k = e−γσ 2   
+
+> N−k∆t
+
+and we again used the assumption that ←
+
+P tk ∈ T←
+
+> Xtk
+
+Σ, which will be guaranteed via the collapsing technique later on. Next, integrating ˜B step with the same integration domain with ←
+
+Xt, σ (t) frozen at t = tk
+
+gives: 
+
+> ←
+
+X  
+
+> O˜Btk+1
+
+=←
+
+X 
+
+> Otk+1
+
++ 0 = ←
+
+Xtk
+
+> ←
+
+P  
+
+> O˜Btk+1
+
+=←
+
+P 
+
+> Otk+1
+
++ σ2 
+
+> N−k
+
+Π( ←
+
+Xtk )
+
+
+
+∇f (←
+
+Xtk ) + 2 γ∇p ln qT −tk (←
+
+Xtk , ←
+
+P tk ) + 2 γ←
+
+P tk
+
+
+
+∆t
+
++ σ2 
+
+> N−k
+
+∇J(←
+
+Xtk )T G†(←
+
+Xtk )
+
+
+
+H1(←
+
+Xtk , ←
+
+P tk ) + αH2(←
+
+Xtk , ←
+
+P tk )
+
+
+
+∆t
+
+31 Efficient Diffusion Models under Nonconvex Constraints via Landing 
+
+Similarly, integrating A step with frozen ←
+
+Xt, σ (t) gives : 
+
+
+
+> ←
+
+Xtk+1 =←
+
+X  
+
+> O˜Btk+1
+
+− σ2 
+
+> N−k
+
+P O ˜Bk ∆t − ασ 2 
+
+> N−k
+
+∇J(←
+
+Xtk )T G(←
+
+Xtk )†J(←
+
+Xtk )∆ t
+
+> ←
+
+P tk+1 =←
+
+P  
+
+> O˜Btk+1
+
++ 0 = ←
+
+P 
+
+> O˜Btk+1
+
+which is equivalent to 
+
+
+
+> ←
+
+P tk+1 = Π( ←
+
+Xtk )
+
+
+
+aN −k
+
+> ←
+
+P tk + σ2 
+
+> N−k
+
+
+
+∇f (←
+
+Xtk ) + 2 γ∇p ln qT −tk (←
+
+Xtk , ←
+
+P tk ) + 2 γ←
+
+P tk
+
+
+
+∆t
+
+
+
++
+
+q
+
+1 − a2 
+
+> N−k
+
+Π( ←
+
+Xtk )¯ζk + σ2 
+
+> N−k
+
+∇J(←
+
+Xtk )T G†(←
+
+Xtk )
+
+
+
+H1(←
+
+Xtk ,←
+
+P tk ) + αH2(←
+
+Xtk , ←
+
+P tk )
+
+
+
+∆t
+
+> ←
+
+Xtk+1 = ←
+
+Xtk − σ2 
+
+> N−k
+> ←
+
+P tk+1 ∆t − ασ 2 
+
+> N−k
+
+∇J(←
+
+Xtk )T G(←
+
+Xtk )†J(←
+
+Xtk )∆ t
+
+Similarly as before, we note that ←
+
+P tk+1 can be recovered as ←
+
+P tk+1 = Π( ←
+
+Xtk−1 )  
+
+> ←
+> Xtk−1−←
+> Xtk
+> σ2
+> N−k+1 ∆t
+
+!
+
+from the previous recursion, and it can be approximated by ˜←
+
+P tk+1 ≈ Π( ←
+
+Xtk )  
+
+> ←
+> Xtk−1−←
+> Xtk
+> σ2
+> N−k+1 ∆t
+
+!
+
+with O(∆ t) error. Therefore, we can collapse these two position-momentum updates into one single position update with approximated ˜←
+
+P tk+1 as follows: 
+
+> ←
+
+Xtk+1 = ←
+
+Xtk + σ2 
+
+> N−k
+
+∆t
+
+q
+
+1 − a2 
+
+> N−k
+
+Π( ←
+
+Xtk )¯ζk − ασ 2 
+
+> N−k
+
+∇J(←
+
+Xtk )T G(←
+
+Xtk )†J(←
+
+Xtk )∆ t
+
+− σ2 
+
+> N−k
+
+∆tΠ( ←
+
+Xtk )
+
+
+
+aN −k
+
+˜←
+
+P tk + σ2 
+
+> N−k
+
+
+
+∇f (←
+
+Xtk ) + 2 γ
+
+
+
+∇p ln qT −tk (←
+
+Xtk , ˜←
+
+P tk ) + ˜←
+
+P tk
+
+ 
+
+∆t
+
+
+
+− σ4 
+
+> N−k
+
+∆t2∇J(←
+
+Xtk )T G†(←
+
+Xtk )
+
+
+
+H1(←
+
+Xtk , ˜←
+
+P tk ) + αH2(←
+
+Xtk , ˜←
+
+P tk )
+
+
+
+.
+
+Finally, we recover the following discretization of the backward SDE of ULLA by changing index k ← N − (k + 1) :
+
+X′ 
+
+> k
+
+=X′
+
+> k+1
+
++σ2
+
+> k+1
+
+∆t
+
+q
+
+1 − a2
+
+> k+1
+
+∆tΠ( X′
+
+> k+1
+
+)ζ′ 
+
+> k+1
+
+−ασ 2
+
+> k+1
+
+∇J(X′
+
+> k+1
+
+)T G(X′
+
+> k+1
+
+)†J(X′
+
+> k+1
+
+)∆ t−
+
+σ2
+
+> k+1
+
+∆tΠ( X′
+
+> k+1
+
+)
+
+h
+
+ak+1 ˜P ′ 
+
+> k+1
+
++ σ2
+
+> k+1
+
+
+
+∇f (X′
+
+> k+1
+
+) + 2 γ
+
+
+
+∇p ln qk+1 (X′
+
+> k+1
+
+, ˜P ′
+
+> k+1
+
+) + ˜P ′
+
+> k+1
+
+ 
+
+∆t
+
+i
+
+− σ4
+
+> k+1
+
+∆t2∇J(X′
+
+> k+1
+
+)T G†(X′
+
+> k+1
+
+)
+
+h
+
+H1(X′
+
+> k+1
+
+, ˜P ′
+
+> k+1
+
+) + αH2(X′
+
+> k+1
+
+, ˜P ′
+
+> k+1
+
+)
+
+i
+
+(Backward-ULLA) with ˜P ′ 
+
+> k+1
+
+:= Π( X′
+
+> k+1
+
+)
+
+ X′
+
+> k+2 −X′
+> k+1
+> σ2
+> k+2 ∆t
+
+
+
+for k ∈ { 0, ..., N − 2} and ˜P ′ 
+
+> N
+
+= Π( X′ 
+
+> N
+
+)ζ ∈ T Σ
+
+> X′
+> N
+
+where ζ ∼ N (0 , I ).
+
+Discretized algorithm of constrained underdamped via Lagrangian multiplier Similar to constrained overdamped with Lagrangian multiplier, we replace the explicit normal drifts −α∇JT G†J, ∇JT G†H1, ∇JT G†H2 terms by a position projection via Lagrangian multipliers λ at each step so that J(x) = 0 is satisfied. In the collapsed underdamped case, we also used the approximation to re-tangent the momentum P by ˜P . So, no separate momentum projection is required. Under this idea, we recover the following discretization of constrained underdamped Langevin dynamics via Lagrangian multiplier: 
+
+Xk+1 = Xk + σ2
+
+> k
+
+∆tΠ( Xk)
+
+
+
+ak ˜Pk − σ2
+
+> k
+
+∇f (Xk)∆ t +
+
+q
+
+1 − a2
+
+> k
+
+ζk
+
+
+
++ ∇J(Xk)T λk (Forward-ULLA-P) with λk such that J(Xk+1 ) = 0 . Similarly, we obtain the following backward discretization: 
+
+X′ 
+
+> k
+
+= X′ 
+
+> k+1
+
++ σ2
+
+> k+1
+
+∆t
+
+q
+
+1 − a2
+
+> k+1
+
+Π( X′
+
+> k+1
+
+)ζ′ 
+
+> k+1
+
++ ∇J(X′
+
+> k+1
+
+)λk+1 −
+
+σ2
+
+> k+1
+
+∆tΠ( X′
+
+> k+1
+
+)
+
+h
+
+ak+1 ˜P ′
+
+> k+1
+
++ σ2
+
+> k+1
+
+
+
+∇f (X′
+
+> k+1
+
+) + 2 γ
+
+
+
+∇p ln qk+1 (X′
+
+> k+1
+
+, ˜P ′
+
+> k+1
+
+) + ˜P ′
+
+> k+1
+
+ 
+
+∆t
+
+i
+
+(Backward-ULLA-P) with λk+1 such that J(X′
+
+> k
+
+) = 0 .32 Efficient Diffusion Models under Nonconvex Constraints via Landing 
+
+## C. DT-ELBO on Riemannian manifold 
+
+In this section, we derive the DT-ELBO variational bounds of KL-divergence between the initial data distribution and the generated data distribution on the Riemannian manifold Σ := x ∈ Rd | h(x) = 0 , g (x) ≤ 0 .Let {x0, . . . , x N } ⊂ Σ be the forward position trajectory produced by N steps of a discretized sampler, and let q(xk+1 | ck)
+
+and pθ (xk | dk) denote the forward and backward transition densities, respectively. The context ck, d k depends on the history 
+
+{x0, . . . , x k}: for the overdamped case we take ck = {xk} , d k = {xk+1 }, while for the (collapsed) underdamped case we use ck = {xk, x k−1} (with c0 = {x0, p 0}) and dk = {xk+1 , x k+2 } (with dN −1 = {xN , p N }). We set q0(x) = qdata (x) as the data distribution and p(x) = pN (x) as the prior. In what follows, all densities are understood with respect to the surface measure dσ Σ on Σ, and, for clarity of exposition, we will assume that Lagrangian multiplier methods (OLLA-P, ULLA-P) are used each iterate to satisfy xk ∈ Σ; see the remark below for when this may fail under discretization. 
+
+Remark 5 (On constraint enforcement and well-definedness of the DT-ELBO) . The proposed discretized constrained Langevin dynamics with landing does not automatically guarantee xk ∈ Σ at every step. By contrast, the RDDPM formulation (Liu et al., 2025b) enforces feasibility at each time by solving the Lagrange multiplier system via Newton’s method (see Proposition B.1, Proposition B.2) so that 
+
+J(Xt) = 0 with ∇J(Xt)T Pt = 0 (if underdamped) ensuring Xt ∈ Σ and Pt ∈ TXt Σ exactly. Throughout our DT-ELBO derivation we adopt the same feasible-trajectory assumption : we assume the multiplier solve succeeds by Newton’s method so that the sampled forward path lies on Σ, i.e., 
+
+xk ∈ Σ for all k ∈ { 1, ..., N }.This assumption is not merely cosmetic. If some xk /∈ Σ, the conditional densities that appear in the ELBO may be undefined or degenerate (e.g., in the overdamped case pθ (xk | xk+1 )/q (xk+1 | xk), and in the underdamped case 
+
+pθ (xk−1 | xk, x k+1 )/q (xk+1 | xk, x k−1)). Such off-manifold iterates can induce singularities in the ELBO and render the induced NLL numerically unstable even under small constraint violations. For this reason, in our experiments we do not report test NLL; instead, we evaluate with task-specific metrics which reflect downstream performance. To solidify our framework, we later introduce the Conditional Wasserstein Path Matching (CWPM) framework in Appendix D, which drops the feasibility-trajectory assumption. Its training loss has the same DT-ELBO form up to the choice of training loss weights, justifying that the CWPM framework shares the same principle with DT-ELBO framework in the constrained Langevin dynamics with landing as the step size ∆t → 0.
+
+DT-ELBO for overdamped Langevin From the Markov property, the densities q(x0, x 1: N ), pθ (x1: N |x0) are given by 
+
+q(x1, ...x N |x0) =  
+
+> N−1
+
+Y
+
+> k=0
+
+q(xk+1 |xk), pθ (x0, x 1: N ) = p(xN ) 
+
+> N−1
+
+Y
+
+> k=0
+
+pθ (xk|xk+1 )
+
+The common goal suggested in DDPM (Ho et al., 2020) (Euclidean space) or RDDPM (Liu et al., 2025b) (Riemannian manifold) is to minimize KL Σ(q0|| pθ ). For this, we observe that 
+
+KL Σ(q0(x0)|| pθ (x0)) = 
+
+Z
+
+q0(x0) ln q0(x0)dσ Σ(x0)
+
+−
+
+Z
+
+q0(x0) ln 
+
+Z 
+
+pθ (x0: N )dσ Σ(x1: N )
+
+
+
+dσ Σ(x0)
+
+| {z }
+
+> Term (1)
+
+and Term (1) =
+
+Z
+
+q0(x0) ln 
+
+Z pθ (x0: N )
+
+q(x1: N |x0) q(x1: N |x0)dσ Σ(x1: N )
+
+
+
+dσ Σ(x0)
+
+> Jensen
+
+≥
+
+Z
+
+q0(x0)q(x1: N |x0) ln 
+
+ pθ (x0: N )
+
+q(x1: N |x0)
+
+
+
+dσ Σ(x1: N )=
+
+Z
+
+q(x0: N ) 
+
+> N−1
+
+X
+
+> k=0
+
+ln pθ (xk|xk+1 )
+
+q(xk+1 |xk) + ln p(xN )
+
+!
+
+dσ Σ(x1: N )
+
+33 Efficient Diffusion Models under Nonconvex Constraints via Landing 
+
+Because we want to minimize KL (q0(x0)|| pθ (x0)) , the training loss Lover (θ) can be set to 
+
+Lover (θ) = −
+
+Z
+
+q(x0: N ) 
+
+> N−1
+
+X
+
+> k=0
+
+ln pθ (xk|xk+1 )dσ Σ(x1: N ) = −Eq(x0: N )
+
+"N −1X
+
+> k=0
+
+ln pθ (xk|xk+1 )
+
+#
+
+where the product surface measure is defined to be dσ Σ(x1, ..x N ) := QNk=1 dσ Σ(xk).
+
+Lemma C.1 (Backward transition density – overdamped (Liu et al., 2025b)) . Suppose xk+1 ∈ int (Σ) and assume the followings hold: 1. There exists a measurable set Fxk+1 ⊂ Txk+1 Σ such that, for every η ∈ F xk+1 , the Newton’s method returns a unique pair (x, λ ), x ∈ int (Σ) solving 
+
+x = xk+1 + μok+1 (xk+1 ) + σk+1 
+
+√∆tη + ∇J(xk+1 )λ, with λ s.t. J(x) = 0 
+
+with the minimal-displacement normal correction and it fails for η / ∈ F xk+1 
+
+2. The solver success probability is 1 − ϵxk+1 := P(η ∈ F xk+1 ) ∈ (0 , 1] .3. The map Φk+1 : Fxk+1 → Σxk+1 := Φ k+1 (Fxk+1 ) ⊂ int (Σ) with Φk+1 (η) = x is a C1 bijection. Then, the backward transition density of OLLA-P with respect to surface measure dσ Σ is given as pθ (xk|xk+1 ) :
+
+pθ (xk|xk+1 ) = det( U (xk+1 )T U (xk)) 
+
+(2 πσ 2
+
+> k+1
+
+∆t) d−m 
+
+> 2
+
+(1 − ϵxk+1 ) exp 
+
+
+
+− ∥Π( xk+1 )( xk − μok+1 (xk+1 )) ∥2
+
+2σ2
+
+> k+1
+
+∆t
+
+
+
+for xk ∈ Σxk+1 , and pθ (xk|xk+1 ) = 0 outside of Σxk+1 , where 
+
+μok+1 (xk+1 ) := xk+1 + 12 σ2
+
+> k+1
+
+∆tΠ( xk+1 )
+
+h
+
+∇f (xk+1 ) + s(k+1)  
+
+> θ
+
+(xk+1 )
+
+i
+
+is the backward mean vector, and U (x) is the orthonormal matrix whose column vectors form an orthonormal basis of 
+
+TxΣ so that U (x)U (x)T = Π( x)
+
+Proof. Recall that the backward discretization of OLLA-P is given as below: 
+
+xk =xk+1 + 12 σ2
+
+> k+1
+
+Π( xk+1 )
+
+h
+
+∇f (xk+1 ) + 2 s(k+1)  
+
+> θ
+
+(xk+1 )
+
+i
+
+∆t + σk+1 
+
+√∆tΠ( xk+1 )ζk+1 + ∇J(xk+1 )λk+1 
+
+with λk+1 such that J(xk) = 0 .Let η ∼ N (0 , I d−m) on Txk+1 Σ. Conditioning on the success event η ∈ F xk+1 , the conditional density of η is given by 
+
+ϕ(ζ) = 1(2 π) d−m 
+
+> 2
+
+(1 − ϵxk+1 ) exp 
+
+
+
+− 12 ∥η∥2
+
+
+
+1η∈F xk+1 
+
+From the assumption, for each η ∈ F xk+1 , there is a unique x = Φ k+1 (η) ∈ Σ solving 
+
+x = μok+1 (xk+1 ) + σk+1 
+
+√∆tη + ∇J(xk+1 )λ
+
+with λ such that J(x) = 0 . Because Φk+1 is bijection from Fxk+1 ⊂ Txk+1 Σ onto Σxk+1 := Φ k+1 (Fxk+1 ) ⊂ Σ, we can define Gxk+1 := Φ −1 
+
+> k+1
+
+and its Jacobian is given by DG xk+1 (x) = ( σk+1 
+
+√∆t)−1U (xk+1 )T U (x) for x ∈ Σxk+1 . Hence, we have 
+
+det (DG xk+1 (x)) = ( σk+1 
+
+√∆t)−(d−m) det (U (xk+1 )T U (x)) 
+
+Lastly, we observe that, for x ∈ Σxk+1 , the pushforward of the conditional density ϕ by Φk+1 yields the following density with respect to dσ Σ:
+
+pθ (xk|xk+1 ) = det( U (xk+1 )T U (xk)) 
+
+(2 πσ 2
+
+> k+1
+
+∆t) d−m 
+
+> 2
+
+(1 − ϵxk+1 ) exp − ∥Π( xk+1 )T (xk − μok+1 (xk+1 )) ∥2
+
+2σ2
+
+> k+1
+
+∆t
+
+!
+
+34 Efficient Diffusion Models under Nonconvex Constraints via Landing 
+
+which becomes zero outside Σxk+1 (equivalently, when projection failure happens). Therefore, assuming the forward path trajectory {x0, ..., x N } ⊂ int (Σ) , the training loss has the following upper bound: 
+
+Lover (θ) = −Eq(x0: N )
+
+"N −1X
+
+> k=0
+
+ln pθ (xk|xk+1 )
+
+#
+
+≤ Eq(x0: N )
+
+"N −1X
+
+> k=0
+
+∥Π( xk+1 )T (xk − μok+1 (xk+1 )) ∥2
+
+2σ2
+
+> k+1
+
+∆t
+
+!# 
+
++ C
+
+(Training loss-OLLA-P) where C := PN −1
+
+> k=0
+
+
+
+− ln 
+
+ |det( U (xk+1 )T U (xk )) | 
+
+> (2 πσ 2
+> k+1 ∆t)d−m
+> 2
+
+ 
+
+is constant with respect to θ and the last inequality is obtained using 
+
+ϵxk+1 ≤ 1.
+
+DT-ELBO for underdamped Langevin In the collapsed underdamped setting, we keep only positions, which makes the forward chain a second-order Markov chain in {x0, ...x N }. Similarly, applying the same Jensen inequality argument used for the overdamped case gives the ELBO: Term (1) =
+
+Z
+
+q0(x0) ln 
+
+Z pθ (x0: N )
+
+q(x1: N |x0, p 0) q(p0|x0)q(x1: N |x0, p 0)dσ Tx0 Σ(p0)dσ Σ(x1: N )
+
+
+
+dσ Σ(x0)
+
+> Jensen
+
+≥
+
+Z
+
+q(x0, p 0)q(x1: N |x0, p 0) ln 
+
+ pθ (x0: N )
+
+q(x1: N |x0, p 0)
+
+
+
+dσ Tx0 Σ(p0)dσ Σ(x0: N )
+
+> Jensen
+
+≥ Eq(x0: N ,p 0)Ep(pN |xN )
+
+"N −1X
+
+> k=1
+
+ln 
+
+ pθ (xk−1|xk, x k+1 )
+
+q(xk+1 |xk, x k−1)
+
+
+
++ ln 
+
+ pθ (xN −1|xN , p N )
+
+q(x1|x0, p 0)
+
+
+
++ ln p(xN )
+
+#
+
+where the last inequality holds because pθ (x0: N ) has the following form: 
+
+pθ (x0: N ) = p(xN )
+
+Z
+
+p(pN |xN )pθ (xN −1|xN , p N ) 
+
+> N−1
+
+Y
+
+> k=1
+
+pθ (xk−1|xk, x k+1 )dσ TxN Σ(pN )
+
+Therefore, the training loss Lunder (θ) is naturally given as follows to minimize KL Σ(q0(x0)|| pθ (x0)) :
+
+Lunder (θ) = −Eq(x0: N ,p 0)EρN (pN |xN )
+
+"N −2X
+
+> k=0
+
+ln pθ (xk|xk+1 , x k+2 ) + ln pθ (xN −1|xN , p N )
+
+#
+
+= −Eq(x0: N ,p 0)EρN (pN |xN )
+
+"N −1X
+
+> k=0
+
+ln pθ (xk|xk+1 , x k+2 )
+
+#
+
+where ρN (pN |xN ) ∝ exp  − 12 ∥Π( xN )pN ∥22
+
+ is the density of the momentum prior density, and we used the notation abusing xN +1 := pN for notational convenience. 
+
+Lemma C.2 (Backward transition density – underdamped) . Suppose xk+1 ∈ int (Σ) and assume the followings hold: 1. There exists a measurable set Fxk+1 ⊂ Txk+1 Σ such that, for every η ∈ F xk+1 , the Newton’s method returns a unique pair (x, λ ), x ∈ int (Σ) solving 
+
+x = μuk+1 (xk+1 , x k+2 ) + σ2
+
+> k+1
+
+∆t
+
+q
+
+1 − a2
+
+> k+1
+
+η + ∇J(xk+1 )λ, with λ s.t. J(x) = 0 
+
+with the minimal-displacement normal correction and it fails for η / ∈ F xk+1 
+
+2. The solver success probability is 1 − ϵxk+1 := P(η ∈ F xk+1 ) ∈ (0 , 1] .3. The map Φk+1 : Fxk+1 → Σxk+1 := Φ k+1 (Fxk+1 ) ⊂ int (Σ) with Φk+1 (η) = x is a C1 bijection. 
+
+35 Efficient Diffusion Models under Nonconvex Constraints via Landing 
+
+Then, the backward transition density of ULLA-P with respect to surface measure dσ Σ is given as pθ (xk|xk+1 ) :
+
+pθ (xk|xk+1 ) = det( U (xk+1 )T U (xk)) 
+
+(2 πσ 2
+
+> k+1
+
+∆t) d−m 
+
+> 2
+
+(1 − ϵxk+1 ) exp − ∥Π( xk+1 )T (xk − μuk+1 (xk+1 , x k+2 )) ∥2
+
+2σ4
+
+> k+1
+
+∆t2(1 − ak+1 )2
+
+!
+
+for xk ∈ Σxk+1 , and pθ (xk|xk+1 ) = 0 outside of Σxk+1 , where 
+
+μuk+1 = xk+1 + σ2
+
+> k+1
+
+∆tΠ( xk+1 ) ak+1 ˜pk+1 + σ2
+
+> k+1
+
+∆t  ∇f (xk+1 ) + sθk+1 (xk+1 , ˜pk+1 ) 
+
+is the backward mean vector. Proof. Recall that the backward discretization of ULLA-P is given as below: 
+
+xk =xk+1 + σ2
+
+> k+1
+
+∆t
+
+q
+
+1 − a2
+
+> k+1
+
+Π( xk+1 )ζk+1 + ∇J(xk+1 )λk+1 +
+
+σ2
+
+> k+1
+
+∆tΠ( xk+1 ) ak+1 ˜pk+1 + σ2
+
+> k+1
+
+ ∇f (xk+1 ) + sθk+1 (xk+1 , ˜pk+1 ) ∆t
+
+with λk+1 such that J(xk) = 0 . Using the same proof as the overdamped case, we observe that Φk+1 is bijection from 
+
+Fxk+1 ⊂ Txk+1 Σ onto Σxk+1 := Φ k+1 (Fxk+1 ) ⊂ Σ, and we can define Gxk+1 := Φ −1 
+
+> k+1
+
+whose Jacobian is given by 
+
+DG xk+1 (x) = ( σk+1 
+
+√∆t)−1U (xk+1 )T U (x) for x ∈ Σxk+1 . Therefore, the determinant of this is: 
+
+det (DG xk+1 (x)) = ( σk+1 
+
+√∆t)−(d−m) det (U (xk+1 )T U (x)) 
+
+Lastly, we observe that, for x ∈ Σxk+1 , the pushforward of the conditional density of η (defined on the overdamped case proof) by Φk+1 yields the following density with respect to dσ Σ:
+
+pθ (xk|xk+1 ) = det( U (xk+1 )T U (xk)) 
+
+(2 πσ 2
+
+> k+1
+
+∆t) d−m 
+
+> 2
+
+(1 − ϵxk+1 ) exp − ∥Π( xk+1 )T (xk − μuk+1 (xk+1 , x k+2 )) ∥2
+
+2σ4
+
+> k+1
+
+∆t2(1 − ak+1 )2
+
+!
+
+which becomes zero outside Σxk+1 (equivalently, when projection failure happens). Therefore, assuming the forward path trajectory {x0, ..., x N } ⊂ int (Σ) , the training loss has the following upper bound (with notation xN +1 := pN ): 
+
+Lunder (θ) = −Eq(x0: N ,p 0)EρN (pN |xN )
+
+"N −1X
+
+> k=0
+
+ln pθ (xk|xk+1 , x k+2 )
+
+#
+
+(Training loss-ULLA-P) 
+
+≤ Eq(x0: N )EρN (pN |xN )
+
+"N −1X
+
+> k=0
+
+∥Π( xk+1 )T (xk − μuk+1 (xk+1 , x k+2 )) ∥2
+
+2σ4
+
+> k+1
+
+∆t2(1 − ak+1 )2
+
+!# 
+
++ C
+
+where C := PN −1
+
+> k=0
+
+
+
+− ln 
+
+ |det( U (xk+1 )T U (xk )) | 
+
+> (2 πσ 2
+> k+1 ∆t)d−m
+> 2
+
+ 
+
+is constant with respect to θ and the last inequality is again obtained using ϵxk+1 ≤ 1.
+
+## D. Conditional Wasserstein Path Matching (CWPM) 
+
+Let q0, q 1, ..., q N be the marginal forward probability densities at each step, evolved by discrete forward transition ker-nels Qk = q(xk+1 |ck). Similarly, define pN , p θN −1, ..., p θ 
+
+> 0
+
+to be the marginal backward probability densities driven by parameterized backward transition kernels T θk+1 = pθ (xk|dk). Similarly as in DT-ELBO, the context vector is fixed to be 
+
+ck = {xk} , d k = {xk+1 } for the overdamped case, while for the (collapsed) underdamped case we use ck = {xk, x k−1}
+
+(with c0 = {x0, p 0}) and dk = {xk+1 , x k+2 } (with dN −1 = {xN , p N }). Our goal is to minimize W2(q0, p θ
+
+> 0
+
+) so that the Wasserstein-2 distance between data distribution and generated data distribution becomes close to each other. 36 Efficient Diffusion Models under Nonconvex Constraints via Landing 
+
+CWPM framework for the overdamped We first define circuitous density at step k as 
+
+σk := qkT θk T θk−1, ..., T θ 
+
+> 1
+
+for k ∈ { 1, ..., N } σ0 := q0.
+
+We assume that for any probability measure μ, ν in Rd, there exists Kk+1 > 0 such that 
+
+W2(μT θk+1 , νT θk+1 ) ≤ Kk+1 W2(μ, ν ) + O(√∆t) (stepwise-Lipschitz) Under this assumption, we can choose Λk+1 > 0 such that 
+
+W2(σk, σ k+1 ) ≤ Λk+1 W2(qk, q k+1 T θk+1 ) + O(√∆t)
+
+for k ∈ { 0, ..., N − 1}. We note that Lemma D.1 implies that such Λk exists without stepwise-Lipschitz assumption when the function class of score function and the constraint functions are sufficiently regular. Under this setup, from the triangular inequality of W2, it holds that 
+
+W2(q0, p θ
+
+> 0
+
+) ≤ W2(q0, σ N ) + W2(σN , p θ
+
+> 0
+
+) ≤ 
+
+> N−1
+
+X
+
+> k=0
+
+W2(σk, σ k+1 ) + W2(σN , p θ
+
+> 0
+
+)
+
+≤ 
+
+> N−1
+
+X
+
+> k=0
+
+Λk+1 W2(qk, q k+1 T θk+1 ) + Λ N +1 W2(qN , p N ) + O(√∆t)
+
+≤ 
+
+> N−1
+
+X
+
+> k=0
+
+Λk+1 Exk+1 ∼qk+1 
+
+W2(qk|k+1 (·| xk+1 ), T θk+1 (·| xk+1 ) + Λ N +1 W2(qN , p N ) + O(√∆t)
+
+Now, we know that T θk+1 (·| xk+1 ) = N (μok+1 (xk+1 ), σ 2
+
+> k+1
+
+Π( xk+1 )) and let (μk|k+1 , Σk|k+1 ) be the mean and covariance of qk−1|k. Then, from the relation between Gelbrich distance and 2-Wasserstein distance (Gelbrich, 1990; Borelle et al., 2023), we have: 
+
+Exk+1 ∼qk+1 W2(qk|k+1 , T θk+1 (·| xk+1 )) 2 = Exk+1 ∼qk+1 ∥μk|k+1 (xk+1 ) − μok+1 (xk+1 )∥
+
++ Exk+1 ∼qk+1 
+
+Tr  Σk|k+1 (xk+1 ) + Tr  σ2
+
+> k+1
+
+Π( xk+1 ) + Exk+1 ∼qk+1 ∆k+1 (xk+1 )
+
+− 2Exk+1 ∼qk+1 
+
+
+
+Tr 
+
+
+
+Σ1/2
+
+> k|k+1
+
+(xk+1 )σ2
+
+> k+1
+
+Π( xk+1 )Σ 1/2
+
+> k|k+1
+
+(xk+1 )
+
+1/2 
+
+= Exk ∼qk ,x k+1 ∼qk+1 ∥xk − μok(xk+1 )∥ + Tr  σ2
+
+> k+1
+
+Π( xk+1 ) + Exk+1 ∼qk+1 ∆k+1 (xk+1 )
+
+− 2Exk+1 ∼qk+1 
+
+
+
+Tr 
+
+
+
+Σ1/2
+
+> k|k+1
+
+(xk+1 )σ2
+
+> k+1
+
+Π( xk+1 )Σ 1/2
+
+> k|k+1
+
+(xk+1 )
+
+1/2 
+
+where we used the law of total variance for the last equality, by observing that xk = μk|k+1 (xk+1 ) + ϵ ∼ qk with 
+
+E[ϵ|xk+1 ] = 0 and Cov (ϵ|xk+1 ) = Σ k|k+1 . Note that ∆k+1 (xk+1 ) ≥ 0 is the distance gap between Gelbrich distance and 2-Wasserstein distance (independent of θ) so that it becomes zero if the true conditional xk|xk+1 follows the Gaussian distribution as 
+
+xk|xk+1 ∼ N (μk|k+1 (xk+1 ), Σk|k+1 (xk+1 )) 
+
+Training loss (Overdamped) from CWPM We note that from the above bound, minimizing Exk ∼qk ,x k+1 ∼qk+1 ∥xk −
+
+μok(xk+1 )∥ is to close the Wasserstein distance between q0, p θ
+
+> 0
+
+. Because ∥xk − μok(xk+1 )∥2 can be decomposed into 
+
+∥xk − μok(xk+1 )∥2 = ∥Π( xk+1 )( xk − μok(xk+1 )) ∥2 + ∥(I − Π( xk+1 ))( xk − μok(xk+1 )) ∥2
+
+| {z } 
+
+> constant w.r.t θ
+
+and μok does not have θ dependency on normal (second) term, the natural choice of loss (leveraging the saved forward trajectories) is 
+
+Lover CWPM (θ) = Eq(x0: N )
+
+"N −1X
+
+> k=0
+
+λ(k)∥Π( xk+1 ) ( xk − μok(xk+1 )) ∥2
+
+#
+
+= Eq(x0: N )
+
+"N −1X
+
+> k=0
+
+∥Π( xk+1 ) ( xk − μok(xk+1 )) ∥2
+
+2σ2
+
+> k+1
+
+∆t
+
+#
+
+37 Efficient Diffusion Models under Nonconvex Constraints via Landing 
+
+with some training loss weight λ(k). We note that other seminal works (Ho et al., 2020; Wang et al., 2024; Karras et al., 2022) in diffusion model choose the weight proportional to the inverse of variance of corresponding term, which, in our case, becomes λ(k) = 12σ2 
+
+> k+1 ∆t
+
+with proportional constant 1/2. And, notably, this leads to the exactly the same training loss provided in DT-ELBO, (Lemma C.1) without the requirement xk ∈ Σ.
+
+Lemma D.1 (Sufficient condition for Λk < ∞ – Overdamped) . Let the one-step landing backward update of OLLA (Equation Backward-OLLA) be 
+
+F kθ (y, ζ ) = y + Π( y)bkθ (y)∆ t + σk
+
+√∆tΠ( y)ζ + σ2
+
+> k
+
+ϕ(y)∆ t, ζ ∼ N (0 , I d)
+
+where bkθ := σ2
+
+> k
+> 2
+
+∇f (y) + 2 skθ (y) is the drift term and ϕ(y) is the normal term. Assume: 1. (Regularity of constraint functions) There exists constants c0
+
+> ϕ
+
+, c 1 
+
+> ϕ
+
+< ∞ such that for any square-integrable Y ,
+
+E∥ϕ(Y )∥2 ≤ c0 
+
+> ϕ
+
++ c1
+
+> ϕ
+
+E∥Y ∥2
+
+2. (Regularity of function class) There exists Ls, B s < ∞ independent of θ with 
+
+∥skθ (x) − skθ (y)∥ ≤ Ls∥x − y∥, ∥skθ (x)∥ ≤ Bs + Ls∥x∥
+
+for all k ∈ { 1, ..., N } and assume ∇f is Lipschitz with constant Lf so that 
+
+∥bkθ (x) − bkθ (y)∥ ≤ Lb∥x − y∥, ∥bkθ (x)∥ ≤ C(1 + ∥x∥)
+
+for some constant Lb, C , k ∈ { 1, ..., N }
+
+Let T θk be the associated Markov kernel to F kθ . That is, T θk (·| y) = Law (F kθ (y, ζ )) . Then, for any probability measures 
+
+μ, ν in Rd, we have 
+
+W2(μT θk , νT θk ) ≤ KkW2(μ, ν ) + O
+
+√∆t + ∆ t
+
+
+
+1 + 
+
+q
+
+EY ∼μ∥Y ∥2 + pEY ′∼ν ∥Y ′∥2
+
+ 
+
+for some constant Kk. Also, if μ is given as μ = ρT θi T θi−1 . . . T θj for i ≥ j and some density ρ independent of θ, the supremum of second moment of μ is finite under θ ∈ Θ:
+
+sup 
+
+> θ∈Θ
+
+EYμ∼μ∥Yμ∥2 < ∞
+
+Combining these two, we can guarantee the existence of Λk > 0 such that 
+
+W2(σk−1, σ k) ≤ ΛkW2(qk−1, q kT θk ) + O(√∆t)
+
+for k ∈ { 1, ...N }.Proof. Let (Y, Y ′) be the synchronous coupling for W2(μ, ν ) with shared noise ζ ∼ N (0 , I ). Set 
+
+∆F kθ := F kθ (Y, ζ ) − F kθ (Y ′, ζ ) = ( Y − Y ′) + ∆ t  Π( Y )bkθ (Y ) − Π( Y ′)Bkθ (Y ′)| {z }
+
+> := B
+
++ σk
+
+√∆t(Π( Y ) − Π( Y ′)) ζ
+
+| {z }
+
+> := N
+
++ σ2
+
+> k
+
+∆t (ϕ(Y ) − ϕ(Y ′)) 
+
+| {z }
+
+> := L
+
+Then, using (a + b + c + d)2 ≤ 2( a2 + b2 + c2 + d2), we have: 
+
+E∥∆F kθ ∥2 ≤ 2E∥Y − Y ′∥2 + 2 E∥B∥2 + 2 E∥N ∥2 + 2 E∥L∥2
+
+Now, we note that 
+
+B = ∆ t (Π( Y )( bθ (Y ) − bθ (Y ′)) + (Π( Y ) − Π( Y ′)) bθ (Y ′)) 
+
+38 Efficient Diffusion Models under Nonconvex Constraints via Landing 
+
+and it implies 
+
+∥B∥ ≤ ∆t (Lb∥Y − Y ′∥ + 2 ∥bθ (Y ′)∥)
+
+Therefore, we have 
+
+E∥B∥2 ≤ 2L2 
+
+> b
+
+∆tE∥Y − Y ′∥2 + 8 C∆t2(1 + E∥Y ′∥2)= 2 L2 
+
+> b
+
+∆tE∥Y − Y ′∥2 + 4 C∆t2(1 + E∥Y ′∥2 + E∥Y ∥2)
+
+where the last equality comes by swapping Y, Y ′ and taking average. Also, we note that 
+
+E∥N ∥2 = σ2
+
+> k
+
+∆tE [∥(Π( Y ) − Π( Y ′)) ζ∥] ≤ 4σ2
+
+> k
+
+∆tE∥ζ∥2
+
+using ∥Π∥ ≤ 1. Similarly, we observe that 
+
+E∥L∥2 ≤ 2σ4
+
+> k
+
+∆t2  E∥ϕ(Y )∥2 + E∥ϕ(Y ′)∥2 ≤ 2σ4
+
+> k
+
+∆t2  2c0 
+
+> ϕ
+
++ c1
+
+> ϕ
+
+ E∥Y ∥2 + E∥Y ′∥2 
+
+using (a − b)2 ≤ 2a2 + 2 b2. By collecting all terms, we obtain 
+
+E∥∆F ∥2 ≤ 2(1 + L2 
+
+> b
+
+∆t)E∥Y − Y ′∥2 + 8 σ2
+
+> k
+
+∆tE∥ζ∥2 + ∆ t2 ˜C(1 + E∥Y ∥2 + E∥Y ′∥2)
+
+for some ˜C > 0. By taking square-root and using √u + v + w ≤ √u + √v + √w, we get 
+
+W2(μT θ , νT θ ) ≤ KkW2(μ, ν ) + O(√∆t + ∆ t
+
+
+
+1 + 
+
+q
+
+EY ∼μ∥Y ∥2 + pEY ′∼ν ∥Y ′∥2
+
+
+
+)
+
+for some constant Kk. Also, following the similar algebraic techniques, one can show the following using the regularity assumptions: 
+
+E∥F kθ (Y, ζ )∥2 ≤ 1 + ak∆t + O(∆ t2) E∥Y ∥2 + bk∆t + O(∆ t2)
+
+for some ak, b k > 0 independent of θ. So, once μ is given as μ = ρT θi T θi−1 . . . T θj for i ≥ j and some density ρ independent of θ, then, by applying the recursive inequality above, we get: 
+
+EYμ∼μ∥Yμ∥2 ≤
+
+> j
+
+Y
+
+> k=i
+
+ 1 + ak∆t + O(∆ t2) EYρ∼ρ∥Yρ∥2 + O(∆ t)
+
+and taking supremum over θ, it implies that 
+
+sup 
+
+> θ
+
+EYμ∼μ∥Yμ∥2 < ∞
+
+because the constants and the density ρ is independent of θ.
+
+CWPM framework for the underdamped Let yk := ( xk, x k+1 ) ∈ R2d with xk ∼ qk, x k+1 ∼ qk+1 and let ¯qk be the law of yk. The forward pair-kernel ¯Qk and backward pair-kernel ¯T θk+1 are 
+
+¯Qk (xk+1 , x k+2 |xk, x k+1 ) = δxk+1 ⊗ Qk(xk+2 |xk, x k+1 )¯T θk+1 (xk, x k+1 |xk+1 , x k+2 ) = T θk+1 (xk|xk, x k+1 ) ⊗ δxk+1 
+
+Now, we similarly define the circuitous densities on pairs as 
+
+¯σ0 := ¯ q0, ¯σk := ¯ qk ¯T θk · · · ¯T θ 
+
+> 1
+
+, for k ∈ { 1, ..., N − 1}
+
+Assume the stepwise Lipschitz inequality on pairs holds such that there exits ¯Kk+1 > 0
+
+W2(μ ¯T θk+1 , ν ¯T θk+1 ) ≤ ¯Kk+1 W2(μ, ν ) + O(∆ t)
+
+for any probability measure μ, ν in Rd. Then there exists finite ¯Λk+1 > 0 such that 
+
+W2(¯ σk, ¯σk+1 ) ≤ ¯Λk+1 W2(¯ qk, ¯qk+1 ¯T θk+1 ) + O(∆ t)
+
+39 Efficient Diffusion Models under Nonconvex Constraints via Landing 
+
+for k ∈ { 0, ..., N − 2}. (As in Lemma D.2) such Λk exists without stepwise-Lipschitz assumption under mild regularity of the score function class and constraints. For the prior on pair chain setup, we let ¯pθN −1 be a terminal pair prior on (XN −1, X N ) induced by sampling XN ∼
+
+pN , P N ∼ Π( XN )ζ with ζ ∼ N (0 , I d) so that XN −1 ∼ ¯T θN (·| XN , P N ). Then, we propagate backward by 
+
+¯pθ 
+
+> 0
+
+:= ¯ pN −1 ¯T θN −1· · · ¯T θ 
+
+> 1
+
+, pθ 
+
+> 0
+
+:= ( π1)# ¯pθ
+
+> 0
+
+where π1(x0, x 1) = x0 is the projection map onto first coordinate. Since π1 is 1-Lipschitz, W2(q0, p θ
+
+> 0
+
+) ≤ W2(¯ q0, ¯pθ
+
+> 0
+
+) holds and, from the triangle inequality for W2, we have 
+
+W2(q0, p θ
+
+> 0
+
+) ≤ W2(¯ q0, ¯pθ
+
+> 0
+
+) ≤ W2(¯ q0, ¯σN −1) + W2(¯ σN −1, ¯pθ
+
+> 0
+
+)
+
+≤ 
+
+> N−2
+
+X
+
+> k=0
+
+W2(¯ σk, ¯σk+1 ) + W2(¯ σN −1, ¯pθ
+
+> 0
+
+)
+
+≤ 
+
+> N−2
+
+X
+
+> k=0
+
+¯ΛkW2(¯ qk, ¯qk+1 ¯T θk+1 ) + ¯ΛN W2(¯ qN −1, ¯pθN −1) + O(∆ t).
+
+Because in pair conditionals the second coordinate is a Dirac mass, the inner W2 reduces to a position-only conditional mismatch: 
+
+W2(¯ qk, ¯qk+1 ¯T θk+1 ) = E(xk+1 ,x k+2 )∼¯qk+1 
+
+W2
+
+ qk|k+1 (·| xk+1 , x k+2 
+
+ , ¯T θk+1 (·| xk+1 , x k+2 )
+
+Also, we note that the following decomposition holds by triangle inequality: 
+
+W2(¯ qN −1, ¯pθN −1) ≤ W2 (( qN ⊗ ρN )SN , (pN ⊗ ρN )SN ) + W2
+
+ (pN ⊗ ρN )SN , (pN ⊗ ρN )SθN
+
+
+
+where pN is the prior of position, ρN (·| XN ) is the prior of momentum defined by the law of Π( xN )ζ with ζ ∼N (0 , I ), x N ∼ pN , and each SN and SθN are defined by 
+
+SN (xN , p N ) := ¯ qN −1|N (·| xN , p N ) ⊗ δxN , SθN (xN , p N ) := ¯T θN (·| xN , p N ) ⊗ δxN
+
+And, we observe that the first term is independent of θ, and the second term is given by: 
+
+W2
+
+ (pN ⊗ ρN )SN , (pN ⊗ ρN )SθN
+
+= E(xN ,p N )∼pN ⊗ρN
+
+W 22
+
+ ¯qN −1|N (·| xN , p N ), ¯T θN (·| xN , p N ) .
+
+because the second coordinate is a Dirac delta. Therefore, we have the following bound: 
+
+W2(q0, p θ
+
+> 0
+
+) ≤ 
+
+> N−2
+
+X
+
+> k=0
+
+¯ΛkE(xk ,x k+1 )∼¯qk
+
+W2
+
+ ¯qk|k+1 (·| xk+1 , x k+2 
+
+ , T θk+1 (·| xk+1 , x k+2 )) 
+
++ ¯ΛN E(XN ,p N )∼pN ⊗ρN
+
+W 22
+
+ ¯qN −1|N (·| xN , p N ), T θN (·| xN , p N ) 
+
++ ¯ΛN W2 (( qN ⊗ ρN )SN , (pN ⊗ ρN )SN ) + O(∆ t).
+
+Now, we recall that T θk+1 (·| xk+1 , x k+2 ) = N (μuk+1 (xk+1 , x k+1 ), σ 4
+
+> k+1
+
+∆t2(1 − a2
+
+> k+1
+
+)Π( xk+1 )) and let 
+
+(μk|k+1 ,k +2 , Σk|k+1 ,k +2 ) be the mean and covariance of true one-step backward conditional ¯qk|k+1 . Then, from the relation between Gelbrich distance and 2-Wasserstein distance, we have: 
+
+Exk+1 ∼qk+1 ,x k+2 ∼qk+2 W2(¯ qk|k+1 , T θk+1 (·| xk+1 , x k+2 )) 2
+
+= Exk+1 ∼qk+1 ,x k+2 ∼qk+2 ∥μk|k+1 ,k +2 (xk+1 , x k+2 ) − μuk+1 (xk+1 , x k+2 )∥
+
++ Exk+1 ∼qk+1 ,x k+2 ∼qk+2 
+
+Tr  Σk|k+1 ,k +2 (xk+1 , x k+2 ) + Tr  σ4
+
+> k+1
+
+∆t2(1 − a2
+
+> k+1
+
+)Π( xk+1 ) 
+
++ Exk+1 ∼qk+1 ,x k+2 ∼qk+2 ∆k+1 (xk+1 , x k+2 ) − 2σ4
+
+> k+1
+
+∆t(1 − a2
+
+> k+1
+
+)
+
+× Exk+1 ∼qk+1 ,x k+2 ∼qk+2 
+
+
+
+Tr 
+
+
+
+Σ1/2
+
+> k|k+1 ,k +2
+
+(xk+1 , x k+2 )Π( xk+1 )Σ 1/2
+
+> k|k+1 ,k +2
+
+(xk+1 , x k+2 )
+
+1/2 
+
+= Exk ∼qk ,x k+1 ∼qk+1 ,x k+2 ∼qk+2 ∥Xk − μuk (xk+1 , x k+2 )∥ + σ4
+
+> k+1
+
+∆t2(1 − a2
+
+> k+1
+
+)Tr (Π( xk+1 )) + Exk+1 ∼qk+1 ,x k+2 ∼qk+2 ∆k+1 (xk+1 , x k+2 )
+
+− 2Exk+1 ∼qk+1 ,x k+2 ∼qk+2 
+
+
+
+Tr 
+
+
+
+Σ1/2
+
+> k|k+1
+
+(xk+1 )σ2
+
+> k+1
+
+Π( xk+1 )Σ 1/2
+
+> k|k+1
+
+(xk+1 )
+
+1/2 
+
+40 Efficient Diffusion Models under Nonconvex Constraints via Landing 
+
+where we used the law of total variance for the last equality, by observing that xk = μk|k+1 ,k +2 (xk+1 , x k+2 ) + ϵ ∼ qk with 
+
+E[ϵ|xk+1 , x k+2 ] = 0 and Cov (ϵ|xk+1 , x k+2 ) = Σ k|k+1 ,k +2 . Similar to overdamped case, ∆k+1 (xk+1 , x k+2 ) ≥ 0 is the distance gap between Gelbrich distance and 2-Wasserstein distance (independent of θ) so that it becomes zero if the true conditional xk|xk+1 , x k+2 follows the Gaussian distribution as 
+
+xk|xk+1 , x k+2 ∼ N (μk|k+1 ,k +2 (xk+1 , x k+2 ), Σk|k+1 ,k +2 (xk+1 , x k+2 )) 
+
+Training loss (Underdamped) from CWPM Because ∥xk − μuk (xk+1 , x k+2 )∥2 can be decomposed into 
+
+∥xk − μuk (xk+1 , x k+2 )∥2 =∥Π( xk+1 )( xk − μuk (xk+1 , x k+2 )) ∥2
+
++ ∥(I − Π( xk+1 ))( xk − μuk (xk+1 , x k+2 )) ∥2
+
+| {z } 
+
+> constant w.r.t θ
+
+where μuk does not have θ dependency on normal (second) term. Therefore, by abusing notation to set pN = xN +1 , the choice of training loss becomes 
+
+Lunder CWPM (θ) = Eq(x0: N )EρN (pN |xN )
+
+"N −1X
+
+> k=0
+
+λ(k)∥Π( xk+1 ) ( xk − μuk (xk+1 , x k+2 )) ∥2
+
+#
+
+= Eq(x0: N )EρN (pN |xN )
+
+"N −1X
+
+> k=0
+
+∥Π( xk+1 ) ( xk − μuk (xk+1 , x k+2 )) ∥2
+
+2σ4
+
+> k+1
+
+∆t2(1 − a2
+
+> k+1
+
+)
+
+#
+
+with some training loss weight λ(k). In our case, the training loss weight proportional to the inverse of variance can be chosen by λ(k) = 12σ4 
+
+> k+1 ∆t2(1 −a2
+> k+1 )
+
+with proportional constant 1/2. And, notably, this leads to the exactly the same training loss provided in DT-ELBO, (Lemma C.2) without the requirement xk ∈ Σ.
+
+Lemma D.2 (Sufficient condition for Λk < ∞ – Underdamped) . Let the one-step landing backward update of ULLA (Equation Backward-ULLA) be 
+
+¯F kθ (x+, x ++ , ζ ) = x+ − σ2
+
+> k
+
+∆tΠ( x+) ak+1 ˜p + bkθ (x+, ˜p)
+
++ σ2
+
+> k
+
+∆t
+
+q
+
+1 − a2
+
+> k
+
+Π( x+)ζ + σ2
+
+> k
+
+∆tϕ (x+, ˜p)
+
+with pseudo-momentum 
+
+˜p(x+, x ++ ) := Π( x+)
+
+ x++ − x+
+
+σ2
+
+> k+2
+
+∆t
+
+
+
+∈ Tx+ Σ
+
+, the normal term ϕ(x+, ˜p), and the drift term bkθ (x+, ˜p). Assume the following regularity: 1. (Regularity of constraint functions) There exists constants c0
+
+> ϕ
+
+, c 1 
+
+> ϕ
+
+< ∞ such that for any square-integrable 
+
+Y = ( X, P ),
+
+E∥ϕ(Y )∥2 ≤ c0 
+
+> ϕ
+
++ c1
+
+> ϕ
+
+E  ∥X∥2 + ∥P ∥2
+
+2. (Regularity of function class) There exists constant Lg , C such that 
+
+∥bkθ (x, p ) − bkθ (x′, p ′)∥ ≤ Lg (∥x − x′∥ + ∥p − p′∥)
+
+∥bkθ (x, p )∥ ≤ C (1 + ∥x∥ + ∥p∥)
+
+Let ¯T θk be the associated Markov kernel to ¯F kθ . That is, T θk (·| x+, x ++ ) = Law ( ¯F kθ (x+, x ++ , ζ )) . Then, for any probability measures μ, ν in Rd, we have 
+
+W2(μ ¯T θk , ν ¯T θk ) ≤ KkW2(μ, ν ) + O
+
+
+
+∆t
+
+
+
+1 + 
+
+q
+
+EY ∼μ∥Y ∥2 + pEY ′∼ν ∥Y ′∥2
+
+ 
+
+41 Efficient Diffusion Models under Nonconvex Constraints via Landing 
+
+for some constant Kk. Also, if μ is given as μ = ρ ¯T θi ¯T θi−1 . . . ¯T θj for i ≥ j and some density ρ independent of θ, the supremum of second moment of μ is finite under θ ∈ Θ:
+
+sup 
+
+> θ∈Θ
+
+EYμ∼μ∥Yμ∥2 < ∞
+
+Combining these two, we can guarantee the existence of Λk > 0 such that 
+
+W2(¯ σk−1, ¯σk) ≤ ΛkW2(¯ qk−1, ¯qk ¯T θk ) + O(∆ t)
+
+for k ∈ { 1, ..., N − 1} and 
+
+W2(¯ σN −1, ¯pθ
+
+> 0
+
+) ≤ ΛN W2(¯ qN −1, ¯pθN −1 ¯T θk ) + O(∆ t) (8) 
+
+Proof. Let (X+, X ++ ), (X′
+
+> +
+
+, X ′
+
+> ++
+
+) be the synchronous coupling for W2(μ, ν ) with shared noise ζ ∼ (0 , I ). Write 
+
+∆+ := X+ − X′ 
+
+> +
+
+and ∆++ := X++ − X′
+
+> ++
+
+, and 
+
+∆ := ¯F kθ (X+, X ++ , ζ ) − ¯F kθ (X′
+
+> +
+
+, X ′
+
+> ++
+
+, ζ )
+
+Write ˜p := ˜ p(X+, X ++ ), ˜p′ := ˜ p(X′
+
+> +
+
+, X ′
+
+> ++
+
+), and 
+
+∆b := bkθ (X+, ˜p) − bkθ (X′
+
+> +
+
+, ˜p′), b′ := bkθ (X′
+
+> +
+
+, ˜p′)
+
+Then, 
+
+∆ = ∆ + + σ2
+
+> k
+
+∆tΠ( X+)ak+1 (˜ p − ˜p′)
+
+| {z }
+
+> (1)
+
++ σ2
+
+> k
+
+∆tΠ( X+)∆ b
+
+| {z }
+
+> (2)
+
++ σ2
+
+> k
+
+∆t(Π( X+) − Π( X′
+
+> +
+
+))( ak+1 ˜p′ + b′)
+
+| {z }
+
+> (3)
+
++
+
+q
+
+1 − a2
+
+> k
+
+σ2
+
+> k
+
+∆t(Π( X+) − Π( x′
+
+> +
+
+)) ζ
+
+| {z }
+
+> (4)
+
++ σ2
+
+> k
+
+∆t(ϕ(X+, ˜p) − ϕ(X′
+
+> +
+
+, ˜p′)) 
+
+| {z }
+
+> (5)
+
+Now, note that (1) term is bounded by 
+
+E∥(1) ∥2 ≤ C1
+
+ E∥X++ − X+∥2 + E∥X′ 
+
+> ++
+
+− X′
+
+> +
+
+∥2 = O(∆ t2)
+
+for some constant C1 that depends on k. The term (2) is also can be bounded by 
+
+E∥(2) ∥2 ≤ C2∆t2E∥∆+∥2 + C2
+
+ E∥X++ − X+∥2 + E∥X′ 
+
+> ++
+
+− X′
+
+> +
+
+∥2 = C∆t2E∥∆+∥2 + O(∆ t2)
+
+for some C2, because ∥∆b∥ ≤ Lg (∥∆+∥ + ∥˜p − ˜p′∥) For term (3), it is bounded by 
+
+E∥(3) ∥2 ≤ 4σ4
+
+> k
+
+∆t2(ak+1 ∥˜p′∥2 + ∥b′∥2) ≤ C3∆t2  1 + E∥X′
+
+> +
+
+∥2
+
+for some constant C3. Similarly, term (4) can be bounded by: 
+
+E∥(4) ∥2 ≤ 4σ4
+
+> k
+
+∆t2(1 − a2
+
+> k
+
+)E∥ζ∥2 = O(∆ t2)
+
+and term (5) is bounded by: 
+
+E∥(5) ∥2 ≤ 2σ4
+
+> k
+
+∆t2(E∥ϕ(X+, ˜p)∥2 + E∥ϕ(X′
+
+> +
+
+, ˜p′)∥2) ≤ C5∆t2  1 + E∥X+∥2 + E∥X′
+
+> +
+
+∥2
+
+By combining these terms, we recover that 
+
+E∥∆∥2 ≤(1 + C6∆t)E∥∆+∥2 + C6∆t2(1 + EY ∼μ∥Y ∥2 + EY ′∼ν ∥Y ′∥2)
+
+Since W2(μ, ν )2 ≥ E  ∥∆+∥2 + ∥∆∥2++ 
+
+ ≥ E∥∆+∥2 holds, we have 
+
+W2(μ ¯T θk , ν ¯T θk ) ≤ KkW2(μ, ν ) + O
+
+
+
+∆t
+
+
+
+1 + 
+
+q
+
+EY ∼μ∥Y ∥2 + pEY ′∼ν ∥Y ′∥2
+
+ 
+
+42 Efficient Diffusion Models under Nonconvex Constraints via Landing 
+
+for some constant Kk > 0. Now, similarly as in overdamped case, one can show that similar algebraic techniques gives the following under regularity assumptions: 
+
+E∥ ¯F kθ (X+, X ++ , ζ )∥2 ≤ (1 + ak∆t + O(∆ t2)) E(∥X+∥2 + ∥X++ ∥2) + bk∆t + O(∆ t2)
+
+for some constant ak, b k, using E∥X++ − X+∥2 = O(∆ t) from our pair chain setup. Hence, the same logic as in the overdamped shows 
+
+sup 
+
+> θ∈Θ
+
+E2
+
+> Yμ∼μ
+
+∥Yμ∥2 < ∞
+
+for μ given as μ = ρ ¯T θi ¯T θi−1 . . . ¯T θj for i ≥ j and some density ρ independent of θ.
+
+## E. Experiment settings and Supplementary Results 
+
+Settings. All experiments were implemented in Python using the PyTorch framework (Paszke et al., 2019) and run in a Linux (Ubuntu) environment. The computational hardware was tailored to the specific experimental group. We utilized an NVIDIA L40S GPU with 45GB of VRAM for the Earth and climate science datasets, and an NVIDIA H100 GPU with 80GB of VRAM for the 3D mesh data experiments. All other tasks, including the SO (10) manifold, Alanine dipeptide, and the 7-DOF robot arm, were conducted on an NVIDIA H200 GPU with 141GB of VRAM. 
+
+E.1. Description of baseline algorithms Riemannian Flow Matching (RFM) . RFM (Chen & Lipman, 2024) is a framework for training Continuous Normalizing Flows (CNF) (Chen et al., 2018) on Riemannian manifold by regressing a vector field vt to a conditional target vector field ut(x|x1) for t ∈ [0 , 1] defined via a user-specified premetric d(·, ·) (e.g., geodesics, spectral distances). The model minimizes the Riemannian Conditional Flow Matching objective given as : 
+
+LRCFM = Et∼U (0 ,1) ,x 1∼qdata ,x 0∼pprior 
+
+∥vt(xt) − ut(xt | x1)∥2
+
+> g
+
+
+
+where xt is as conditional flow sample interpolation between prior samples x0 and the data point x1, and ∥∥ g is the norm defined in the corresponding Riemannian manifold. The computational requirements for xt may depend on the manifold’s geometry. On simple manifold (e.g., spheres, tori), the geodesic distance can be used as the premetric, allowing xt to be computed in closed form via the exponential map, thus making the algorithm simulation-free. In contrast, on general geometries (e.g., triangular meshes) where exact geodesics are intractable, spectral distances such as the biharmonic distance are employed as the premetric. In this case, computing xt
+
+requires solving an ODE during the training process. 
+
+Remark 6 (Implementation details on RFM) . For RFM, we used the default configuration from the official code from authors. For Earth & Climate datasets, training iterations were reduced to 1/10 , whereas Mesh data experiments were conducted using the unaltered default configuration. 
+
+Riemannian Denoising Diffusion Probabilistic Models (RDDPM) . RDDPM (Liu et al., 2025b) is a constrained diffusion model framework that adapts Denoising Diffusion Probabilistic Models (DDPMs) (Ho et al., 2020) to Riemannian manifold Σ := x ∈ Rd | h(x) = 0 setup by incorporating a Newton’s method projection step into the diffusion process. The method constructs forward and backward Markov chains that alternate between diffusion steps along tangential direction of Σ and projecting the resulting sample back onto Σ via Newton’s method. While this guarantees feasibility at every step, the iterative nature of the projection leads to higher computational costs and potentially result in forward trajectory resampling due to projection failures. We remark that the projected version of OLLA (OLLA-P) corresponds to RDDPM under the equality-only scenario. 
+
+Euclidean Forward with Backward Variants . These baselines employ a standard unconstrained Euclidean diffusion process for the forward process, and distinguish themselves by the mechanism used to enforce constraints h(x) = 0 , g (x) ≤ 0
+
+during the backward process. In the forward process, it follows the update rule below: 
+
+xk+1 = xk − σ2
+
+> k
+
+∆t
+
+2 ∇f (xk) + σk
+
+√∆tζ k
+
+43 Efficient Diffusion Models under Nonconvex Constraints via Landing 
+
+with corresponding training loss 
+
+Lover Euclidean (θ) = Eq(x0: N )
+
+"N −1X
+
+> k=0
+
+∥xk − μok+1 (xk+1 )∥2
+
+2σ2
+
+> k+1
+
+∆t
+
+#
+
+and μok+1 := xk+1 + σ2
+
+> k+1 ∆t
+> 2
+
+∇f (xk+1 ) + sk+1  
+
+> θ
+
+(xk+1 ).1. Euclidean : This method performs sampling using the standard Euclidean backward without any constraint enforcement. The backward update rule is given as: 
+
+xk = xk+1 + σ2
+
+> k+1
+
+∆t
+
+2
+
+∇f (xk+1 ) + sθk+1 (xk+1 ) + σk+1 
+
+√∆tζ k+1 
+
+This approach offers no guarantee that the generated samples lie on Σ.2. Projected : This variant strictly enforces equality constraints by projecting the sample onto Σ immediately after each Euclidean backward step. Let ˜xk be the proposal from the Euclidean backward step. Then, the final state is obtained via 
+
+xk = PΣ(˜ xk), where PΣ finds the root of h(y) = 0 , g (y) ≤ 0 close to ˜xk using the interior point method (W ¨achter & Biegler, 2006; Christopher et al., 2024a). We remark that our implementation uses log-barrier for g(x) < 0 and quadratic penalty for g(x) ≥ 0.3. Lagrangian : This method formulates the sampling step as a constrained optimization problem using the Augmented Lagrangian Method (ALM). At each timestep, the proposal ˜xk is refined by minimizing an augmented Lagrangian objective: 
+
+L(x, λ, μ ) = λT h(x) + ρ
+
+2 ∥h(x)∥2 + 12ρ
+
+ ∥ReLU (μ + ρg (x)) ∥2 − ∥ μ∥2
+
+The inequality term follows the Powell-Hestenes-Rockafellar (PHR) formulation. This specific form is derived by introducing a non-negative slack variable s ≥ 0 to convert the inequality constraint g(x) ≤ 0 into an equality g(x)+ s = 0 .By constructing the standard augmented Lagrangian for this equality and analytically minimizing it with respect to s, the slack variable is eliminated, resulting in the closed-form ReLU (μ + ρg (x)) term. This ensures that penalties are applied correctly only when constraints are violated or multipliers are active. The multipliers λ and μ are updated iteratively via dual ascent. We note that this approach is also introduced in Liang et al. (2025). 4. Guided : This approach utilizes constraint guidance during sampling. The standard drift term of the backward process is modified by adding a guidance term derived from the gradient of a constraint violation energy potential. This potential is defined as V (x) = 12 ∥h(x)∥2 + 12 ∥ReLU (g(x)) ∥2, where the first term penalizes deviations from equality constraints and the second term penalizes violations of inequality constraints. Consequently, the backward update rule naturally incorporates a gradient descent step on this potential, which steers the generated trajectory towards the feasible set Σ by actively minimizing the constraint violation at each step. 
+
+E.2. Experiment settings and descriptions Earth and Climate Science Datasets S2. This benchmark (National Geophysical Data Center / World Data Service (NGDC/WDS), 2020; National Geophysical Data Center / World Data Service (NGDC/WDS); Mathieu & Nickel, 2020; Brakenridge, 2017; NASA Earth Observing System Data and Information System (EOSDIS), 2020) evaluates the model’s ability to learn geographical distributions on the Earth’s surface, which is modeled as the 2-sphere, S2. The datasets represent the locations of phenomena such as volcanoes, earthquakes, floods, and fires. 
+
+Mathematical formulation. A sample x represents a point in 3D Euclidean space lying on the surface of a unit sphere. Thus, x ∈ Rd with d = 3 . The manifold is defined by a single, simple equality constraint h(x) = ∥x∥2 − 1 = 0 .
+
+Prior distribution. As this is a compact manifold, the prior distribution pN is set to be the uniform distribution over the surface of the sphere S2.
+
+3D Mesh Data on a Learned Manifolds. The objective is to learn a probability distribution over the surface of a complex 3D shape, such as the Stanford Bunny (Turk & Levoy, 1994) and Spot the Cow (Crane et al., 2013). The manifold is 44 Efficient Diffusion Models under Nonconvex Constraints via Landing 
+
+implicitly defined as the zero-level set of a Signed Distance Function (SDF) that is itself represented by a pre-trained neural network hN N (x) as performed in Rozen et al. (2021); Gropp et al. (2020). 
+
+Mathematical Formulation. A sample x represents a point in 3D Euclidean space, thus x ∈ Rd with d = 3 . The manifold is defined by a single equality constraint requiring any valid point to lie on the zero-level set of hN N (x) = 0 .
+
+Prior distribution. The prior distribution pN is chosen to be uniform distribution over the learned manifold surface Σ due to its compactness. 
+
+High-Dimensional Special Orthogonal Group ( SO (10) ). This experiment tests the model’s ability to learn a multimodal distribution on the high-dimensional Lie group SO (10) . This is a challenging task due to the high dimensionality and non-trivial geometric structure of the manifold. 
+
+Mathematical Formulation. A sample is a 10 × 10 matrix, which is vectorized into x ∈ R100 . The constraints enforce the defining properties of a special orthogonal matrix. For the equality constraints, we impose 
+
+hij (X) = ( XT X − I)ij = 0 for 1 ≤ i ≤ j ≤ 10 
+
+and the determinant condition det (X) = 1 is handled by via rejection when it is violated. 
+
+Prior distribution. Similarly, the manifold is compact and we choose uniform distribution over SO (10) as our prior distribution. 
+
+Alanine Dipeptide This task involves generating valid 3D conformations of Alanine dipeptide, a model system in biophysics. The goal is to learn the distribution of structures subject to constraints on specific internal coordinates, including a mixed equality and inequality setup. Following the same approach in Liu et al. (2025b), we generated the dataset by running a 1ns constrained molecular dynamics simulation of alanine dipeptide in water using GROMACS (Abraham et al., 2015) with a 1 fs timestep. A harmonic bias was applied through the COLVARS module (Fiorin et al., 2013), where the chosen collective variable was dihedral angle ϕ. The harmonic restraint was centered at ϕ = −70 ◦ with a force constant 5.0.Other simulation settings follow closely those reported in Leli `evre et al. (2024). In total, 10 4 configurations were collected by saving a snapshot every 100 simulation steps. Hydrogen atoms were removed, leaving the coordinates of the 10 heavy atoms for further analysis. 
+
+Mathematical Formulation. The state x consists of the 3D coordinates of the 10 non-hydrogen atoms, so x ∈ R30 . The constraints are placed on two of the molecule’s primary dihedral angles, ϕ and ψ. For the equality constraints, the dihedral angle ϕ is fixed to a specific value: 
+
+h(x) = ϕ(x) − (−70 ◦)rad = 0 
+
+and we impose an inequality constraint so that another adjacent dihedral angle ψ is constrained to lie within the range 
+
+[130 ◦, 170 ◦]. This is formulated as a single inequality: 
+
+g(x) = max {ψ(x) − 170 ◦
+
+> rad
+
+, 130 ◦ 
+
+> rad
+
+− ψ(x)} ≤ 0.
+
+Prior distribution. Instead of introducing a potential-based drift term to induce a specific unimodal prior as in Liu et al. (2025b), we employ an empirical prior strategy. We first generate a large set of forward trajectories using the corresponding constrained dynamics (OLLA/ULLA) by running them to approximate the terminal prior distribution qN on the feasible set. The terminal states xN of these trajectories are collected, and the backward sampling process is initiated by drawing starting points uniformly from this pre-computed set, serving as a discrete approximation of the prior. Furthermore, to ensure the generated conformations respect physical symmetries, the score network for this task is designed to be SE (3) -invariant as proposed in Liu et al. (2025b). 
+
+7-DOF Robot Arm Trajectory This experiment focuses on learning a complex, bimodal distribution of trajectories for a 7-DOF Franka Emika Panda robot arm. The model is trained on a dataset of 400 valid paths (200 for S-shaped, 200 for reverse S-shaped paths) generated by the Rapidly-exploring Random Tree (RRT) algorithm. The primary task is to generate trajectories that trace both S-shaped and reverse S-shaped paths between fixed start and end points. Throughout the motion, the generated trajectories must satisfy several critical constraints: the robot arm must navigate around two spherical obstacles, and its end-effector must maintain a constant height of z = ztarget = 0 .1.
+
+Mathematical Formulation. The fundamental state of the robot arm is its configuration in joint space, represented by a vector of 7 joint angles, θ ∈ R7. A trajectory is a time-discretized sequence of these configurations, (θl)Ll=1 . To avoid 45 Efficient Diffusion Models under Nonconvex Constraints via Landing 
+
+the periodicity issue of raw angles, which poses challenges for neural networks, we represent each joint angle θl,j as a 2D vector on the unit circle (cos( θl,j ), sin( θl,j )) . Consequently, the state at a single time step l is a vector xl ∈ R14 . The full trajectory is flattened into a single vector x = [ x1, . . . , x L] ∈ Rd. For a trajectory with L ∈ { 10 , 20 , 30 , 40 } as in our setup, the ambient space dimension is d ∈ { 140 , 280 , 420 , 560 }.The constraints on the robot’s behavior, such as end-effector position and obstacle avoidance, are defined in 3D Cartesian space. We bridge the joint space representation and the Cartesian space constraints using the forward kinematics function, FK : R7 → R3×K , which maps a set of joint angles θl to the 3D positions of the K = 7 links of the robot arm. To handle the large number of resulting constraints efficiently, we employ a “summation trick” to combine multiple constraint violations into a single function for both equalities and inequalities. In particular, multiple geometric and kinematic conditions are aggregated into a single sum-of-squares function: 
+
+h(x) = 
+
+> m
+
+X
+
+> i=1
+
+hi(x)2 = 0 .
+
+The individual components hi(x) enforce: (1) the validity of the joint representation, hrep (xl,j ) = cos 2(θl,j ) + sin 2(θl,j ) −
+
+1 = 0 , for each joint j at each time step l, (2) fixed start and end points for the trajectory 
+
+hend (xL) = ∥FK (θL)end-effector − pend ∥2 = 0 , hstart (x1) = ∥FK (θ0)end-effector − pstart ∥2 = 0 
+
+with pstart and pend being the target start and end positions, and (3) a fixed z-height for the end effector throughout the trajectory, hz (xl) = [ FK (θl)end-effector ]z − ztarget = 0 .For the inequality constraint, the robot arm must avoid two spherical obstacles. For each relevant robot link k ∈ [K] and obstacle o ∈ { 1, 2} := Nobs , the distance between them must exceed a safety margin. These conditions are combined into a single function by summing the rectified violations: 
+
+g(x) = 
+
+> L
+
+X
+
+> l=1
+> K
+
+X
+
+> k=1
+> Nobs
+
+X
+
+> o=1
+
+ReLU (( robs ,o + rsafety ) − ∥ FK (θl)link ,k − pobs ,o ∥) ≤ 0.
+
+with robs ,o , p obs ,o being the radius and position of obstacles. This function is non-positive if and only if all links maintain the required minimum distance rsafety from all obstacles throughout the entire trajectory. 
+
+Prior distribution. Similar to the Alanine Dipeptide task, we employ an empirical prior strategy. We first generate a large set of forward trajectories using the corresponding constrained dynamics (OLLA/ULLA) by running them to approximate the target prior distribution qN on the feasible set. The terminal states xN of these trajectories are collected, and the backward sampling process is initiated by drawing starting points uniformly from this pre-computed set, serving as a discrete approximation of the prior. 
+
+Table 6. Summary of constrained feasible set dimensions and constraint specifications. Below table represent the ambient dimension 
+
+d, the intrinsic manifold dimension, and the number of equality ( m) and inequality ( l) constraints. For the Robot Arm task, L denotes the number of time steps (e.g., L ∈ { 10 , . . . , 40 }), and the constraint counts m and l are reported before applying the summation trick. 
+
+Dataset / Task Ambient Dim. (d) Intrinsic Dim. Equality (m) Inequality (l)Earth & Climate ( S2) 3 2 1 0
+
+3D Mesh (Bunny / Spot) 3 2 1 0
+
+Lie Group SO (10) 100 45 55 0
+
+Alanine Dipeptide 30 29 1 2
+
+7-DOF Robot Arm 14 L 7L 8L + 2 14 L
+
+46 Efficient Diffusion Models under Nonconvex Constraints via Landing            
+
+> Table 7. Detailed hyperparameters for all datasets, specified per algorithm. Here, lfdenotes the frequency of forward trajectory generation (once every lfepochs), Bis the batch size, Nnode represents the hidden dimension of the MLP, and Nlayer is the number of layers in the MLP.
+
+Dataset Algorithm γ σmin σmax N T lf Nepoch B Nhidden Nlayer α ϵ
+
+Volcano OLLA - 0.01 1.0 100 4.0 1 20000 128 512 5 50 -ULLA 3 0.1 1.3 50 2.0 1 20000 128 512 5 50 -ULLA-P 3 0.1 1.3 50 2.0 1 20000 128 512 5 50 -Earthquake OLLA - 0.01 1.0 100 4.0 1 20000 512 512 5 50 -ULLA 3 0.1 1.3 50 2.0 1 20000 512 512 5 50 -ULLA-P 3 0.1 1.3 50 2.0 1 20000 512 512 5 50 -Flood OLLA - 0.01 1.0 100 4.0 1 20000 512 512 5 50 -ULLA 3 0.1 1.3 50 2.0 1 20000 512 512 5 50 -ULLA-P 3 0.1 1.3 50 2.0 1 20000 512 512 5 50 -Fire OLLA - 0.01 1.0 100 4.0 1 20000 512 512 5 50 -ULLA 3 0.1 1.3 50 2.0 1 20000 512 512 5 50 -ULLA-P 3 0.1 1.3 50 2.0 1 20000 512 512 5 50 -Bunny (k = 50 )OLLA - 0.07 0.07 100 8.0 100 2000 2048 256 5 25 -ULLA 20 0.2 0.6 30 3.0 100 2000 2048 256 5 25 -ULLA-P 20 0.2 0.6 50 3.0 100 2000 2048 256 5 25 -Bunny (k = 100 )OLLA - 0.07 0.07 100 5.0 100 2000 2048 256 5 25 -ULLA 20 0.2 0.6 30 3.0 100 2000 2048 256 5 25 -ULLA-P 20 0.2 0.6 50 3.0 100 2000 2048 256 5 25 -Spot (k = 50 )OLLA - 0.1 0.1 100 5.0 100 2000 2048 256 5 25 -ULLA 20 0.2 0.5 30 3.0 100 2000 2048 256 5 25 -ULLA-P 20 0.2 0.5 50 3.0 100 2000 2048 256 5 25 -Spot (k = 100 )OLLA - 0.1 0.1 100 3.0 100 2000 2048 256 5 25 -ULLA 20 0.2 0.5 30 3.0 100 2000 2048 256 5 25 -ULLA-P 20 0.2 0.5 50 3.0 100 2000 2048 256 5 25 -SO(10) (m = 3 )OLLA - 0.2 2.0 100 1.0 100 2000 512 512 3 50 -ULLA 50 0.3 2.2 50 1.0 50 2000 512 512 3 5 -ULLA-P 50 0.3 2.2 50 1.0 50 2000 512 512 3 5 -SO(10) (m = 5 )OLLA - 0.2 2.0 100 1.0 100 2000 512 512 3 50 -ULLA 50 0.3 2.2 50 1.0 50 2000 512 512 3 5 -ULLA-P 50 0.3 2.2 50 1.0 50 2000 512 512 3 5 -Alanine dipeptide ULLA-P 10 0.5 2.0 100 0.2 10 2000 512 1024 5 50 0.05 7-DOF robot arm ULLA-P 1 0.1 2.0 100 0.2 50 10000 160 1024 5 200 0.001 47 Efficient Diffusion Models under Nonconvex Constraints via Landing 
+
+E.3. Generated samples from tasks. 
+
+In this subsection, we demonstrate the effectiveness of our proposed methods by comparing the generated samples in various tasks to the baseline RDDPM (Liu et al., 2025b). 
+
+Earth and Climate Science Datasets S2 –Volcano. 
+
+(a) RDDPM (OLLA-P) (b) OLLA 
+
+(c) ULLA-P (d) ULLA 
+
+Figure 5. Comparison of generated distributions across different algorithms-Volcano dataset 
+
+3D Mesh data on learned manifold – Spot the Cow (k = 100) .
+
+(a) RDDPM (b) OLLA (c) ULLA-P (d) ULLA 
+
+Figure 6. Comparison of generated distributions across different algorithms - Spot the Cow k = 100 
+
+48 Efficient Diffusion Models under Nonconvex Constraints via Landing 
+
+SO(10) manifold with m = 3 .7 8 9
+
+0.00 
+
+0.25 
+
+0.50 
+
+0.75 
+
+1.00 
+
+1.25 
+
+1.50 
+
+1.75 
+
+2.00 
+
+Tr( S1)
+
+Generated 
+
+True 
+
+0 2 4 6
+
+0.0 
+
+0.2 
+
+0.4 
+
+0.6 
+
+0.8 
+
+1.0 
+
+Tr( S2)
+
+2 0 2 4 6
+
+0.0 
+
+0.1 
+
+0.2 
+
+0.3 
+
+0.4 
+
+0.5 
+
+Tr( S4)
+
+0 2 4 6 8
+
+0.0 
+
+0.1 
+
+0.2 
+
+0.3 
+
+0.4 
+
+0.5 
+
+Tr( S5)
+
+(a) RDDPM (OLLA-P) 2 4 6 8
+
+0.0 
+
+0.5 
+
+1.0 
+
+1.5 
+
+2.0 
+
+Tr( S1)
+
+Generated 
+
+True 
+
+0 2 4 6
+
+0.0 
+
+0.2 
+
+0.4 
+
+0.6 
+
+0.8 
+
+1.0 
+
+1.2 
+
+Tr( S2)
+
+2 0 2 4 6
+
+0.0 
+
+0.1 
+
+0.2 
+
+0.3 
+
+0.4 
+
+0.5 
+
+Tr( S4)
+
+2.5 0.0 2.5 5.0 7.5 
+
+0.0 
+
+0.1 
+
+0.2 
+
+0.3 
+
+0.4 
+
+0.5 
+
+Tr( S5)
+
+(b) OLLA 7 8 9
+
+0.0 
+
+0.5 
+
+1.0 
+
+1.5 
+
+2.0 
+
+Tr( S1)
+
+Generated 
+
+True 
+
+0 2 4 6
+
+0.0 
+
+0.2 
+
+0.4 
+
+0.6 
+
+0.8 
+
+1.0 
+
+Tr( S2)
+
+0 2 4 6 8
+
+0.0 
+
+0.1 
+
+0.2 
+
+0.3 
+
+0.4 
+
+0.5 
+
+Tr( S4)
+
+0.0 2.5 5.0 7.5 
+
+0.0 
+
+0.1 
+
+0.2 
+
+0.3 
+
+0.4 
+
+0.5 
+
+Tr( S5)
+
+(c) ULLA-P 4 6 8
+
+0.00 
+
+0.25 
+
+0.50 
+
+0.75 
+
+1.00 
+
+1.25 
+
+1.50 
+
+1.75 
+
+2.00 
+
+Tr( S1)
+
+Generated 
+
+True 
+
+0 2 4 6 8
+
+0.0 
+
+0.2 
+
+0.4 
+
+0.6 
+
+0.8 
+
+1.0 
+
+Tr( S2)
+
+5.0 2.5 0.0 2.5 5.0 7.5 
+
+0.0 
+
+0.1 
+
+0.2 
+
+0.3 
+
+0.4 
+
+0.5 
+
+Tr( S4)
+
+2.5 0.0 2.5 5.0 7.5 
+
+0.0 
+
+0.1 
+
+0.2 
+
+0.3 
+
+0.4 
+
+0.5 
+
+Tr( S5)
+
+(d) ULLA 
+
+Figure 7. Comparison of generated distributions across different algorithms- SO (10) with m = 3 
+
+49 Efficient Diffusion Models under Nonconvex Constraints via Landing 
+
+E.4. Supplementary results - Effect of hyperparameters α and ϵ.
+
+Table 8. Effect of hyperparameters α (with fixed ϵ = 0 .05 ) and ϵ (with fixed α = 50 ) on JSD metrics and constraint violations for Alanine Dipeptide using ULLA without last step projection. 
+
+Parameter JSD ( ψ angle) JSD (RMSD) E[|h(x)|] E[g(x)+]
+
+Effect of α (with ϵ = 0 .05 )
+
+α = 0 .1 0.419 ±.000 0.045 ±.002 5.40 × 10 −3 3.79 × 10 −3
+
+α = 0 .5 0.247 ±.000 0.036 ±.001 5.39 × 10 −3 2.82 × 10 −3
+
+α = 1 .0 0.134 ±.004 0.034 ±.003 5.51 × 10 −3 1.60 × 10 −3
+
+α = 5 .0 0.060 ±.002 0.033 ±.001 2.97 × 10 −3 3.42 × 10 −4
+
+α = 10 .0 0.053 ±.004 0.034 ±.002 1.02 × 10 −3 1.46 × 10 −4
+
+α = 20 .0 0.043 ±.001 0.035 ±.002 2.09 × 10 −4 4.28 × 10 −7
+
+α = 50 .0 0.033 ±.002 0.034 ±.002 7.20 × 10 −5 7.95 × 10 −8
+
+α = 100 .0 0.051 ±.003 0.035 ±.002 3.70 × 10 −5 6.92 × 10 −7
+
+α = 200 .0 0.059 ±.008 0.183 ±.066 2.73 × 10 −3 4.19 × 10 −3
+
+α = 400 .0 0.235 ±.001 NaN 6.74 × 10 −1 9.95 × 10 −1
+
+Effect of ϵ (with α = 50 )
+
+ϵ = 0 .001 0.084 ±.001 0.036 ±.002 7.00 × 10 −5 3.49 × 10 −6
+
+ϵ = 0 .005 0.054 ±.003 0.033 ±.002 7.30 × 10 −5 3.58 × 10 −5
+
+ϵ = 0 .01 0.048 ±.002 0.032 ±.002 7.00 × 10 −5 5.49 × 10 −7
+
+ϵ = 0 .05 0.033 ±.002 0.034 ±.002 7.20 × 10 −5 7.95 × 10 −8
+
+ϵ = 0 .1 0.052 ±.007 0.035 ±.002 2.57 × 10 −4 5.26 × 10 −4
+
+ϵ = 0 .5 0.081 ±.009 0.738 ±.012 2.37 × 10 −1 1.98 × 10 −1
+
+ϵ = 1 .0 0.107 ±.024 0.788 ±.001 3.01 × 10 −1 1.95 × 10 −1
+
+ϵ = 5 .0 0.134 ±.002 0.796 ±.002 7.34 × 10 −1 2.97 × 10 −1
+
+ϵ = 10 .0 0.188 ±.003 0.796 ±.002 1.05 × 10 0 1.08 × 10 0120 140 160 180 0.000 0.005 0.010 0.015 0.020 0.025 0.030 0.035 0.040 
+
+distribution 
+
+(a) ϵ = 0 .01 (Sticky boundary) 120 140 160 180 0.000 0.005 0.010 0.015 0.020 0.025 0.030 0.035 0.040 
+
+distribution (b) ϵ = 0 .05 (Balanced choice) 120 140 160 180 0.00 0.01 0.02 0.03 0.04 
+
+distribution (c) ϵ = 0 .1 (Strong repulsion) 
+
+Figure 8. Effect of boundary repulsion rate ϵ on the generated distribution. When ϵ is too small (a), trajectories tend to stick to the boundary. Conversely, an excessively large ϵ (c) aggressively pushes samples away from the boundary, distorting the distribution. A moderate choice (b) balances these effects, yielding the best sampling quality. 
+
+50
