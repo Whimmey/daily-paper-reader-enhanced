@@ -6,66 +6,45 @@
 </div>
 
 ## 每次日报
-- 最新运行日期：2026-04-25
-- 运行时间：<span class="dpr-runtime" data-beijing="04-26 04:54 (UTC+8)" data-utc="04-25 20:54 UTC">04-26 04:54 (UTC+8) / 04-25 20:54 UTC</span>
+- 最新运行日期：2026-04-26
+- 运行时间：<span class="dpr-runtime" data-beijing="04-27 05:17 (UTC+8)" data-utc="04-26 21:17 UTC">04-27 05:17 (UTC+8) / 04-26 21:17 UTC</span>
 - 运行状态：成功
-- 本次总论文数：15
-- 精读区：6
-- 速读区：9
+- 本次总论文数：8
+- 精读区：2
+- 速读区：6
 
 ### 今日简报（AI）
-- 今日共生成 15 篇推荐（精读 6 篇，速读 9 篇）
-- 精读：《MESA: A Training-Free Multi-Exemplar Deep Framework for Restoring Ancient Inscription Textures》（9.0/10）, 《MESA: A Training-Free Multi-Exemplar Deep Framework for Restoring Ancient Inscription Textures》（9.0/10）
-- 速读：《AnyRecon: Arbitrary-View 3D Reconstruction with Video Diffusion Model》（8.0/10）, 《Semi-Supervised Flow Matching for Mosaiced and Panchromatic Fusion Imaging》（8.0/10）, 《LatRef-Diff: Latent and Reference-Guided Diffusion for Facial Attribute Editing and Style Manipulation》（8.0/10）
+- 今日共生成 8 篇推荐（精读 2 篇，速读 6 篇）
+- 精读：《Q-DeepSight: Incentivizing Thinking with Images for Image Quality Assessment and Refinement》（8.0/10）, 《Noise-Adaptive Diffusion Sampling for Inverse Problems Without Task-Specific Tuning》（8.0/10）
+- 速读：《Class-specific diffusion models improve military object detection in a low-data domain》（7.0/10）, 《DistortBench: Benchmarking Vision Language Models on Image Distortion Identification》（7.0/10）, 《CreatiParser: Generative Image Parsing of Raster Graphic Designs into Editable Layers》（6.0/10）
 - 这些结果覆盖了当下较热的方向，建议先看精读区论文的关键问题与方法。
-- 详情：[/202604/25/README](/202604/25/README)
+- 详情：[/202604/26/README](/202604/26/README)
 
 ### 精读区论文标签
-1. [MESA: A Training-Free Multi-Exemplar Deep Framework for Restoring Ancient Inscription Textures](/202604/25/2604.17390v1-mesa-a-training-free-multi-exemplar-deep-framework-for-restoring-ancient-inscription-textures)  
-   标签：评分：9.0/10、query:dl-cv
-   evidence：用于重建受损古代铭文的图像修复框架
-2. [MESA: A Training-Free Multi-Exemplar Deep Framework for Restoring Ancient Inscription Textures](/202604/25/2604.17390v2-mesa-a-training-free-multi-exemplar-deep-framework-for-restoring-ancient-inscription-textures)  
-   标签：评分：9.0/10、query:dl-cv
-   evidence：图像修复与重建
-3. [LoViF 2026 Challenge on Real-World All-in-One Image Restoration: Methods and Results](/202604/25/2604.19445v1-lovif-2026-challenge-on-real-world-all-in-one-image-restoration-methods-and-results)  
-   标签：评分：9.0/10、query:dl-cv
-   evidence：全能图像修复
-4. [From Zero to Detail: A Progressive Spectral Decoupling Paradigm for UHD Image Restoration with New Benchmark](/202604/25/2604.15654v1-from-zero-to-detail-a-progressive-spectral-decoupling-paradigm-for-uhd-image-restoration-with-new-benchmark)  
+1. [Q-DeepSight: Incentivizing Thinking with Images for Image Quality Assessment and Refinement](/202604/26/2604.16858v1-q-deepsight-incentivizing-thinking-with-images-for-image-quality-assessment-and-refinement)  
    标签：评分：8.0/10、query:dl-cv
-   evidence：超高清图像修复框架
-5. [StomaD2: An All-in-One System for Intelligent Stomatal Phenotype Analysis via Diffusion-Based Restoration Detection Network](/202604/25/2604.18632v1-stomad2-an-all-in-one-system-for-intelligent-stomatal-phenotype-analysis-via-diffusion-based-restoration-detection-network)  
+   evidence：图像质量评估与细化
+2. [Noise-Adaptive Diffusion Sampling for Inverse Problems Without Task-Specific Tuning](/202604/26/2604.16919v1-noise-adaptive-diffusion-sampling-for-inverse-problems-without-task-specific-tuning)  
    标签：评分：8.0/10、query:dl-cv
-   evidence：基于扩散的修复
-6. [Latent Denoising Improves Visual Alignment in Large Multimodal Models](/202604/25/2604.21343v1-latent-denoising-improves-visual-alignment-in-large-multimodal-models)  
-   标签：评分：8.0/10、query:dl-cv
-   evidence：针对LMM的潜在去噪与教师块恢复
+   evidence：用于逆问题和图像重建的扩散模型
 
 ### 速读区论文标签
-1. [AnyRecon: Arbitrary-View 3D Reconstruction with Video Diffusion Model](/202604/25/2604.19747v1-anyrecon-arbitrary-view-3d-reconstruction-with-video-diffusion-model)  
-   标签：评分：8.0/10、query:dl-cv
-   evidence：基于扩散模型的3D重建
-2. [Semi-Supervised Flow Matching for Mosaiced and Panchromatic Fusion Imaging](/202604/25/2604.20128v1-semi-supervised-flow-matching-for-mosaiced-and-panchromatic-fusion-imaging)  
-   标签：评分：8.0/10、query:dl-cv
-   evidence：半监督流匹配
-3. [LatRef-Diff: Latent and Reference-Guided Diffusion for Facial Attribute Editing and Style Manipulation](/202604/25/2604.21279v1-latref-diff-latent-and-reference-guided-diffusion-for-facial-attribute-editing-and-style-manipulation)  
-   标签：评分：8.0/10、query:dl-cv
-   evidence：用于面部属性编辑的扩散模型
-4. [Efficient Diffusion Models under Nonconvex Equality and Inequality constraints via Landing](/202604/25/2604.17838v1-efficient-diffusion-models-under-nonconvex-equality-and-inequality-constraints-via-landing)  
+1. [Class-specific diffusion models improve military object detection in a low-data domain](/202604/26/2604.18076v1-class-specific-diffusion-models-improve-military-object-detection-in-a-low-data-domain)  
    标签：评分：7.0/10、query:dl-cv
-   evidence：约束扩散模型
-5. [Denoising, Fast and Slow: Difficulty-Aware Adaptive Sampling for Image Generation](/202604/25/2604.19141v1-denoising-fast-and-slow-difficulty-aware-adaptive-sampling-for-image-generation)  
+   evidence：基于扩散模型的图像合成
+2. [DistortBench: Benchmarking Vision Language Models on Image Distortion Identification](/202604/26/2604.19966v1-distortbench-benchmarking-vision-language-models-on-image-distortion-identification)  
    标签：评分：7.0/10、query:dl-cv
-   evidence：基于扩散模型的图像生成与重建的自适应采样
-6. [FluSplat: Sparse-View 3D Editing without Test-Time Optimization](/202604/25/2604.20038v1-flusplat-sparse-view-3d-editing-without-test-time-optimization)  
-   标签：评分：7.0/10、query:dl-cv
-   evidence：用于一致性3D编辑的跨视图正则化
-7. [Uncertainty-Aware Spatiotemporal Super-Resolution Data Assimilation with Diffusion Models](/202604/25/2604.21180v1-uncertainty-aware-spatiotemporal-super-resolution-data-assimilation-with-diffusion-models)  
-   标签：评分：7.0/10、query:dl-cv
-   evidence：使用扩散模型进行时空重建和超分辨率处理
-8. [CCAR: Intrinsic Robustness as an Emergent Geometric Property](/202604/25/2604.16861v1-ccar-intrinsic-robustness-as-an-emergent-geometric-property)  
+   evidence：评估视觉语言模型对图像失真的识别，与图像修复相关
+3. [CreatiParser: Generative Image Parsing of Raster Graphic Designs into Editable Layers](/202604/26/2604.19632v1-creatiparser-generative-image-parsing-of-raster-graphic-designs-into-editable-layers)  
    标签：评分：6.0/10、query:dl-cv
-   evidence：用于鲁棒性的激活正则化
-9. [AttDiff-GAN: A Hybrid Diffusion-GAN Framework for Facial Attribute Editing](/202604/25/2604.21289v1-attdiff-gan-a-hybrid-diffusion-gan-framework-for-facial-attribute-editing)  
+   evidence：利用视觉语言模型进行图形设计解析和重建
+4. [ORPHEAS: A Cross-Lingual Greek-English Embedding Model for Retrieval-Augmented Generation](/202604/26/2604.20666v1-orpheas-a-cross-lingual-greek-english-embedding-model-for-retrieval-augmented-generation)  
    标签：评分：6.0/10、query:dl-cv
-   evidence：用于面部编辑的混合扩散GAN框架
+   evidence：用于检索增强生成的嵌入模型
+5. [GeoRelight: Learning Joint Geometrical Relighting and Reconstruction with Flexible Multi-Modal Diffusion Transformers](/202604/26/2604.20715v1-georelight-learning-joint-geometrical-relighting-and-reconstruction-with-flexible-multi-modal-diffusion-transformers)  
+   标签：评分：6.0/10、query:dl-cv
+   evidence：利用扩散模型联合进行几何重光照和重建
+6. [Pre-process for segmentation task with nonlinear diffusion filters](/202604/26/2604.21422v1-pre-process-for-segmentation-task-with-nonlinear-diffusion-filters)  
+   标签：评分：6.0/10、query:dl-cv
+   evidence：用于图像处理的非线性扩散滤波器
 
